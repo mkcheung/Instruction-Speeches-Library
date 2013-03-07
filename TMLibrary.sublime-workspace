@@ -1,0 +1,629 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"user",
+				"userid"
+			],
+			[
+				"edit",
+				"editNoteFormData"
+			],
+			[
+				"mysql_fet",
+				"mysql_fetch_assoc"
+			],
+			[
+				"paddin",
+				"padding-left"
+			],
+			[
+				"c",
+				"color-stop"
+			],
+			[
+				"border-col",
+				"border-color"
+			],
+			[
+				"font",
+				"font-size"
+			],
+			[
+				"print",
+				"print_r"
+			],
+			[
+				"categoryRes",
+				"categoryResultArray"
+			],
+			[
+				"category",
+				"categoryResultSet"
+			],
+			[
+				"mysql_num",
+				"mysql_num_rows"
+			],
+			[
+				"mysql_err",
+				"mysql_error"
+			],
+			[
+				"password",
+				"passwordConfirmation"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"contents": "<?php\nrequire_once(\"constants.php\");\nrequire_once(\"database.php\");\nrequire_once(\"DatabaseObject.php\");\n\nclass DatabaseObject{\n\n	protected static $tablename;\n	protected static $attributes = array();\n\n	public static function find_by_id($id=null){\n		global $db;\n\n\n		$sql = \"SELECT * \" . \"FROM \" . static::$tablename . \" WHERE id = $id LIMIT 1\";\n		$resultSet = $db->query($sql);\n\n		while($row = mysql_fetch_assoc($resultSet)){\n			$object = static::instantiate($row);\n		}\n\n		return $object;\n	}\n\n	public static function delete_by_id($id=null){\n		global $db;\n\n		$sql = \"DELETE FROM \" . static::$tablename . \" WHERE id = '\" . $id . \"'\";\n		$result = $db->query($sql);\n		if($result == null){\n			die(\"Could not delete from \" . static::$tablename .\".\" . mysql_error()) ;\n		}\n	}\n\n	public static function find_all(){\n		global $db;\n		$sql = \"SELECT * FROM \" . static::$tablename ;\n		$result = $db->query($sql);\n		while($row = mysql_fetch_array($result)){\n			$object_array[] = static::instantiate($row);\n		}\n		return $object_array;\n		//return mysql_fetch_array($result, MYSQL_ASSOC);\n	}\n\n\n\n	public function get_inserted_id(){\n		return mysql_insert_id();\n	}\n\n	private static function sanitize_value($attr){\n		return mysql_real_escape_string($attr);\n	}\n\n	protected function validate_attributes($aKey){\n		if(in_array($aKey, static::$attributes) && property_exists($this, $aKey)){\n			return true;\n		} else {\n			die(\"Invalid attributes for object instantiation. \" . mysql_error());\n		}\n	}\n\n	protected static function instantiate($row){//($id){\n		global $db;\n		$object = new static;\n\n		foreach($row as $attribute => $value){\n			if($object->has_attribute($attribute)){\n				$object->$attribute = $value;\n			}\n		}\n\n		return $object;\n	}\n\n	public function has_attribute($attribute){\n		$allAttributes = get_object_vars($this);\n		return array_key_exists($attribute, $allAttributes);\n	}\n\n	public function getDbAttributes(){\n		$db_attributes = array();\n\n		foreach(static::$attributes as $attribute){\n\n			if(property_exists($this, $attribute)){\n				$db_attributes[$attribute] = $this->$attribute;\n			}\n		}\n		return($db_attributes);\n	}\n\n	public function getSanitizedAttributes(){\n		$sanitized_attributes = array();\n\n		$object_attributes = $this->getDbAttributes();\n		foreach($object_attributes as $object_attribute => $value){\n			$sanitized_attributes[$object_attribute] = mysql_real_escape_string($value);\n		}\n\n		return $sanitized_attributes;\n	}\n\n	public function create(){\n		global $db;\n\n		$databaseAttributes = $this->getSanitizedAttributes();\n	\n		$sql = \"INSERT INTO \" . static::$tablename . \"(\" . join(\", \", array_keys($databaseAttributes)) . \") VALUES ('\" . join(\"', '\", array_values($databaseAttributes)) . \"')\";\n\n		echo $sql;\n\n		if($db->query($sql)){\n			$this->id = $this->get_inserted_id();\n			return true;\n		} else {\n			return false; \n		}\n	}\n\n	public function update(){\n		global $db;\n\n		$pairedAttributes = array();\n\n		$databaseAttributes = $this->getSanitizedAttributes();\n		\n		foreach ($databaseAttributes as $databaseAttribute => $value){\n			$pairedAttributes[] = \"$databaseAttribute = '$value'\";\n		}\n\n		$sql = \"UPDATE \" . static::$tablename .\n		       \" SET \" . join(\", \", $pairedAttributes) . \" \" . \"WHERE id = '$this->id'\"  ;\n\n\n		if($db->query($sql)){\n			return true;\n		} else {\n			return false;\n		}\n	}\n\n	public function save(){\n		if(isset($this->id) && !empty($this->id)){\n			$result = $this->update();\n			return $result;\n		} else {\n			$result = $this->create();\n			return $result;\n		}\n	}\n\n}\n\n\n?>",
+			"file": "DatabaseObject.php",
+			"file_size": 3480,
+			"file_write_time": 1359852060000000,
+			"settings":
+			{
+				"buffer_size": 3480,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "viewTopicVideo.php",
+			"settings":
+			{
+				"buffer_size": 2700,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "category.php",
+			"settings":
+			{
+				"buffer_size": 706,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "topic.php",
+			"settings":
+			{
+				"buffer_size": 1681,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "submit.js",
+			"settings":
+			{
+				"buffer_size": 203,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/css/customized.css",
+			"settings":
+			{
+				"buffer_size": 2403,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"command_palette":
+	{
+		"height": 392.0,
+		"selected_items":
+		[
+		],
+		"width": 392.0
+	},
+	"console":
+	{
+		"height": 118.0
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/js/submit.js",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/editTopic.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/header.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/uploadNotes.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/categoryALE.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userRoleInput2.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userrole.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userRoleALE.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/noteListing.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/notes.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userRoleListing.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/uploadCategory.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/uploadTopic.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/topicDelete.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/topicListing.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/categoryListing.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/category.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/categoryDelete.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/roleDelete.html",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/noteDelete.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/DatabaseObject.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/register2.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/noteALE.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userDelete.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/editUser.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userListing.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userALE.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/user.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/editNote.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/submit2.js",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/editCategory.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/editRole.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/index.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/settings.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/viewTopicVideo.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/topic.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/Post.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/submit.js",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/customized.css",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/viewCategory.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/test.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/styles.css",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/video.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/footer.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/database.php",
+		"/Users/marscheung/Downloads/Ex_Files_PHP_MySQL_BTB/Exercise Files/Chapter14/14_01_photo_gallery/public/admin/login.php",
+		"/Users/marscheung/Downloads/Ex_Files_PHP_MySQL_BTB/Exercise Files/Chapter14/14_01_photo_gallery/includes/user.php",
+		"/Users/marscheung/Downloads/Ex_Files_PHP_MySQL_BTB/Exercise Files/Chapter14/14_01_photo_gallery/includes/photograph.php",
+		"/Users/marscheung/Downloads/Ex_Files_PHP_MySQL_BTB/Exercise Files/Chapter14/14_01_photo_gallery/includes/database_object.php",
+		"/Users/marscheung/Downloads/Ex_Files_PHP_MySQL_BTB/Exercise Files/Chapter14/14_01_photo_gallery/includes/functions.php",
+		"/Users/marscheung/Downloads/androidfp_examples 2/Slideshow/src/com/deitel/slideshow/SlideshowEditor.java",
+		"/Users/marscheung/Downloads/androidfp_examples 2/Slideshow/src/com/deitel/slideshow/Slideshow.java",
+		"/Users/marscheung/Downloads/androidfp_examples 2/Slideshow/res/layout/slideshow_list_item.xml",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/Session.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/logout.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/login.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userRoleInput2.html",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/functions.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userRoleInput.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/register.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/Session.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userRoleRegistration.php"
+	],
+	"find":
+	{
+		"height": 104.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+			""
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": true,
+		"find_history":
+		[
+			"video",
+			"addEditRoleBlock",
+			"editRoleForm",
+			"uploadTopic",
+			"newUserRole",
+			"\"",
+			"userRole",
+			"userRoleId",
+			"submitCategory",
+			"registrationFormData",
+			"categorySubmit",
+			"addEditCategoriesBlock",
+			"category",
+			"deleteNoteData",
+			"category",
+			"deleteNoteData",
+			"category",
+			"editTopic",
+			"editCategory",
+			"note",
+			"role_id",
+			"roleid",
+			"noteIdValue",
+			"deleteNote",
+			"editRole",
+			"note_id",
+			"noteid",
+			"user_id",
+			"userid",
+			"userIdValue",
+			"deleteUser",
+			"editNote",
+			"deleteUserData",
+			"editUser",
+			"addEdittopicsBlock",
+			"editNote",
+			"note",
+			"Note",
+			"note",
+			"Note",
+			"note",
+			"Note",
+			"note",
+			"Note",
+			"note",
+			"Notes",
+			"notes",
+			"notesListingBlock",
+			"addEditNotesBlock",
+			"userFormData",
+			"\\",
+			"=\\\"",
+			"'1'",
+			"addNotesBlock",
+			"addEditCategoriesBlock",
+			"userIdValue",
+			"userListingBlock",
+			"userRoleId",
+			"UserRole",
+			"editRoleForm",
+			"addEditRoleBlock",
+			"note",
+			"role",
+			"Role",
+			"userRole",
+			"noteSubmit",
+			"submit",
+			"editCategorySubmit",
+			"editCategory",
+			"uploadCategory",
+			"editRoleSubmit",
+			"editRole",
+			"submitUserRoleData",
+			"userRoleSubmit",
+			"categoryAdd",
+			".click",
+			".on",
+			".click",
+			".on",
+			"unbind",
+			"		$('#users').unbind();\n		$('#userRoleAdd').unbind();\n		$('a[id*=\"editUser\"]').unbind();\n		$('a[id*=\"editRole\"]').unbind();\n		$('a[id*=\"editCategory\"]').unbind();\n		$('#settingsControls').unbind();\n		$('#categoryAdd').unbind();\n		$('#editCategory').unbind();\n		$('#noteListing').unbind();\n		$('#userRoleSubmit').unbind();\n		$(\"#editUserSubmit\").unbind();\n		$(\"#registerSubmit\").unbind();\n		$(\"#noteSubmit\").unbind();\n		$(\"categorySubmitButton\").unbind();\n		$(\"#editRoleSubmit\").unbind();\n		\n		$('#addEditRoleBlock').unbind();",
+			"submitEditCategory",
+			"userRoleSubmit",
+			"click",
+			"$('#userRoleSubmit').unbind();",
+			"settingsControls",
+			"editRole",
+			"noteListing",
+			"editNote",
+			"userRegistrationForm",
+			"uploadNotesForm",
+			".click(",
+			"submitUserRoleData",
+			"userRoleSubmit",
+			"editFormData",
+			"editUserForm",
+			"editUserSubmit",
+			"editUserForm",
+			"registerSubmit",
+			"submitData2",
+			"submitData",
+			"register",
+			"editUserRole",
+			"EditUserRole",
+			"editUserRole",
+			"$('#noteSubmit').unbind();",
+			"\n$('#settingsControls').unbind();",
+			"		$('#userRoleSubmit').unbind();\n$('#noteSubmit').unbind();\n		$('#editUserRoleSubmit').unbind();\n		$('#registerSubmit').unbind();\n		$('#editUserSubmit').unbind();\n		$('#settingsControls').unbind();\n		$('#editCategorySubmit').unbind();\n		$('#categorySubmitButton').unbind();\n",
+			"$('#userRoleSubmit').unbind();",
+			"#userRoleSubmit",
+			"role",
+			"uploadNotesForm",
+			"DateTime",
+			"userRole",
+			"topic",
+			"title",
+			"object",
+			"container",
+			".on",
+			"editCategory.php",
+			"		$('#userRoleSubmit').unbind();\n		$('#editUserRoleSubmit').unbind();\n		$('#registerSubmit').unbind();\n		$('#editUserSubmit').unbind();\n		$('#settingsControls').unbind();",
+			"categorySubmit",
+			"categorySubmitButton",
+			"description",
+			"title",
+			"userRoleIdValue",
+			"editUserRole",
+			"newUserRole"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+			"		$('#users').off();\n		$('#userRoleAdd').off();\n		$('a[id*=\"editUser\"]').off();\n		$('a[id*=\"editRole\"]').off();\n		$('a[id*=\"editCategory\"]').off();\n		$('#settingsControls').off();\n		$('#categoryAdd').off();\n		$('#editCategory').off();\n		$('#noteListing').off();\n		$('#userRoleSubmit').off();\n		$(\"#editUserSubmit\").off();\n		$(\"#registerSubmit\").off();\n		$(\"#noteSubmit\").off();\n		$(\"categorySubmitButton\").off();\n		$(\"#editRoleSubmit\").off();\n		\n		$('#addEditRoleBlock').off();",
+			"		$('#userRoleSubmit').unbind();\n		$(\"#editUserSubmit\").unbind();\n		$(\"#registerSubmit\").unbind();",
+			"$('#settingsControls').unbind();",
+			"$('#userRoleSubmit').unbind();\n$('#noteSubmit').unbind();"
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 0,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "DatabaseObject.php",
+					"settings":
+					{
+						"buffer_size": 3480,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								1991,
+								1991
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/PHP/PHP.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 15.0,
+						"translation.y": 1054.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		},
+		{
+			"selected": 4,
+			"sheets":
+			[
+				{
+					"buffer": 1,
+					"file": "viewTopicVideo.php",
+					"settings":
+					{
+						"buffer_size": 2700,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/PHP/PHP.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 23.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"file": "category.php",
+					"settings":
+					{
+						"buffer_size": 706,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/PHP/PHP.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "topic.php",
+					"settings":
+					{
+						"buffer_size": 1681,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/PHP/PHP.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 1.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 4,
+					"file": "submit.js",
+					"settings":
+					{
+						"buffer_size": 203,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								31,
+								31
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/JavaScript/JavaScript.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 5,
+					"file": "/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/css/customized.css",
+					"settings":
+					{
+						"buffer_size": 2403,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/CSS/CSS.tmLanguage",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 854.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		},
+		{
+			"sheets":
+			[
+			]
+		},
+		{
+			"sheets":
+			[
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 0.0
+	},
+	"input":
+	{
+		"height": 0.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			],
+			[
+				1,
+				0,
+				2,
+				1
+			],
+			[
+				0,
+				1,
+				1,
+				2
+			],
+			[
+				1,
+				1,
+				2,
+				2
+			]
+		],
+		"cols":
+		[
+			0.0,
+			0.560957227242,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			0.935149156939,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"replace":
+	{
+		"height": 0.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"show_minimap": true,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 150.0,
+	"status_bar_visible": true
+}

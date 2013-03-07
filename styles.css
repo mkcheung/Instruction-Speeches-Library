@@ -1,0 +1,10 @@
+#photoRotator div{
+	position:absolute;
+	z-index:0;
+}
+#photoRotator div.previous{
+	z-index:1;
+}
+#photoRotator div.current{
+	z-index:2;
+}
