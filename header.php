@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 		<head>
@@ -7,8 +8,8 @@
 
 
 			<link href = "styles.css" type="text/css" rel="stylesheet">
-<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.0/themes/base/jquery-ui.css">
-<script src="http://code.jquery.com/ui/1.10.0/jquery-ui.js"></script>
+			<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.0/themes/base/jquery-ui.css">
+			<script src="http://code.jquery.com/ui/1.10.0/jquery-ui.js"></script>
 
 			<script type="text/javascript" src="../js/jquery-1.9.0.js"></script>
 			<script type="text/javascript" src="../js/jquery.form.js"></script>
@@ -19,7 +20,9 @@
 
 		</head>
 
+		
 		<body style="padding-top:60px;">
+			<div id="registerErrorMessages"></div>
 			<div class="navbar navbar-inverse navbar-fixed-top" >
 			  <div class="navbar-inner">
 			  	<div class="container-fluid">
@@ -29,16 +32,16 @@
 				      <li><a href="settings.php">Settings</a></li>
 				      <li><a href="#"></a></li>
 				    </ul>
-				    <?php if(!isset($_SESSION['user_id'])) {?>
+				    <?php if(!isset($_SESSION['user_id'])) { ?>
 				    	<a class="btn btn-primary pull-right" href="register.php">Register</a>
 				    	
 
-				    	<form class="navbar-form pull-right" action="login.php" method="post" id="LoginForm">
+				    	<form class="navbar-form pull-right" action="login.php" method="post" id="loginForm">
 				    		<input class="span2" type="text" id="username" name="username"/>
 				    		<input class="span2" type="password" id="password" name="password"/>
-				    		<input type="submit" name="Login" id="loginSubmit" class="btn btn-primary"/>
+							<input id="login" name="login" type="hidden" value="1"/>
+				    		<input type="submit"  id="loginSubmit" class="btn btn-primary"/>
 				    	</form>
-				    
 
 
 				    <?php } else { ?>

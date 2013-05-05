@@ -6,7 +6,11 @@ require_once("Session.php");
 require_once("database.php");
 require_once("notes.php");
 require_once("topic.php");
-include_once("header.php");
+
+if($SESS->userRoleId != ADMIN_USER){
+	$SESS->logout();
+	redirect_to("login.php", 1, "Access Denied.");
+}
 
 if(!isset($_SESSION['user_id'])){
 	redirect_to('login.php');
@@ -50,10 +54,10 @@ if(isset($_POST['noteId'])){
 
 	if(empty($errors)){
 
-		$id = mysql_real_escape_string($_POST['id']);
-		$tid = mysql_real_escape_string($_POST['topic_id']);
-		$note = mysql_real_escape_string($_POST['note']);
-		$title = mysql_real_escape_string($_POST['title']);
+		$id = mysql_real_escape_string(htmlspecialchars($_POST['id']));
+		$tid = mysql_real_escape_string(htmlspecialchars($_POST['topic_id']));
+		$note = mysql_real_escape_string(htmlspecialchars($_POST['note']));
+		$title = mysql_real_escape_string(htmlspecialchars($_POST['title']));
 		
 		$newNote = Note::newNote($tid, $note, $title);
 		$newNote->id = $id;
@@ -100,6 +104,7 @@ include_once("footer.php");
 
 		if(valid.length > 0){
 			$('div[class="alert alert-error"]').remove();
+					$('div[class="alert alert-success"]').remove();
 			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
 			$("#registerErrorMessages").append(errorDisplay);
 		} else {
@@ -119,13 +124,18 @@ include_once("footer.php");
 			processData:true,
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+					$('div[class="alert alert-success"]').remove();
+				$("#registerErrorMessages").append('<div class="alert alert-success">Note has been modified!</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 				$("#settingsControls").load("noteALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
 				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Ajax problems.</div>');
+				$("#registerErrorMessages").append('<div class="alert alert-error">The note could not be modified.</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 			},
 			complete: function(XMLHttpRequest, status){
 				$('form[id="editRoleForm"]')[0].reset();

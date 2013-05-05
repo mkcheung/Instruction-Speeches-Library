@@ -5,16 +5,22 @@ require_once("Session.php");
 require_once("database.php");
 require_once("topic.php");
 require_once("notes.php");
+require_once("function.php");
 include_once("header.php");
+
+if($SESS->userRoleId != ADMIN_USER){
+	$SESS->logout();
+	redirect_to("login.php", 1, "Access Denied.");
+}
 
 if(!isset($_SESSION['user_id'])){
 	redirect_to('login.php');
 }
 $topics = Topic::find_all();
 if(isset($_POST['submit'])){
-	$tid = mysql_real_escape_string($_POST['topic_id']);
-	$note = mysql_real_escape_string($_POST['note']);
-	$title = mysql_real_escape_string($_POST['title']);
+	$tid = mysql_real_escape_string(htmlspecialchars($_POST['topic_id']));
+	$note = mysql_real_escape_string(htmlspecialchars($_POST['note']));
+	$title = mysql_real_escape_string(htmlspecialchars($_POST['title']));
 
 	$newNote = Note::newNote($tid, $note, $title);
 
@@ -75,16 +81,18 @@ include_once("footer.php");
 		}
 
 		if(note == ''){
-			valid += '<p> The Note is required. </p>';
+			valid += '<p> A note is required. </p>';
 		}
 
 		if(valid.length > 0){
 			$('div[class="alert alert-error"]').remove();
+					$('div[class="alert alert-success"]').remove();
 			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
 			$("#registerErrorMessages").append(errorDisplay);
+			$("#registerErrorMessages").removeAttr('style');
+			$("#registerErrorMessages").fadeOut(2000);
 		} else {
 			noteFormData = $('form[id="uploadNotesForm"]').serialize();
-			alert(noteFormData);
 			submitNoteData(noteFormData);
 		}
 	});
@@ -101,13 +109,18 @@ include_once("footer.php");
 			processData:true,
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+					$('div[class="alert alert-success"]').remove();
+				$("#registerErrorMessages").append('<div class="alert alert-success">Note added!</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 				$("#settingsControls").load("noteALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
 				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Ajax problems.</div>');
+				$("#registerErrorMessages").append('<div class="alert alert-error">The note could not be added.</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 			},
 			complete: function(XMLHttpRequest, status){
 				$('form[id="uploadNotesForm"]')[0].reset();

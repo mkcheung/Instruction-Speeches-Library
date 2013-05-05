@@ -3,7 +3,7 @@ require_once("DatabaseObject.php");
 
 class User extends DatabaseObject{
 	protected static $tablename = 'users';
-	protected static $attributes = array('id','first_name','last_name','username','hashed_password', 'email');
+	protected static $attributes = array('id','first_name','last_name','username','hashed_password', 'email', 'user_role_id');
 
 	public $id;
 	public $first_name;
@@ -11,6 +11,7 @@ class User extends DatabaseObject{
 	public $username;
 	public $hashed_password;
 	public $email;
+	public $user_role_id;
 
 	public function fullname(){
 		return ($first_name . ' ' .$last_name);
@@ -35,7 +36,7 @@ class User extends DatabaseObject{
 		}
 	}
 
-	public static function register($username, $password, $firstname, $lastname, $email){
+	public static function register($username, $password, $firstname, $lastname, $email, $user_role_id){
 		global $db;
 
 		$Object = new static;
@@ -45,6 +46,7 @@ class User extends DatabaseObject{
 		$Object->last_name = $lastname;
 		$Object->hashed_password = $password;
 		$Object->email = $email;
+		$Object->user_role_id = $user_role_id;
 		return $Object;
 	}
 

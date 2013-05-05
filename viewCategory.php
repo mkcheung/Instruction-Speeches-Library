@@ -23,12 +23,18 @@ $topics = Topic::find_by_category_id($category->id);
 		 	<li class="nav-header">
 		 		Navigation
 		 	</li>
-			<li>
-				<a href="settings.php">Settings</a>
-			</li>
-			<li>
-				<a href="uploadVideo.php">Upload Video</a>
-			</li>
+		 	<?php
+				if($SESS->userRoleId == ADMIN_USER){
+		 	?>
+				<li>
+					<a href="settings.php">Settings</a>
+				</li>
+				<li>
+					<a href="uploadVideo.php">Upload Video</a>
+				</li>
+		 	<?php
+		 		}
+		 	?>
 			<li class="dropdown">
 				<a class="dropdown-toggle" id="speechDropDown" data-toggle="dropdown" href="#">
 					Speech Categories <b class="caret"></b>

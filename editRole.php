@@ -5,7 +5,11 @@ require_once("DatabaseObject.php");
 require_once("Session.php");
 require_once("database.php");
 require_once("userrole.php");
-include_once("header.php");
+
+if($SESS->userRoleId != ADMIN_USER){
+	$SESS->logout();
+	redirect_to("login.php", 1, "Access Denied.");
+}
 
 $errors = array();
 $required_fields = array('role');
@@ -34,8 +38,8 @@ if(isset($_POST['userRoleId'])){
 	}
 
 	if(empty($errors)){
-		$id = mysql_real_escape_string($_POST['id']);
-		$ur = mysql_real_escape_string($_POST['role']);
+		$id = mysql_real_escape_string(htmlspecialchars($_POST['id']));
+		$ur = mysql_real_escape_string(htmlspecialchars($_POST['role']));
 
 
 		$newUserRole = UserRole::newUserRole($ur);
@@ -76,6 +80,7 @@ include_once("footer.php");
 		}
 		if(valid.length > 0){
 			$('div[class="alert alert-error"]').remove();
+					$('div[class="alert alert-success"]').remove();
 			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
 			$("#registerErrorMessages").append(errorDisplay);
 		} else {
@@ -94,13 +99,18 @@ include_once("footer.php");
 			processData:true,
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+					$('div[class="alert alert-success"]').remove();
+				$("#registerErrorMessages").append('<div class="alert alert-success">User Role modified!</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 				$("#settingsControls").load("userRoleALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
 				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Ajax problems.</div>');
+				$("#registerErrorMessages").append('<div class="alert alert-error">User Role could not be modified.</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 			},
 			complete: function(XMLHttpRequest, status){
 				$('form[id="editRoleForm"]')[0].reset();

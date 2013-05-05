@@ -2,7 +2,7 @@
 
 class UserRole extends DatabaseObject{
 	protected static $tablename = "user_roles";
-	protected static $attributes = array('role');
+	protected static $attributes = array('id', 'role');
 
 	public $id;
 	public $role;

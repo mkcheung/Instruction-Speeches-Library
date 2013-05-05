@@ -18,7 +18,7 @@ class Post extends DatabaseObject{
 	public $post_content;
 	public $post_date;
 
-	public static function newPost($cid, $top_id, $creatorId, $content, $dateOfPost){
+	public static function newPost($cid, $top_id, $creatorId, $content, $dateOfPost=null){
 		$Object = new static;
 		$dateTime = new DateTime("now", new DateTimeZone("America/Los_Angeles"));
 
@@ -39,6 +39,14 @@ class Post extends DatabaseObject{
 			$object_array[] = static::instantiate($row);
 		}
 		return $object_array;
+	}
+
+	public function find_number_of_posts($cid, $tid){
+		global $db;
+		$sql = "SELECT COUNT(*) as tot FROM " . static::$tablename . " WHERE category_id='" . $cid ."' AND topic_id='" . $tid . "'";
+		$resultSet = $db->query($sql);
+		$row = mysql_fetch_array($resultSet);
+		return $row['tot'];
 	}
 
 }

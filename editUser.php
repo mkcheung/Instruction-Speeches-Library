@@ -5,7 +5,11 @@ require_once("DatabaseObject.php");
 require_once("Session.php");
 require_once("database.php");
 require_once("user.php");
-include_once("header.php");
+
+if($SESS->userRoleId != ADMIN_USER){
+	$SESS->logout();
+	redirect_to("login.php", 1, "Access Denied.");
+}
 
 $errors = array();
 $required_fields = array('username','first_name','last_name','hashed_password');
@@ -39,12 +43,12 @@ if(isset($_POST['userid'])){
 	}
 
 	if(empty($errors)){
-		$id = mysql_real_escape_string($_POST['id']);
-		$un = mysql_real_escape_string($_POST['username']);
-		$pw = mysql_real_escape_string($_POST['hashed_password']);
-		$fn = mysql_real_escape_string($_POST['first_name']);
-		$ln = mysql_real_escape_string($_POST['last_name']);
-		$e = mysql_real_escape_string($_POST['email']);
+		$id = mysql_real_escape_string(htmlspecialchars($_POST['id']));
+		$un = mysql_real_escape_string(htmlspecialchars($_POST['username']));
+		$pw = mysql_real_escape_string(htmlspecialchars($_POST['hashed_password']));
+		$fn = mysql_real_escape_string(htmlspecialchars($_POST['first_name']));
+		$ln = mysql_real_escape_string(htmlspecialchars($_POST['last_name']));
+		$e = mysql_real_escape_string(htmlspecialchars($_POST['email']));
 
 
 		$newUser = User::register($un, $pw, $fn, $ln, $e);
@@ -106,6 +110,7 @@ include_once("footer.php");
 
 		if(valid.length > 0){
 			$('div[class="alert alert-error"]').remove();
+					$('div[class="alert alert-success"]').remove();
 			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
 			$("#registerErrorMessages").append(errorDisplay);
 		} else {
@@ -125,13 +130,18 @@ include_once("footer.php");
 			processData:true,
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+					$('div[class="alert alert-success"]').remove();
+				$("#registerErrorMessages").append('<div class="alert alert-success">User modified!</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 				$("#settingsControls").load("userALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
 				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Ajax problems.</div>');
+				$("#registerErrorMessages").append('<div class="alert alert-error">User could not be modified.</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 			},
 			complete: function(XMLHttpRequest, status){
 				$('form[id="editUserForm"]')[0].reset();

@@ -7,9 +7,16 @@ require_once("function.php");
 require_once("Session.php");
 include_once("header.php");
 
-if(!isset($_SESSION['user_id'])){
+if(!isset($SESS->userId)){
 	redirect_to('login.php');
 }
+
+
+if($SESS->userRoleId != ADMIN_USER){
+	$SESS->logout();
+	redirect_to("login.php", 1, "Access Denied.");
+}
+
 ?>
 
 <div class="container-fluid">

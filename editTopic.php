@@ -6,7 +6,11 @@ require_once("Session.php");
 require_once("database.php");
 require_once("category.php");
 require_once("topic.php");
-include_once("header.php");
+
+if($SESS->userRoleId != ADMIN_USER){
+	$SESS->logout();
+	redirect_to("login.php", 1, "Access Denied.");
+}
 
 	$required_fields = array('category_id', 'topic_title');
 	$errors = array();
@@ -58,10 +62,10 @@ if(isset($_POST['topicId'])){
 
 	if(empty($errors) && ($_FILES['video']['error'] == 0)){
 
-		$id = mysql_real_escape_string($_POST['id']);
-		$des = mysql_real_escape_string($_POST['description']);
-		$cid = mysql_real_escape_string($_POST['category_id']);
-		$tt = mysql_real_escape_string($_POST['topic_title']);
+		$id = mysql_real_escape_string(htmlspecialchars($_POST['id']));
+		$des = mysql_real_escape_string(htmlspecialchars($_POST['description']));
+		$cid = mysql_real_escape_string(htmlspecialchars($_POST['category_id']));
+		$tt = mysql_real_escape_string(htmlspecialchars($_POST['topic_title']));
 		$filename = $_FILES['video']['name'];
 		$filetype = $_FILES['video']['type'];
 		$filesize = $_FILES['video']['size'];
@@ -110,6 +114,7 @@ include_once("footer.php");
 
 		if(valid.length > 0){
 			$('div[class="alert alert-error"]').remove();
+					$('div[class="alert alert-success"]').remove();
 			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
 			$("#registerErrorMessages").append(errorDisplay);
 		} else {
@@ -126,13 +131,16 @@ include_once("footer.php");
 			processData:true,
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+					$('div[class="alert alert-success"]').remove();
+				$("#registerErrorMessages").append('<div class="alert alert-success">Topic modified!</div>');
+				$("#registerErrorMessages").removeAttr('style');
+				$("#registerErrorMessages").fadeOut(2000);
 				$("#settingsControls").load("topicALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
 				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Ajax problems.</div>');
+				$("#registerErrorMessages").append('<div class="alert alert-error">Topic could not be modified.</div>');
 			},
 			complete: function(XMLHttpRequest, status){
 				$('form[id="uploadTopicForm"]')[0].reset();
