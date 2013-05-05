@@ -118,16 +118,19 @@ foreach($allRelatedPosts as $post){
 						timeout:7000,
 						processData:true,
 						success: function(data){
-							alert(data);
-							allTopicPosts = $(data).filter('div#allPosts').html();
+							allTopicPosts = $("<div>").html(data).find( 'div#allPosts' ).html();
 							alert(allTopicPosts);
-							// $('div[class="alert alert-error"]').remove();
-							// $('div[class="alert alert-success"]').remove();
-							// $('div[class="alert alert-success"]').remove();
-							// $("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
-							// $("#registerErrorMessages").removeAttr('style');
-							// $("#registerErrorMessages").fadeOut(2000);
-							// $("#forumPosts").html(allTopicPosts);
+							
+							// alert(data);
+							// allTopicPosts = $(data).filter('div#allPosts').html();
+							// alert(allTopicPosts);
+							$('div[class="alert alert-error"]').remove();
+							$('div[class="alert alert-success"]').remove();
+							$('div[class="alert alert-success"]').remove();
+							$("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+							$("#registerErrorMessages").removeAttr('style');
+							$("#registerErrorMessages").fadeOut(2000);
+							$("#forumPosts").html(allTopicPosts);
 						},
 						error: function(XMLHttpRequest, textStatus, errorThrown){
 							$('div[class="alert alert-error"]').remove();
