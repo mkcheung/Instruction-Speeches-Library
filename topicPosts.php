@@ -16,7 +16,7 @@ if(!isset($_SESSION['user_id'])){
 
 if(isset($_POST['submit'])){
 
-	$content = mysql_real_escape_string($_POST['post_content']);
+	$content = mysql_real_escape_string(htmlspecialchars($_POST['post_content']));
 	$pc = mysql_real_escape_string($_POST['post_creator']);
 	$ci = mysql_real_escape_string($_POST['category_id']);
 	$ti = mysql_real_escape_string($_POST['topic_id']);
@@ -45,6 +45,10 @@ if(isset($_POST['submit'])){
 			echo 'Posted by: ' . $poster[$relatedPost->post_creator]->first_name . ' ' . $poster[$relatedPost->post_creator]->last_name . ' on ' . $dtime->format('F d, Y') . ' at ' . $dtime->format('g:i a');
 			echo '</div>';
 			echo '<div class="thePostContent">';
+
+			$post->post_content = str_replace('\r\n', "\n", $post->post_content);
+			$post->post_content = nl2br($post->post_content);  
+			
 			echo $post->post_content;
 			echo '</div>';
 			echo '</div>';

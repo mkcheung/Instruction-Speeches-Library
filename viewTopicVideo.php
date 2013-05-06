@@ -81,7 +81,7 @@ foreach($allRelatedPosts as $post){
 						echo '</div>';
 						echo '</br>';
 						echo '<div class="thePostContent">';
-						echo $relatedPost->post_content;
+						echo nl2br($relatedPost->post_content);
 						echo '</div>';
 						echo '</div>'; 
 					}
@@ -119,8 +119,7 @@ foreach($allRelatedPosts as $post){
 						processData:true,
 						success: function(data){
 							allTopicPosts = $("<div>").html(data).find( 'div#allPosts' ).html();
-							alert(allTopicPosts);
-							
+
 							// alert(data);
 							// allTopicPosts = $(data).filter('div#allPosts').html();
 							// alert(allTopicPosts);

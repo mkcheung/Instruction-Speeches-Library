@@ -31,9 +31,9 @@ if(isset($_POST['submit'])){
 
 	if(empty($errors) && ($_FILES['video']['error'] == 0)){
 
-		$cid = mysql_real_escape_string((htmlspecialchars($_POST['category_id']));
-		$des = mysql_real_escape_string((htmlspecialchars($_POST['description']));
-		$tt = mysql_real_escape_string((htmlspecialchars($_POST['topic_title']));
+		$cid = mysql_real_escape_string((htmlspecialchars($_POST['category_id'])));
+		$des = mysql_real_escape_string((htmlspecialchars($_POST['description'])));
+		$tt = mysql_real_escape_string((htmlspecialchars($_POST['topic_title'])));
 		$filename = $_FILES['video']['name'];
 		$filetype = $_FILES['video']['type'];
 		$filesize = $_FILES['video']['size'];
