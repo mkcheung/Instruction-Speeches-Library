@@ -20,7 +20,7 @@ if(!isset($_SESSION['user_id'])){
 $topics = Topic::find_all();
 ?>
 
-<table>
+<table class="table">
 	<thead>
 		<tr>
 			<td>Category</td>
@@ -46,10 +46,6 @@ $topics = Topic::find_all();
 	</tbody>
 </table>
 
-<?php
-include_once("footer.php");
-?>
-
 
 <script>
 	$("#topicsListingBlock").unbind();
@@ -61,7 +57,6 @@ include_once("footer.php");
 
 		id = $(this).attr('id');
 		topicIdValue = id.substr(id.lastIndexOf('-')+1,id.length);
-		alert(topicIdValue);
 		$('#addEditTopicsBlock').load('editTopic.php', {topicId:topicIdValue});
 
 	});
@@ -88,11 +83,11 @@ include_once("footer.php");
 			processData:true,
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
+				$('div[class="alert alert-success"]').remove();
 				$("#registerErrorMessages").append('<div class="alert alert-success">Topic deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#settingsControls").load("topicALE.php");
+				$("#topicsListingBlock").load("topicListing.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

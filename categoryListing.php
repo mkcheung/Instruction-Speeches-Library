@@ -2,9 +2,10 @@
 require_once("database.php");
 require_once("DatabaseObject.php");
 require_once("Session.php");
+require_once("Manual.php");
 require_once("category.php");
 require_once("function.php");
-include_once("header.php");
+// include_once("header.php");
 
 
 
@@ -14,8 +15,11 @@ if($SESS->userRoleId != ADMIN_USER){
 }
 
 $categories = Category::find_all();
+$manuals = Manual::find_all();
 
-	echo("<div class=\"span7\">");
+foreach($manuals as $manual){
+	$manualIdToDescription[$manual->id] = $manual->description;
+}
 	echo "<table class=\"table\">";
 	echo "<thead>";
 	echo "<tr>";
@@ -23,6 +27,7 @@ $categories = Category::find_all();
 	echo "</th>";
 	echo "</tr>";
 	echo "<tr>";
+	echo "<th>Manual</th>";
 	echo "<th>Category</th>";
 	echo "<th>Description</th>";
 	echo "<th>Actions</th>" ;
@@ -32,6 +37,7 @@ $categories = Category::find_all();
 	if($categories){
 		foreach($categories as $category){
 			echo "<tr>";
+			echo "<td>" . $manualIdToDescription[$category->manual_id] . "</td>";
 			echo "<td>" . $category->category_title . "</td>";
 			echo "<td>" . $category->category_description . "</td>";
 			echo "<td><a id=\"editCategory-" . $category->id . "\" href=\"editCategory.php?categoryId=" . $category->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
@@ -41,9 +47,7 @@ $categories = Category::find_all();
 	}
 	echo "</tbody>";
 	echo "</table>";
-	echo "</div>";
 
-include_once("footer.php");
 ?>
 <script>
 	$("#categoryListingBlock").unbind();
@@ -54,6 +58,7 @@ include_once("footer.php");
 
 		id = $(this).attr('id');
 		categoryIdValue = id.substr(id.lastIndexOf('-')+1,id.length);
+		// alert(categoryIdValue);
 		$('#addEditCategoriesBlock').load('editCategory.php', {categoryId:categoryIdValue});
 
 	});
@@ -84,7 +89,7 @@ include_once("footer.php");
 				$("#registerErrorMessages").append('<div class="alert alert-success">Speech Category deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#settingsControls").load("categoryALE.php");
+				$("#categoryListingBlock").load("categoryListing.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

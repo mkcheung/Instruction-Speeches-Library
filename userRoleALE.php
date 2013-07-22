@@ -2,12 +2,12 @@
 		<div id="addEditRoleBlock">
 		</div>
 	</div>
-	<div class="span7">
+	<div class="span9">
 		<div id="userRoleListingBlock">
 		</div>
 	</div>
 
 	<script>
-		$("#addEditRoleBlock").load('userRoleInput2.php');
+		$("#addEditRoleBlock").load('uploadRole.php');
 		$("#userRoleListingBlock").load('userRoleListing.php');
 	</script>

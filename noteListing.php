@@ -6,7 +6,6 @@ require_once("database.php");
 require_once("topic.php");
 require_once("notes.php");
 require_once("function.php");
-include_once("header.php");
 
 if($SESS->userRoleId != ADMIN_USER){
 	$SESS->logout();
@@ -17,38 +16,39 @@ if(!isset($_SESSION['user_id'])){
 	redirect_to('login.php');
 }
 
-$notes = Note::find_all();
+$theTopicId = $_POST['theTopicId'];
+$notes = Note::find_notes_by_topic_id($theTopicId);
+
 ?>
 
-<table>
+<table class="table">
 	<thead>
 		<tr>
 			<td>Title</td>
 			<td>Note</td>
-			<td>Created</td>
-			<td>Modified</td>
+			<td>Begin</td>
+			<td>End</td>
 			<td>Actions</td>
 		</tr>
 	</thead>
 	<tbody>
 		<?php
 			foreach($notes as $note){
-				echo "<tr>";
-					echo "<td>" . $note->title . "</td>";
-					echo "<td>" . $note->note . "</td>";
-					echo "<td>" . $note->created . "</td>";
-					echo "<td>" . $note->modified . "</td>";			
-					echo "<td><a id=\"editNote-" . $note->id . "\" href=\"editNote.php?noteId=" . $note->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
-			     "<a id=\"deleteNote-" . $note->id . "\" href=\"deleteNote.php?noteId=" . $note->id . "\"><button type=\"button\" class=\"btn btn-danger\">Delete</button>". "</td>";
-					echo "</tr>";			
+		?>
+				<tr>
+					<td><?=$note->title?></td>
+					<td><?=$note->note?></td>
+					<td><?=$note->begin_time?></td>
+					<td><?=$note->end_time?></td>			
+					<td><a id="editNote-<?=$note->id?>" href="editNote.php?noteId=<?=$note->id?>"><button type="button" class="btn btn-warning">Edit</button></a>
+			     <a id="deleteNote-<?=$note->id?>" href="deleteNote.php?noteId=<?=$note->id?>"><button type="button" class="btn btn-danger">Delete</button></td>
+					</tr>		
+		<?php	
 			}
 		?>
 	</tbody>
 </table>
 
-<?php
-include_once("footer.php");
-?>
 
 
 <script>
@@ -61,7 +61,7 @@ include_once("footer.php");
 
 		id = $(this).attr('id');
 		noteIdValue = id.substr(id.lastIndexOf('-')+1,id.length);
-		$('#addEditNotesBlock').load('editNote.php', {noteId:noteIdValue});
+		$('#annotationBlock').load('editNote.php', {noteId:noteIdValue, topicId:<?=$theTopicId?>});
 
 	});
 
@@ -88,10 +88,10 @@ include_once("footer.php");
 			success: function(data){
 				$('div[class="alert alert-error"]').remove();
 					$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Note added!</div>');
+				$("#registerErrorMessages").append('<div class="alert alert-success">Note deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#settingsControls").load("noteALE.php");
+				$("#notesListingBlock").load("noteListing.php",{ 'theTopicId': <?=$theTopicId?> });
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

@@ -1,12 +1,15 @@
-	<div class="span3">
-		<div id="addEditNotesBlock">
-		</div>
-	</div>
-	<div class="span7">
-		<div id="notesListingBlock">
-		</div>
-	</div>
 
+
+ 	<div class="row-fluid">
+		<div class="span4">
+			<div id="addEditNotesBlock">
+			</div>
+		</div>
+		<div class="span8">
+			<div id="notesListingBlock">
+			</div>
+		</div>
+	</div>
 	<script>
 		$("#addEditNotesBlock").load('uploadNotes.php');
 		$("#notesListingBlock").load('noteListing.php');

@@ -22,84 +22,47 @@ if($SESS->userRoleId != ADMIN_USER){
 <div class="container-fluid">
  	<div class="row-fluid">
     	<div class="span2">
-			<ul id="settingsNavigator" class="nav nav-list navMenu">
-			 	<li class="nav-header">Navigation</li>
+			<ul id="settingsNavigator" class="nav nav-list navMenu well">
+			 	<li class="nav-header">
+			 		Toastmasters Library
+			 	</li>
+				<li>
+					<a href="logout.php">Logout</a>
+				</li>
 				<li>
 					<a href="index.php">Back To Main</a>
 				</li>
-
-			 	<li class="nav-header">Settings</li>
-				<li>
-					<a href="#" id="users">Users</a>
-				</li>
-				<script>
-					$('#users').unbind().click(function(e){
-						e.preventDefault();
-						e.stopPropagation();
-
-						$('#settingsControls').load('userALE.php');
-						//alert('1 1 1');
-					});
-				</script>
-				<li>
-					<a href="#" id="userRoleAdd">Roles</a>
-				</li>
-				<script>
-					$('#userRoleAdd').unbind().click(function(e){
-						e.preventDefault();
-						e.stopPropagation();
-
-						$('#settingsControls').load('userRoleALE.php');
-						//alert('2');
-					});
-				</script>
-				<li>
-					<a href="uploadCategory.php" id="categoryAdd">Speech Categories</a>
-				</li>
-				<script>
-					$('#categoryAdd').unbind().click(function(e){
-						e.preventDefault();
-						e.stopPropagation();
-
-						$('#settingsControls').load('categoryALE.php');
-						//alert('3');
-					});
-				</script>
-				<li>
-					<a href="uploadTopic.php" id="topicAdd">Topics</a>
-				</li>
-				<script>
-					$('#topicAdd').unbind().click(function(e){
-						e.preventDefault();
-						e.stopPropagation();
-
-						$('#settingsControls').load('topicALE.php');
-						//alert('forTopic');
-					});
-				</script>
-				<li>
-					<a href="noteListing.php" id="noteListing">Note Listing</a>
-				</li>
-				<script>
-					$('#noteListing').unbind().click(function(e){
-						e.preventDefault();
-						e.stopPropagation();
-
-						$('#settingsControls').load('noteALE.php');
-						//alert('4');
-					});
-				</script>
-
-
 			</ul>
     	</div>
-    	<div id="settingsControls">
-
-	    </div>
+    	<div class="span10">
+	    	<div id="settingsControls">
+	    		<ul class="nav nav-tabs" id="myTab">
+				  <li class="active"><a href="#users">Users</a></li>
+				  <li><a href="#roles">Roles</a></li>
+				  <li><a href="#manuals">Manuals</a></li>
+				  <li><a href="#speechCategories">Categories</a></li>
+				  <li><a href="#topics">Topics</a></li>
+				  <li><a href="#clubs">Clubs</a></li>
+				</ul>
+				<div class="tab-content">
+				  <div class="tab-pane active" id="users"><script>$('#users').load('userALE.php');</script></div>
+				  <div class="tab-pane" id="roles"><script>$('#roles').load('userRoleALE.php');</script></div>
+				  <div class="tab-pane" id="manuals"><script>$('#manuals').load('manualALE.php');</script></div>
+				  <div class="tab-pane" id="speechCategories"><script>$('#speechCategories').load('categoryALE.php');</script></div>
+				  <div class="tab-pane" id="topics"><script>$('#topics').load('topicALE.php');</script></div>
+				  <div class="tab-pane" id="clubs"><script>$('#clubs').load('clubALE.php');</script></div>
+				</div>
+				 
+				<script>
+				  $('#myTab a').click(function (e) {
+					  e.preventDefault();
+					  $(this).tab('show');
+					})
+				</script>
+		    </div>
+		</div>
   	</div>
 </div>
-
-
 
 <?php
 include_once("footer.php");

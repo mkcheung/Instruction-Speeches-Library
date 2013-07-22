@@ -12,7 +12,6 @@ if($SESS->userRoleId != ADMIN_USER){
 
 
 $users = User::find_all();
-	echo("<div class=\"span7\">");
 	echo "<table class=\"table\">";
 	echo "<thead>";
 	echo "<tr>";
@@ -20,8 +19,7 @@ $users = User::find_all();
 	echo "</th>";
 	echo "</tr>";
 	echo "<tr>";
-	echo "<th>First Name</th>";
-	echo "<th>Last Name</th>";
+	echo "<th>Name</th>";
 	echo "<th>User Name</th>";
 	echo "<th>Role</th>";
 	echo "<th>E-Mail</th>";
@@ -33,8 +31,7 @@ $users = User::find_all();
 		foreach($users as $user){
 			$userRole = UserRole::find_by_id($user->user_role_id);
 			echo "<tr>";
-			echo "<td>" . $user->first_name . "</td>";
-			echo "<td>" . $user->last_name . "</td>";
+			echo "<td>" . $user->first_name . ' ' . $user->last_name . "</td>";
 			echo "<td>" . $user->username . "</td>";
 			echo "<td>" . $userRole->role . "</td>";
 			echo "<td>" . $user->email . "</td>";
@@ -45,9 +42,7 @@ $users = User::find_all();
 	}
 	echo "</tbody>";
 	echo "</table>";
-	echo "</div>";
 
-include_once("footer.php");
 ?>
 <script>
 	$("#userListingBlock").unbind();
@@ -90,7 +85,7 @@ include_once("footer.php");
 				$("#registerErrorMessages").append('<div class="alert alert-success">User Deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#settingsControls").load("userALE.php");
+				$("#userListingBlock").load("userListing.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

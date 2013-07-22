@@ -4,12 +4,12 @@ require_once("DatabaseObject.php");
 require_once("Session.php");
 require_once("database.php");
 require_once("userrole.php");
-include_once("header.php");
+// include_once("header.php");
 
 class Topic extends DatabaseObject{
 
 	protected static $tablename = "topics";
-	protected static $attributes = array('id','category_id', 'description','topic_title','topic_creator','topic_date', 'video_name', 'video_size', 'video_type', 'video_temp_name');
+	protected static $attributes = array('id','category_id', 'description','topic_title','topic_creator','topic_date', 'isExample' ,'video_name', 'video_size', 'video_type', 'video_temp_name');
 
 	public $id;
 	public $category_id;
@@ -17,12 +17,13 @@ class Topic extends DatabaseObject{
 	public $topic_title;
 	public $topic_creator;
 	public $topic_date;
+	public $isExample;
 	public $video_name;
 	public $video_size;
 	public $video_type;
 	public $video_temp_name;
 
-	public static function newTopic($categoryId, $description,$title, $creatorId, $vidName, $vidSize, $vidType, $vidTempName){
+	public static function newTopic($categoryId, $description,$title, $creatorId, $isExample, $vidName, $vidSize, $vidType, $vidTempName){
 		global $db;
 
 		$dateTime = new DateTime("now", new DateTimeZone('America/Los_Angeles'));
@@ -33,6 +34,7 @@ class Topic extends DatabaseObject{
 		$Object->topic_title = $title;
 		$Object->topic_creator = $creatorId;
 		$Object->topic_date = $dateTime->format("Y-m-d H:i:s");
+		$Object->isExample = $isExample;
 		$Object->video_name = $vidName;
 		$Object->video_size = $vidSize;
 		$Object->video_type = $vidType;
@@ -57,8 +59,4 @@ class Topic extends DatabaseObject{
 	}
 
 }
-?>
-
-<?php
-include_once("footer.php");
 ?>

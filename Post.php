@@ -52,7 +52,3 @@ class Post extends DatabaseObject{
 }
 
 ?>
-
-<?php
-include_once("footer.php");
-?>

@@ -13,7 +13,6 @@ if($SESS->userRoleId != ADMIN_USER){
 
 $userRoles = UserRole::find_all();
 
-	echo("<div class=\"span7\">");
 	echo "<table class=\"table\">";
 	echo "<thead>";
 	echo "<tr>";
@@ -37,9 +36,7 @@ $userRoles = UserRole::find_all();
 	}
 	echo "</tbody>";
 	echo "</table>";
-	echo "</div>";
 
-include_once("footer.php");
 ?>
 <script>
 	$('#userRoleListingBlock').unbind();
@@ -80,7 +77,7 @@ include_once("footer.php");
 				$("#registerErrorMessages").append('<div class="alert alert-success">User Role Deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#settingsControls").load("userRoleALE.php");
+				$("#userRoleListingBlock").load("userRoleListing.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

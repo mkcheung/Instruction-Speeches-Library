@@ -5,6 +5,7 @@
 			<link href = "../css/bootstrap.css" type="text/css" rel="stylesheet">
 			<link href = "../css/bootstrap-responsive.min.css" type="text/css" rel="stylesheet">
 			<link href = "../css/customized.css" type="text/css" rel="stylesheet">
+			<link href = "../css/bootstrap-timepicker.min.css" type="text/css" rel="stylesheet">
 
 
 			<link href = "styles.css" type="text/css" rel="stylesheet">
@@ -15,38 +16,23 @@
 			<script type="text/javascript" src="../js/jquery.form.js"></script>
 			<script type="text/javascript" src="../js/jquery-ui-1.10.0.custom.js"></script>
 			<script type="text/javascript" src="../js/bootstrap.js"></script>
-			
-			<script type ="text/javascript" src="submit.js"></script>
-
+			<script type="text/javascript" src="submit.js"></script>
+			<script type="text/javascript" src="../js/popcorn-complete.min.js"></script>
+			<script type="text/javascript" src="../js/bootstrap-timepicker.min.js"></script>
 		</head>
 
-		
-		<body style="padding-top:60px;">
+		<div class="wrapper">	
+		<body>
+
 			<div id="registerErrorMessages"></div>
-			<div class="navbar navbar-inverse navbar-fixed-top" >
-			  <div class="navbar-inner">
-			  	<div class="container-fluid">
-				    <a class="brand" href="#">Toastmasters Of The Cove</a>
-				    <ul class="nav">
-				      <li class="active"><a href="index.php">Home</a></li>
-				      <li><a href="settings.php">Settings</a></li>
-				      <li><a href="#"></a></li>
-				    </ul>
-				    <?php if(!isset($_SESSION['user_id'])) { ?>
-				    	<a class="btn btn-primary pull-right" href="register.php">Register</a>
-				    	
-
-				    	<form class="navbar-form pull-right" action="login.php" method="post" id="loginForm">
-				    		<input class="span2" type="text" id="username" name="username"/>
-				    		<input class="span2" type="password" id="password" name="password"/>
-							<input id="login" name="login" type="hidden" value="1"/>
-				    		<input type="submit"  id="loginSubmit" class="btn btn-primary"/>
-				    	</form>
-
-
-				    <?php } else { ?>
-				    	<a class="btn btn-primary pull-right" href="logout.php">Logout</a>
-				    <?php } ?>
-  				</div>
-			  </div>
+			<div id="sampleHeaderBar">
+				<div style="display:inline">Need help with your communication skills?</div>
+		  		<?php
+		  			if($SESS->loggedIn == false){
+		  		?>
+		  		<button id="loginOrRegister"  class="btn btn-mini btn-inverse" type="button">Register</button>
+				<?php
+					}
+				?>
 			</div>
+

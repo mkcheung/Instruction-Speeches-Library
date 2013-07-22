@@ -27,9 +27,3 @@ class Video extends DatabaseObject{
 }
 
 ?>
-
-
-
-<?php
-include_once("footer.php");
-?>

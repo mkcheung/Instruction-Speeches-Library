@@ -12,23 +12,106 @@ if($SESS->userRoleId != ADMIN_USER){
 }
 
 $errors = array();
-$required_fields = array('role');
+$required_fields = array('editRole_role');
 
 
 
 if(isset($_POST['userRoleId'])){
 	$userRoleId = $_POST['userRoleId'];     
 	$userRole = UserRole::find_by_id($userRoleId);
+	$allUserRoles = UserRole::find_all();
+?>
 
-	echo "<div id=\"registerErrorMessages\"></div>" ;
-	echo "<form action=\"editRole.php\" method=\"post\" id=\"editRoleForm\">" ;
-	echo "<legend>Edit Role</legend>" ;
-	echo "<input type=\"hidden\" id=\"submit2\" name=\"submit\"/>";
-	echo "<input type=\"hidden\" id=\"id\" name=\"id\" value=\"" . $userRole->id . "\"/> </br>";
-	echo "Role:<input type=\"text\" id=\"role\" name=\"role\" value=\"" . $userRole->role . "\"/> </br>";
-	echo "<input id=\"editRoleSubmit\" type=\"submit\" name=\"submit\" class=\"btn btn-primary\"/>";
-	echo "</form>";	
+<!-- Load existing values for examination -->
+<script>
+	var currentRole = '<?=$userRole->role?>';
+	var existingRoles = Array();
+<?php 
+	foreach($allUserRoles as $aUserRole){
+?>
+	existingRoles.push('<?=$aUserRole->role?>');
+<?php
+	}
+?>
+</script>
 
+	<!-- <div id="registerErrorMessages"></div> -->
+	<form action="editRole.php" method="post" id="editRoleForm">
+	<legend>Edit Role</legend>
+	<input type="hidden" id="submit2" name="submit"/>
+	<input type="hidden" id="id" name="id" value="<?=$userRole->id?>"/>
+	<label for="editRole_role">Role:</label>
+	<input class="text" id="editRole_role" name="editRole_role" value="<?=$userRole->role?>"/>
+	<div style="color:red; font-size:12px;" class="validation"></div>
+	<div class='row-fluid'>
+		<div class='span6'>
+			<input id="editRoleSubmit" type="submit" name="submit" class="btn btn-primary"/>
+			<script>
+
+				$('#editRoleForm input').blur(function(e){
+					console.log("editRole blur called:");
+					var id = $(this).attr('id');
+					var role = $(this).val();
+					switch(id){
+						case 'editRole_role' :
+							if(role.length == 0){
+								$(this).siblings('div[class="validation"]').text('A role is required.');
+							} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
+								$(this).siblings('div[class="validation"]').text('This role already exists.');
+							} else {
+								$(this).siblings('div[class="validation"]').text('');	
+							}
+							break;
+						default: 
+							break;
+					}
+				});
+
+				$('#editRoleSubmit').click(function(e){
+					e.preventDefault();
+					e.stopPropagation();
+
+					console.log("editRole click called:");
+					//alert('14');
+
+					var valid = '';
+					var errorDisplay = '' ;
+					var required = ' is required.';
+					var role = $('form[id="editRoleForm"] #editRole_role').val();
+					if(role == ''){
+						valid += '<p>A role is required.</p>' ;
+					} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
+						valid += '<p>This role already exists.</p>' ;
+						$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('This role already exists.');
+					} else {
+						$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('');	
+					}	
+
+					if(valid.length > 0){
+						$('div[class="alert alert-error"]').remove();
+						$('div[class="alert alert-success"]').remove();
+						errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+						$('#registerErrorMessages').append(errorDisplay);
+						$('#registerErrorMessages').removeAttr('style');
+						$('#registerErrorMessages').fadeOut(2000);
+					} else {
+						editRoleFormData = $('form[id="editRoleForm"]').serialize();
+						submitUserRoleEditData(editRoleFormData);
+					}
+				});
+			</script>
+		</div>
+		<div class='span6'>
+			<button id="cancelRoleSubmit" class='btn btn-primary' type='button'>Cancel</button>
+			<script>
+				$('#cancelRoleSubmit').click(function(e){
+					$("#addEditRoleBlock").load('uploadRole.php');
+				});
+			</script>
+		</div>
+	</div>
+	</form>	
+<?php
 } else if (isset($_POST['submit'])){
 
 	foreach($required_fields as $required_field){
@@ -39,7 +122,7 @@ if(isset($_POST['userRoleId'])){
 
 	if(empty($errors)){
 		$id = mysql_real_escape_string(htmlspecialchars($_POST['id']));
-		$ur = mysql_real_escape_string(htmlspecialchars($_POST['role']));
+		$ur = mysql_real_escape_string(htmlspecialchars($_POST['editRole_role']));
 
 
 		$newUserRole = UserRole::newUserRole($ur);
@@ -58,37 +141,7 @@ if(isset($_POST['userRoleId'])){
 
 ?>
 
-<?php
-include_once("footer.php");
-?>
 <script>
-	$('#addEditRoleBlock').unbind();
-	$('#addEditRoleBlock').on("click","#editRoleSubmit", function(e){
-
-		e.preventDefault();
-		e.stopPropagation();
-
-		//alert('14');
-
-
-		var valid = '';
-		var errorDisplay = '' ;
-		var required = ' is required.';
-		var theUserRole = $('form[id="editRoleForm"] #role').val();
-		if(theUserRole == ''){
-			valid += '<p>A role is required.</p>' ;
-		}
-		if(valid.length > 0){
-			$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
-			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-			$("#registerErrorMessages").append(errorDisplay);
-		} else {
-			editRoleFormData = $('form[id="editRoleForm"]').serialize();
-			submitUserRoleEditData(editRoleFormData);
-		}
-	});
-
 	function submitUserRoleEditData(formData){
 		$.ajax({
 			type:'POST',
@@ -98,15 +151,17 @@ include_once("footer.php");
 			timeout:7000,
 			processData:true,
 			success: function(data){
+				console.log('submitUserRoleEditData success called');
 				$('div[class="alert alert-error"]').remove();
 					$('div[class="alert alert-success"]').remove();
 				$("#registerErrorMessages").append('<div class="alert alert-success">User Role modified!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#settingsControls").load("userRoleALE.php");
+				$("#roles").load("userRoleALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
+				console.log('submitUserRoleEditData error called');
 				$('#registerErrorMessages div[class="alert alert-error"]').remove();
 				$("#registerErrorMessages").append('<div class="alert alert-error">User Role could not be modified.</div>');
 				$("#registerErrorMessages").removeAttr('style');

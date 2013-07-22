@@ -12,87 +12,76 @@ include_once("header.php");
 if(!isset($_SESSION['user_id'])){
 	redirect_to('login.php');
 }
-$category = Category::find_by_id($_GET['id']);
+// $category = Category::find_by_id($_GET['id']);
+$allCategories = Category::find_all();
 $topics = Topic::find_by_category_id($category->id);
 ?>
 
 <div class="container-fluid">
 	<div class="row-fluid">
-	<div class="span2">
-		<ul class="nav nav-list navMenu">
-		 	<li class="nav-header">
-		 		Navigation
-		 	</li>
-		 	<?php
-				if($SESS->userRoleId == ADMIN_USER){
-		 	?>
+		<div id="listOfCategorySpeeches" class="span3">
+			<ul class="nav nav-list navMenu">
+			 	<li class="nav-header">
+			 		Toastmasters Library
+			 	</li>
 				<li>
-					<a href="settings.php">Settings</a>
+					<a href="logout.php">Logout</a>
 				</li>
 				<li>
-					<a href="uploadVideo.php">Upload Video</a>
+					<a href="index.php">Back To Main</a>
 				</li>
-		 	<?php
-		 		}
-		 	?>
-			<li class="dropdown">
-				<a class="dropdown-toggle" id="speechDropDown" data-toggle="dropdown" href="#">
-					Speech Categories <b class="caret"></b>
-				</a>
-				<ul id="speechDropDownMenu" class="dropdown-menu" role="menu" area-labelledby="speechDropDown">
-					<?php
-						if(!is_null($allCategories)){
-							foreach($allCategories as $aCategory){
-								echo "<li>";
-								echo "<a tabindex=\"-1\" href=\"viewCategory.php?id=" . $aCategory->id . "\">" . $aCategory->category_title ."</a>";
-								echo "</li>";	
-							}
-						} else{
-							echo "<li>";
-							echo "<a tabindex=\"-1\" href=\"#\">No Categories</a>";
-							echo "</li>";
-						}
-					?>
-				</ul>
-
-			</li>
-		</ul>
-	</div>
-	<div class="span10">
-		<table class="table table-condensed">
-			<thead>
-				<tr>
-					<td colspan="2"><?php echo $category->category_title . " speeches."; ?></td>
-				</tr>
-			</thead>
-			<tbody>
+				<li class="nav-header">Competent Communicator</li>
 				<?php
-					foreach($topics as $topic){
-						echo "<tr>";
-							echo "<td>";
-								echo "<div>";
-									echo "<a href=\"viewTopicVideo.php?catId=". $topic->category_id . "&topId=" . $topic->id . "&vidId=" . $topic->video_id . "\">" . $topic->topic_title . "</a>";
-								echo "</div>";
-								echo "<div class=\"smallfont\">";
-									echo "testing";
-								echo "</div>";
-							echo "</td>";
-							echo "<td>";
-							echo "<div class=\"smallfont\">";
-								echo "Uploaded On:";
-							echo "</div>"; 
-							echo "<div class=\"smallfont\">";
-								echo $topic->topic_date;
-							echo "</div>"; 
-							echo "</td>";
-						echo "</tr>";
+					if(!is_null($allCategories)){
+						foreach($allCategories as $aCategory){
+							echo "<li>";
+							echo "<a tabindex='-1' id='viewCategory-$aCategory->id' href='viewCategory.php?id=$aCategory->id'>" . $aCategory->category_title .'</a>';
+							echo "</li>";	
+							?>
+							<script>
+								$('#listOfCategorySpeeches a#viewCategory-<?=$aCategory->id?>').bind('click', function(e){
+									e.preventDefault();
+									$.ajax({
+										type:'POST',
+										url: 'categoryAffiliatedSpeechListing.php',
+										data:{categoryId:'<?=$aCategory->id?>'},
+										cache: false,
+										timeout:7000,
+										processData:true,
+										success: function(data){
+											relatedCategorySpeeches = $("<div>").html(data).find('#listingOfIndividualSpeeches').html();
+											$('#categoryIndividualSpeeches').html(relatedCategorySpeeches);
+										}
+									});
+								});
+							</script>
+							<?php
+						}
+					} else {
+						echo "<li>";
+						echo "<a tabindex=\"-1\" href=\"#\">No Categories</a>";
+						echo "</li>";
 					}
 				?>
-			</tbody>
-		</table>
-	</div>
+			</ul>
+		</div>
+		<div id="categoryIndividualSpeeches" class="span9">
+			<div class="row-fluid">
+				<div class="span1">
+				</div>
+				<div class="span9">
+					<!-- <img src="../img/17685362_m.jpg" width="700" class="pull-right"/> -->
+	 				<!-- <img src="../img/13602313_m.jpg"  width="800" />  -->
+					<!--  <img src="../img/18722406_m.jpg" width="950"/>  -->
+					<img src="../img/17685556_m.jpg" /> 
+				</div>
+				<div class="span2">
+				</div>
+			</div>
+		</div>
 	</div>
 </div>
 
 <?php
+	include_once('footer.php');
 ?>

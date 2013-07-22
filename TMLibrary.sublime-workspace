@@ -71,7 +71,7 @@
 			"file": "DatabaseObject.php",
 			"settings":
 			{
-				"buffer_size": 4136,
+				"buffer_size": 4139,
 				"line_ending": "Unix"
 			}
 		},
@@ -79,7 +79,7 @@
 			"file": "Session.php",
 			"settings":
 			{
-				"buffer_size": 1455,
+				"buffer_size": 1716,
 				"line_ending": "Unix"
 			}
 		},
@@ -103,7 +103,7 @@
 			"file": "userALE.php",
 			"settings":
 			{
-				"buffer_size": 255,
+				"buffer_size": 281,
 				"line_ending": "Unix"
 			}
 		},
@@ -111,7 +111,7 @@
 			"file": "register2.php",
 			"settings":
 			{
-				"buffer_size": 5282,
+				"buffer_size": 8109,
 				"line_ending": "Unix"
 			}
 		},
@@ -119,7 +119,15 @@
 			"file": "userListing.php",
 			"settings":
 			{
-				"buffer_size": 3022,
+				"buffer_size": 3035,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "DatabaseObject2.php",
+			"settings":
+			{
+				"buffer_size": 2077,
 				"line_ending": "Unix"
 			}
 		}
@@ -412,7 +420,7 @@
 	"groups":
 	[
 		{
-			"selected": 2,
+			"selected": 0,
 			"sheets":
 			[
 				{
@@ -420,15 +428,15 @@
 					"file": "DatabaseObject.php",
 					"settings":
 					{
-						"buffer_size": 4136,
+						"buffer_size": 4139,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								1806,
-								1806
+								0,
+								0
 							]
 						],
 						"settings":
@@ -438,7 +446,7 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 445.0,
+						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
 					"type": "text"
@@ -448,15 +456,15 @@
 					"file": "Session.php",
 					"settings":
 					{
-						"buffer_size": 1455,
+						"buffer_size": 1716,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								158,
-								158
+								0,
+								0
 							]
 						],
 						"settings":
@@ -492,7 +500,7 @@
 							"translate_tabs_to_spaces": false
 						},
 						"translation.x": 0.0,
-						"translation.y": 31.0,
+						"translation.y": 0.0,
 						"zoom_level": 1.0
 					},
 					"type": "text"
@@ -529,15 +537,15 @@
 					"file": "userALE.php",
 					"settings":
 					{
-						"buffer_size": 255,
+						"buffer_size": 281,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								118,
-								118
+								0,
+								0
 							]
 						],
 						"settings":
@@ -556,15 +564,15 @@
 					"file": "register2.php",
 					"settings":
 					{
-						"buffer_size": 5282,
+						"buffer_size": 8109,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								68,
-								68
+								0,
+								0
 							]
 						],
 						"settings":
@@ -583,15 +591,42 @@
 					"file": "userListing.php",
 					"settings":
 					{
-						"buffer_size": 3022,
+						"buffer_size": 3035,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								206,
-								206
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/PHP/PHP.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 7,
+					"file": "DatabaseObject2.php",
+					"settings":
+					{
+						"buffer_size": 2077,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
 							]
 						],
 						"settings":

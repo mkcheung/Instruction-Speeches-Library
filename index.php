@@ -5,6 +5,7 @@ require_once("constants.php");
 require_once("user.php");
 require_once("function.php");
 require_once("Session.php");
+require_once("Manual.php");
 require_once("category.php");
 include_once("header.php");
 
@@ -13,12 +14,19 @@ if(!isset($_SESSION['user_id'])){
 }
 
 $allCategories = Category::find_all();
+$allManuals = Manual::find_all();
 ?>
 
 <div class="container-fluid">
  	<div class="row-fluid">
     	<div class="span2">
 			<ul class="nav nav-list navMenu">
+			 	<li class="nav-header">
+			 		Toastmasters Library
+			 	</li>
+				<li>
+					<a href="logout.php">Logout</a>
+				</li>
 			 	<li class="nav-header">
 			 		Navigation
 			 	</li>
@@ -36,15 +44,15 @@ $allCategories = Category::find_all();
 			 		}
 			 	?>
 				<li class="dropdown">
-					<a class="dropdown-toggle" id="speechDropDown" data-toggle="dropdown" href="#">
-						Speech Categories <b class="caret"></b>
+					<a class="dropdown-toggle" id="manualDropDown" data-toggle="dropdown" href="#">
+						Manuals <b class="caret"></b>
 					</a>
-					<ul id="speechDropDownMenu" class="dropdown-menu" role="menu" area-labelledby="speechDropDown">
+					<ul id="manualDropDownMenu" class="dropdown-menu" role="menu" area-labelledby="manualDropDown">
 						<?php
-							if(!is_null($allCategories)){
-								foreach($allCategories as $aCategory){
+							if(!is_null($allManuals)){
+								foreach($allManuals as $aManual){
 									echo "<li>";
-									echo "<a tabindex=\"-1\" href=\"viewCategory.php?id=" . $aCategory->id . "\">" . $aCategory->category_title ."</a>";
+									echo "<a tabindex=\"-1\" href=\"viewCategory.php?id=" . $aManual->id . "\">" . $aManual->description ."</a>";
 									echo "</li>";	
 								}
 							} else{
@@ -60,19 +68,19 @@ $allCategories = Category::find_all();
     	</div>
 	    <div class="span10">
 	    	<div class="page-header">
-			  <h1>Welcome to Toastmasters of The Cove Library!</h1>
+			  <h1 style="text-align:center;">Welcome to The Toastmasters Library!</h1>
 			</div>
 			<ul class="thumbnails">
-			  <li class="span4">
+			  <li style="min-height:720px">
 		    	<div id="photoRotator">
 		    		<div id="current">
-		     			<img src="TMCOVE1.jpg" data-src="holder.js/360x270">
+		     			<img src="TMCOVE1.jpg" data-src="holder.js/360x270" >
 		      		</div>
 		    		<div>
-		     			<img src="TMCOVE2.jpg" data-src="holder.js/360x270">
+		     			<img src="TMCOVE2.jpg" data-src="holder.js/360x270" >
 		      		</div>
 		    		<div>
-		     			<img src="TMCOVE3.jpg" data-src="holder.js/360x270">
+		     			<img src="TMCOVE3_C.jpg" data-src="holder.js/360x270" >
 		      		</div>
 		      	</div>
 			  </li>
@@ -87,11 +95,11 @@ $allCategories = Category::find_all();
 	});
 
 	function rotateImages(){
-		var currentPhoto = $("#photoRotator div.current");
+		var currentPhoto = $('#photoRotator div.current');
 		var nextPhoto = currentPhoto.next();
 
 		if(nextPhoto.length == 0){
-			nextPhoto = $("#photoRotator div:first");
+			nextPhoto = $('#photoRotator div:first');
 		}
 
 		currentPhoto.removeClass('current').addClass('previous');
