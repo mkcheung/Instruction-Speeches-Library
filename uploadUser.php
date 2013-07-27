@@ -76,92 +76,91 @@
 
 
 		
-		<div id="registration">
-			<form action="register2.php" method="post" id="uploadUserForm">
-				<fieldset>
-					<legend>User Registration</legend>
-					<div class="row-fluid">
-						<div class="span6">
-							<input  type="hidden" id="submit2" name="submit"/>
-							<label for="uploadUserForm_first_name">First Name:</label>
-							<input class="text" type="text" id="uploadUserForm_first_name" name="uploadUserForm_first_name"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-						<div class="span6">
-							<label for="uploadUserForm_last_name">Last Name:</label>
-							<input class="text" type="text" id="uploadUserForm_last_name" name="uploadUserForm_last_name"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-					</div>
-					<div class="row-fluid">
-						<div class="span6">
-							<label for="uploadUserForm_username">User Name:</label>
-							<input class="text" type="text" id="uploadUserForm_username" name="uploadUserForm_username"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-						<div class="span6">
-							<label for="uploadUserForm_email">Email:</label>
-							<input class="text" type="uploadUserForm_email" id="uploadUserForm_email" name="uploadUserForm_email"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-					</div>
-					<div class="row-fluid">
-						<div class="span6">
-							<label for="uploadUserForm_hashed_password">Password:</label>
-							<input class="text" type="password" id="uploadUserForm_hashed_password" name="uploadUserForm_hashed_password"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-						<div class="span6">
-							<label for="uploadUserForm_passwordConfirmation">Password Confirmation:</label>
-							<input class="text" type="password" name="uploadUserForm_passwordConfirmation" id="uploadUserForm_passwordConfirmation"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-					</div>
-					<div class="row-fluid">
-						<div class="span6">
-							<label for="uploadUserForm_club">Club:</label>
-							<select id="uploadUserForm_club" name="uploadUserForm_club">
-							<?php 
-								foreach($clubs as $club) {
-							?>
-								<script>
-									validClubs.push('<?=$club->id?>');
-									clubAndPassword.push('<?=$club->password?>');
-								</script>
-								<option value="<?=$club->id?>"><?=$club->name?></option>
-							<?php
-								}
-							?>
-							</select>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-						<div class="span6">
-							<label for="uploadUserForm_clubPassword">Club Password:</label>
-							<input class="text" type="password" name="uploadUserForm_clubPassword" id="uploadUserForm_clubPassword"/>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-					</div>
-					<div class="row-fluid">
-						<div class="span6">
-							<label for="uploadUserForm_role">User Role:</label>
-							<select id="uploadUserForm_role" name="uploadUserForm_role">
-							<?php 
-								foreach($userRoles as $userRole) {
-							?>
-								<option value="<?=$userRole->id?>"><?=$userRole->role?></option>
-							<?php
-								}
-							?>
-							</select>
-							<div style="color:red; font-size:12px;" class="validation"></div>
-						</div>
-						<div class="span6">
-						</div>
-					</div>
-					<input id="registerSubmit" type="submit" name="submit" class="btn btn-primary pull-right"/>
-				</fieldset>
-			</form>	
-		</div>	
+
+	<form action="uploadUser.php" method="post" id="uploadUserForm">
+		<fieldset>
+			<legend class="formTitle">New User:</legend>
+			<div class="row-fluid">
+				<div class="span6">
+					<input  type="hidden" id="submit2" name="submit"/>
+					<label for="uploadUserForm_first_name">First Name:</label>
+					<input class="text" type="text" id="uploadUserForm_first_name" name="uploadUserForm_first_name"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+				<div class="span6">
+					<label for="uploadUserForm_last_name">Last Name:</label>
+					<input class="text" type="text" id="uploadUserForm_last_name" name="uploadUserForm_last_name"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+			</div>
+			<div class="row-fluid">
+				<div class="span6">
+					<label for="uploadUserForm_username">User Name:</label>
+					<input class="text" type="text" id="uploadUserForm_username" name="uploadUserForm_username"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+				<div class="span6">
+					<label for="uploadUserForm_email">Email:</label>
+					<input class="text" type="uploadUserForm_email" id="uploadUserForm_email" name="uploadUserForm_email"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+			</div>
+			<div class="row-fluid">
+				<div class="span6">
+					<label for="uploadUserForm_hashed_password">Password:</label>
+					<input class="text" type="password" id="uploadUserForm_hashed_password" name="uploadUserForm_hashed_password"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+				<div class="span6">
+					<label for="uploadUserForm_passwordConfirmation">Password Confirmation:</label>
+					<input class="text" type="password" name="uploadUserForm_passwordConfirmation" id="uploadUserForm_passwordConfirmation"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+			</div>
+			<div class="row-fluid">
+				<div class="span6">
+					<label for="uploadUserForm_club">Club:</label>
+					<select id="uploadUserForm_club" name="uploadUserForm_club">
+					<?php 
+						foreach($clubs as $club) {
+					?>
+						<script>
+							validClubs.push('<?=$club->id?>');
+							clubAndPassword.push('<?=$club->password?>');
+						</script>
+						<option value="<?=$club->id?>"><?=$club->name?></option>
+					<?php
+						}
+					?>
+					</select>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+				<div class="span6">
+					<label for="uploadUserForm_clubPassword">Club Password:</label>
+					<input class="text" type="password" name="uploadUserForm_clubPassword" id="uploadUserForm_clubPassword"/>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+			</div>
+			<div class="row-fluid">
+				<div class="span6">
+					<label for="uploadUserForm_role">User Role:</label>
+					<select id="uploadUserForm_role" name="uploadUserForm_role">
+					<?php 
+						foreach($userRoles as $userRole) {
+					?>
+						<option value="<?=$userRole->id?>"><?=$userRole->role?></option>
+					<?php
+						}
+					?>
+					</select>
+					<div style="color:red; font-size:12px;" class="validation"></div>
+				</div>
+				<div class="span6">
+				</div>
+			</div>
+			<input id="registerSubmit" type="submit" name="submit" class="btn btn-primary pull-right"/>
+		</fieldset>
+	</form>	
 	<script>
 
 	$('#uploadUserForm select').change(function(){
@@ -398,7 +397,7 @@
 		function submitUserData(formData){
 			$.ajax({
 				type:'POST',
-				url: 'register2.php',
+				url: 'uploadUser.php',
 				data:formData,
 				cache: false,
 				timeout:7000,

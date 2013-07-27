@@ -108,7 +108,7 @@
 			}
 		},
 		{
-			"file": "register2.php",
+			"file": "uploadUser.php",
 			"settings":
 			{
 				"buffer_size": 8109,
@@ -218,7 +218,7 @@
 		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/categoryDelete.php",
 		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/roleDelete.html",
 		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/noteDelete.php",
-		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/register2.php",
+		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/uploadUser.php",
 		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/noteALE.php",
 		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/userDelete.php",
 		"/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/includes/editUser.php",
@@ -561,7 +561,7 @@
 				},
 				{
 					"buffer": 5,
-					"file": "register2.php",
+					"file": "uploadUser.php",
 					"settings":
 					{
 						"buffer_size": 8109,
@@ -729,7 +729,7 @@
 			],
 			[
 				"reg",
-				"includes/register2.php"
+				"includes/uploadUser.php"
 			],
 			[
 				"u",

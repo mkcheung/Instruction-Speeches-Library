@@ -86,7 +86,7 @@ if(isset($_POST['categoryId'])){
 							</td>
 							<td>
 								<a href="videoNotesAnnotator.php?catId=<?=$topic->category_id?>&topId=<?=$topic->id?>&vidId=<?=$topic->video_id?>" class="btn btn-mini btn-primary">Annotate</a>
-								<a href="videoNotesAnnotator.php?catId=<?=$topic->category_id?>&topId=<?=$topic->id?>&vidId=<?=$topic->video_id?>" class="btn btn-mini btn-primary">Comments</a>
+								<a href="speechForum.php?catId=<?=$topic->category_id?>&topId=<?=$topic->id?>&vidId=<?=$topic->video_id?>" class="btn btn-mini btn-primary">Discuss</a>
 							</td>
 						</tr>
 			<?php

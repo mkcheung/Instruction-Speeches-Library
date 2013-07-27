@@ -70,7 +70,7 @@ foreach($allRelatedPosts as $post){
 					</div>
 				</div>
 				<script>
-					var pop = Popcorn("#samp");
+				var pop = Popcorn("#samp");
 				</script>
 				<?php
 					foreach($notes as $note){
@@ -103,24 +103,24 @@ foreach($allRelatedPosts as $post){
 				<?php
 					}
 				?>
-					<div id="topicDescription">
-						<div id="topicPreamble">
-							<h4><?=$speechVideo->topic_title?></h4></br>
-							<?=$speechVideo->topic_date?></br>
-							<?=$speechVideo->description?>
-						</div>
-						<div id="topicNavTemp">
-							<h4>Navigator Placement</h4></br>
-							test
-						</div>
-						<div id="topicCategoryInfo">
-							<h4>Speech Category</h4></br>
-							<?=$category->category_title?></br>
-							<?=$category->category_description?></br>
-						</div>	
+				<div id="topicDescription">
+					<div id="topicPreamble">
+						<h4><?=$speechVideo->topic_title?></h4></br>
+						<?=$speechVideo->topic_date?></br>
+						<?=$speechVideo->description?>
 					</div>
+					<div id="topicNavTemp">
+						<h4>Navigator Placement</h4></br>
+						test
+					</div>
+					<div id="topicCategoryInfo">
+						<h4>Speech Category</h4></br>
+						<?=$category->category_title?></br>
+						<?=$category->category_description?></br>
+					</div>	
+				</div>
 			</div>
-			<section id="forumBlock">
+			<!-- <section id="forumBlock">
 				<div id="forumPosts">
 					<h1>Speech Commentary</h1>
 					<?php
@@ -209,7 +209,7 @@ foreach($allRelatedPosts as $post){
 						}
 					});
 				</script>
-			</section>
+			</section> -->
 		</div>
 	</div>
 </div>
