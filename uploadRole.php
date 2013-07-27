@@ -58,18 +58,18 @@ if(isset($_POST['submit'])){
 ?>
 </script>
 
-<div id="registration">
-	<form id="userRoleInputForm" action="userRoleInput.php" method="post">
-		<fieldset>
-			<legend>New Role:</legend>
-				<label for="uploadRole_role">Role:</label>
-				<input class="text" id="uploadRole_role" type="text" name="uploadRole_role"/></br> 
-				<div style="color:red; font-size:12px;" class="validation"></div>
-				<input id="submit" name="submit" type="hidden"/></br>
-				<input id="userRoleSubmit" name="submit" type="submit"/></br>
-		</fieldset>
-	</form>
-</div>
+
+<form id="userRoleInputForm" action="userRoleInput.php" method="post">
+	<fieldset>
+		<legend class="formTitle">New Role:</legend>
+			<label for="uploadRole_role">Role:</label>
+			<input class="text" id="uploadRole_role" type="text" name="uploadRole_role"/></br> 
+			<div style="color:red; font-size:12px;" class="validation"></div>
+			<input id="submit" name="submit" type="hidden"/></br>
+			<input id="userRoleSubmit" name="submit" type="submit"/></br>
+	</fieldset>
+</form>
+
 
 <script>
 

@@ -52,7 +52,7 @@ if(isset($_POST['topicId'])){
 </script>
 	<div id="registerErrorMessages"></div>
 	<form action="editTopic.php" enctype="multipart/form-data" method="post" id="editTopicForm">
-		<legend>Edit Topic</legend>
+		<legend class="formTitle">Edit Topic:</legend>
 		<fieldset>
 			<input type="hidden" id="id" name="id" value="<?=$topic->id?>"/> 
 			<label for="editTopic_categories">Category:</label>
@@ -79,7 +79,7 @@ if(isset($_POST['topicId'])){
 			<div style="color:red; font-size:12px;" class="validation"></div>
 			
 			<label for="editTopic_topic_description">Description:</label>
-			<textarea id="editTopic_topic_description" name="editTopic_topic_description"><?=$topic->description?></textarea>
+			<textarea class="text" id="editTopic_topic_description" name="editTopic_topic_description"><?=$topic->description?></textarea>
 			<div style="color:red; font-size:12px;" class="validation"></div>
 			<?php
 				if($topic->isExample){

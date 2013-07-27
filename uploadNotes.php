@@ -40,11 +40,11 @@ if(isset($_POST['submit'])){
 	<div id="registerErrorMessages"></div>
 		<form id="uploadNotesForm" action="uploadNotes.php" method="post">
 			<fieldset>
-				<legend>Annotations:</legend>
+				<legend class="formTitle">Annotations:</legend>
 				<label for="title">Title:</label>
-				<input id="title" name="title"/>
+				<input class="text" id="title" name="title"/>
 				<label for="note">Note:</label>
-				<textarea row="5" cols="40" id="note" name="note"/>
+				<textarea class="text" row="5" cols="40" id="note" name="note"/>
 				<label for="begin_time">Begin Time:</label>
 				<div class="input-append bootstrap-timepicker">
 					<input id="begin_time" name="begin_time" type="text" class="input-small">

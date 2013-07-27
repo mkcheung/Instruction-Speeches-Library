@@ -9,6 +9,6 @@
 	</div>
 </div>
 <script>
-	$("#addEditUserBlock").load('register2.php');
+	$("#addEditUserBlock").load('uploadUser.php');
 	$("#userListingBlock").load('userListing.php');
 </script>

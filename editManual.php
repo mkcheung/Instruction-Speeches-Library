@@ -34,7 +34,7 @@ if(isset($_POST['manualId'])){
 </script>
 	<div id="registerErrorMessages"></div>
 	<form action="editManual.php" method="post" id="editManualForm">
-		<legend>Edit Manual</legend>
+		<legend class="formTitle">Edit Manual:</legend>
 		<input type="hidden" id="submit2" name="submit"/>
 		<input type="hidden" id="id" name="id" value="<?=$manual->id?>"/> </br>
 		<label for="editManual_description">Description:</label>

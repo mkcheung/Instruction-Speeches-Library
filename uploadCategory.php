@@ -80,29 +80,28 @@ if(isset($_POST['submit'])){
 </script>
 
 <!-- <div id="registerErrorMessages"></div> -->
-<div id="registration">
-	<form action="uploadCategory.php" method="post" id="categorySubmit">
-		<fieldset>
-			<legend>New Speech Category:</legend>
-			<label for="manuals">Manual:</label>
-			<select id="manuals" name="uploadCategory_manual_id">
-				<?php
-					foreach($manuals as $manual){
-						echo "<option value=\"" . $manual->id . "\">" . $manual->description . "</option></br>";
-					}
-				?>
-			</select></br>
-				<label for="uploadCategory_category_title">Title:</label>
-				<input class="text" id="uploadCategory_category_title" name="uploadCategory_category_title"/>
-				<div style="color:red; font-size:12px;" class="validation"></div>
-				<label for="uploadCategory_category_description">Description:</label>
-				<input class="text" id="uploadCategory_category_description" name="uploadCategory_category_description" type="textarea"/>
-				<div style="color:red; font-size:12px;" class="validation"></div>
-				<input type="hidden" id="submit2" name="submit"/>
-				<input id="categorySubmitButton" type="submit" name="submit"/>
-		</fieldset>
-	</form>
-</div>
+<form action="uploadCategory.php" method="post" id="categorySubmit">
+	<fieldset>
+		<legend class="formTitle">New Speech Category:</legend>
+		<label for="manuals">Manual:</label>
+		<select id="manuals" name="uploadCategory_manual_id">
+			<?php
+				foreach($manuals as $manual){
+					echo "<option value=\"" . $manual->id . "\">" . $manual->description . "</option></br>";
+				}
+			?>
+		</select></br>
+			<label for="uploadCategory_category_title">Title:</label>
+			<input class="text" id="uploadCategory_category_title" name="uploadCategory_category_title"/>
+			<div style="color:red; font-size:12px;" class="validation"></div>
+			<label for="uploadCategory_category_description">Description:</label>
+			<input class="text" id="uploadCategory_category_description" name="uploadCategory_category_description" type="textarea"/>
+			<div style="color:red; font-size:12px;" class="validation"></div>
+			<input type="hidden" id="submit2" name="submit"/>
+			<input id="categorySubmitButton" type="submit" name="submit"/>
+	</fieldset>
+</form>
+
 
 <script>	
 

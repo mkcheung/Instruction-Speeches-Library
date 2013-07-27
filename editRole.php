@@ -37,7 +37,7 @@ if(isset($_POST['userRoleId'])){
 
 	<!-- <div id="registerErrorMessages"></div> -->
 	<form action="editRole.php" method="post" id="editRoleForm">
-	<legend>Edit Role</legend>
+	<legend class="formTitle">Edit Role:</legend>
 	<input type="hidden" id="submit2" name="submit"/>
 	<input type="hidden" id="id" name="id" value="<?=$userRole->id?>"/>
 	<label for="editRole_role">Role:</label>

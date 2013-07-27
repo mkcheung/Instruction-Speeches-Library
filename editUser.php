@@ -379,7 +379,7 @@ if(isset($_POST['userid'])){
 								<button id="cancelUserSubmit" class='btn btn-primary' type='button'>Cancel</button>
 								<script>
 									$('#cancelUserSubmit').click(function(e){
-										$("#addEditUserBlock").load('register2.php');
+										$("#addEditUserBlock").load('uploadUser.php');
 									});
 								</script>
 							</div>

@@ -36,7 +36,7 @@ if(isset($_POST['clubid'])){
 </script>
 	<!-- <div id="registerErrorMessages"></div> -->
 	<form action="editClub.php" method="post" id="editClubForm">
-		<legend>Edit Club Details:</legend>
+		<legend class="formTitle">Edit Club Details:</legend>
 		<div class="row-fluid">
 			<div class="span6">
 					<input type="hidden" id="id" name="id" value="<?=$club->id?>"/>

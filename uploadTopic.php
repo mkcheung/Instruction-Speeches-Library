@@ -95,7 +95,7 @@ if(isset($_POST['submit'])){
 </script>
 
 <form action="uploadTopic.php" enctype="multipart/form-data" method="post" id="uploadTopicForm">
-	<legend>New Topic</legend>
+	<legend class="formTitle">New Topic:</legend>
 	<fieldset>
 		<label for="uploadTopic_category_id">Category:</label>
 		<select id="uploadTopic_category_id" name="uploadTopic_category_id">
@@ -115,7 +115,7 @@ if(isset($_POST['submit'])){
 		<input class="text" type="text" id="uploadTopic_topic_date" class="hasDatepicker" name="uploadTopic_topic_date"/>
 		<div style="color:red; font-size:12px;" class="validation"></div>
 		<label for="uploadTopic_description">Description:</label>
-		<textarea id="uploadTopic_description" name="uploadTopic_description" placeholder="Enter a topic description:"/>
+		<textarea class="text" id="uploadTopic_description" name="uploadTopic_description" placeholder="Enter a topic description:"/>
 		<div style="color:red; font-size:12px;" class="validation"></div>
 		Example: <input type="checkbox" id="isExample" name = "isExample"/>
 		<label for="video">Select Video:</label>

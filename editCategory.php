@@ -56,7 +56,7 @@ if(isset($_POST['categoryId'])){
 
 	<!-- <div id="registerErrorMessages"></div> -->
 	<form action="editCategory.php" method="post" id="editCategoryForm">
-	<legend>Edit Category:</legend>
+	<legend class="formTitle">Edit Category:</legend>
 	<input type="hidden" id="submit2" name="submit"/>
 	<input type="hidden" id="id" name="id" value="<?=$category->id?>"/> 
 	<label for="manuals">Manual:</label>

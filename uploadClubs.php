@@ -50,7 +50,7 @@ if(isset($_POST['submit'])){
 	<!-- <div id="registerErrorMessages"></div> -->
 		<form id="uploadClubsForm" action="uploadClubs.php" method="post">
 			<fieldset>
-				<legend>New Club:</legend>
+				<legend class="formTitle">New Club:</legend>
 					<div class="row-fluid">
 						<div class="span6">
 							<label for="uploadClubsForm_name">Name:</label>
