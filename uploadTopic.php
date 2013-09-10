@@ -29,9 +29,11 @@ if(isset($_POST['submit'])){
 			$errors[] = $_POST[$required_field] . ' is a required field.';
 	}
 
+		echo '<pre>' , print_r($_FILES['video']) , '</pre>';
 
-	if(empty($errors) && ($_FILES['video']['error'] == 0)){
+	if(empty($errors) && ($_FILES['video']['error'][0] == 0)){
 
+		echo '<pre>' , print_r($_FILES['video']) , '</pre>';
 		$cid = mysql_real_escape_string((htmlspecialchars($_POST['uploadTopic_category_id'])));
 		$des = mysql_real_escape_string((htmlspecialchars($_POST['uploadTopic_description'])));
 		$tt = mysql_real_escape_string((htmlspecialchars($_POST['uploadTopic_topic_title'])));
@@ -43,17 +45,22 @@ if(isset($_POST['submit'])){
 			$ie = 0;
 		}
 
+		
 		// $ie = mysql_real_escape_string((htmlspecialchars($_POST['isExample'])));
-		$filename = $_FILES['video']['name'];
-		$filetype = $_FILES['video']['type'];
-		$filesize = $_FILES['video']['size'];
-		$filetmpname = $_FILES['video']['tmp_name'];
+		$filename1 = $_FILES['video']['name'][0];
+		$filetype1 = $_FILES['video']['type'][0];
+		$filesize1 = $_FILES['video']['size'][0];
+		$filetmpname1 = $_FILES['video']['tmp_name'][0];
+		$filename2 = $_FILES['video']['name'][1];
+		$filetype2 = $_FILES['video']['type'][1];
+		$filesize2 = $_FILES['video']['size'][1];
+		$filetmpname2 = $_FILES['video']['tmp_name'][1];
 
-		$newTopic = Topic::newTopic($cid, $des, $tt, $_SESSION['user_id'], $ie, $filename, $filesize, $filetype, $filetmpname);
+		$newTopic = Topic::newTopic($cid, $des, $tt, $_SESSION['user_id'], $ie, $filename1, $filesize1, $filetype1, $filetmpname1, $filename2, $filesize2, $filetype2, $filetmpname2);
 		move_uploaded_file($newTopic->temp_name, "/Applications/XAMPP/xamppfiles/htdocs/ToastmasterLibrary/videos/" . $newTopic->name);		
 
 		if($newTopic->save()){
-			redirect_to("settings.php");
+			//redirect_to("settings.php");
 		} else {
 			die("Cannot create topic." . mysql_error());
 		}	
@@ -63,6 +70,8 @@ if(isset($_POST['submit'])){
 		} 
 		echo '</br>' . $_FILES['video']['error'] . '</br>';
 	}
+
+	echo '<pre>' , print_r($_FILES['video']) , '</pre>';
 }
 	
 
@@ -119,7 +128,8 @@ if(isset($_POST['submit'])){
 		<div style="color:red; font-size:12px;" class="validation"></div>
 		Example: <input type="checkbox" id="isExample" name = "isExample"/>
 		<label for="video">Select Video:</label>
-		<input type="file" id="video" name="video"/>
+		<input type="file" name="video[]"/>
+		<input type="file" name="video[]"/>
 		<input type="hidden" id="submit2" name="submit"/>
 		<input id ="topicSubmitButton" name="submit" type="submit" value="submit"/>
 		</fieldset>
@@ -133,168 +143,168 @@ $( '#uploadTopic_topic_date' ).datepicker();
 <script>
 	$( ".speechDate" ).datepicker( "show" );	
 
-	$('#uploadTopicForm #uploadTopic_category_id').change(function(){
+	// $('#uploadTopicForm #uploadTopic_category_id').change(function(){
 
-		var currentSelectedCategory = $(this).val();
-		var topicTitle = $('#uploadTopicForm #uploadTopic_topic_title').val();
-		var topicDate = $('#uploadTopicForm #uploadTopic_topic_date').val();
-		var topicDescription = $('#uploadTopicForm #uploadTopic_description').val();
-		// console.log(currentSelectedCategory);
-		// console.log(topicTitle);
-		// console.log(topicDescription);
+	// 	var currentSelectedCategory = $(this).val();
+	// 	var topicTitle = $('#uploadTopicForm #uploadTopic_topic_title').val();
+	// 	var topicDate = $('#uploadTopicForm #uploadTopic_topic_date').val();
+	// 	var topicDescription = $('#uploadTopicForm #uploadTopic_description').val();
+	// 	// console.log(currentSelectedCategory);
+	// 	// console.log(topicTitle);
+	// 	// console.log(topicDescription);
 
-		if(topicTitle.length == 0){
-			$('#uploadTopic_topic_title').next('div[class="validation"]').text('A title is required.');
-		} else if (jQuery.inArray(topicTitle, uploadTopic_existingTitles[currentSelectedCategory]) >= 0) {
-			$('#uploadTopic_topic_title').next('div[class="validation"]').text('This title already exists for this manual.');
-		} else {
-			$('#uploadTopic_topic_title').next('div[class="validation"]').text('');	
-		}
+	// 	if(topicTitle.length == 0){
+	// 		$('#uploadTopic_topic_title').next('div[class="validation"]').text('A title is required.');
+	// 	} else if (jQuery.inArray(topicTitle, uploadTopic_existingTitles[currentSelectedCategory]) >= 0) {
+	// 		$('#uploadTopic_topic_title').next('div[class="validation"]').text('This title already exists for this manual.');
+	// 	} else {
+	// 		$('#uploadTopic_topic_title').next('div[class="validation"]').text('');	
+	// 	}
 
-		if(topicDate.length == 0){
-			$('#uploadTopic_topic_date').next('div[class="validation"]').text('A topic date is required.');
-		} else {
-			$('#uploadTopic_topic_date').next('div[class="validation"]').text('');	
-		}
+	// 	if(topicDate.length == 0){
+	// 		$('#uploadTopic_topic_date').next('div[class="validation"]').text('A topic date is required.');
+	// 	} else {
+	// 		$('#uploadTopic_topic_date').next('div[class="validation"]').text('');	
+	// 	}
 
-		if(topicDescription.length == 0){
-			$('#uploadTopic_description').next('div[class="validation"]').text('A description is required.');
-		} else {
-			$('#uploadTopic_description').next('div[class="validation"]').text('');	
-		}
+	// 	if(topicDescription.length == 0){
+	// 		$('#uploadTopic_description').next('div[class="validation"]').text('A description is required.');
+	// 	} else {
+	// 		$('#uploadTopic_description').next('div[class="validation"]').text('');	
+	// 	}
 
-		// $('#uploadTopic_topic_title').val('');
-		// $('#uploadTopic_topic_title').next().text('');
-		// $('#uploadTopic_description').val('');
-		// $('#uploadTopic_description').next().text('');
-		// $('#uploadTopic_topic_date').val('');
-		// $('#uploadTopic_topic_date').next().text('');
-	});
+	// 	// $('#uploadTopic_topic_title').val('');
+	// 	// $('#uploadTopic_topic_title').next().text('');
+	// 	// $('#uploadTopic_description').val('');
+	// 	// $('#uploadTopic_description').next().text('');
+	// 	// $('#uploadTopic_topic_date').val('');
+	// 	// $('#uploadTopic_topic_date').next().text('');
+	// });
 
-	$('#uploadTopicForm input, #uploadTopicForm textarea').blur(function(e){
-		e.preventDefault();
-		e.stopPropagation();
-		var id = $(this).attr('id');
-		var value = $(this).val();
-		var currentSelectedCategory = $('#uploadTopicForm #uploadTopic_category_id').val();
-		// console.log(id);
-		// console.log(value);
-		switch(id){
-			case 'uploadTopic_topic_title' :
-				if(value.length == 0){
-					$(this).next('div[class="validation"]').text('A title is required.');
-				} else if (jQuery.inArray(value, uploadTopic_existingTitles[currentSelectedCategory]) >= 0) {
-					$(this).next('div[class="validation"]').text('This title already exists for this manual.');
-				} else {
-					$(this).next('div[class="validation"]').text('');	
-				}
-				break;
-			case 'uploadTopic_topic_date' :
-				setTimeout(function(){
-					var value = $('#uploadTopic_topic_date').val();
-					// alert(value);
-					if(value.length == 0){
-						$('#uploadTopic_topic_date').next('div[class="validation"]').text('A topic date is required.');
-					} else {
-						$('#uploadTopic_topic_date').next('div[class="validation"]').text('');	
-					}
-				}, 30);
-				break;
-			case 'uploadTopic_description' :
-				if(value.length == 0){
-					$(this).next('div[class="validation"]').text('A description is required.');
-				} else {
-					$(this).next('div[class="validation"]').text('');	
-				}
-				break;
-			default: 
-				break;
-		}
-	});
+	// $('#uploadTopicForm input, #uploadTopicForm textarea').blur(function(e){
+	// 	e.preventDefault();
+	// 	e.stopPropagation();
+	// 	var id = $(this).attr('id');
+	// 	var value = $(this).val();
+	// 	var currentSelectedCategory = $('#uploadTopicForm #uploadTopic_category_id').val();
+	// 	// console.log(id);
+	// 	// console.log(value);
+	// 	switch(id){
+	// 		case 'uploadTopic_topic_title' :
+	// 			if(value.length == 0){
+	// 				$(this).next('div[class="validation"]').text('A title is required.');
+	// 			} else if (jQuery.inArray(value, uploadTopic_existingTitles[currentSelectedCategory]) >= 0) {
+	// 				$(this).next('div[class="validation"]').text('This title already exists for this manual.');
+	// 			} else {
+	// 				$(this).next('div[class="validation"]').text('');	
+	// 			}
+	// 			break;
+	// 		case 'uploadTopic_topic_date' :
+	// 			setTimeout(function(){
+	// 				var value = $('#uploadTopic_topic_date').val();
+	// 				// alert(value);
+	// 				if(value.length == 0){
+	// 					$('#uploadTopic_topic_date').next('div[class="validation"]').text('A topic date is required.');
+	// 				} else {
+	// 					$('#uploadTopic_topic_date').next('div[class="validation"]').text('');	
+	// 				}
+	// 			}, 30);
+	// 			break;
+	// 		case 'uploadTopic_description' :
+	// 			if(value.length == 0){
+	// 				$(this).next('div[class="validation"]').text('A description is required.');
+	// 			} else {
+	// 				$(this).next('div[class="validation"]').text('');	
+	// 			}
+	// 			break;
+	// 		default: 
+	// 			break;
+	// 	}
+	// });
 
-	$('#addEditTopicsBlock').unbind();
-	$('#addEditTopicsBlock').on('click','#topicSubmitButton', function(e){
-		e.preventDefault();
-		e.stopPropagation();
-		console.log('submitbutton');
-		//alert('adding topic');
+	// $('#addEditTopicsBlock').unbind();
+	// $('#addEditTopicsBlock').on('click','#topicSubmitButton', function(e){
+	// 	e.preventDefault();
+	// 	e.stopPropagation();
+	// 	console.log('submitbutton');
+	// 	//alert('adding topic');
 
-		var valid = '';
-		var errorDisplay = '' ;
-		var required = ' is required.';
-		var title = $('form[id="uploadTopicForm"] #uploadTopic_topic_title').val();
-		var topic_date = $('form[id="uploadTopicForm"] #uploadTopic_topic_date').val();
-		var description = $('form[id="uploadTopicForm"] #uploadTopic_description').val();
-		var currentSelectedCategory = $('#uploadTopicForm #uploadTopic_category_id').val();
+	// 	var valid = '';
+	// 	var errorDisplay = '' ;
+	// 	var required = ' is required.';
+	// 	var title = $('form[id="uploadTopicForm"] #uploadTopic_topic_title').val();
+	// 	var topic_date = $('form[id="uploadTopicForm"] #uploadTopic_topic_date').val();
+	// 	var description = $('form[id="uploadTopicForm"] #uploadTopic_description').val();
+	// 	var currentSelectedCategory = $('#uploadTopicForm #uploadTopic_category_id').val();
 
-		console.log('title: ' + title);
-		console.log('date: ' + topic_date);
-		console.log('description: ' + description);
-		console.log('selectedCategoryId: ' + currentSelectedCategory);
+	// 	console.log('title: ' + title);
+	// 	console.log('date: ' + topic_date);
+	// 	console.log('description: ' + description);
+	// 	console.log('selectedCategoryId: ' + currentSelectedCategory);
 
-		if(title == ''){
-			valid += '<p> A title is required. </p>';
-			$('form[id="uploadTopicForm"] #uploadTopic_topic_title').next('div[class="validation"]').text('A title is required.');
-		} else if (jQuery.inArray(title, uploadTopic_existingTitles[currentSelectedCategory]) >= 0) {
-			valid += '<p> This title already exists for this manual. </p>';
-			$('form[id="uploadTopicForm"] #uploadTopic_topic_title').next('div[class="validation"]').text('This title already exists for this manual.');
-			console.log('here as well');
-		} else {
-			$('form[id="uploadTopicForm"] #uploadTopic_topic_title').next('div[class="validation"]').text('');	
-		}		
+	// 	if(title == ''){
+	// 		valid += '<p> A title is required. </p>';
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_topic_title').next('div[class="validation"]').text('A title is required.');
+	// 	} else if (jQuery.inArray(title, uploadTopic_existingTitles[currentSelectedCategory]) >= 0) {
+	// 		valid += '<p> This title already exists for this manual. </p>';
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_topic_title').next('div[class="validation"]').text('This title already exists for this manual.');
+	// 		console.log('here as well');
+	// 	} else {
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_topic_title').next('div[class="validation"]').text('');	
+	// 	}		
 
-		if(topic_date == ''){
-			valid += '<p> A topic date is required. </p>';
-			$('form[id="uploadTopicForm"] #uploadTopic_topic_date').next().text('A topic date is required.');
-		} else {
-			$('form[id="uploadTopicForm"] #uploadTopic_topic_date').next('div[class="validation"]').text('');	
-		}
-		if(description == ''){
-			valid += '<p> A description is required. </p>';
-			$('form[id="uploadTopicForm"] #uploadTopic_description').next().text('A description is required.');
-		} else {
-			$('form[id="uploadTopicForm"] #uploadTopic_description').next('div[class="validation"]').text('');	
-		}
+	// 	if(topic_date == ''){
+	// 		valid += '<p> A topic date is required. </p>';
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_topic_date').next().text('A topic date is required.');
+	// 	} else {
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_topic_date').next('div[class="validation"]').text('');	
+	// 	}
+	// 	if(description == ''){
+	// 		valid += '<p> A description is required. </p>';
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_description').next().text('A description is required.');
+	// 	} else {
+	// 		$('form[id="uploadTopicForm"] #uploadTopic_description').next('div[class="validation"]').text('');	
+	// 	}
 
-		if(valid.length > 0){
-			$('div[class="alert alert-error"]').remove();
-			$('div[class="alert alert-success"]').remove();
-			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-			$("#registerErrorMessages").append(errorDisplay);
-			$("#registerErrorMessages").removeAttr('style');
-			$("#registerErrorMessages").fadeOut(2000);
-		} else {
-			submitTopic();
-		}
-	});
+	// 	if(valid.length > 0){
+	// 		$('div[class="alert alert-error"]').remove();
+	// 		$('div[class="alert alert-success"]').remove();
+	// 		errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+	// 		$("#registerErrorMessages").append(errorDisplay);
+	// 		$("#registerErrorMessages").removeAttr('style');
+	// 		$("#registerErrorMessages").fadeOut(2000);
+	// 	} else {
+	// 		submitTopic();
+	// 	}
+	// });
 
-	function submitTopic(){
-		$('form[id="uploadTopicForm"]').ajaxSubmit({
-			type:'POST',
-			url: 'uploadTopic.php',
-			//data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Topic added!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-				$("#topicsListingBlock").load("topicListing.php");
+	// function submitTopic(){
+	// 	$('form[id="uploadTopicForm"]').ajaxSubmit({
+	// 		type:'POST',
+	// 		url: 'uploadTopic.php',
+	// 		//data:formData,
+	// 		cache: false,
+	// 		timeout:7000,
+	// 		processData:true,
+	// 		success: function(data){
+	// 			$('div[class="alert alert-error"]').remove();
+	// 				$('div[class="alert alert-success"]').remove();
+	// 			$("#registerErrorMessages").append('<div class="alert alert-success">Topic added!</div>');
+	// 			$("#registerErrorMessages").removeAttr('style');
+	// 			$("#registerErrorMessages").fadeOut(2000);
+	// 			$("#topicsListingBlock").load("topicListing.php");
 
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				//alert('error');
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Topic could not be deleted.</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="uploadTopicForm"]')[0].reset();
-			}
-		});
-	};
+	// 		},
+	// 		error: function(XMLHttpRequest, textStatus, errorThrown){
+	// 			//alert('error');
+	// 			$('#registerErrorMessages div[class="alert alert-error"]').remove();
+	// 			$("#registerErrorMessages").append('<div class="alert alert-error">Topic could not be deleted.</div>');
+	// 			$("#registerErrorMessages").removeAttr('style');
+	// 			$("#registerErrorMessages").fadeOut(2000);
+	// 		},
+	// 		complete: function(XMLHttpRequest, status){
+	// 			$('form[id="uploadTopicForm"]')[0].reset();
+	// 		}
+	// 	});
+	// };
 </script>

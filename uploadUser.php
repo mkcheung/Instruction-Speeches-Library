@@ -39,6 +39,7 @@
 			$r = mysql_real_escape_string(htmlspecialchars($_POST['uploadUserForm_role']));
 			$c = mysql_real_escape_string(htmlspecialchars($_POST['uploadUserForm_club']));
 
+			$pw = sha1('X101' . $pw . 'X101');
 
 			$newUser = User::register($un, $pw, $fn, $ln, $e, $r, $c);
 			if($newUser->save()){

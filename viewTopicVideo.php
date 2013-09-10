@@ -59,6 +59,7 @@ foreach($allRelatedPosts as $post){
 								<div id="theVideo">
 									<video id="samp" width="640" height="480" controls>
 									<source src = "../videos/<?=$speechVideo->video_name?>" type="<?=$speechVideo->video_type?>">
+										Your browser does not support this video format.
 									</video>
 								</div>
 								<div id="theNotes" style="display:none">

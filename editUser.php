@@ -408,6 +408,8 @@ if(isset($_POST['userid'])){
 		$c = mysql_real_escape_string(htmlspecialchars($_POST['editUserForm_club']));
 
 
+		$pw = sha1('X101' . $pw . 'X101');
+
 		$newUser = User::register($un, $pw, $fn, $ln, $e, $r, $c);
 		$newUser->id = $id;
 		if($newUser->save()){

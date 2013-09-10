@@ -39,6 +39,8 @@ if(isset($_POST['login'])){
 	$un = mysql_real_escape_string($_POST['username']);
 	$pw = mysql_real_escape_string($_POST['password']);
 
+	$pw = sha1('X101' . $pw . 'X101');
+
 	$user = User::authenticate($un, $pw);
 
 	$result = $SESS->login($user);
