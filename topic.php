@@ -9,7 +9,7 @@ require_once("userrole.php");
 class Topic extends DatabaseObject{
 
 	protected static $tablename = "topics";
-	protected static $attributes = array('id','category_id', 'description','topic_title','topic_creator','topic_date', 'isExample', 'video_name_1', 'video_size_1', 'video_type_1', 'video_temp_name_1', 'video_name_2', 'video_size_2', 'video_type_2', 'video_temp_name_2');
+	protected static $attributes = array('id','category_id', 'description','topic_title','topic_creator','topic_date', 'isExample', 'video_id', 'video_name_1', 'video_size_1', 'video_type_1', 'video_temp_name_1', 'video_name_2', 'video_size_2', 'video_type_2', 'video_temp_name_2');
 
 	public $id;
 	public $category_id;
@@ -18,6 +18,7 @@ class Topic extends DatabaseObject{
 	public $topic_creator;
 	public $topic_date;
 	public $isExample;
+	public $video_id; // examine - added 10/13/2013 by MC
 	public $video_name_1;
 	public $video_size_1;
 	public $video_type_1;

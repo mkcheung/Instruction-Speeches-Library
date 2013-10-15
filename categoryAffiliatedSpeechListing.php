@@ -40,37 +40,39 @@ if(isset($_POST['categoryId'])){
 			<?php
 				if(isset($topics)){
 					foreach($topics as $topic){
+						// print_r( $topic); // 10/13/13 - Added by MC: For debugging purposes only
 			?>
 						<tr>
 							<td>
-								<a id="viewTopicVideo-<?=$topic->category_id?>-<?=$topic->id?>-<?=$topic->video_id?>" href="viewTopicVideo.php?catId=<?=$topic->category_id?>&topId=<?=$topic->id?>&vidId=<?=$topic->video_id?>"> <?=$topic->topic_title?></a>
-									<script>
-									$('a#viewTopicVideo-<?=$topic->category_id?>-<?=$topic->id?>-<?=$topic->video_id?>').bind('click', function(e){
-										e.preventDefault();
-										$.ajax({		
-											type:'POST',
-											url: 'viewTopicVideo.php',
-											data:{catId:<?=$topic->category_id?>, topId:<?=$topic->id?>, vidId:<?=$topic->video_id?>},
-											cache: false,
-											timeout:7000,
-											processData:true,
-											success: function(data){
-												// alert(data);
-												// allTopicPosts = $("<div>").html(data).find( 'div#allPosts' ).html();
+								<a id="viewTopicVideo-<?=$topic->category_id?>-<?=$topic->id?>" href="viewTopicVideo.php?catId=<?=$topic->category_id?>&topId=<?=$topic->id?>"> <?=$topic->topic_title?></a>
+								<!--<a id="viewTopicVideo-<?=$topic->category_id?>-<?=$topic->id?>-<?=$topic->video_id?>" href="viewTopicVideo.php?catId=<?=$topic->category_id?>&topId=<?=$topic->id?>&vidId=<?=$topic->video_id?>"> <?=$topic->topic_title?></a> -->
+								<script>
+									// $('a#viewTopicVideo-<?=$topic->category_id?>-<?=$topic->id?>-<?=$topic->video_id?>').bind('click', function(e){
+									// 	e.preventDefault();
+									// 	$.ajax({		
+									// 		type:'POST',
+									// 		url: 'viewTopicVideo.php',
+									// 		data:{catId:<?=$topic->category_id?>, topId:<?=$topic->id?>, vidId:<?=$topic->video_id?>},
+									// 		cache: false,
+									// 		timeout:7000,
+									// 		processData:true,
+									// 		success: function(data){
+									// 			alert(data);
+									// 			// allTopicPosts = $("<div>").html(data).find( 'div#allPosts' ).html();
 
-												// alert(data);
-												// allTopicPosts = $(data).filter('div#allPosts').html();
-												// alert(allTopicPosts);
-												// $('div[class="alert alert-error"]').remove();
-												// $('div[class="alert alert-success"]').remove();
-												// $('div[class="alert alert-success"]').remove();
-												// $("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
-												// $("#registerErrorMessages").removeAttr('style');
-												// $("#registerErrorMessages").fadeOut(2000);
-												$("#videoAndPosts").html(data);
-											},
-										});
-									});
+									// 			// alert(data);
+									// 			// allTopicPosts = $(data).filter('div#allPosts').html();
+									// 			// alert(allTopicPosts);
+									// 			// $('div[class="alert alert-error"]').remove();
+									// 			// $('div[class="alert alert-success"]').remove();
+									// 			// $('div[class="alert alert-success"]').remove();
+									// 			// $("#registerErrorMessages").append('<div class="alert alert-success">Success!</div>');
+									// 			// $("#registerErrorMessages").removeAttr('style');
+									// 			// $("#registerErrorMessages").fadeOut(2000);
+									// 			$("#videoAndPosts").html(data);
+									// 		},
+									// 	});
+									// });
 								</script>
 								<div class="smallfont">
 									<?=$topic->description?>

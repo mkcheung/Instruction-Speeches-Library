@@ -58,7 +58,8 @@ foreach($allRelatedPosts as $post){
 							<div id="vnFrame">
 								<div id="theVideo">
 									<video id="samp" width="640" height="480" controls>
-									<source src = "../videos/<?=$speechVideo->video_name?>" type="<?=$speechVideo->video_type?>">
+									<source src = "../videos/<?=$speechVideo->video_name_1?>" type="<?=$speechVideo->video_type_1?>">
+									<source src = "../videos/<?=$speechVideo->video_name_2?>" type="<?=$speechVideo->video_type_2?>">
 										Your browser does not support this video format.
 									</video>
 								</div>
@@ -121,7 +122,7 @@ foreach($allRelatedPosts as $post){
 					</div>	
 				</div>
 			</div>
-			<!-- <section id="forumBlock">
+			<section id="forumBlock">
 				<div id="forumPosts">
 					<h1>Speech Commentary</h1>
 					<?php
@@ -210,7 +211,7 @@ foreach($allRelatedPosts as $post){
 						}
 					});
 				</script>
-			</section> -->
+			</section>
 		</div>
 	</div>
 </div>

@@ -56,7 +56,7 @@ foreach($allRelatedPosts as $post){
 					<div class="span8">
 						<div id="theVideo">
 							<video id="samp" width="640" height="480" controls>
-								<source src="../videos/<?=$speechVideo->video_name?>" type="<?=$speechVideo->video_type?>">
+								<source src="../videos/<?=$speechVideo->video_name_1?>" type="<?=$speechVideo->video_type_1?>">
 							</video>
 						</div>
 					</div>
