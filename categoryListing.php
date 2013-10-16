@@ -40,7 +40,7 @@ foreach($manuals as $manual){
 			echo "<td>" . $manualIdToDescription[$category->manual_id] . "</td>";
 			echo "<td>" . $category->category_title . "</td>";
 			echo "<td>" . $category->category_description . "</td>";
-			echo "<td><a id=\"editCategory-" . $category->id . "\" href=\"editCategory.php?categoryId=" . $category->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
+			echo "<td><a id=\"editCategory-" . $category->id . "\" href=\"editCategory.php?categoryId=" . $category->id . "\"><button type=\"button\" class=\"btn btn-info\">Edit</button></a>" . ' ' . 
 			     "<a id=\"deleteCategory-" . $category->id . "\" href=\"deleteCategory.php?categoryId=" . $category->id . "\"><button type=\"button\" class=\"btn btn-danger\">Delete</button>". "</td>";
 			echo "</tr>";
 		}

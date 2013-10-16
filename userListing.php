@@ -35,7 +35,7 @@ $users = User::find_all();
 			echo "<td>" . $user->username . "</td>";
 			echo "<td>" . $userRole->role . "</td>";
 			echo "<td>" . $user->email . "</td>";
-			echo "<td><a id=\"editUser-" . $user->id . "\" href=\"editUser.php?userid=" . $user->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
+			echo "<td><a id=\"editUser-" . $user->id . "\" href=\"editUser.php?userid=" . $user->id . "\"><button type=\"button\" class=\"btn btn-info\">Edit</button></a>" . ' ' . 
 			     "<a id=\"deleteUser-" . $user->id . "\" href=\"deleteUser.php?userid=" . $user->id . "\"><button type=\"button\" class=\"btn btn-danger\">Delete</button>". "</td>";
 			echo "</tr>";
 		}

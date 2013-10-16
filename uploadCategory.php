@@ -97,8 +97,8 @@ if(isset($_POST['submit'])){
 			<label for="uploadCategory_category_description">Description:</label>
 			<input class="text" id="uploadCategory_category_description" name="uploadCategory_category_description" type="textarea"/>
 			<div style="color:red; font-size:12px;" class="validation"></div>
-			<input type="hidden" id="submit2" name="submit"/>
-			<input id="categorySubmitButton" type="submit" name="submit"/>
+			<input type="hidden" id="submit2" name="submit"/></br>
+			<input id="categorySubmitButton" type="submit" name="submit" class="btn btn-primary pull-right"/>
 	</fieldset>
 </form>
 

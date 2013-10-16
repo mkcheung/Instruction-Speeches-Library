@@ -42,74 +42,76 @@ if(isset($_POST['userRoleId'])){
 	<input type="hidden" id="id" name="id" value="<?=$userRole->id?>"/>
 	<label for="editRole_role">Role:</label>
 	<input class="text" id="editRole_role" name="editRole_role" value="<?=$userRole->role?>"/>
-	<div style="color:red; font-size:12px;" class="validation"></div>
-	<div class='row-fluid'>
-		<div class='span6'>
-			<input id="editRoleSubmit" type="submit" name="submit" class="btn btn-primary"/>
-			<script>
+	<div style="color:red; font-size:12px;" class="validation"></div></br>
+		<div class='span12'>
+			<div class='row-fluid'>
+				<div class='span6'>
+					<input id="editRoleSubmit" type="submit" name="submit" class="btn btn-primary"/>
+					<script>
 
-				$('#editRoleForm input').blur(function(e){
-					console.log("editRole blur called:");
-					var id = $(this).attr('id');
-					var role = $(this).val();
-					switch(id){
-						case 'editRole_role' :
-							if(role.length == 0){
-								$(this).siblings('div[class="validation"]').text('A role is required.');
-							} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
-								$(this).siblings('div[class="validation"]').text('This role already exists.');
-							} else {
-								$(this).siblings('div[class="validation"]').text('');	
+						$('#editRoleForm input').blur(function(e){
+							console.log("editRole blur called:");
+							var id = $(this).attr('id');
+							var role = $(this).val();
+							switch(id){
+								case 'editRole_role' :
+									if(role.length == 0){
+										$(this).siblings('div[class="validation"]').text('A role is required.');
+									} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
+										$(this).siblings('div[class="validation"]').text('This role already exists.');
+									} else {
+										$(this).siblings('div[class="validation"]').text('');	
+									}
+									break;
+								default: 
+									break;
 							}
-							break;
-						default: 
-							break;
-					}
-				});
+						});
 
-				$('#editRoleSubmit').click(function(e){
-					e.preventDefault();
-					e.stopPropagation();
+						$('#editRoleSubmit').click(function(e){
+							e.preventDefault();
+							e.stopPropagation();
 
-					console.log("editRole click called:");
-					//alert('14');
+							console.log("editRole click called:");
+							//alert('14');
 
-					var valid = '';
-					var errorDisplay = '' ;
-					var required = ' is required.';
-					var role = $('form[id="editRoleForm"] #editRole_role').val();
-					if(role == ''){
-						valid += '<p>A role is required.</p>' ;
-					} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
-						valid += '<p>This role already exists.</p>' ;
-						$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('This role already exists.');
-					} else {
-						$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('');	
-					}	
+							var valid = '';
+							var errorDisplay = '' ;
+							var required = ' is required.';
+							var role = $('form[id="editRoleForm"] #editRole_role').val();
+							if(role == ''){
+								valid += '<p>A role is required.</p>' ;
+							} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
+								valid += '<p>This role already exists.</p>' ;
+								$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('This role already exists.');
+							} else {
+								$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('');	
+							}	
 
-					if(valid.length > 0){
-						$('div[class="alert alert-error"]').remove();
-						$('div[class="alert alert-success"]').remove();
-						errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-						$('#registerErrorMessages').append(errorDisplay);
-						$('#registerErrorMessages').removeAttr('style');
-						$('#registerErrorMessages').fadeOut(2000);
-					} else {
-						editRoleFormData = $('form[id="editRoleForm"]').serialize();
-						submitUserRoleEditData(editRoleFormData);
-					}
-				});
-			</script>
+							if(valid.length > 0){
+								$('div[class="alert alert-error"]').remove();
+								$('div[class="alert alert-success"]').remove();
+								errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+								$('#registerErrorMessages').append(errorDisplay);
+								$('#registerErrorMessages').removeAttr('style');
+								$('#registerErrorMessages').fadeOut(2000);
+							} else {
+								editRoleFormData = $('form[id="editRoleForm"]').serialize();
+								submitUserRoleEditData(editRoleFormData);
+							}
+						});
+					</script>
+				</div>
+				<div class='span6'>
+					<button id="cancelRoleSubmit" class='btn btn-primary' type='button'>Cancel</button>
+					<script>
+						$('#cancelRoleSubmit').click(function(e){
+							$("#addEditRoleBlock").load('uploadRole.php');
+						});
+					</script>
+				</div>
+			</div>
 		</div>
-		<div class='span6'>
-			<button id="cancelRoleSubmit" class='btn btn-primary' type='button'>Cancel</button>
-			<script>
-				$('#cancelRoleSubmit').click(function(e){
-					$("#addEditRoleBlock").load('uploadRole.php');
-				});
-			</script>
-		</div>
-	</div>
 	</form>	
 <?php
 } else if (isset($_POST['submit'])){

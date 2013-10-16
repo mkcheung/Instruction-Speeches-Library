@@ -45,7 +45,7 @@ $manuals = Manual::find_all();
 			<input class="text" name="uploadManual_description" id="uploadManual_description"/></br>
 			<div style="color:red; font-size:12px;" class="validation"></div>
 			<input id="submit" type="hidden" name="submit"/></br>
-			<input id="manualAddSubmit" type="submit" name="submit"/></br>
+			<input id="manualAddSubmit" type="submit" name="submit" class="btn btn-primary pull-right"/></br>
 		</fieldset>
 	</form>
 </div>

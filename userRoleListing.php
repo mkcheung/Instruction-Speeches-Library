@@ -29,7 +29,7 @@ $userRoles = UserRole::find_all();
 		foreach($userRoles as $userRole){
 			echo "<tr>";
 			echo "<td>" . $userRole->role . "</td>";
-			echo "<td><a id=\"editRole-" . $userRole->id . "\" href=\"editRole.php?userRoleId=" . $userRole->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
+			echo "<td><a id=\"editRole-" . $userRole->id . "\" href=\"editRole.php?userRoleId=" . $userRole->id . "\"><button type=\"button\" class=\"btn btn-info\">Edit</button></a>" . ' ' . 
 			     "<a id=\"deleteRole-" . $userRole->id . "\" href=\"deleteRole.php?userRoleId=" . $userRole->id . "\"><button type=\"button\" class=\"btn btn-danger\">Delete</button>". "</td>";
 			echo "</tr>";
 		}

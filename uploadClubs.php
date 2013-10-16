@@ -88,7 +88,7 @@ if(isset($_POST['submit'])){
 						</div>
 					</div>
 				<input type="hidden" id="submit2" name="submit"/>
-				<input id="clubSubmit" type="submit" name="submit" value="submit"/>
+				<input id="clubSubmit" type="submit" name="submit" value="submit" class="btn btn-primary pull-right"/>
 			</fieldset>
 		</form>
 

@@ -103,7 +103,7 @@ if(isset($_POST['topicId'])){
 			<input type="hidden" id="video_temp_name" name="video_temp_name" value="<?=$topic->video_temp_name?>"/>
 			<div class="row-fluid">
 				<div class='span6'>
-					<input id="editTopicSubmit" name="submit" type="submit" value="submit"/>
+					<input id="editTopicSubmit" name="submit" type="submit" value="submit" class="btn btn-primary"/>
 					 <script>
 
 						$('#editTopicForm #editTopic_categories').change(function(){

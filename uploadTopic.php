@@ -132,7 +132,7 @@ if(isset($_POST['submit'])){
 		<input type="file" name="video[]"/>
 		<input type="file" name="video[]"/>
 		<input type="hidden" id="submit2" name="submit"/>
-		<input id ="topicSubmitButton" name="submit" type="submit" value="submit"/>
+		<input id ="topicSubmitButton" name="submit" type="submit" value="submit" class="btn btn-primary pull-right"/>
 		</fieldset>
 </form>
 

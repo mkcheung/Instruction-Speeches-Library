@@ -66,7 +66,7 @@ if(isset($_POST['submit'])){
 			<input class="text" id="uploadRole_role" type="text" name="uploadRole_role"/></br> 
 			<div style="color:red; font-size:12px;" class="validation"></div>
 			<input id="submit" name="submit" type="hidden"/></br>
-			<input id="userRoleSubmit" name="submit" type="submit"/></br>
+			<input id="userRoleSubmit" name="submit" type="submit" class="btn btn-primary pull-right"/></br>
 	</fieldset>
 </form>
 

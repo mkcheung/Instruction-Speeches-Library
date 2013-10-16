@@ -43,7 +43,7 @@ $clubs = Club::find_all();
 			<td><?=$club->state?></td>
 			<td><?=$club->zip?></td>
 			<td><?=$club->password?></td>
-			<td><a id="editClub-<?=$club->id?>" href="editClub.php?clubid=<?=$club->id?>"> <button type="button" class="btn btn-warning">Edit</button></a>
+			<td><a id="editClub-<?=$club->id?>" href="editClub.php?clubid=<?=$club->id?>"> <button type="button" class="btn btn-info">Edit</button></a>
 			     <a id="deleteClub-<?=$club->id?>" href="deleteClub.php?clubid=<?=$club->id?>"> <button type="button" class="btn btn-danger">Delete</button></td>
 			</tr>
 <?php

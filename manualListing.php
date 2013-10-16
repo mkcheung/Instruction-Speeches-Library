@@ -30,7 +30,7 @@ $manuals = Manual::find_all();
 		foreach($manuals as $manual){
 			echo "<tr>";
 			echo "<td>" . $manual->description . "</td>";
-			echo "<td><a id=\"editManual-" . $manual->id . "\" href=\"editManual.php?manualId=" . $manual->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
+			echo "<td><a id=\"editManual-" . $manual->id . "\" href=\"editManual.php?manualId=" . $manual->id . "\"><button type=\"button\" class=\"btn btn-info\">Edit</button></a>" . ' ' . 
 			     "<a id=\"deleteManual-" . $manual->id . "\" href=\"deleteManual.php?manualId=" . $manual->id . "\"><button type=\"button\" class=\"btn btn-danger\">Delete</button>". "</td>";
 			echo "</tr>";
 		}

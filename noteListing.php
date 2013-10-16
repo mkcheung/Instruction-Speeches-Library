@@ -40,7 +40,7 @@ $notes = Note::find_notes_by_topic_id($theTopicId);
 					<td><?=$note->note?></td>
 					<td><?=$note->begin_time?></td>
 					<td><?=$note->end_time?></td>			
-					<td><a id="editNote-<?=$note->id?>" href="editNote.php?noteId=<?=$note->id?>"><button type="button" class="btn btn-warning">Edit</button></a>
+					<td><a id="editNote-<?=$note->id?>" href="editNote.php?noteId=<?=$note->id?>"><button type="button" class="btn btn-info">Edit</button></a>
 			     <a id="deleteNote-<?=$note->id?>" href="deleteNote.php?noteId=<?=$note->id?>"><button type="button" class="btn btn-danger">Delete</button></td>
 					</tr>		
 		<?php	

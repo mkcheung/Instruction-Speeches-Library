@@ -38,7 +38,7 @@ $topics = Topic::find_all();
 					echo "<td>" . $category->category_title . "</td>";
 					echo "<td>" . $topic->topic_title . "</td>";
 					echo "<td>" . $topic->topic_date . "</td>";	
-					echo "<td><a id=\"editTopic-" . $topic->id . "\" href=\"editTopic.php?topicId=" . $topic->id . "\"><button type=\"button\" class=\"btn btn-warning\">Edit</button></a>" . ' ' . 
+					echo "<td><a id=\"editTopic-" . $topic->id . "\" href=\"editTopic.php?topicId=" . $topic->id . "\"><button type=\"button\" class=\"btn btn-info\">Edit</button></a>" . ' ' . 
 			     "<a id=\"deleteTopic-" . $topic->id . "\" href=\"deleteTopic.php?topicId=" . $topic->id . "\"><button type=\"button\" class=\"btn btn-danger\">Delete</button>". "</td>";
 					echo "</tr>";			
 			}

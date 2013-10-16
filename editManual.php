@@ -39,72 +39,73 @@ if(isset($_POST['manualId'])){
 		<input type="hidden" id="id" name="id" value="<?=$manual->id?>"/> </br>
 		<label for="editManual_description">Description:</label>
 		<input class="text" id="editManual_description" name="editManual_description" value="<?=$manual->description?>"/> </br>
-		<div style="color:red; font-size:12px;" class="validation"></div>
-		<div class="row-fluid">
+		<div style="color:red; font-size:12px;" class="validation"></div></br>
+		<div class="span12">
+			<div class="row-fluid">
+				<div class='span6'>
+					<input id="editManualSubmit" type="submit" name="submit" class="btn btn-primary"/>
+					<script>
 
-			<div class='span6'>
-				<input id="editManualSubmit" type="submit" name="submit" class="btn btn-primary"/>
-				<script>
+					$('#editManualForm input').blur(function(){
+						var id = $(this).attr('id');
+						var description = $(this).val();
+						switch(id){
+							case 'editManual_description' :
+								if(description.length == 0){
+									$(this).siblings('div[class="validation"]').text('A description is required.');
+								} else if ((jQuery.inArray(description, existingManuals) >= 0) && (currentManualDescription != existingManuals[jQuery.inArray(description, existingManuals)])) {
+									$(this).siblings('div[class="validation"]').text('This manual already exists.');
+								} else {
+									$(this).siblings('div[class="validation"]').text('');	
+								}
+								break;
+							default: 
+								break;
+						}
+					});
 
-				$('#editManualForm input').blur(function(){
-					var id = $(this).attr('id');
-					var description = $(this).val();
-					switch(id){
-						case 'editManual_description' :
-							if(description.length == 0){
-								$(this).siblings('div[class="validation"]').text('A description is required.');
-							} else if ((jQuery.inArray(description, existingManuals) >= 0) && (currentManualDescription != existingManuals[jQuery.inArray(description, existingManuals)])) {
-								$(this).siblings('div[class="validation"]').text('This manual already exists.');
+						$('#editManualSubmit').click(function(e){
+
+							e.preventDefault();
+							e.stopPropagation();
+
+							//alert('14');
+
+							var valid = '';
+							var errorDisplay = '' ;
+							var required = ' is required.';
+							var description = $('form[id="editManualForm"] #editManual_description').val();
+							if(description == ''){
+								valid += '<p>A description is required.</p>' ;
+							} else if ((jQuery.inArray(description, existingManuals) >= 0) && (currentManualDescription != existingManuals[jQuery.inArray(description, existingManuals)])){
+								valid += '<p> This manual already exists. </p>';
+								$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('This manual already exists.');
 							} else {
-								$(this).siblings('div[class="validation"]').text('');	
+								$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('');	
 							}
-							break;
-						default: 
-							break;
-					}
-				});
 
-					$('#editManualSubmit').click(function(e){
-
-						e.preventDefault();
-						e.stopPropagation();
-
-						//alert('14');
-
-						var valid = '';
-						var errorDisplay = '' ;
-						var required = ' is required.';
-						var description = $('form[id="editManualForm"] #editManual_description').val();
-						if(description == ''){
-							valid += '<p>A description is required.</p>' ;
-						} else if ((jQuery.inArray(description, existingManuals) >= 0) && (currentManualDescription != existingManuals[jQuery.inArray(description, existingManuals)])){
-							valid += '<p> This manual already exists. </p>';
-							$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('This manual already exists.');
-						} else {
-							$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('');	
-						}
-
-						if(valid.length > 0){
-							$('div[class="alert alert-error"]').remove();
-							$('div[class="alert alert-success"]').remove();
-							errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-							$("#registerErrorMessages").append(errorDisplay);
-							$('#registerErrorMessages').removeAttr('style');
-							$('#registerErrorMessages').fadeOut(2000);
-						} else {
-							editManualFormData = $('form[id="editManualForm"]').serialize();
-							submitManualEditData(editManualFormData);
-						}
-					});
-				</script>
-			</div>
-			<div class='span6'>
-				<button id="cancelManualSubmit" class='btn btn-primary' type='button'>Cancel</button>
-				<script>
-					$('#cancelManualSubmit').click(function(e){
-						$("#addEditManualBlock").load('uploadManual.php');
-					});
-				</script>
+							if(valid.length > 0){
+								$('div[class="alert alert-error"]').remove();
+								$('div[class="alert alert-success"]').remove();
+								errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+								$("#registerErrorMessages").append(errorDisplay);
+								$('#registerErrorMessages').removeAttr('style');
+								$('#registerErrorMessages').fadeOut(2000);
+							} else {
+								editManualFormData = $('form[id="editManualForm"]').serialize();
+								submitManualEditData(editManualFormData);
+							}
+						});
+					</script>
+				</div>
+				<div class='span6'>
+					<button id="cancelManualSubmit" class='btn btn-primary' type='button'>Cancel</button>
+					<script>
+						$('#cancelManualSubmit').click(function(e){
+							$("#addEditManualBlock").load('uploadManual.php');
+						});
+					</script>
+				</div>
 			</div>
 		</div>
 	</form>	
