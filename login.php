@@ -7,14 +7,17 @@ require_once("userrole.php");
 require_once("Club.php");
 require_once("function.php");
 require_once("Session.php");
+require_once("EmailInterface.php");
 include_once("header.php");
 
 $userRoles = UserRole::find_all();
 $clubs = Club::find_all();
+// $mail = new MailInterface();
 $required_fields = array('username','password');
-$required_fields_register = array('username','first_name','last_name','hashed_password', 'email', 'role', 'club');
+$required_fields_registers = array('username','first_name','last_name','hashed_password', 'email', 'role', 'club');
 $errors = array();
 ?>
+<script src='validator.js'></script>
 <script>
 	var fieldsForValidation = Array('usernameRegistration','first_name','last_name','hashed_password', 'email', 'role', 'clubPassword');
 </script>
@@ -39,7 +42,7 @@ if(isset($_POST['login'])){
 	$un = mysql_real_escape_string($_POST['username']);
 	$pw = mysql_real_escape_string($_POST['password']);
 
-	$pw = sha1('X101' . $pw . 'X101');
+	// $pw = sha1('X101' . $pw . 'X101');
 
 	$user = User::authenticate($un, $pw);
 
@@ -77,10 +80,12 @@ if(isset($_POST['login'])){
 		$r = mysql_real_escape_string(htmlspecialchars($_POST['role']));
 		$c = mysql_real_escape_string(htmlspecialchars($_POST['club']));
 
-
-		$newUser = User::register($un, $pw, $fn, $ln, $e, $r, $c);
+		$newUser = User::register($pw, $un, $fn, $ln, $e, $r, $c);
 		if($newUser->save()){
 			//redirect_to("redirect2.php");
+			$newUserFullName = $fn.' '.$ln;
+			$message = "You have successfully registered!";
+			// $mail->sendTo($e, $newUserFullName, "Welcome to the TM Cove Library!", $message);
 		} else {
 			die("Cannot register user. " . mysql_error());
 		}
@@ -303,138 +308,154 @@ if(isset($_POST['login'])){
 														break;
 												}
 											});
-
+											$('#registerSubmit').click(function(e){
+												e.preventDefault();
+												e.stopPropagation();
+												validatorInstance.collectUserData(validClubs, clubAndPassword);
+											});
+											/*
 											$('#registerSubmit').click(function(e){
 												e.preventDefault();
 												e.stopPropagation();
 
-												// alert('5');
-
+												var userFields = {};
 												var valid = '';
 												var errorDisplay = '' ;
 												var required = ' is required.';
-												var username = $('form[id="userRegistrationForm"] #usernameRegistration').val();
-												var firstname = $('form[id="userRegistrationForm"] #first_name').val();
-												var lastname = $('form[id="userRegistrationForm"] #last_name').val();
-												var email = $('form[id="userRegistrationForm"] #email').val();
-												var password = $('form[id="userRegistrationForm"] #hashed_password').val();
-												var passwordConfirmation = $('form[id="userRegistrationForm"] #passwordConfirmation').val();
-												var club = $('form[id="userRegistrationForm"] #club').val();
-												var clubPassword = $('form[id="userRegistrationForm"] #clubPassword').val();
-												var role = $('form[id="userRegistrationForm"] #role').val();
-												var emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;
 
-												if(username == ''){
-													valid += '<p> Username is required. </p>';
-													$('form[id="userRegistrationForm"] #usernameRegistration').siblings('div[class="validation"]').text('User Name is required.');
-												}
+												userFields.username = $('form[id="userRegistrationForm"] #usernameRegistration').val();
+												userFields.firstname = $('form[id="userRegistrationForm"] #first_name').val();
+												userFields.lastname = $('form[id="userRegistrationForm"] #last_name').val();
+												userFields.email = $('form[id="userRegistrationForm"] #email').val();
+												userFields.password = $('form[id="userRegistrationForm"] #hashed_password').val();
+												userFields.passwordConfirmation = $('form[id="userRegistrationForm"] #passwordConfirmation').val();
+												userFields.club = $('form[id="userRegistrationForm"] #club').val();
+												userFields.clubPassword = $('form[id="userRegistrationForm"] #clubPassword').val();
+												userFields.role = $('form[id="userRegistrationForm"] #role').val();
+												
+												// var username = $('form[id="userRegistrationForm"] #usernameRegistration').val();
+												// var firstname = $('form[id="userRegistrationForm"] #first_name').val();
+												// var lastname = $('form[id="userRegistrationForm"] #last_name').val();
+												// var email = $('form[id="userRegistrationForm"] #email').val();
+												// var password = $('form[id="userRegistrationForm"] #hashed_password').val();
+												// var passwordConfirmation = $('form[id="userRegistrationForm"] #passwordConfirmation').val();
+												// var club = $('form[id="userRegistrationForm"] #club').val();
+												// var clubPassword = $('form[id="userRegistrationForm"] #clubPassword').val();
+												// var role = $('form[id="userRegistrationForm"] #role').val();
+												// var emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;
 
-												if(firstname == ''){
-													valid += '<p> A First Name is required. </p>';
-													$('form[id="userRegistrationForm"] #first_name').siblings('div[class="validation"]').text('First name is required.');
+												validatorInstance.validateUsers(userFields, validClubs, clubAndPassword);
+												// if(username == ''){
+												// 	valid += '<p> Username is required. </p>';
+												// 	$('form[id="userRegistrationForm"] #usernameRegistration').siblings('div[class="validation"]').text('User Name is required.');
+												// }
 
-												}
+												// if(firstname == ''){
+												// 	valid += '<p> A First Name is required. </p>';
+												// 	$('form[id="userRegistrationForm"] #first_name').siblings('div[class="validation"]').text('First name is required.');
 
-												if(lastname == ''){
-													valid += '<p> A Last Name is required. </p>';
-													$('form[id="userRegistrationForm"] #last_name').siblings('div[class="validation"]').text('Last name is required.');
-												}
+												// }
 
-												if(email == ''){
-													valid += '<p> Email is required. </p>';
-													$('form[id="userRegistrationForm"] #email').siblings('div[class="validation"]').text('Email is required.');
-												} else if ((email.length > 0) && (!emailPattern.test(email))){
-													$('form[id="userRegistrationForm"] #email').siblings('div[class="validation"]').text('Proper email format required.');
-												}
+												// if(lastname == ''){
+												// 	valid += '<p> A Last Name is required. </p>';
+												// 	$('form[id="userRegistrationForm"] #last_name').siblings('div[class="validation"]').text('Last name is required.');
+												// }
 
-												if(password == ''){
-													valid += '<p> Password is required. </p>';
-													$('form[id="userRegistrationForm"] #hashed_password').siblings('div[class="validation"]').text('Password is required.');
-												} else if (password !== passwordConfirmation){
-													valid += '<p> Password must match confirmation. </p>';
-													$('form[id="userRegistrationForm"] #hashed_password').siblings('div[class="validation"]').text('Password must match confirmation.');
-												} else {
-													$('form[id="userRegistrationForm"] #hashed_password').siblings('div[class="validation"]').text('');													
-												}
+												// if(email == ''){
+												// 	valid += '<p> Email is required. </p>';
+												// 	$('form[id="userRegistrationForm"] #email').siblings('div[class="validation"]').text('Email is required.');
+												// } else if ((email.length > 0) && (!emailPattern.test(email))){
+												// 	$('form[id="userRegistrationForm"] #email').siblings('div[class="validation"]').text('Proper email format required.');
+												// }
 
-												if(passwordConfirmation == ''){
-													valid += '<p> Password Confirmation is required. </p>';
-												}	
+												// if(password == ''){
+												// 	valid += '<p> Password is required. </p>';
+												// 	$('form[id="userRegistrationForm"] #hashed_password').siblings('div[class="validation"]').text('Password is required.');
+												// } else if (password !== passwordConfirmation){
+												// 	valid += '<p> Password must match confirmation. </p>';
+												// 	$('form[id="userRegistrationForm"] #hashed_password').siblings('div[class="validation"]').text('Password must match confirmation.');
+												// } else {
+												// 	$('form[id="userRegistrationForm"] #hashed_password').siblings('div[class="validation"]').text('');													
+												// }
 
-												if(password != passwordConfirmation){
-													valid += '<p> Password and Password Confirmation don\'t match.</p>';
-												}	
+												// if(passwordConfirmation == ''){
+												// 	valid += '<p> Password Confirmation is required. </p>';
+												// }	
 
-												if(club == ''){
-													valid += '<p> A club is required. </p>';
-												}	
+												// if(password != passwordConfirmation){
+												// 	valid += '<p> Password and Password Confirmation don\'t match.</p>';
+												// }	
 
-												if(jQuery.inArray(club, validClubs) == -1){
-													valid += '<p> Invalid club selected. </p>';
-												} else {
-													passwordIndex = jQuery.inArray(club, validClubs);
-													clubPasswordVerification = clubAndPassword[passwordIndex];
-												}
+												// if(club == ''){
+												// 	valid += '<p> A club is required. </p>';
+												// }	
 
-												if(clubPassword == ''){
-													valid += '<p> Please enter a club password. </p>';
-												}
+												// if(jQuery.inArray(club, validClubs) == -1){
+												// 	valid += '<p> Invalid club selected. </p>';
+												// } else {
+												// 	passwordIndex = jQuery.inArray(club, validClubs);
+												// 	clubPasswordVerification = clubAndPassword[passwordIndex];
+												// }
 
-												if(clubPassword != clubPasswordVerification){
-													valid += '<p> Invalid club password. </p>';
-													$('form[id="userRegistrationForm"] #clubPassword').siblings('div[class="validation"]').text('Club password is required.');
-												}
+												// if(clubPassword == ''){
+												// 	valid += '<p> Please enter a club password. </p>';
+												// }
 
-												if(role == ''){
-													valid += '<p> A role is required. </p>';
-													$('form[id="userRegistrationForm"] #role').siblings('div[class="validation"]').text('A role is required.');
+												// if(clubPassword != clubPasswordVerification){
+												// 	valid += '<p> Invalid club password. </p>';
+												// 	$('form[id="userRegistrationForm"] #clubPassword').siblings('div[class="validation"]').text('Club password is required.');
+												// }
 
-												}		
+												// if(role == ''){
+												// 	valid += '<p> A role is required. </p>';
+												// 	$('form[id="userRegistrationForm"] #role').siblings('div[class="validation"]').text('A role is required.');
 
-												if((role < 1) || (role > 4)){
-													valid += '<p> Please select a proper user role. </p>';
-												}
+												// }		
 
-												if(valid.length > 0){
-													$('div[class="alert alert-error"]').remove();
-													$('div[class="alert alert-success"]').remove();
-													errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-													$("#registerErrorMessages").append(errorDisplay);
-													$("#registerErrorMessages").removeAttr('style');
-													$("#registerErrorMessages").fadeOut(2000);
-												} else {
-													userFormData = $('form[id="userRegistrationForm"]').serialize();
-													submitUserData(userFormData);
-												}
+												// if((role < 1) || (role > 4)){
+												// 	valid += '<p> Please select a proper user role. </p>';
+												// }
+
+												// if(valid.length > 0){
+												// 	$('div[class="alert alert-error"]').remove();
+												// 	$('div[class="alert alert-success"]').remove();
+												// 	errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+												// 	$("#registerErrorMessages").append(errorDisplay);
+												// 	$("#registerErrorMessages").removeAttr('style');
+												// 	$("#registerErrorMessages").fadeOut(2000);
+												// } else {
+												// 	userFormData = $('form[id="userRegistrationForm"]').serialize();
+												// 	submitUserData(userFormData);
+												// }
 											});
+											*/
+											// function submitUserData(formData){
+											// 	$.ajax({
+											// 		type:'POST',
+											// 		url: 'login.php',
+											// 		data:formData,
+											// 		cache: false,
+											// 		timeout:7000,
+											// 		processData:true,
+											// 		success: function(data){
+											// 			$('div[class="alert alert-error"]').remove();
+											// 			$('div[class="alert alert-success"]').remove();
+											// 			$('#registerErrorMessages').append('<div class="alert alert-success">User registered!</div>');
+											// 			$('#registerErrorMessages').removeAttr('style');
+											// 			$('#registerErrorMessages').fadeOut(2000);
 
-											function submitUserData(formData){
-												$.ajax({
-													type:'POST',
-													url: 'login.php',
-													data:formData,
-													cache: false,
-													timeout:7000,
-													processData:true,
-													success: function(data){
-														$('div[class="alert alert-error"]').remove();
-														$('div[class="alert alert-success"]').remove();
-														$('#registerErrorMessages').append('<div class="alert alert-success">User registered!</div>');
-														$('#registerErrorMessages').removeAttr('style');
-														$('#registerErrorMessages').fadeOut(2000);
-
-													},
-													error: function(XMLHttpRequest, textStatus, errorThrown){
-														$('#registerErrorMessages div[class="alert alert-error"]').remove();
-														$("#registerErrorMessages").append('<div class="alert alert-error">The user could not be registered.</div>');
-														$("#registerErrorMessages").removeAttr('style');
-														$("#registerErrorMessages").fadeOut(2000);
-													},
-													complete: function(XMLHttpRequest, status){
-														$('form[id="userRegistrationForm"]')[0].reset();
-													}
-												});
-											};
+											// 		},
+											// 		error: function(XMLHttpRequest, textStatus, errorThrown){
+											// 			$('#registerErrorMessages div[class="alert alert-error"]').remove();
+											// 			$("#registerErrorMessages").append('<div class="alert alert-error">The user could not be registered.</div>');
+											// 			$("#registerErrorMessages").removeAttr('style');
+											// 			$("#registerErrorMessages").fadeOut(2000);
+											// 		},
+											// 		complete: function(XMLHttpRequest, status){
+											// 			$('form[id="userRegistrationForm"]')[0].reset();
+											// 		}
+											// 	});
+											// };
 									</script>
 
 									</div>

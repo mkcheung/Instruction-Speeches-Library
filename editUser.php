@@ -47,6 +47,7 @@ if(isset($_POST['userid'])){
 		}
 	?>
 </script>
+<script src='validator.js'></script>
 		<div id="registration">
 			<form action="editUser.php" method="post" id="editUserForm">
 				<fieldset>
@@ -239,140 +240,160 @@ if(isset($_POST['userid'])){
 												break;
 										}
 									});
-
+									$('#editUserSubmit').click(function(e){
+										e.preventDefault();
+										e.stopPropagation();
+										// console.log(validClubs+' '+clubAndPassword+' '+currentUserName+' '+currentEmail+' '+editUsers_existingUserUserNames+' '+editUsers_existingUserEmails);
+										validatorInstance.collectUserDataForEditing(validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails);
+									});
+									/*
 									$('#editUserSubmit').click(function(e){
 										e.preventDefault();
 										e.stopPropagation();
 
-										//alert('7');
-
+										var editUserFields = {};
 										var valid = '';
 										var errorDisplay = '' ;
 										var required = ' is required.';
-										var username = $('form[id="editUserForm"] #editUserForm_username').val();
-										var firstname = $('form[id="editUserForm"] #editUserForm_first_name').val();
-										var lastname = $('form[id="editUserForm"] #editUserForm_last_name').val();
-										var email = $('form[id="editUserForm"] #editUserForm_email').val();
-										var emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;								
-										var password = $('form[id="editUserForm"] #editUserForm_hashed_password').val();
-										var passwordConfirmation = $('form[id="editUserForm"] #editUserForm_passwordConfirmation').val();
-										var club = $('form[id="editUserForm"] #editUserForm_club').val();
-										var clubPassword = $('form[id="editUserForm"] #editUserForm_clubPassword').val();
-										var role = $('form[id="editUserForm"] #editUserForm_role').val();
 
+										editUserFields.username = $('form[id="editUserForm"] #editUserForm_username').val();
+										editUserFields.firstname = $('form[id="editUserForm"] #editUserForm_first_name').val();
+										editUserFields.lastname = $('form[id="editUserForm"] #editUserForm_last_name').val();
+										editUserFields.email = $('form[id="editUserForm"] #editUserForm_email').val();
+										editUserFields.emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;								
+										editUserFields.password = $('form[id="editUserForm"] #editUserForm_hashed_password').val();
+										editUserFields.passwordConfirmation = $('form[id="editUserForm"] #editUserForm_passwordConfirmation').val();
+										editUserFields.club = $('form[id="editUserForm"] #editUserForm_club').val();
+										editUserFields.clubPassword = $('form[id="editUserForm"] #editUserForm_clubPassword').val();
+										editUserFields.role = $('form[id="editUserForm"] #editUserForm_role').val();
 
+										// var valid = '';
+										// var errorDisplay = '' ;
+										// var required = ' is required.';
+										// var username = $('form[id="editUserForm"] #editUserForm_username').val();
+										// var firstname = $('form[id="editUserForm"] #editUserForm_first_name').val();
+										// var lastname = $('form[id="editUserForm"] #editUserForm_last_name').val();
+										// var email = $('form[id="editUserForm"] #editUserForm_email').val();
+										// var emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;								
+										// var password = $('form[id="editUserForm"] #editUserForm_hashed_password').val();
+										// var passwordConfirmation = $('form[id="editUserForm"] #editUserForm_passwordConfirmation').val();
+										// var club = $('form[id="editUserForm"] #editUserForm_club').val();
+										// var clubPassword = $('form[id="editUserForm"] #editUserForm_clubPassword').val();
+										// var role = $('form[id="editUserForm"] #editUserForm_role').val();
 
-										if(username == ''){
-											valid += '<p> Username is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_username').next('div[class="validation"]').text('Username is required.');
-										} else if ((jQuery.inArray(username, editUsers_existingUserUserNames) >= 0) && (currentUserName != editUsers_existingUserUserNames[(jQuery.inArray(username, editUsers_existingUserUserNames))])) {
-											valid += '<p> This user name has been taken. </p>';
-											$('#editUserForm_username').next('div[class="validation"]').text('This user name has been taken.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_username').next('div[class="validation"]').text('');	
-										}
+										validatorInstance.validateUsers(editUserFields, validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails);
 
-										if(firstname == ''){
-											valid += '<p> A First Name is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_first_name').next('div[class="validation"]').text('A First Name is required.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_first_name').next('div[class="validation"]').text('');	
-										}
+										// if(username == ''){
+										// 	valid += '<p> Username is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_username').next('div[class="validation"]').text('Username is required.');
+										// } else if ((jQuery.inArray(username, editUsers_existingUserUserNames) >= 0) && (currentUserName != editUsers_existingUserUserNames[(jQuery.inArray(username, editUsers_existingUserUserNames))])) {
+										// 	valid += '<p> This user name has been taken. </p>';
+										// 	$('#editUserForm_username').next('div[class="validation"]').text('This user name has been taken.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_username').next('div[class="validation"]').text('');	
+										// }
 
-										if(lastname == ''){
-											valid += '<p> A Last Name is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_last_name').next('div[class="validation"]').text('A Last Name is required.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_last_name').next('div[class="validation"]').text('');	
-										}
+										// if(firstname == ''){
+										// 	valid += '<p> A First Name is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_first_name').next('div[class="validation"]').text('A First Name is required.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_first_name').next('div[class="validation"]').text('');	
+										// }
 
-										if(email == ''){
-											valid += '<p> Email is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_email').next('div[class="validation"]').text('Email is required.');
-										} else if ((email.length > 0) && (!emailPattern.test(email))){
-											valid += '<p> Proper email format required. </p>';
-											$('#editUserForm_email').next('div[class="validation"]').text('Proper email format required.');
-										} else if ((jQuery.inArray(email, editUsers_existingUserEmails) >= 0) && (currentEmail != editUsers_existingUserEmails[(jQuery.inArray(email, editUsers_existingUserEmails))])) {
-											valid += '<p> This email has been taken. </p>';
-											$('form[id="editUserForm"] #editUserForm_email').next('div[class="validation"]').text('This email has been taken.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_email').next('div[class="validation"]').text('');	
-										}
+										// if(lastname == ''){
+										// 	valid += '<p> A Last Name is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_last_name').next('div[class="validation"]').text('A Last Name is required.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_last_name').next('div[class="validation"]').text('');	
+										// }
 
-										if(password == ''){
-											valid += '<p> Password is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_hashed_password').next('div[class="validation"]').text('Password is required.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_hashed_password').next('div[class="validation"]').text('');	
-										}
+										// if(email == ''){
+										// 	valid += '<p> Email is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_email').next('div[class="validation"]').text('Email is required.');
+										// } else if ((email.length > 0) && (!emailPattern.test(email))){
+										// 	valid += '<p> Proper email format required. </p>';
+										// 	$('#editUserForm_email').next('div[class="validation"]').text('Proper email format required.');
+										// } else if ((jQuery.inArray(email, editUsers_existingUserEmails) >= 0) && (currentEmail != editUsers_existingUserEmails[(jQuery.inArray(email, editUsers_existingUserEmails))])) {
+										// 	valid += '<p> This email has been taken. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_email').next('div[class="validation"]').text('This email has been taken.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_email').next('div[class="validation"]').text('');	
+										// }
 
-										if(passwordConfirmation == ''){
-											valid += '<p> Password Confirmation is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_name').next('div[class="validation"]').text('');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_name').next('div[class="validation"]').text('');	
-										}
+										// if(password == ''){
+										// 	valid += '<p> Password is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_hashed_password').next('div[class="validation"]').text('Password is required.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_hashed_password').next('div[class="validation"]').text('');	
+										// }
 
-										if(password != passwordConfirmation){
-											valid += '<p> Password and Password Confirmation don\'t match.</p>';
-											$('form[id="editUserForm"] #editUserForm_passwordConfirmation').next('div[class="validation"]').text('Password and Password Confirmation don\'t match.');	
-										} else {
-											$('form[id="editUserForm"] #editUserForm_passwordConfirmation').next('div[class="validation"]').text('');	
-										}	
+										// if(passwordConfirmation == ''){
+										// 	valid += '<p> Password Confirmation is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_name').next('div[class="validation"]').text('');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_name').next('div[class="validation"]').text('');	
+										// }
 
-										if(club == ''){
-											valid += '<p> A club is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('A club is required.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('');	
-										}
+										// if(password != passwordConfirmation){
+										// 	valid += '<p> Password and Password Confirmation don\'t match.</p>';
+										// 	$('form[id="editUserForm"] #editUserForm_passwordConfirmation').next('div[class="validation"]').text('Password and Password Confirmation don\'t match.');	
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_passwordConfirmation').next('div[class="validation"]').text('');	
+										// }	
 
-										if(jQuery.inArray(club, validClubs) == -1){
-											valid += '<p> Invalid club selected. </p>';
-											$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('Invalid club selected.');
-										} else {
-											passwordIndex = jQuery.inArray(club, validClubs);
-											clubPasswordVerification = clubAndPassword[passwordIndex];
-											$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('');	
-										}
+										// if(club == ''){
+										// 	valid += '<p> A club is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('A club is required.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('');	
+										// }
 
-										if(clubPassword == ''){
-											valid += '<p> Please enter a club password. </p>';
-											$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('Please enter a club password.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('');	
-										}
+										// if(jQuery.inArray(club, validClubs) == -1){
+										// 	valid += '<p> Invalid club selected. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('Invalid club selected.');
+										// } else {
+										// 	passwordIndex = jQuery.inArray(club, validClubs);
+										// 	clubPasswordVerification = clubAndPassword[passwordIndex];
+										// 	$('form[id="editUserForm"] #editUserForm_club').next('div[class="validation"]').text('');	
+										// }
 
-										if(clubPassword != clubPasswordVerification){
-											valid += '<p> Invalid club password. </p>';
-											$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('Invalid club password.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('');	
-										}
+										// if(clubPassword == ''){
+										// 	valid += '<p> Please enter a club password. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('Please enter a club password.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('');	
+										// }
 
-										if(role == ''){
-											valid += '<p> A role is required. </p>';
-											$('form[id="editUserForm"] #editUserForm_role').next('div[class="validation"]').text('A role is required.');
-										} else if((role < 1) || (role > 4)){
-											valid += '<p> Please select a proper user role. </p>';
-											$('form[id="editUserForm"] #editUserForm_role').next('div[class="validation"]').text('Please select a proper user role.');
-										} else {
-											$('form[id="editUserForm"] #editUserForm_role').next('div[class="validation"]').text('');	
-										}	
+										// if(clubPassword != clubPasswordVerification){
+										// 	valid += '<p> Invalid club password. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('Invalid club password.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_clubPassword').next('div[class="validation"]').text('');	
+										// }
+
+										// if(role == ''){
+										// 	valid += '<p> A role is required. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_role').next('div[class="validation"]').text('A role is required.');
+										// } else if((role < 1) || (role > 4)){
+										// 	valid += '<p> Please select a proper user role. </p>';
+										// 	$('form[id="editUserForm"] #editUserForm_role').next('div[class="validation"]').text('Please select a proper user role.');
+										// } else {
+										// 	$('form[id="editUserForm"] #editUserForm_role').next('div[class="validation"]').text('');	
+										// }	
 										
-										if(valid.length > 0){
-											$('div[class="alert alert-error"]').remove();
-											$('div[class="alert alert-success"]').remove();
-											errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-											$("#registerErrorMessages").append(errorDisplay);
-											$('#registerErrorMessages').removeAttr('style');
-											$('#registerErrorMessages').fadeOut(2000);
-										} else {
-											editFormData = $('form[id="editUserForm"]').serialize();
-											// alert(editFormData);
-											submitUserEditData(editFormData);
-										}
-									});
+										// if(valid.length > 0){
+										// 	$('div[class="alert alert-error"]').remove();
+										// 	$('div[class="alert alert-success"]').remove();
+										// 	errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+										// 	$("#registerErrorMessages").append(errorDisplay);
+										// 	$('#registerErrorMessages').removeAttr('style');
+										// 	$('#registerErrorMessages').fadeOut(2000);
+										// } else {
+										// 	editFormData = $('form[id="editUserForm"]').serialize();
+										// 	// alert(editFormData);
+										// 	submitUserEditData(editFormData);
+										// }
+									});*/
 								</script>
 							</div>
 							<div class='span6'>
