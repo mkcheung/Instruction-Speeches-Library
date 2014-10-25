@@ -58,6 +58,8 @@ if(isset($_POST['submit'])){
 ?>
 </script>
 
+<script src='validator.js'></script>
+
 
 <form id="userRoleInputForm" action="userRoleInput.php" method="post">
 	<fieldset>
@@ -95,65 +97,6 @@ if(isset($_POST['submit'])){
 	$('#addEditRoleBlock').on("click","#userRoleSubmit", function(e){
 		e.preventDefault();
 		e.stopPropagation();
-
-
-//		alert('12');
-
-		var valid = '';
-		var errorDisplay = '' ;
-		var required = ' is required.';
-		var role = $('form[id="userRoleInputForm"] #uploadRole_role').val();
-
-		if(role == ''){
-			$('form[id="userRoleInputForm"] #uploadRole_role').siblings('div[class="validation"]').text('A role is required.');
-			valid += '<p> A role is required. </p>';
-		} else if (jQuery.inArray(role, existingRoles) >= 0) {
-			$('form[id="userRoleInputForm"] #uploadRole_role').siblings('div[class="validation"]').text('This role already exists.');
-			valid += '<p> This role already exists. </p>';
-		} else {
-			$('form[id="userRoleInputForm"] #uploadRole_role').siblings('div[class="validation"]').text('');	
-		}	
-
-		if(valid.length > 0){
-			$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
-			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-			$('#registerErrorMessages').append(errorDisplay);
-			$('#registerErrorMessages').removeAttr('style');
-			$('#registerErrorMessages').fadeOut(2000);
-		} else {
-			registrationFormData = $('form[id="userRoleInputForm"]').serialize();
-			submitUserRoleData(registrationFormData);
-		}
+		validatorInstance.collectRoleData(existingRoles);
 	});
-
-	
-	function submitUserRoleData(formData){
-		$.ajax({
-			type:'POST',
-			url: 'uploadRole.php',
-			data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				$('div[class="alert alert-error"]').remove();
-				$('div[class="alert alert-success"]').remove();
-				$('#registerErrorMessages').append('<div class="alert alert-success">User Role Added!</div>');
-				$('#registerErrorMessages').removeAttr('style');
-				$('#registerErrorMessages').fadeOut(2000);
-				$('#userRoleListingBlock').load('userRoleListing.php');
-
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">User Role could not be added!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="userRoleInputForm"]')[0].reset();
-			}
-		});
-	};
 </script>

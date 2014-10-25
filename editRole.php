@@ -34,6 +34,7 @@ if(isset($_POST['userRoleId'])){
 	}
 ?>
 </script>
+<script src='validator.js'></script>
 
 	<!-- <div id="registerErrorMessages"></div> -->
 	<form action="editRole.php" method="post" id="editRoleForm">
@@ -50,7 +51,6 @@ if(isset($_POST['userRoleId'])){
 					<script>
 
 						$('#editRoleForm input').blur(function(e){
-							console.log("editRole blur called:");
 							var id = $(this).attr('id');
 							var role = $(this).val();
 							switch(id){
@@ -71,34 +71,7 @@ if(isset($_POST['userRoleId'])){
 						$('#editRoleSubmit').click(function(e){
 							e.preventDefault();
 							e.stopPropagation();
-
-							console.log("editRole click called:");
-							//alert('14');
-
-							var valid = '';
-							var errorDisplay = '' ;
-							var required = ' is required.';
-							var role = $('form[id="editRoleForm"] #editRole_role').val();
-							if(role == ''){
-								valid += '<p>A role is required.</p>' ;
-							} else if ((jQuery.inArray(role, existingRoles) >= 0) && (currentRole != existingRoles[(jQuery.inArray(role, existingRoles))])) {
-								valid += '<p>This role already exists.</p>' ;
-								$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('This role already exists.');
-							} else {
-								$('form[id="editRoleForm"] #editRole_role').siblings('div[class="validation"]').text('');	
-							}	
-
-							if(valid.length > 0){
-								$('div[class="alert alert-error"]').remove();
-								$('div[class="alert alert-success"]').remove();
-								errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-								$('#registerErrorMessages').append(errorDisplay);
-								$('#registerErrorMessages').removeAttr('style');
-								$('#registerErrorMessages').fadeOut(2000);
-							} else {
-								editRoleFormData = $('form[id="editRoleForm"]').serialize();
-								submitUserRoleEditData(editRoleFormData);
-							}
+							validatorInstance.collectRoleDataForEditing(existingRoles,currentRole);
 						});
 					</script>
 				</div>
@@ -142,36 +115,3 @@ if(isset($_POST['userRoleId'])){
 }
 
 ?>
-
-<script>
-	function submitUserRoleEditData(formData){
-		$.ajax({
-			type:'POST',
-			url: 'editRole.php',
-			data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				console.log('submitUserRoleEditData success called');
-				$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">User Role modified!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-				$("#roles").load("userRoleALE.php");
-
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				console.log('submitUserRoleEditData error called');
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">User Role could not be modified.</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="editRoleForm"]')[0].reset();
-			}
-		});
-	};
-</script>

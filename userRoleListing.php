@@ -77,7 +77,7 @@ $userRoles = UserRole::find_all();
 				$("#registerErrorMessages").append('<div class="alert alert-success">User Role Deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#userRoleListingBlock").load("userRoleListing.php");
+				$("#userRoleListingBlock").load("userRoleALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){
