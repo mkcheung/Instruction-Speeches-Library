@@ -36,6 +36,7 @@ $manuals = Manual::find_all();
 	}
 ?>
 </script>
+<script src='validator.js'></script>
 
 <div id="manualAdd">
 	<form id="manualAddForm" action="uploadManual.php" method="post">
@@ -73,36 +74,38 @@ $manuals = Manual::find_all();
 	$('#addEditManualBlock').on('click', '#manualAddSubmit', function(e){
 		e.preventDefault();
 		e.stopPropagation();
+		validatorInstance.collectManualData(existingManuals);
+
 		// alert('inside addManualBlock');
 
-		var valid = '';
-		var errorDisplay = '';
-		var required = ' is required.';
+		// var valid = '';
+		// var errorDisplay = '';
+		// var required = ' is required.';
 
 
-		description = $('form[id="manualAddForm"] #uploadManual_description').val();
+		// description = $('form[id="manualAddForm"] #uploadManual_description').val();
 
-		if(description == ''){
-			valid += '<p> A description is required. </p>';
-			$('form[id="manualAddForm"] #uploadManual_description').siblings('div[class="validation"]').text('A description is required.');
-		} else if (jQuery.inArray(description, existingManuals) >= 0) {
-			valid += '<p> This manual already exists. </p>';
-			$('form[id="manualAddForm"] #uploadManual_description').siblings('div[class="validation"]').text('This manual already exists.');
-		} else {
-			$('form[id="manualAddForm"] #uploadManual_description').siblings('div[class="validation"]').text('');
-		}
+		// if(description == ''){
+		// 	valid += '<p> A description is required. </p>';
+		// 	$('form[id="manualAddForm"] #uploadManual_description').siblings('div[class="validation"]').text('A description is required.');
+		// } else if (jQuery.inArray(description, existingManuals) >= 0) {
+		// 	valid += '<p> This manual already exists. </p>';
+		// 	$('form[id="manualAddForm"] #uploadManual_description').siblings('div[class="validation"]').text('This manual already exists.');
+		// } else {
+		// 	$('form[id="manualAddForm"] #uploadManual_description').siblings('div[class="validation"]').text('');
+		// }
 
-		if(valid.length > 0){
-			$('div[class="alert alert-error"]').remove();
-			$('div[class="alert alert-success"]').remove();
-			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-			$("#registerErrorMessages").append(errorDisplay);
-			$("#registerErrorMessages").removeAttr('style');
-			$("#registerErrorMessages").fadeOut(2000);
-		} else {
-			manualAddFormData = $('form[id="manualAddForm"]').serialize();
-			submitManualData(manualAddFormData);
-		}
+		// if(valid.length > 0){
+		// 	$('div[class="alert alert-error"]').remove();
+		// 	$('div[class="alert alert-success"]').remove();
+		// 	errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+		// 	$("#registerErrorMessages").append(errorDisplay);
+		// 	$("#registerErrorMessages").removeAttr('style');
+		// 	$("#registerErrorMessages").fadeOut(2000);
+		// } else {
+		// 	manualAddFormData = $('form[id="manualAddForm"]').serialize();
+		// 	submitManualData(manualAddFormData);
+		// }
 	});
 
 	

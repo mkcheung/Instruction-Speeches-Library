@@ -32,6 +32,7 @@ if(isset($_POST['manualId'])){
 	}
 ?>
 </script>
+<script src='validator.js'></script>
 	<div id="registerErrorMessages"></div>
 	<form action="editManual.php" method="post" id="editManualForm">
 		<legend class="formTitle">Edit Manual:</legend>
@@ -68,33 +69,34 @@ if(isset($_POST['manualId'])){
 
 							e.preventDefault();
 							e.stopPropagation();
+							validatorInstance.collectManualDataForEditing(existingManual,currentManualDescription);
 
 							//alert('14');
 
-							var valid = '';
-							var errorDisplay = '' ;
-							var required = ' is required.';
-							var description = $('form[id="editManualForm"] #editManual_description').val();
-							if(description == ''){
-								valid += '<p>A description is required.</p>' ;
-							} else if ((jQuery.inArray(description, existingManuals) >= 0) && (currentManualDescription != existingManuals[jQuery.inArray(description, existingManuals)])){
-								valid += '<p> This manual already exists. </p>';
-								$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('This manual already exists.');
-							} else {
-								$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('');	
-							}
+							// var valid = '';
+							// var errorDisplay = '' ;
+							// var required = ' is required.';
+							// var description = $('form[id="editManualForm"] #editManual_description').val();
+							// if(description == ''){
+							// 	valid += '<p>A description is required.</p>' ;
+							// } else if ((jQuery.inArray(description, existingManuals) >= 0) && (currentManualDescription != existingManuals[jQuery.inArray(description, existingManuals)])){
+							// 	valid += '<p> This manual already exists. </p>';
+							// 	$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('This manual already exists.');
+							// } else {
+							// 	$('form[id="editManualForm"] #editManual_description').siblings('div[class="validation"]').text('');	
+							// }
 
-							if(valid.length > 0){
-								$('div[class="alert alert-error"]').remove();
-								$('div[class="alert alert-success"]').remove();
-								errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-								$("#registerErrorMessages").append(errorDisplay);
-								$('#registerErrorMessages').removeAttr('style');
-								$('#registerErrorMessages').fadeOut(2000);
-							} else {
-								editManualFormData = $('form[id="editManualForm"]').serialize();
-								submitManualEditData(editManualFormData);
-							}
+							// if(valid.length > 0){
+							// 	$('div[class="alert alert-error"]').remove();
+							// 	$('div[class="alert alert-success"]').remove();
+							// 	errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+							// 	$("#registerErrorMessages").append(errorDisplay);
+							// 	$('#registerErrorMessages').removeAttr('style');
+							// 	$('#registerErrorMessages').fadeOut(2000);
+							// } else {
+							// 	editManualFormData = $('form[id="editManualForm"]').serialize();
+							// 	submitManualEditData(editManualFormData);
+							// }
 						});
 					</script>
 				</div>

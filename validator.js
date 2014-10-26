@@ -40,6 +40,44 @@ validatorInstance = (function(){
 		this.validateUsers(editUserFields, validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails);
 	}
 
+	// validator.collectCategoryData = function(validClubs, clubAndPassword){
+
+	// 	var userFields = {};
+	// 	var valid = '';
+	// 	var required = ' is required.';
+
+	// 	userFields.username = $('form[id="userRegistrationForm"] #usernameRegistration').val();
+	// 	userFields.firstname = $('form[id="userRegistrationForm"] #first_name').val();
+	// 	userFields.lastname = $('form[id="userRegistrationForm"] #last_name').val();
+	// 	userFields.email = $('form[id="userRegistrationForm"] #email').val();
+	// 	userFields.password = $('form[id="userRegistrationForm"] #hashed_password').val();
+	// 	userFields.passwordConfirmation = $('form[id="userRegistrationForm"] #passwordConfirmation').val();
+	// 	userFields.club = $('form[id="userRegistrationForm"] #club').val();
+	// 	userFields.clubPassword = $('form[id="userRegistrationForm"] #clubPassword').val();
+	// 	userFields.role = $('form[id="userRegistrationForm"] #role').val();
+		
+	// 	this.validateUsers(userFields, validClubs, clubAndPassword);
+	// }
+
+	// validator.collectCategoryDataForEditing = function(validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails){
+	// 	var editUserFields = {};
+	// 	var valid = '';
+	// 	var required = ' is required.';
+
+	// 	editUserFields.username = $('form[id="editUserForm"] #editUserForm_username').val();
+	// 	editUserFields.firstname = $('form[id="editUserForm"] #editUserForm_first_name').val();
+	// 	editUserFields.lastname = $('form[id="editUserForm"] #editUserForm_last_name').val();
+	// 	editUserFields.email = $('form[id="editUserForm"] #editUserForm_email').val();
+	// 	editUserFields.emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;								
+	// 	editUserFields.password = $('form[id="editUserForm"] #editUserForm_hashed_password').val();
+	// 	editUserFields.passwordConfirmation = $('form[id="editUserForm"] #editUserForm_passwordConfirmation').val();
+	// 	editUserFields.club = $('form[id="editUserForm"] #editUserForm_club').val();
+	// 	editUserFields.clubPassword = $('form[id="editUserForm"] #editUserForm_clubPassword').val();
+	// 	editUserFields.role = $('form[id="editUserForm"] #editUserForm_role').val();
+		
+	// 	this.validateUsers(editUserFields, validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails);
+	// }
+
 	validator.collectRoleData = function(existingRoles,currentRole){
 		var roleFields = {};
 		roleFields.role = $('form[id="userRoleInputForm"] #uploadRole_role').val();
@@ -50,6 +88,18 @@ validatorInstance = (function(){
 		var roleFields = {};
 		roleFields.role = $('form[id="editRoleForm"] #editRole_role').val();
 		this.validateRoles(roleFields,existingRoles,currentRole);
+	}
+
+	validator.collectManualData = function(existingManuals,currentManual){
+		var manualFields = {};
+		manualFields.manual = $('#manualAddForm #uploadManual_description').val();
+		this.validateManuals(manualFields,existingManuals);
+	}
+
+	validator.collectManualDataForEditing = function(existingManuals,currentManual){
+		var manualFields = {};
+		manualFields.manual = $('#editManualForm #editManual_description').val();
+		this.validateManuals(manualFields,existingManuals,currentManual);
 	}
 
 	validator.validateUsers = function(required_fields, validClubs, clubsAndPasswords, currentUserName, currentEmail, existingUserNames, existingEmails){
@@ -285,6 +335,43 @@ validatorInstance = (function(){
 			} else if($('#editRoleForm').length) {
 				editRoleFormData = $('#editRoleForm').serialize();
 				this.submitData('editRole.php',editRoleFormData,formid,'#roles','userRoleALE.php');
+			}
+		}
+
+	} 
+
+	validator.validateManuals = function(manualFields, existingManuals, currentManual){
+		var valid = '';
+		var required = ' is required.';
+		var errorDisplay ;
+		var registrationFormData;
+		var editManualFormData;
+		var formid = '#manualAddForm';
+		if(manualFields.manual == ''){
+			$('#manualAddForm #uploadManual_description').siblings('div[class="validation"]').text('A manual is required.');
+			valid += '<p> A manual is required. </p>';
+		} else if ((jQuery.inArray(manualFields.manual, existingManuals) >= 0) && (currentManual != existingManuals[(jQuery.inArray(manualFields.manual, existingManuals))]) ) {
+
+			$('#manualAddForm #uploadManual_description').siblings('div[class="validation"]').text('This manual already exists.');
+			valid += '<p> This manual already exists. </p>';
+		} else {
+			$('#manualAddForm #uploadManual_description').siblings('div[class="validation"]').text('');	
+		}	
+
+		if(valid.length > 0){
+			$('div[class="alert alert-error"]').remove();
+			$('div[class="alert alert-success"]').remove();
+			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+			$('#registerErrorMessages').append(errorDisplay);
+			$('#registerErrorMessages').removeAttr('style');
+			$('#registerErrorMessages').fadeOut(2000);
+		} else {
+			if($('#manualAddForm').length){
+				registrationFormData = $('#manualAddForm').serialize();
+				this.submitData('uploadManual.php',registrationFormData,formid,'#manuals','manualALE.php');
+			} else if($('#editManualForm').length) {
+				editManualFormData = $('#editManualForm').serialize();
+				this.submitData('editManual.php',editManualFormData,formid,'#manuals','manualALE.php');
 			}
 		}
 
