@@ -40,43 +40,25 @@ validatorInstance = (function(){
 		this.validateUsers(editUserFields, validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails);
 	}
 
-	// validator.collectCategoryData = function(validClubs, clubAndPassword){
+	validator.collectCategoryData = function(uploadCategory_existingTitles){
 
-	// 	var userFields = {};
-	// 	var valid = '';
-	// 	var required = ' is required.';
+		var categoryFields = {};
 
-	// 	userFields.username = $('form[id="userRegistrationForm"] #usernameRegistration').val();
-	// 	userFields.firstname = $('form[id="userRegistrationForm"] #first_name').val();
-	// 	userFields.lastname = $('form[id="userRegistrationForm"] #last_name').val();
-	// 	userFields.email = $('form[id="userRegistrationForm"] #email').val();
-	// 	userFields.password = $('form[id="userRegistrationForm"] #hashed_password').val();
-	// 	userFields.passwordConfirmation = $('form[id="userRegistrationForm"] #passwordConfirmation').val();
-	// 	userFields.club = $('form[id="userRegistrationForm"] #club').val();
-	// 	userFields.clubPassword = $('form[id="userRegistrationForm"] #clubPassword').val();
-	// 	userFields.role = $('form[id="userRegistrationForm"] #role').val();
+		categoryFields.currentSelectedManual = $('#categorySubmit #manuals').val();
+		categoryFields.categoryTitle = $('#categorySubmit #uploadCategory_category_title').val();
+		categoryFields.categoryDescription = $('#categorySubmit #uploadCategory_category_description').val();
+		this.validateCategories(categoryFields, uploadCategory_existingTitles);
+	}
+
+	validator.collectCategoryDataForEditing = function(uploadCategory_existingTitles, currentTitle){
+		var editUserFields = {};
+
+		editUserFields.currentSelectedManual = $('#editCategoryForm #editCategory_manuals').val();
+		editUserFields.categoryTitle = $('#editCategoryForm #editCategory_category_title').val();
+		editUserFields.categoryDescription = $('#editCategoryForm #editCategory_category_description').val();
 		
-	// 	this.validateUsers(userFields, validClubs, clubAndPassword);
-	// }
-
-	// validator.collectCategoryDataForEditing = function(validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails){
-	// 	var editUserFields = {};
-	// 	var valid = '';
-	// 	var required = ' is required.';
-
-	// 	editUserFields.username = $('form[id="editUserForm"] #editUserForm_username').val();
-	// 	editUserFields.firstname = $('form[id="editUserForm"] #editUserForm_first_name').val();
-	// 	editUserFields.lastname = $('form[id="editUserForm"] #editUserForm_last_name').val();
-	// 	editUserFields.email = $('form[id="editUserForm"] #editUserForm_email').val();
-	// 	editUserFields.emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;								
-	// 	editUserFields.password = $('form[id="editUserForm"] #editUserForm_hashed_password').val();
-	// 	editUserFields.passwordConfirmation = $('form[id="editUserForm"] #editUserForm_passwordConfirmation').val();
-	// 	editUserFields.club = $('form[id="editUserForm"] #editUserForm_club').val();
-	// 	editUserFields.clubPassword = $('form[id="editUserForm"] #editUserForm_clubPassword').val();
-	// 	editUserFields.role = $('form[id="editUserForm"] #editUserForm_role').val();
-		
-	// 	this.validateUsers(editUserFields, validClubs, clubAndPassword, currentUserName, currentEmail, editUsers_existingUserUserNames,editUsers_existingUserEmails);
-	// }
+		this.validateCategories(editUserFields, uploadCategory_existingTitles,currentTitle);
+	}
 
 	validator.collectRoleData = function(existingRoles,currentRole){
 		var roleFields = {};
@@ -372,6 +354,73 @@ validatorInstance = (function(){
 			} else if($('#editManualForm').length) {
 				editManualFormData = $('#editManualForm').serialize();
 				this.submitData('editManual.php',editManualFormData,formid,'#manuals','manualALE.php');
+			}
+		}
+
+	} 
+	validator.validateCategories = function(categoryFields, uploadCategory_existingTitles, currentTitle){
+		var valid = '';
+		var required = ' is required.';
+		var errorDisplay ;
+		var registrationFormData;
+		var editCategoryFormData;
+		var formid = '#categorySubmit';
+
+
+		if($('#categorySubmit').length){
+
+			if(categoryFields.categoryTitle == ''){
+				valid += '<p> A title is required. </p>';
+				$('#categorySubmit #uploadCategory_category_title').next('div[class="validation"]').text('A title is required.');
+			} else if ((jQuery.inArray(categoryFields.categoryTitle, uploadCategory_existingTitles[categoryFields.currentSelectedManual]) >= 0))  {
+				valid += '<p> This title already exists for this manual. </p>';
+				$('#categorySubmit #uploadCategory_category_title').next('div[class="validation"]').text('This title already exists for this manual.');
+			} else {
+				$('#categorySubmit #uploadCategory_category_title').next('div[class="validation"]').text('');	
+			}	
+
+			if(categoryFields.categoryDescription == ''){
+				valid += '<p> A description is required. </p>';
+				$('#categorySubmit #uploadCategory_category_description').next().text('A description is required.');
+			} else {
+				$('#categorySubmit #uploadCategory_category_description').next('div[class="validation"]').text('');	
+			}
+
+		} else if($('#editCategoryForm').length) {
+
+			formid = '#editCategoryForm';
+			if(categoryFields.categoryTitle == ''){
+				valid += '<p> A title is required. </p>';
+				$('#editCategoryForm #editCategory_category_title').next('div[class="validation"]').text('A title is required.');
+			} else if ((jQuery.inArray(categoryFields.categoryTitle, uploadCategory_existingTitles[categoryFields.currentSelectedManual]) >= 0) && (currentTitle != uploadCategory_existingTitles[categoryFields.currentSelectedManual][(jQuery.inArray(categoryFields.categoryTitle, uploadCategory_existingTitles[categoryFields.currentSelectedManual]))])) {
+				valid += '<p> This title already exists for this manual. </p>';
+				$('#editCategoryForm #editCategory_category_title').next('div[class="validation"]').text('This title already exists for this manual.');
+			} else {
+				$('#editCategoryForm #editCategory_category_title').next('div[class="validation"]').text('');	
+			}	
+
+			if(categoryFields.categoryDescription == ''){
+				valid += '<p> A description is required. </p>';
+				$('#editCategoryForm #editCategory_category_description').next().text('A description is required.');
+			} else {
+				$('#editCategoryForm #editCategory_category_description').next('div[class="validation"]').text('');	
+			}
+		}
+
+		if(valid.length > 0){
+			$('div[class="alert alert-error"]').remove();
+			$('div[class="alert alert-success"]').remove();
+			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+			$('#registerErrorMessages').append(errorDisplay);
+			$('#registerErrorMessages').removeAttr('style');
+			$('#registerErrorMessages').fadeOut(2000);
+		} else {
+			if($('#categorySubmit').length){
+				registrationFormData = $('#categorySubmit').serialize();
+				this.submitData('uploadCategory.php',registrationFormData,formid,'#speechCategories','categoryALE.php');
+			} else if($('#editCategoryForm').length) {
+				editCategoryFormData = $('#editCategoryForm').serialize();
+				this.submitData('editCategory.php',editCategoryFormData,formid,'#speechCategories','categoryALE.php');
 			}
 		}
 

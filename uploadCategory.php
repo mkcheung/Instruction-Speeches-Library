@@ -78,6 +78,7 @@ if(isset($_POST['submit'])){
 	}
 ?>
 </script>
+<script src='validator.js'></script>
 
 <!-- <div id="registerErrorMessages"></div> -->
 <form action="uploadCategory.php" method="post" id="categorySubmit">
@@ -106,16 +107,11 @@ if(isset($_POST['submit'])){
 <script>	
 
 	$('#categorySubmit #manuals').change(function(){
-		// console.log('hhhhh ' + uploadCategory_existingTitles.toString());
 		var currentSelectedManual = $(this).val();
 		var categoryTitle = $('#categorySubmit #uploadCategory_category_title').val();
 		var categoryDescription = $('#categorySubmit #uploadCategory_category_description').val();
-		// console.log(currentSelectedManual);
-		// console.log(categoryTitle);
-		// console.log(categoryDescription);
 
 		if(categoryTitle.length == 0){
-			console.log('title required');
 			$('#uploadCategory_category_title').next('div[class="validation"]').text('A title is required.');
 		} else if (jQuery.inArray(categoryTitle, uploadCategory_existingTitles[currentSelectedManual]) >= 0) {
 			$('#uploadCategory_category_title').next('div[class="validation"]').text('This title already exists for this manual.');
@@ -128,20 +124,12 @@ if(isset($_POST['submit'])){
 		} else {
 			$('#uploadCategory_category_description').next('div[class="validation"]').text('');	
 		}
-
-		// $('#uploadCategory_category_title').val('');
-		// $('#uploadCategory_category_title').next().text('');
-		// $('#uploadCategory_category_description').val('');
-		// $('#uploadCategory_category_description').next().text('');
 	});
 
 	$('#categorySubmit input').blur(function(){
 		var id = $(this).attr('id');
 		var value = $(this).val();
 		var currentSelectedManual = $('#categorySubmit #manuals').val();
-		// console.log('blur id: ' + id);
-		// console.log('blur value: ' + value);
-		// console.log('blur array: ' + uploadCategory_existingTitles[currentSelectedManual]);
 		switch(id){
 			case 'uploadCategory_category_title' :
 				if(value.length == 0){
@@ -168,44 +156,7 @@ if(isset($_POST['submit'])){
 	$('#addEditCategoriesBlock').on("click","#categorySubmitButton", function(e){
 		e.preventDefault();
 		e.stopPropagation();
-
-		//alert('15');
-
-		var valid = '';
-		var errorDisplay = '' ;
-		var required = ' is required.';
-		var title = $('form[id="categorySubmit"] #uploadCategory_category_title').val();
-		var description = $('form[id="categorySubmit"] #uploadCategory_category_description').val();
-		var currentSelectedManual = $('#categorySubmit #manuals').val();
-
-		if(title == ''){
-			valid += '<p> A title is required. </p>';
-			$('form[id="categorySubmit"] #uploadCategory_category_title').next('div[class="validation"]').text('A title is required.');
-		} else if (jQuery.inArray(title, uploadCategory_existingTitles[currentSelectedManual]) >= 0) {
-			valid += '<p> This title already exists for this manual. </p>';
-			$('form[id="categorySubmit"] #uploadCategory_category_title').next('div[class="validation"]').text('This title already exists for this manual.');
-		} else {
-			$('form[id="categorySubmit"] #uploadCategory_category_title').next('div[class="validation"]').text('');	
-		}	
-
-		if(description == ''){
-			valid += '<p> A description is required. </p>';
-			$('form[id="categorySubmit"] #uploadCategory_category_description').next().text('A description is required.');
-		} else {
-			$('form[id="categorySubmit"] #uploadCategory_category_description').next('div[class="validation"]').text('');	
-		}
-
-		if(valid.length > 0){
-			$('div[class="alert alert-error"]').remove();
-			$('div[class="alert alert-success"]').remove();
-			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-			$('#registerErrorMessages').append(errorDisplay);
-			$('#registerErrorMessages').removeAttr('style');
-			$('#registerErrorMessages').fadeOut(2000);
-		} else {
-			registrationFormData = $('form[id="categorySubmit"]').serialize();
-			submitCategory(registrationFormData);
-		}
+		validatorInstance.collectCategoryData(uploadCategory_existingTitles);
 	});
 
 	function submitCategory(formData){

@@ -89,7 +89,7 @@ foreach($manuals as $manual){
 				$("#registerErrorMessages").append('<div class="alert alert-success">Speech Category deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#categoryListingBlock").load("categoryListing.php");
+				$("#categoryListingBlock").load("categoryALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

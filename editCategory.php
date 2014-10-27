@@ -53,6 +53,7 @@ if(isset($_POST['categoryId'])){
 	}
 ?>
 </script>
+<script src='validator.js'></script>
 
 	<!-- <div id="registerErrorMessages"></div> -->
 	<form action="editCategory.php" method="post" id="editCategoryForm">
@@ -88,16 +89,11 @@ if(isset($_POST['categoryId'])){
 			<script>
 
 				$('#editCategoryForm #editCategory_manuals').change(function(){
-					// console.log('hhhhh ' + uploadCategory_existingTitles.toString());
 					var selectedManualId = $(this).val();
 					var categoryTitle = $('#editCategoryForm #editCategory_category_title').val();
 					var categoryDescription = $('#editCategoryForm #editCategory_category_description').val();
-					// console.log(selectedManualId);
-					// console.log(categoryTitle);
-					// console.log(categoryDescription);
 
 					if(categoryTitle.length == 0){
-						console.log('title required');
 						$('#editCategory_category_title').next('div[class="validation"]').text('A title is required.');
 							} else if ((jQuery.inArray(categoryTitle, editCategory_existingTitles[selectedManualId]) >= 0) && (categoryTitle != editCategory_existingTitles[selectedManualId][(jQuery.inArray(currentTitle, editCategory_existingTitles[selectedManualId]))])) {
 						$('#editCategory_category_title').next('div[class="validation"]').text('This title already exists for this manual.');
@@ -110,28 +106,17 @@ if(isset($_POST['categoryId'])){
 					} else {
 						$('#editCategory_category_description').next('div[class="validation"]').text('');	
 					}
-
-					// $('#editCategory_category_title').val('');
-					// $('#editCategory_category_title').next().text('');
-					// $('#editCategory_category_description').val('');
-					// $('#editCategory_category_description').next().text('');
 				});
 
 				$('#editCategoryForm input').blur(function(){
 					var id = $(this).attr('id');
 					var value = $(this).val();
 					var selectedManualId = $('#editCategory_manuals').val();
-					// console.log(id);
-					// console.log(selectedManualId);
-					// console.log(jQuery.inArray(value, editCategory_existingTitles[selectedManualId]));
-					// console.log(currentTitle);
-					// console.log(editCategory_existingTitles[selectedManualId][(jQuery.inArray(value, editCategory_existingTitles[selectedManualId]))]);
 					switch(id){
 						case 'editCategory_category_title' :
 							if(value.length == 0){
 								$(this).next('div[class="validation"]').text('A title is required.');
 							} else if ((jQuery.inArray(value, editCategory_existingTitles[selectedManualId]) >= 0) && (currentTitle != editCategory_existingTitles[selectedManualId][(jQuery.inArray(value, editCategory_existingTitles[selectedManualId]))])) {
-								// console.log('HERE');
 								$(this).next('div[class="validation"]').text('This title already exists for this manual');
 							} else {
 								$(this).next('div[class="validation"]').text('');	
@@ -152,44 +137,7 @@ if(isset($_POST['categoryId'])){
 				$('#editCategorySubmit').click(function(e){
 					e.preventDefault();
 					e.stopPropagation();
-			//		alert('18');
-
-					var valid = '';
-					var errorDisplay = '' ;
-					var required = ' is required.';
-					var title = $('form[id="editCategoryForm"] #editCategory_category_title').val();
-					var description = $('form[id="editCategoryForm"] #editCategory_category_description').val();
-					var selectedManualId = $('#editCategory_manuals').val();
-
-					if(title == ''){
-						valid += '<p> A title is required. </p>';
-						$('form[id="editCategoryForm"] #editCategory_category_title').next().text('A title is required.');
-					} else if ((jQuery.inArray(title, editCategory_existingTitles[selectedManualId]) >= 0) && (currentTitle != editCategory_existingTitles[selectedManualId][(jQuery.inArray(title, editCategory_existingTitles[selectedManualId]))])) {
-						// console.log('HERE');
-						valid += '<p> This title already exists for this manual. </p>';
-						$('form[id="editCategoryForm"] #editCategory_category_title').next('div[class="validation"]').text('This title already exists for this manual.');
-					} else {
-						$('form[id="editCategoryForm"] #editCategory_category_title').next('div[class="validation"]').text('');
-					}
-					if(description == ''){
-						valid += '<p> A description is required. </p>';
-						$('form[id="editCategoryForm"] #editCategory_category_description').next('div[class="validation"]').text('A description is required.');
-					} else {
-						$('form[id="editCategoryForm"] #editCategory_category_description').next('div[class="validation"]').text('');	
-					}
-
-					if(valid.length > 0){
-						$('div[class="alert alert-error"]').remove();
-						$('div[class="alert alert-success"]').remove();
-						errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-						$('#registerErrorMessages').append(errorDisplay);
-						$('#registerErrorMessages').removeAttr('style');
-						$('#registerErrorMessages').fadeOut(2000);
-					} else {
-						registrationFormData = $('form[id="editCategoryForm"]').serialize();
-						// alert(registrationFormData);
-						submitEditCategory(registrationFormData);
-					}
+					validatorInstance.collectCategoryDataForEditing(editCategory_existingTitles,currentTitle);
 				});
 			</script>
 		</div>
