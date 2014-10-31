@@ -87,7 +87,7 @@ $topics = Topic::find_all();
 				$("#registerErrorMessages").append('<div class="alert alert-success">Topic deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#topicsListingBlock").load("topicListing.php");
+				$("#topicsListingBlock").load("topicALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

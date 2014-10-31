@@ -47,7 +47,7 @@ if(isset($_POST['submit'])){
 	}
 ?>
 </script>
-	<!-- <div id="registerErrorMessages"></div> -->
+<script src='validator.js'></script>
 		<form id="uploadClubsForm" action="uploadClubs.php" method="post">
 			<fieldset>
 				<legend class="formTitle">New Club:</legend>
@@ -99,8 +99,7 @@ if(isset($_POST['submit'])){
 		e.stopPropagation();
 		var id = $(this).attr('id');
 		var value = $(this).val();
-		console.log(id);
-		console.log(value);
+
 		switch(id){
 			case 'uploadClubsForm_name' :
 				if(value.length == 0){
@@ -155,113 +154,7 @@ if(isset($_POST['submit'])){
 	$('#addEditClubsBlock').on('click','#clubSubmit', function(e){
 		e.preventDefault();
 		e.stopPropagation();
-
-		// alert('19');
-
-		var valid = '';
-		var errorDisplay = '' ;
-		var required = ' is required.';
-		var name = $('form[id="uploadClubsForm"] #uploadClubsForm_name').val();
-		var address = $('form[id="uploadClubsForm"] #uploadClubsForm_address').val();
-		var city = $('form[id="uploadClubsForm"] #uploadClubsForm_city').val();
-		var state = $('form[id="uploadClubsForm"] #uploadClubsForm_state').val();
-		var zip = $('form[id="uploadClubsForm"] #uploadClubsForm_zip').val();
-		var password = $('form[id="uploadClubsForm"] #uploadClubsForm_password').val();
-
-		console.log(name);
-		console.log(address);
-		console.log(city);
-		console.log(state);
-		console.log(zip);
-		console.log(password);
-
-
-		if(name == ''){
-			valid += '<p> A club name is required. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_name').next('div[class="validation"]').text('A club name is required.');
-		} else if (jQuery.inArray(name, uploadClubs_existingClubs) >= 0) {
-			valid += '<p> This club name has been taken. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_name').next('div[class="validation"]').text('This club name has been taken.');
-		} else {
-			$('form[id="uploadClubsForm"] #uploadClubsForm_name').next('div[class="validation"]').text('');	
-		}
-
-		if(address == ''){
-			valid += '<p> An address is required. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_address').next('div[class="validation"]').text('An address is required.');	
-		} else {
-			$('form[id="uploadClubsForm"] #uploadClubsForm_address').next('div[class="validation"]').text('');	
-		}
-
-		if(state == ''){
-			valid += '<p> A state is required. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_state').next('div[class="validation"]').text('A state is required.');	
-		} else {
-			$('form[id="uploadClubsForm"] #uploadClubsForm_state').next('div[class="validation"]').text('');	
-		}
-
-		if(city == ''){
-			valid += '<p> A city is required. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_city').next('div[class="validation"]').text('A city is required.');	
-		} else {
-			$('form[id="uploadClubsForm"] #uploadClubsForm_city').next('div[class="validation"]').text('');	
-		}
-
-		if(zip == ''){
-			valid += '<p> Zip is required. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_zip').next('div[class="validation"]').text('A zip is required.');	
-		} else {
-			$('form[id="uploadClubsForm"] #uploadClubsForm_zip').next('div[class="validation"]').text('');	
-		}
-
-		if(password == ''){
-			valid += '<p> Password is required. </p>';
-			$('form[id="uploadClubsForm"] #uploadClubsForm_password').next('div[class="validation"]').text('A password is required.');	
-		} else {
-			$('form[id="uploadClubsForm"] #uploadClubsForm_password').next('div[class="validation"]').text('');	
-		}
-		if(valid.length > 0){
-			$('div[class="alert alert-error"]').remove();
-			$('div[class="alert alert-success"]').remove();
-			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-			$("#registerErrorMessages").append(errorDisplay);
-			$("#registerErrorMessages").removeAttr('style');
-			$("#registerErrorMessages").fadeOut(2000);
-		} else {
-			clubFormData = $('form[id="uploadClubsForm"]').serialize();
-			submitClubData(clubFormData);
-		}
+		validatorInstance.collectClubData(uploadClubs_existingClubs);
 	});
-
-
-
-	function submitClubData(formData){
-		$.ajax({
-			type:'POST',
-			url: 'uploadClubs.php',
-			data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				$('div[class="alert alert-error"]').remove();
-				$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Club added!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-				$("#clubsListingBlock").load("clubListing.php");
-
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">The club could not be added.</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="uploadClubsForm"]')[0].reset();
-			}
-		});
-	};
 
 </script>

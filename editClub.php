@@ -34,6 +34,7 @@ if(isset($_POST['clubid'])){
 	}
 ?>
 </script>
+<script src='validator.js'></script>
 	<!-- <div id="registerErrorMessages"></div> -->
 	<form action="editClub.php" method="post" id="editClubForm">
 		<legend class="formTitle">Edit Club Details:</legend>
@@ -142,75 +143,7 @@ if(isset($_POST['clubid'])){
 						$('#editClubSubmit').click(function(e){
 							e.preventDefault();
 							e.stopPropagation();
-
-							//alert('7');
-
-							var valid = '';
-							var errorDisplay = '' ;
-							var required = ' is required.';
-							var name = $('form[id="editClubForm"] #editClub_name').val();
-							var address = $('form[id="editClubForm"] #editClub_address').val();
-							var city = $('form[id="editClubForm"] #editClub_city').val();
-							var state = $('form[id="editClubForm"] #editClub_state').val();
-							var zip = $('form[id="editClubForm"] #editClub_zip').val();
-							var password = $('form[id="editClubForm"] #editClub_password').val();
-
-							if(name == ''){
-								valid += '<p> A club name is required. </p>';
-								$('form[id="editClubForm"] #editClub_name').next('div[class="validation"]').text('A club name is required.');
-							} else if ((jQuery.inArray(name, editClubs_existingClubs) >= 0) && (currentClub != editClubs_existingClubs[(jQuery.inArray(name, editClubs_existingClubs))])) {
-								valid += '<p> This club name has been taken. </p>';
-								$('form[id="editClubForm"] #editClub_name').next('div[class="validation"]').text('This club name has been taken.');
-							} else {
-								$('form[id="editClubForm"] #editClub_name').next('div[class="validation"]').text('');	
-							}
-
-							if(address == ''){
-								valid += '<p> An address is required. </p>';
-								$('form[id="editClubForm"] #editClub_address').next('div[class="validation"]').text('An address is required.');	
-							} else {
-								$('form[id="editClubForm"] #editClub_address').next('div[class="validation"]').text('');	
-							}
-
-							if(state == ''){
-								valid += '<p> A state is required. </p>';
-								$('form[id="editClubForm"] #editClub_state').next('div[class="validation"]').text('A state is required.');	
-							} else {
-								$('form[id="editClubForm"] #editClub_state').next('div[class="validation"]').text('');	
-							}
-
-							if(city == ''){
-								valid += '<p> A city is required. </p>';
-								$('form[id="editClubForm"] #editClub_city').next('div[class="validation"]').text('A city is required.');	
-							} else {
-								$('form[id="editClubForm"] #editClub_city').next('div[class="validation"]').text('');	
-							}
-
-							if(zip == ''){
-								valid += '<p> Zip is required. </p>';
-								$('form[id="editClubForm"] #editClub_zip').next('div[class="validation"]').text('A zip is required.');	
-							} else {
-								$('form[id="editClubForm"] #editClub_zip').next('div[class="validation"]').text('');	
-							}
-
-							if(password == ''){
-								valid += '<p> Password is required. </p>';
-								$('form[id="editClubForm"] #editClub_password').next('div[class="validation"]').text('A password is required.');	
-							} else {
-								$('form[id="editClubForm"] #editClub_password').next('div[class="validation"]').text('');	
-							}
-
-							if(valid.length > 0){
-								$('div[class="alert alert-error"]').remove();
-								$('div[class="alert alert-success"]').remove();
-								errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
-								$("#registerErrorMessages").append(errorDisplay);
-								$('#registerErrorMessages').removeAttr('style');
-								$('#registerErrorMessages').fadeOut(2000);
-							} else {
-								editClubFormData = $('form[id="editClubForm"]').serialize();
-								submitClubEditData(editClubFormData);
-							}
+							validatorInstance.collectClubData(editClubs_existingClubs, currentClub);
 						});
 					</script>
 				</div>
@@ -260,39 +193,3 @@ if(isset($_POST['clubid'])){
 }
 
 ?>
-
-<?php
-// include_once("footer.php");
-?>
-
-<script>
-	function submitClubEditData(formData){
-		$.ajax({
-			type:'POST',
-			url: 'editClub.php',
-			data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				$('div[class="alert alert-error"]').remove();
-				$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Club modified!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-				$("#clubs").load("clubALE.php");
-
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Club could not be modified.</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				// console.log('FFFFFF');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="editClubForm"]')[0].reset();
-			}
-		});
-	};
-</script>

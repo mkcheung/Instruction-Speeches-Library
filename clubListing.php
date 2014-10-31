@@ -79,7 +79,6 @@ $clubs = Club::find_all();
 	});
 
 	function deleteClubData(clubId){
-		//alert(clubId);
 		$.ajax({
 			type:'POST',
 			url: 'clubDelete.php',
@@ -93,7 +92,7 @@ $clubs = Club::find_all();
 				$("#registerErrorMessages").append('<div class="alert alert-success">Club Deleted!</div>');
 				$("#registerErrorMessages").removeAttr('style');
 				$("#registerErrorMessages").fadeOut(2000);
-				$("#clubsListingBlock").load("clubListing.php");
+				$("#clubsListingBlock").load("clubALE.php");
 
 			},
 			error: function(XMLHttpRequest, textStatus, errorThrown){

@@ -84,6 +84,35 @@ validatorInstance = (function(){
 		this.validateManuals(manualFields,existingManuals,currentManual);
 	}
 
+	validator.collectClubData = function(uploadClubs_existingClubs){
+
+		var clubFields = {};
+		var valid = '';
+		var required = ' is required.';
+
+		clubFields.name = $('#uploadClubsForm #uploadClubsForm_name').val();
+		clubFields.address = $('#uploadClubsForm #uploadClubsForm_address').val();
+		clubFields.city = $('#uploadClubsForm #uploadClubsForm_city').val();
+		clubFields.state = $('#uploadClubsForm #uploadClubsForm_state').val();
+		clubFields.zip = $('#uploadClubsForm #uploadClubsForm_zip').val();
+		clubFields.password = $('#uploadClubsForm #uploadClubsForm_password').val();
+		this.validateClubs(clubFields, uploadClubs_existingClubs);
+	}
+
+	validator.collectClubDataForEditing = function(uploadClubs_existingClubs,currentClub){
+		var editUserFields = {};
+		var valid = '';
+		var required = ' is required.';
+
+		editUserFields.name = $('#editClubForm #editClub_name').val();
+		editUserFields.address = $('#editClubForm #editClub_address').val();
+		editUserFields.city = $('#editClubForm #editClub_city').val();
+		editUserFields.state = $('#editClubForm #editClub_state').val();
+		editUserFields.zip = $('#editClubForm #editClub_zip').val();
+		editUserFields.password = $('#editClubForm #editClub_password').val();
+		this.validateClubs(editUserFields, uploadClubs_existingClubs,currentClub);	
+	}
+
 	validator.validateUsers = function(required_fields, validClubs, clubsAndPasswords, currentUserName, currentEmail, existingUserNames, existingEmails){
 		var valid = '';
 		var formid = '';
@@ -421,6 +450,129 @@ validatorInstance = (function(){
 			} else if($('#editCategoryForm').length) {
 				editCategoryFormData = $('#editCategoryForm').serialize();
 				this.submitData('editCategory.php',editCategoryFormData,formid,'#speechCategories','categoryALE.php');
+			}
+		}
+
+	} 
+	validator.validateClubs = function(clubFields, uploadClubs_existingClubs, currentClub){
+		var valid = '';
+		var required = ' is required.';
+		var errorDisplay ;
+		var registrationFormData;
+		var editClubFormData;
+		var formid = '#uploadClubsForm';
+
+		if($('#uploadClubsForm').length){
+
+			if(clubFields.name == ''){
+				valid += '<p> A club name is required. </p>';
+				$('#uploadClubsForm #uploadClubsForm_name').next('div[class="validation"]').text('A club name is required.');
+			} else if (jQuery.inArray(clubFields.name, uploadClubs_existingClubs) >= 0) {
+				valid += '<p> This club name has been taken. </p>';
+				$('#uploadClubsForm #uploadClubsForm_name').next('div[class="validation"]').text('This club name has been taken.');
+			} else {
+				$('#uploadClubsForm #uploadClubsForm_name').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.address == ''){
+				valid += '<p> An address is required. </p>';
+				$('#uploadClubsForm #uploadClubsForm_address').next('div[class="validation"]').text('An address is required.');	
+			} else {
+				$('#uploadClubsForm #uploadClubsForm_address').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.state == ''){
+				valid += '<p> A state is required. </p>';
+				$('#uploadClubsForm #uploadClubsForm_state').next('div[class="validation"]').text('A state is required.');	
+			} else {
+				$('#uploadClubsForm #uploadClubsForm_state').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.city == ''){
+				valid += '<p> A city is required. </p>';
+				$('#uploadClubsForm #uploadClubsForm_city').next('div[class="validation"]').text('A city is required.');	
+			} else {
+				$('#uploadClubsForm #uploadClubsForm_city').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.zip == ''){
+				valid += '<p> Zip is required. </p>';
+				$('#uploadClubsForm #uploadClubsForm_zip').next('div[class="validation"]').text('A zip is required.');	
+			} else {
+				$('#uploadClubsForm #uploadClubsForm_zip').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.password == ''){
+				valid += '<p> Password is required. </p>';
+				$('#uploadClubsForm #uploadClubsForm_password').next('div[class="validation"]').text('A password is required.');	
+			} else {
+				$('#uploadClubsForm #uploadClubsForm_password').next('div[class="validation"]').text('');	
+			}
+
+		} else if($('#editClubForm').length) {
+
+			formid = '#editClubForm';
+
+			if(clubFields.name == ''){
+				valid += '<p> A club name is required. </p>';
+				$('#editClubForm #editClub_name').next('div[class="validation"]').text('A club name is required.');
+			} else if ((jQuery.inArray(clubFields.name, uploadClubs_existingClubs) >= 0) && (currentClub != uploadClubs_existingClubs[(jQuery.inArray(clubFields.name, uploadClubs_existingClubs))])) {
+				valid += '<p> This club name has been taken. </p>';
+				$('#editClubForm #editClub_name').next('div[class="validation"]').text('This club name has been taken.');
+			} else {
+				$('#editClubForm #editClub_name').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.address == ''){
+				valid += '<p> An address is required. </p>';
+				$('#editClubForm #editClub_address').next('div[class="validation"]').text('An address is required.');	
+			} else {
+				$('#editClubForm #editClub_address').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.state == ''){
+				valid += '<p> A state is required. </p>';
+				$('#editClubForm #editClub_state').next('div[class="validation"]').text('A state is required.');	
+			} else {
+				$('#editClubForm #editClub_state').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.city == ''){
+				valid += '<p> A city is required. </p>';
+				$('#editClubForm #editClub_city').next('div[class="validation"]').text('A city is required.');	
+			} else {
+				$('#editClubForm #editClub_city').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.zip == ''){
+				valid += '<p> Zip is required. </p>';
+				$('#editClubForm #editClub_zip').next('div[class="validation"]').text('A zip is required.');	
+			} else {
+				$('#editClubForm #editClub_zip').next('div[class="validation"]').text('');	
+			}
+
+			if(clubFields.password == ''){
+				valid += '<p> Password is required. </p>';
+				$('#editClubForm #editClub_password').next('div[class="validation"]').text('A password is required.');	
+			} else {
+				$('#editClubForm #editClub_password').next('div[class="validation"]').text('');	
+			}
+		}
+
+		if(valid.length > 0){
+			$('div[class="alert alert-error"]').remove();
+			$('div[class="alert alert-success"]').remove();
+			errorDisplay = '<div class="alert alert-error">' + valid + '</div>';
+			$('#registerErrorMessages').append(errorDisplay);
+			$('#registerErrorMessages').removeAttr('style');
+			$('#registerErrorMessages').fadeOut(2000);
+		} else {
+			if($('#uploadClubsForm').length){
+				registrationFormData = $('#uploadClubsForm').serialize();
+				this.submitData('uploadClubs.php',registrationFormData,formid,'#clubs','clubALE.php');
+			} else if($('#editClubForm').length) {
+				editClubFormData = $('#editClubForm').serialize();
+				this.submitData('editClub.php',editClubFormData,formid,'#clubs','clubALE.php');
 			}
 		}
 

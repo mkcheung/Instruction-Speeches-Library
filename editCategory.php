@@ -182,35 +182,3 @@ if(isset($_POST['categoryId'])){
 }
 
 ?>
-
-<script>
-
-	function submitEditCategory(formData){
-		$.ajax({
-			type:'POST',
-			url: 'editCategory.php',
-			data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Speech Category modified!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-				$("#speechCategories").load("categoryALE.php");
-
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Speech Category could not be modified.</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="editCategoryForm"]')[0].reset();
-			}
-		})
-	};
-</script>

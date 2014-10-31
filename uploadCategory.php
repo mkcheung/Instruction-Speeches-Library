@@ -158,33 +158,4 @@ if(isset($_POST['submit'])){
 		e.stopPropagation();
 		validatorInstance.collectCategoryData(uploadCategory_existingTitles);
 	});
-
-	function submitCategory(formData){
-		$.ajax({
-			type:'POST',
-			url: 'uploadCategory.php',
-			data:formData,
-			cache: false,
-			timeout:7000,
-			processData:true,
-			success: function(data){
-				$('div[class="alert alert-error"]').remove();
-					$('div[class="alert alert-success"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-success">Speech Category added!</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-				$("#categoryListingBlock").load("categoryListing.php");
-
-			},
-			error: function(XMLHttpRequest, textStatus, errorThrown){
-				$('#registerErrorMessages div[class="alert alert-error"]').remove();
-				$("#registerErrorMessages").append('<div class="alert alert-error">Speech Category could not be deleted.</div>');
-				$("#registerErrorMessages").removeAttr('style');
-				$("#registerErrorMessages").fadeOut(2000);
-			},
-			complete: function(XMLHttpRequest, status){
-				$('form[id="editUserForm"]')[0].reset();
-			}
-		});
-	};
 </script>

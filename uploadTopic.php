@@ -150,9 +150,6 @@ $( '#uploadTopic_topic_date' ).datepicker();
 		var topicTitle = $('#uploadTopicForm #uploadTopic_topic_title').val();
 		var topicDate = $('#uploadTopicForm #uploadTopic_topic_date').val();
 		var topicDescription = $('#uploadTopicForm #uploadTopic_description').val();
-		// console.log(currentSelectedCategory);
-		// console.log(topicTitle);
-		// console.log(topicDescription);
 
 		if(topicTitle.length == 0){
 			$('#uploadTopic_topic_title').next('div[class="validation"]').text('A title is required.');
@@ -173,13 +170,6 @@ $( '#uploadTopic_topic_date' ).datepicker();
 		} else {
 			$('#uploadTopic_description').next('div[class="validation"]').text('');	
 		}
-
-		// $('#uploadTopic_topic_title').val('');
-		// $('#uploadTopic_topic_title').next().text('');
-		// $('#uploadTopic_description').val('');
-		// $('#uploadTopic_description').next().text('');
-		// $('#uploadTopic_topic_date').val('');
-		// $('#uploadTopic_topic_date').next().text('');
 	});
 
 	$('#uploadTopicForm input, #uploadTopicForm textarea').blur(function(e){
@@ -188,8 +178,6 @@ $( '#uploadTopic_topic_date' ).datepicker();
 		var id = $(this).attr('id');
 		var value = $(this).val();
 		var currentSelectedCategory = $('#uploadTopicForm #uploadTopic_category_id').val();
-		// console.log(id);
-		// console.log(value);
 		switch(id){
 			case 'uploadTopic_topic_title' :
 				if(value.length == 0){
@@ -203,7 +191,6 @@ $( '#uploadTopic_topic_date' ).datepicker();
 			case 'uploadTopic_topic_date' :
 				setTimeout(function(){
 					var value = $('#uploadTopic_topic_date').val();
-					// alert(value);
 					if(value.length == 0){
 						$('#uploadTopic_topic_date').next('div[class="validation"]').text('A topic date is required.');
 					} else {
@@ -228,7 +215,6 @@ $( '#uploadTopic_topic_date' ).datepicker();
 		e.preventDefault();
 		e.stopPropagation();
 		console.log('submitbutton');
-		//alert('adding topic');
 
 		var valid = '';
 		var errorDisplay = '' ;
@@ -238,10 +224,10 @@ $( '#uploadTopic_topic_date' ).datepicker();
 		var description = $('form[id="uploadTopicForm"] #uploadTopic_description').val();
 		var currentSelectedCategory = $('#uploadTopicForm #uploadTopic_category_id').val();
 
-		console.log('title: ' + title);
-		console.log('date: ' + topic_date);
-		console.log('description: ' + description);
-		console.log('selectedCategoryId: ' + currentSelectedCategory);
+		// console.log('title: ' + title);
+		// console.log('date: ' + topic_date);
+		// console.log('description: ' + description);
+		// console.log('selectedCategoryId: ' + currentSelectedCategory);
 
 		if(title == ''){
 			valid += '<p> A title is required. </p>';

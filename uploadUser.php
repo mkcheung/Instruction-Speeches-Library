@@ -185,13 +185,6 @@
 				}		
 				break;
 		}
-
-		// $('#uploadTopic_topic_title').val('');
-		// $('#uploadTopic_topic_title').next().text('');
-		// $('#uploadTopic_description').val('');
-		// $('#uploadTopic_description').next().text('');
-		// $('#uploadTopic_topic_date').val('');
-		// $('#uploadTopic_topic_date').next().text('');
 	});
 
 	$('#uploadUserForm input').blur(function(e){
@@ -200,8 +193,7 @@
 		var id = $(this).attr('id');
 		var value = $(this).val();
 		var emailPattern = /[a-zA-Z0-9]*@[a-zA-Z0-9]*\.[com]/;
-		console.log(id);
-		console.log(value);
+
 		switch(id){
 			case 'uploadUserForm_username' :
 				if(value.length == 0){
