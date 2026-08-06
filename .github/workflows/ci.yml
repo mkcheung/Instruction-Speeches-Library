@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, development]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (api/)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned to 8.4 per CP-00-first-workflow.md's example, even though
+      # 8.5 is what's on the scaffolding host — 8.4 is the version the
+      # plan's own CI walkthrough standardizes on.
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_sqlite, pdo_pgsql
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: api/vendor
+          key: composer-${{ hashFiles('api/composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Copy .env
+        run: cp .env.example .env
+
+      - name: Generate app key
+        run: php artisan key:generate
+
+      - name: Pint (style check)
+        run: composer lint
+
+      - name: Larastan (static analysis)
+        run: composer analyse
+
+      # phpunit.xml already pins DB_CONNECTION=sqlite / DB_DATABASE=:memory:
+      # for APP_ENV=testing, so no DB service container is needed here.
+      - name: Pest (tests)
+        run: composer pest
+
+  frontend:
+    name: Frontend (web/)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Root tsconfig.json is a solution file (project references, no
+      # `include`) — `tsc --noEmit` on it type-checks nothing and always
+      # exits 0. `tsc -b` resolves the referenced app/node configs, both of
+      # which already set `noEmit: true`, so this is the real check.
+      - name: Type check
+        run: npx tsc -b
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Test
+        run: npm run test
