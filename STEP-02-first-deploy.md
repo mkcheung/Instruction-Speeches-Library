@@ -1,69 +1,99 @@
-# Step 02 — First deploy, thin
+# Step 02 — Prove the domain layout (locally)
 
-**Duration:** 0.5–1 week · **Depends on:** [01](STEP-01-identity.md) · **Unblocks:** [14](STEP-14-deploy-hardening.md)
+**Duration:** 0.5 week · **Depends on:** [01](STEP-01-identity.md) · **Unblocks:** [14](STEP-14-deploy-hardening.md)
 **Plan:** [§12 S2](MODERNIZATION_PLAN.md) · [§5.2 decoupled SPA](MODERNIZATION_PLAN.md) · [§5.9 auth config](MODERNIZATION_PLAN.md)
+
+> **⚠️ Scope changed — stakeholder decision, 2026-08-05.**
+> No registrable domain yet; the project runs locally and moves to a live host later.
+>
+> **This step splits in two.** The half that matters most — proving the cookie-domain layout — **is fully doable locally** and stays here. The half that needs a server (CD, secrets, provisioning, real mail) moves to [Step 14](STEP-14-deploy-hardening.md). See [Why this still works](#why-this-still-works) below.
 
 ## ✅ What you can do when this is finished
 
-> Register and log in **on a real domain over TLS**, refresh the page, and still be logged in.
+> Register and log in at `https://app.speechcoach.test`, with the API on a **different subdomain**, over **real HTTPS** — refresh, restart the browser, and still be logged in.
 
 ### Demo script
 
-1. Push a commit to `main`. Watch CI deploy it, unattended, and run migrations.
-2. Open `https://app.yourdomain.com` on your phone. Register.
-3. **Check a real Gmail inbox.** The verification mail is there — in the inbox, not spam.
+1. Open `https://app.speechcoach.test`. **Note the padlock** — locally-trusted TLS, not an exception you clicked through.
+2. Register. The API is at `https://api.speechcoach.test` — **a different host**, sharing the registrable domain.
+3. Open devtools → Application → Cookies. **The session cookie's Domain is `.speechcoach.test`**, `Secure`, `HttpOnly`, `SameSite=Lax`. That is the production configuration, running on your laptop.
 4. Log in. **Hard-refresh.** Still logged in.
-5. Quit the browser entirely. Reopen. Still logged in.
+5. **Quit the browser entirely. Reopen.** Still logged in.
+6. Check Mailpit — the verification mail arrived, and the link points at the right host.
 
-## Why this step exists — read this before deciding to skip it
+<a id="why-this-still-works"></a>
+## Why this still works without buying a domain
 
-**This is the highest-leverage reorder in the whole plan, and it has nothing to do with demos.**
+§5.2 states the trap precisely: `localhost:5173` and `localhost:8000` **share the registrable domain `localhost`**, so Sanctum cookie auth works on your laptop *even when the production layout is wrong* — and you find out at deploy.
 
-§5.2 states the trap precisely: `localhost:5173` and `localhost:8000` **share the registrable domain `localhost`**. So Sanctum cookie auth works perfectly on your laptop *even when the production layout is wrong* — and you find out at deploy.
+**But the trap is about domain *structure*, not about DNS being public.** All the mechanics need is two hostnames sharing a registrable domain, and `/etc/hosts` provides that for nothing:
 
-Revision 4 scheduled that discovery for week 24, on top of twenty-four weeks of accumulated infrastructure. Doing it here costs half a week and answers [§20 Q5](MODERNIZATION_PLAN.md) **by observation instead of by argument**.
+```
+127.0.0.1  app.speechcoach.test
+127.0.0.1  api.speechcoach.test
+```
 
-If the answer is bad — the SPA must live on a different registrable domain — §5.9 already has the fix (a Sanctum **personal access token**, not JWT), and applying it to two screens is a day. Applying it to the whole product in week 24 is not.
+`speechcoach.test` is the registrable domain. `app.` and `api.` are subdomains of it. `SESSION_DOMAIN=.speechcoach.test` therefore exercises **exactly the code path production will use**.
+
+`.test` is a reserved TLD (RFC 6761) that will never be sold, so it can't collide with anything real. Laravel Valet has used this pattern for years.
+
+> **What this genuinely proves:** the cookie domain, the CORS origin allow-list, `supports_credentials`, the CSRF cookie round-trip, `SameSite` behaviour under HTTPS, and the Sanctum stateful-domain config. **That is the substance of §20 Q5**, and it's the part that would have been expensive to discover late.
+>
+> **What it does not prove:** real DNS, a public CA, server provisioning, CD, secret management, and email deliverability. Those move to [Step 14](STEP-14-deploy-hardening.md) — and they're the parts that fail *loudly and immediately* when wrong, rather than silently for six months.
 
 ## Backend
 
-The smallest thing that can hold step 01:
+- **`/etc/hosts` entries** for `app.` and `api.` on a shared `.test` domain.
+- **`mkcert`** for locally-trusted certificates — a real CA in your system trust store, so the browser shows a genuine padlock.
 
-- Application host, database, TLS.
-- DNS for `app.` and `api.` **on one registrable domain**.
-- **A real mail provider with SPF/DKIM/DMARC — not Mailpit.** R13 makes deliverability load-bearing: a verification mail in spam is an account that never activates.
-- Secrets management.
-- CD from `main` with migrations.
-
-⚠️ **Do not run migrations from the container entrypoint** (§21.5). It works with one container and races with two. Run them as a separate one-shot step in the pipeline, before the new containers serve traffic.
+  ⚠️ **TLS is not optional here.** `SESSION_SECURE_COOKIE=true` is the production setting, and a `Secure` cookie is not stored over plain HTTP. Testing without TLS means testing a *different* configuration and hiding the problem you came for.
+- **nginx in the `web` container** terminating TLS and routing both hostnames.
+- The full §5.9 config against these hostnames:
+  - `SANCTUM_STATEFUL_DOMAINS=app.speechcoach.test`
+  - `SESSION_DOMAIN=.speechcoach.test` ← the leading dot is the whole thing
+  - `SESSION_SECURE_COOKIE=true`
+  - `SESSION_COOKIE` **pinned** explicitly
+  - `cors.allowed_origins` naming the origin — **never `*`**, which the CORS spec forbids on credentialed requests
+  - `cors.supports_credentials=true` — ships `false`, and is the usual cause of "Sanctum doesn't work"
 
 ## Frontend
 
-Nothing new. The build output is the deliverable.
+Nothing new. `VITE_API_URL` points at `https://api.speechcoach.test`, and the Vite dev server serves `app.speechcoach.test` over the mkcert certificate.
 
-## Deliberately stubbed
+## Deliberately deferred to [Step 14](STEP-14-deploy-hardening.md)
 
-**One environment, not staging *and* production.** No backups, no monitoring, no queue workers (nothing is queued yet), no object-storage lifecycle rules, no CDN. The `media` bucket exists and is empty.
+Not skipped — **relocated**, with the reason:
 
-This is a **skeleton deploy**. [Step 14](STEP-14-deploy-hardening.md) makes it a production one.
-
-## Containers introduced
-
-None. The compose file becomes **environment-parameterized** rather than gaining services — which is the lesson: dev/prod parity is about the same file behaving differently, not a different file.
+| Deferred | Why it's safe to defer |
+|---|---|
+| Server provisioning | No server yet, by your decision |
+| CD from `main` | Nothing to deploy to. The workflow is written at [CP-02](CP-02-deployment-and-secrets.md) against a local target |
+| Production secrets | Same |
+| **Real email deliverability** (R13) | Mailpit covers the flow; **deliverability is a separate risk that only a real provider tests** |
+| Public CA / real DNS | mkcert proves the TLS *config*; a public CA proves nothing extra about your app |
 
 ## Acceptance
 
-- [ ] A commit to `main` reaches the live host automatically and runs migrations
-- [ ] Registration and login work **against the real cookie domain layout**
-- [ ] The session survives a hard refresh **and a browser restart**
-- [ ] A verification email lands in a real Gmail **inbox**, not spam
-- [ ] §20 Q5 is closed — **in writing**, with the actual domain layout recorded
+- [ ] The app is served at `https://app.speechcoach.test` with a **real padlock**, not a clicked-through warning
+- [ ] The API is on `https://api.speechcoach.test` — **a different hostname**
+- [ ] Registration and login work **cross-subdomain with `SESSION_SECURE_COOKIE=true`**
+- [ ] The session cookie shows `Domain=.speechcoach.test`, `Secure`, `HttpOnly`, `SameSite=Lax` in devtools
+- [ ] The session survives a hard refresh **and a full browser restart**
+- [ ] A CSRF-protected write succeeds — proving the `XSRF-TOKEN` round-trip works cross-subdomain
+- [ ] `SESSION_COOKIE` is pinned, not generated
+- [ ] **Deliberately break it once:** set `SESSION_DOMAIN=app.speechcoach.test` (no leading dot), watch auth fail, and understand why
+
+That last one is the point of the whole step. **A configuration you've only seen work teaches you less than one you've seen fail.**
 
 ## Watch for
 
-- `config/cors.php` ships `supports_credentials => false`. This is the single most common cause of "Sanctum doesn't work" (§5.9).
-- `allowed_origins` **must name the origin** — the CORS spec forbids `*` on a credentialed request and every browser rejects it.
-- `SESSION_DOMAIN=.yourdomain.com` (leading dot) is the one line that makes cross-subdomain work. The `XSRF-TOKEN` cookie inherits from the same config.
+⚠️ **`.test` must not be caught by a DNS-over-HTTPS resolver or a corporate VPN** that intercepts unknown TLDs. If `app.speechcoach.test` doesn't resolve to 127.0.0.1, check that first.
+
+⚠️ **mkcert's root CA must be installed in the *system* trust store** (`mkcert -install`), and Firefox keeps its own store — it needs `nss` installed to pick it up.
+
+⚠️ **Docker networking:** the containers must reach each other by service name while the browser reaches them by `.test` hostname. Those are different addresses for the same service, and the mismatch is a classic hour lost. The API's own knowledge of its public URL (`APP_URL`) must be the `.test` one, because that's what ends up in verification email links.
+
+**The residual risk you're accepting:** deployment *mechanics* — provisioning, CD, secrets — are still discovered later. That risk is real but much smaller than the cookie one, because those fail immediately and visibly rather than silently. Written down here so it isn't a surprise at Step 14.
 
 ---
 
@@ -77,4 +107,4 @@ None. The compose file becomes **environment-parameterized** rather than gaining
 
 **This is optional.** [Step 03](STEP-03-upload-and-watch.md) does not depend on it — go straight on if you'd rather.
 
-It's placed here because this step just produced the thing that checkpoint tests against, so the example is real code you wrote rather than a toy. See [LEARNING-TRACK.md](LEARNING-TRACK.md) for the full track.
+⚠️ **With no live host, CP-02 changes shape too.** You can still learn the whole of it by deploying to a **local container over SSH** — that exercises secrets, `needs:`, `concurrency`, SSH host keys and rollback identically. The only thing you can't practise is a real provider's quirks. See the note at the top of that checkpoint.

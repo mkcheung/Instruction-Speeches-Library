@@ -2160,7 +2160,7 @@ Revisions 1–4 were organised **horizontally** — all migrations, then all med
 |---|---|---|---|
 | **S0** | Open a dev-only spike wall: play a hand-placed video over a presigned `Range` GET, scrub it, read cue-latency per browser | 1 | `app`, `postgres`, `seaweedfs` |
 | **S1** | Register, verify your email, complete a profile with an avatar, log in, visit `/u/yourname` | 2–2.5 | `mailpit` |
-| **S2** | Do all of the above **on a real domain over TLS**, and stay logged in across a refresh | 0.5–1 | — |
+| **S2** | Prove the cookie-domain layout **locally over real HTTPS** on `.test` subdomains | 0.5 | — |
 | **S3** | Upload a video, watch the progress bar, kill your wifi, resume, play it back — and mark it as replacing an earlier attempt | **3–3.5** | `valkey`, `queue-worker` |
 | **S4** | Upload the **unmodified .MOV straight off an iPhone** and watch it play, with a real thumbnail | 1.5–2 | `ffmpeg-worker` |
 | **S5** | Invite a named person to review your speech; they accept and can watch it — and nobody else can | 2–2.5 | — |
@@ -2172,7 +2172,7 @@ Revisions 1–4 were organised **horizontally** — all migrations, then all med
 | **S11** | Report a speech, export your own data as a file you can open, and delete your account | 2 | — |
 | **S12** | Apply to be a Coach with a PDF, have an admin approve it, get the badge, appear in the directory | 2.5–3 | `clamav` |
 | **S13** | Connect with someone and see your shared history on their profile | 2.5–3 | — |
-| **S14** | Watch a commit reach staging by itself, and watch a backup come back from the dead | 1–1.5 | `glitchtip`, `uptime-kuma` |
+| **S14** | Deploy to a real host for the first time; watch a backup come back from the dead | 2–2.5 | `glitchtip`, `uptime-kuma` |
 | **S15** | Drive the whole annotation screen with a keyboard and a screen reader | 3–3.5 | — |
 | | **Raw total** | **29.5–36** | |
 | | **+15% contingency** | **34–41.5** | |
@@ -2211,19 +2211,25 @@ Estimates assume one experienced full-stack developer and include test-writing.
 
 ---
 
-### S2 — First deploy, thin *(0.5–1 week)* ⭐ *moved forward from revision 4's Phase 8*
+### S2 — Prove the domain layout, locally *(0.5 week)* ⭐ *moved forward from revision 4's Phase 8*
 
-> **At the end:** register and log in on a real domain over TLS, refresh the page, and still be logged in.
+> **At the end:** register and log in at `https://app.speechcoach.test`, with the API on a different subdomain, over real HTTPS — refresh, restart the browser, still logged in.
 
-**Backend.** The smallest thing that can hold S1: application host, database, TLS, DNS for `app.` and `api.` on one registrable domain. A real mail provider with SPF/DKIM/DMARC — **not Mailpit** — because R13 makes deliverability load-bearing. Secrets. CD from `main` with migrations.
+> **⚠️ Scope changed (2026-08-05, stakeholder decision).** No registrable domain yet — the project runs locally and moves to a live host later. **The step splits:** the cookie-domain proof stays here and is fully doable locally; provisioning, CD, secrets and real mail move to S14.
 
-**Frontend.** Nothing new. The build output is the deliverable.
+**Backend.** `/etc/hosts` entries for `app.` and `api.` on a shared **`.test`** domain, plus **`mkcert`** for locally-trusted TLS — because `SESSION_SECURE_COOKIE=true` is the production setting and a `Secure` cookie is not stored over plain HTTP. nginx terminating TLS for both hostnames. The full §5.9 config against them: `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN=.speechcoach.test` (leading dot), pinned `SESSION_COOKIE`, `cors.allowed_origins` naming the origin, `supports_credentials=true`.
 
-**Stubbed.** One environment, not staging *and* production. No backups, no monitoring, no queue workers, no lifecycle rules, no CDN. This is a **skeleton deploy**; S14 makes it a production one.
+**Frontend.** Nothing new. `VITE_API_URL` points at the `.test` API host.
 
-**Acceptance.** A commit to `main` reaches the live host automatically and runs migrations. Registration and login work **against the real cookie domain layout**, and the session survives a hard refresh and a browser restart. A verification email lands in a real Gmail **inbox**, not spam.
+**Deferred to S14, not skipped:** server provisioning, CD from `main`, production secrets, a public CA, real DNS, and **real email deliverability** (R13 — Mailpit covers the flow; only a real provider tests deliverability). Also still absent: backups, monitoring, queue workers, lifecycle rules, CDN.
 
-> **This is the highest-leverage reorder in the document, and it has nothing to do with demo cadence.** §5.2 states the trap precisely: `localhost:5173` and `localhost:8000` share the registrable domain `localhost`, **so Sanctum cookie auth works locally even when the production layout is wrong — and you find out at deploy.** Revision 4 scheduled that discovery for week 23.5–28.5, on top of twenty-four weeks of accumulated infrastructure. Doing it in week 3 against two screens costs half a week and answers §20 Q5 by observation instead of by argument. If the answer is bad, §5.9 already has the fix (a Sanctum PAT, not JWT), and applying it to two screens is a day.
+**Acceptance.** The app serves at `https://app.speechcoach.test` with a real padlock; the API is on a **different hostname**. Registration and login work **cross-subdomain with `SESSION_SECURE_COOKIE=true`**; devtools shows `Domain=.speechcoach.test`, `Secure`, `HttpOnly`, `SameSite=Lax`. The session survives a hard refresh **and a full browser restart**. A CSRF-protected write succeeds. **And deliberately break it once** — drop the leading dot from `SESSION_DOMAIN`, watch auth fail, understand why.
+
+> **This is the highest-leverage reorder in the document, and it survives the no-domain decision intact.** §5.2's trap is that `localhost:5173` and `localhost:8000` share the registrable domain `localhost`, **so cookie auth works locally even when the production layout is wrong.**
+>
+> **But the trap is about domain *structure*, not about DNS being public.** Two hostnames sharing a registrable domain is all the mechanics need, and `/etc/hosts` with a reserved `.test` TLD provides that for nothing. `SESSION_DOMAIN=.speechcoach.test` exercises **exactly the code path production will use** — which is the substance of §20 Q5.
+>
+> What local testing cannot prove — real DNS, a public CA, provisioning, CD, deliverability — are all things that fail **loudly and immediately** when wrong, rather than silently for six months. That asymmetry is why this split is safe.
 
 ---
 
@@ -2397,11 +2403,13 @@ The **arc strip** — the recursive-CTE chain from §6.11 rendered as a version 
 
 ---
 
-### S14 — Production hardening of the deploy *(1–1.5 weeks)*
+### S14 — Production hardening and first real deploy *(2–2.5 weeks)*
 
 > **At the end:** watch a commit reach staging on its own, watch a backup come back from the dead, and see the first deliberately-thrown error land in GlitchTip.
 
-**Backend.** Promote S2's skeleton: staging **and** production, lifecycle rules and CORS in the real bucket, queue workers under `systemd` with the §9.2 limits, Valkey, the scheduler, **backups with a restore drill and a stated RPO/RTO**, GlitchTip and Uptime Kuma. Upload rate limiting. Larastan to level 8.
+**Backend.** ⚠️ **Now carries everything S2 deferred**, because no domain was bought at S2 (2026-08-05): **server provisioning, DNS, a public CA, CD from `main` with migrations, production secrets, and a real mail provider with SPF/DKIM/DMARC.** Plus the original scope: staging **and** production, lifecycle rules and CORS in the real bucket, queue workers under `systemd` with the §9.2 limits, Valkey, the scheduler, **backups with a restore drill and a stated RPO/RTO**, GlitchTip and Uptime Kuma. Upload rate limiting. Larastan to level 8.
+
+> **This step grew from 1–1.5 weeks to 2–2.5.** The cookie-domain risk was retired locally at S2, so what moved here is the mechanical half — and mechanical failures are loud and immediate rather than silent. Re-verify the §5.9 cookie config against the **real** hostnames on first deploy; it should be a config change, not a discovery.
 
 **Frontend.** Error boundaries with real fallbacks. The GlitchTip SPA DSN.
 
@@ -2694,7 +2702,7 @@ frontend: tsc --noEmit → eslint . → vitest run
 
 ### Before S3
 
-5. **Domain layout for Sanctum cookie auth** (§5.2). The `localhost` trap means a wrong answer will not surface until deploy.
+5. **Domain layout for Sanctum cookie auth** (§5.2) — **substantially answered at S2, locally.** No registrable domain is being bought yet (stakeholder decision, 2026-08-05), but `/etc/hosts` plus a reserved `.test` TLD gives two hostnames sharing a registrable domain, which exercises the same cookie mechanics. **What remains open** is only the real production hostnames — and if they end up on *different* registrable domains, §5.9's answer is a Sanctum PAT rather than JWT.
 6. **May a coach watch a speech before accepting?** Strictly your requirement says no — but that means accepting blind, which is a real UX problem. Plan assumes no, with an opt-in `allow_preview` per request.
 
 ### Before the phase named

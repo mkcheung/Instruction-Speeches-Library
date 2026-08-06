@@ -10,7 +10,7 @@ Every file carries a **Demo script** — the actual click-path to see the thing 
 |---|---|---|---|
 | [**00** Foundation](STEP-00-foundation.md) | Play and scrub a presigned video on a spike wall; read cue-latency per browser | 1 | `app`, `web`, `postgres`, `seaweedfs` |
 | [**01** Identity](STEP-01-identity.md) | Register, verify email, complete a profile with avatar, visit `/u/yourname` | 2–2.5 | `mailpit` |
-| [**02** First deploy](STEP-02-first-deploy.md) | Do all of that **on a real domain over TLS**, and stay logged in | 0.5–1 | — |
+| [**02** Domain layout](STEP-02-first-deploy.md) | Prove cookie auth **cross-subdomain over real HTTPS**, locally on `.test` | 0.5 | — |
 | [**03** Upload and watch](STEP-03-upload-and-watch.md) | Upload a video, kill your wifi, resume, play it back | 3–3.5 | `valkey`, `queue-worker` |
 | [**04** Every video plays](STEP-04-every-video-plays.md) | Upload an **unmodified iPhone .MOV** and watch it play, with a thumbnail | 1.5–2 | `ffmpeg-worker` |
 | [**05** Invitation loop](STEP-05-invitation-loop.md) | Invite someone by name; they accept and can watch — nobody else can | 2–2.5 | — |
@@ -22,7 +22,7 @@ Every file carries a **Demo script** — the actual click-path to see the thing 
 | [**11** Privacy and erasure](STEP-11-privacy-erasure.md) | Report a speech, export your data, delete your account | 2 | — |
 | [**12** Admin portal](STEP-12-admin-portal.md) | Apply as a Coach with a PDF, get approved, appear in the directory | 2.5–3 | `clamav` |
 | [**13** Social layer](STEP-13-social-layer.md) | Connect with someone and see your shared history | 2.5–3 | — |
-| [**14** Deploy hardening](STEP-14-deploy-hardening.md) | Watch a commit reach staging, and a backup come back from the dead | 1–1.5 | `glitchtip`, `uptime-kuma` |
+| [**14** First real deploy](STEP-14-deploy-hardening.md) | Deploy to a real host; watch a backup come back from the dead | 2–2.5 | `glitchtip`, `uptime-kuma` |
 | [**15** Accessibility](STEP-15-accessibility.md) | Drive the annotation screen with a keyboard and a screen reader | 3–3.5 | — |
 | | **Raw total** | **29.5–36** | |
 | | **+15% contingency** | **34–41.5** | |
