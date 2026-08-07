@@ -1,0 +1,143 @@
+# Hand-written per MODERNIZATION_PLAN.md §21 — deliberately not `laravel/sail`.
+# Four services for S0 (§21.4): app, web, postgres, seaweedfs.
+#
+# What this teaches (§21.4): services, the default network, name-based DNS
+# (containers reach each other by service name, e.g. `postgres`, `seaweedfs`),
+# published ports, and the first named volume.
+#
+# Rules followed here, each with a reason (§21.3, §21.5):
+#   - Postgres data is a NAMED VOLUME, never a bind mount — bind-mounting the
+#     data directory on macOS is explicitly called out as something to avoid.
+#   - vendor/ and node_modules/ are also named volumes at build time (baked
+#     into the image, not bind-mounted) — bind-mounting tens of thousands of
+#     small files through Docker Desktop's VirtioFS is the most common reason
+#     people conclude "Docker is slow on Mac."
+#   - No migrations run from an entrypoint — see docker/php notes; migrations
+#     are a separate one-shot `docker compose exec app php artisan migrate`.
+#   - depends_on uses `condition: service_healthy`, not the bare form — a bare
+#     depends_on only waits for the container to *start*, not to be *ready*,
+#     and app would boot against a Postgres still initializing.
+#   - The database port is NOT published to the host by default (§21.5) —
+#     uncomment it only when you want a GUI client attached.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+    env_file:
+      - api/.env
+    healthcheck:
+      test: ["CMD", "php", "artisan", "about", "--only=environment"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - default
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: nginx
+      args:
+        VITE_API_URL: "" # relative /api/... — same-origin through nginx's proxy, see Dockerfile
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      # 8000 is already claimed on this host by an unrelated project's
+      # container (recipe-app-api-proxy) — 8080 avoids the collision.
+      - "8080:80"
+    healthcheck:
+      # `localhost` resolves to ::1 here too (see seaweedfs's healthcheck
+      # comment above) — nginx only listens on IPv4 by default in this image.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - default
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-speechcoach}
+      POSTGRES_USER: ${DB_USERNAME:-speechcoach}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-speechcoach}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data # NAMED volume — never a bind mount (§21.3)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-speechcoach} -d ${DB_DATABASE:-speechcoach}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - default
+    # ports:
+    #   - "5432:5432"   # uncomment only to attach a GUI client (§21.5)
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    command:
+      - server
+      - -dir=/data
+      - -s3
+      - -s3.port=8333
+      - -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs-data:/data
+      - ./docker/seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+    ports:
+      - "8333:8333" # S3 API — published so a human can seed a test object by hand (S0's "place a file by hand" step)
+    healthcheck:
+      # `localhost` resolves to ::1 in this image and the S3 listener is
+      # IPv4-only, so wget against `localhost` gets connection-refused even
+      # when the server is healthy — use 127.0.0.1. A bare, unsigned request
+      # to the S3 API correctly returns 403 (no SigV4 auth), which is itself
+      # proof the server is up and answering; `nc -z` just confirms the port.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8333 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - default
+
+  # S1's "container that exists purely to intercept something"
+  # (STEP-01-identity.md): captures every outgoing mail instead of sending
+  # it anywhere real, so the verification email can be read from the web UI
+  # at http://localhost:8025. MAIL_HOST=mailpit (api/.env) resolves it over
+  # this compose network with no further config — the whole point of the
+  # exercise.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025" # web UI
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/api/v1/info"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - default
+
+networks:
+  default:
+    name: speechcoach-dev
+
+volumes:
+  postgres-data:
+  seaweedfs-data:

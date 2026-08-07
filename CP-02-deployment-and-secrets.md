@@ -4,6 +4,18 @@
 
 **Track:** CD · **Time:** ~4h · **After:** [Step 02](STEP-02-first-deploy.md) · **Then:** [Step 03](STEP-03-upload-and-watch.md)
 
+> ### ⚠️ No live host yet — deploy to a local container instead
+>
+> You decided (2026-08-05) to run locally for now. **This checkpoint still works**, because the *mechanics* of CD have nothing to do with where the target lives.
+>
+> **Target a container over SSH.** Run a small `sshd` container in your compose file, give it a volume, and have the workflow deploy into it exactly as it would a VPS.
+>
+> **What that teaches identically:** secrets, `needs:`, `concurrency`, SSH host-key verification, running migrations as a separate step, rollback, and `paths-ignore`. Every skill transfers.
+>
+> **What it can't teach:** a real provider's quirks, DNS, TLS from a public CA, and genuine email deliverability. Those arrive at [Step 14](STEP-14-deploy-hardening.md) — and they fail *loudly*, which is why deferring them is the safe half.
+>
+> ⚠️ **One caveat on GitHub-hosted runners:** they cannot reach your laptop. So either use a **self-hosted runner** (`gh` makes this a five-minute setup and is itself worth learning), or run the deploy job against the container from your own machine using `act`. The self-hosted runner is the more instructive route.
+
 ---
 
 ## 🎯 What you are learning here

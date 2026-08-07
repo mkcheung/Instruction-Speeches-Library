@@ -1,0 +1,19 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    paths:
+        - app
+        - config
+        - database
+        - routes
+
+    # S0 target: level 5. The plan's eventual goal is level 8 (MODERNIZATION_PLAN.md
+    # §12 S0 / CP track); raise this incrementally as later steps add real domain
+    # code rather than jumping straight to 8 on a near-empty skeleton.
+    level: 5
+
+    tmpDir: build/phpstan
+
+    excludePaths:
+        - bootstrap/cache/*

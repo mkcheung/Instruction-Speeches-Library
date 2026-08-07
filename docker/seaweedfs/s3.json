@@ -1,0 +1,20 @@
+{
+  "identities": [
+    {
+      "name": "speechcoach-dev",
+      "credentials": [
+        {
+          "accessKey": "speechcoach-dev-key",
+          "secretKey": "speechcoach-dev-secret"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write",
+        "List",
+        "Tagging"
+      ]
+    }
+  ]
+}
