@@ -56,6 +56,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend (SPA) URL
+    |--------------------------------------------------------------------------
+    |
+    | Used anywhere a non-JSON response needs to redirect a browser at the
+    | SPA rather than this API — e.g. the `login` named route (routes/web.php)
+    | that Fortify's `auth`-guarded email-verification link redirects to when
+    | hit unauthenticated (STEP-01-identity.md's cross-device verification
+    | acceptance test), and the post-verification redirect.
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

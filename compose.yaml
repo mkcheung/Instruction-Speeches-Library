@@ -31,6 +31,8 @@ services:
         condition: service_healthy
       seaweedfs:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
     env_file:
       - api/.env
     healthcheck:
@@ -106,6 +108,25 @@ services:
       # to the S3 API correctly returns 403 (no SigV4 auth), which is itself
       # proof the server is up and answering; `nc -z` just confirms the port.
       test: ["CMD-SHELL", "nc -z 127.0.0.1 8333 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - default
+
+  # S1's "container that exists purely to intercept something"
+  # (STEP-01-identity.md): captures every outgoing mail instead of sending
+  # it anywhere real, so the verification email can be read from the web UI
+  # at http://localhost:8025. MAIL_HOST=mailpit (api/.env) resolves it over
+  # this compose network with no further config — the whole point of the
+  # exercise.
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025" # web UI
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/api/v1/info"]
       interval: 5s
       timeout: 5s
       retries: 10

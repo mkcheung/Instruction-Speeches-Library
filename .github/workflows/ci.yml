@@ -12,19 +12,32 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: shivammathur/setup-php@v2
-        with: 
+        with:
           php-version: '8.4'
           coverage: none
+          # gd + exif are new in S1 for App\Services\AvatarProcessor's
+          # EXIF-stripping re-encode and the feature test that reads the
+          # re-encoded file back with exif_read_data() — without them here
+          # the whole suite fails on a runner that never had the Docker
+          # image's Dockerfile changes applied to it (CI installs PHP
+          # itself, it doesn't build/run the app image).
+          extensions: gd, exif, pdo_sqlite
 
       - uses: actions/setup-node@v7
         with:
          node-version: '22'
          cache: npm
          cache-dependency-path: web/package-lock.json
-      
+
       - name: Install PHP dependencies
         working-directory: api
         run: composer install --no-interaction --prefer-dist
+
+      - name: Prepare api/.env
+        working-directory: api
+        run: |
+          cp .env.example .env
+          php artisan key:generate
 
       - name: Install JS dependencies
         working-directory: web
@@ -34,10 +47,36 @@ jobs:
         working-directory: api
         run: ./vendor/bin/pint --test
 
+      - name: Static analysis (Larastan)
+        working-directory: api
+        run: php -d memory_limit=1G vendor/bin/phpstan analyse --memory-limit=1G
+
+      - name: Test PHP (Pest)
+        working-directory: api
+        # phpunit.xml pins DB_CONNECTION=sqlite/:memory: for the suite, so no
+        # Postgres service container is needed here — the Postgres-specific
+        # behavior this step depends on (case/accent-insensitive username
+        # collision) is enforced in application code (App\Support\Username),
+        # not database collation, precisely so it works identically on
+        # sqlite in CI and Postgres in every real environment (see
+        # STEP-01-identity.md's "Watch for"). The one thing sqlite CANNOT
+        # substitute for — real Postgres type-strictness catching a bad
+        # query — was verified separately, live, against the docker compose
+        # stack; see this step's PR description.
+        run: ./vendor/bin/pest
+
       - name: Typecheck
         working-directory: web
-        run: npx tsc --noEmit
+        # `tsc --noEmit` against the root tsconfig.json is a silent no-op —
+        # it's a solution file with no `include` (TS project-references
+        # convention), so this would check nothing and still exit 0. Use
+        # `tsc -b` (see STEP-00-RETROSPECTIVE.md).
+        run: npx tsc -b
 
       - name: Lint JS
         working-directory: web
         run: npx eslint .
+
+      - name: Test JS
+        working-directory: web
+        run: npx vitest run
