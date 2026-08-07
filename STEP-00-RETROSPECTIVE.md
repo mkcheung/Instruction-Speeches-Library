@@ -56,26 +56,20 @@ $ docker compose up -d
 - Larastan's config was written assuming "Larastan 5" per the plan's literal wording; **no v5 exists** (current major is 3.x). The backend agent caught and noted this, but it's worth flagging here too: the plan's version pins should be treated as intent, not gospel, and verified against what's actually installable at build time.
 - `npx tsc --noEmit` against the root `tsconfig.json` is a silent no-op (it's a solution file with no `include`, per TS project-references convention) — the frontend agent caught this by deliberately injecting a type error and watching it go uncaught, then switched every check (local and CI) to `tsc -b`. Flagging it here because it's a trap that would have shipped a green CI with a checker that checks nothing.
 
-## What was not verified — and cannot be, from here
+## What was not verified from here — closed out by hand on 2026-08-07
 
-STEP-00's acceptance criteria explicitly require a **real browser**:
-- "the same object seeks correctly inside a real `<video>` in Chrome and Safari" — **not done.** This environment has no GUI browser to drive. The `curl -H 'Range:'` mechanics are proven; an actual `<video>` scrub in Chrome/Safari is not.
-- "Measured cue latency for all three drivers is committed to the repo" — **not done.** `CueTimingPanel`'s instrumentation is built and unit-tested at the pure-function layer (`computeActive` etc.), but the actual latency table requires playing a real video in a real browser and reading real event timings; nothing here can produce authentic numbers.
-- The object placed in SeaweedFS for the curl tests is a synthetic 2 MB byte blob (`str_repeat('0123456789', ...)`), **not a real, decodable MP4** — it proves `Range`/CORS mechanics but a `<video>` element would refuse to play it. A human needs to place a real compliant video file at `spikes/sample.mp4` before the browser-side spike can run at all.
+STEP-00's acceptance criteria explicitly require a **real browser**; this environment had no GUI browser to drive, so these three were finished manually and are now done:
+- The object originally placed in SeaweedFS for the curl tests was a synthetic 2 MB byte blob (`str_repeat('0123456789', ...)`), not a real, decodable MP4. **Fixed:** a real short H.264/AAC MP4 was uploaded to `spikes/sample.mp4` via `aws s3 cp --endpoint-url http://localhost:8333`.
+- "the same object seeks correctly inside a real `<video>` in Chrome and Safari" — **done.** Verified manually in both browsers against the real MP4; the scrubber seeks correctly in each.
+- "Measured cue latency for all three drivers is committed to the repo" — **done.** See [SPIKE-RESULTS.md](SPIKE-RESULTS.md) for the Chrome and Safari tables. Notably, `texttrack` diverges sharply between browsers (~6ms Chrome vs. ~119ms Safari) while `rvfc` stays low and consistent in both (~11-23ms) — real signal for the step-06 driver decision, and a concrete instance of the R1 risk this step exists to surface.
 
-These three are the actual point of S0 per the plan ("both artifacts are things a human can look at") — they are the one part of this step a human has to finish by hand.
+These three were the actual point of S0 per the plan ("both artifacts are things a human can look at").
 
 ---
 
 ## Next step
 
-Per [STEPS.md](STEPS.md), **[Step 01 — Account and identity](STEP-01-identity.md)** is next on the critical path (`00 → 01 → 03 → 05 → 06 → 07`). It does not depend on the browser-side verification above, so it's unblocked — but the honest state of this repo right now is "S0's infrastructure and code are real and running; S0's actual acceptance criteria are two-thirds done," and that gap should close before calling S0 finished, not get silently carried forward.
-
-**Concretely, before S1:**
-1. Place a real, short, H.264/AAC MP4 at `spikes/sample.mp4` in SeaweedFS (`docker compose exec app php artisan tinker` with a real file, or a small artisan command).
-2. Open `http://localhost:5173/__spikes` (via `npm run dev` in `web/`, pointed at the running `docker compose` stack) in Chrome, then Safari. Confirm the scrubber seeks.
-3. Read off and commit the actual cue-latency table `CueTimingPanel` produces in each browser.
-4. Only then is S0's acceptance list genuinely complete.
+Per [STEPS.md](STEPS.md), **[Step 01 — Account and identity](STEP-01-identity.md)** is next on the critical path (`00 → 01 → 03 → 05 → 06 → 07`). S0's acceptance list is now genuinely complete — infrastructure, code, and the human-verified browser checks above are all done.
 
 ## What could be done now, per CP-00
 
