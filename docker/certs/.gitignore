@@ -1,0 +1,10 @@
+# mkcert output for STEP-02's app./api.speechcoach.test TLS proof — locally
+# generated, never committed. Populate this directory with (one cert
+# covering BOTH hostnames as SANs — nginx's app./api. server blocks in
+# docker/nginx/default.conf both point at this exact filename pair):
+#
+#   mkcert -install
+#   mkcert -cert-file docker/certs/speechcoach.test.pem \
+#          -key-file  docker/certs/speechcoach.test-key.pem \
+#          app.speechcoach.test api.speechcoach.test
+*.pem
