@@ -39,5 +39,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Vitest's default glob also matches web/tests/*.spec.ts, which are
+    // Playwright specs (their own test()/describe(), run via `playwright
+    // test`, not vitest) — without this exclude, vitest tries to execute
+    // them itself and fails with "did not expect test() to be called here."
+    exclude: ['tests/**', 'node_modules/**'],
   },
 })
