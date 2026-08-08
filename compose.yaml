@@ -58,6 +58,17 @@ services:
       # 8000 is already claimed on this host by an unrelated project's
       # container (recipe-app-api-proxy) — 8080 avoids the collision.
       - "8080:80"
+      # STEP-02-first-deploy.md: TLS for app./api.speechcoach.test.
+      - "443:443"
+    volumes:
+      # mkcert output (see STEP-02-first-deploy.md) — generated on the host,
+      # never baked into the image or committed (docker/certs/.gitignore).
+      - ./docker/certs:/etc/nginx/certs:ro
+    extra_hosts:
+      # host.docker.internal works out of the box on Docker Desktop (macOS),
+      # but this makes it explicit and also covers Linux, where the same
+      # name needs this entry to resolve to the host gateway.
+      - "host.docker.internal:host-gateway"
     healthcheck:
       # `localhost` resolves to ::1 here too (see seaweedfs's healthcheck
       # comment above) — nginx only listens on IPv4 by default in this image.
@@ -85,8 +96,8 @@ services:
       start_period: 10s
     networks:
       - default
-    # ports:
-    #   - "5432:5432"   # uncomment only to attach a GUI client (§21.5)
+    ports:
+      - "5433:5432"   # GUI client access (§21.5) — 5433 avoids colliding with a native host Postgres on 5432
 
   seaweedfs:
     image: chrislusf/seaweedfs:latest
