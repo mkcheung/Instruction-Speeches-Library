@@ -319,10 +319,23 @@ duplicate run. ⚠️ Two real costs: a master push touching **only** `.md` file
 then runs *nothing*, and if `deploy.yml` is ever deleted, master silently gets
 **zero** CI. Eating the duplicate run is defensible.
 
-> ⚠️ **The PR-visible check is `test`, from `ci.yml`'s own `pull_request`
-> trigger.** `deploy.yml` runs only on `push: master`, so it never appears on a
-> PR — requiring it in branch protection would leave every PR pending forever,
-> which [CP-12](CP-12-required-checks.md) calls out.
+> ⚠️ **The PR-visible checks are `CI / test (pull_request)` and
+> `CI / test (push)`** — observed 2026-08-08 on the first real PR. The prefix is
+> the workflow's `name:` field (`CI`), **not** the filename, and the suffix is
+> the triggering event. Both appear because `ci.yml` fires on `push` *and*
+> `pull_request` and the branch is pushed; the duplicate is harmless (~46 s).
+>
+> `deploy.yml` runs only on `push: master`, so it **never appears on a PR** —
+> requiring it in branch protection would leave every PR pending forever, which
+> [CP-12](CP-12-required-checks.md) calls out. Require `CI / test` instead, and
+> copy the name from the checks list rather than typing it.
+
+> ⚠️ **Required reviewers cannot be satisfied by a solo maintainer.** GitHub does
+> not let you approve your own PR, so a `master` rule requiring one approving
+> review blocks *every* merge you will ever make. Your options are to tick
+> **"Merge without waiting for requirements to be met (bypass rules)"** as an
+> admin — recorded in the audit log — or to drop the rule. Keeping the rule and
+> bypassing is defensible: it still works the day a collaborator appears.
 
 **✅ Done when:** a merge to `master` shows **two** jobs, and the repo homepage
 sidebar has a **production** entry under *Environments* with deployment history.
