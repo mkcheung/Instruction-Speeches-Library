@@ -108,3 +108,7 @@ That last one is the point of the whole step. **A configuration you've only seen
 **This is optional.** [Step 03](STEP-03-upload-and-watch.md) does not depend on it — go straight on if you'd rather.
 
 ⚠️ **With no live host, CP-02 changes shape too.** You can still learn the whole of it by deploying to a **local container over SSH** — that exercises secrets, `needs:`, `concurrency`, SSH host keys and rollback identically. The only thing you can't practise is a real provider's quirks. See the note at the top of that checkpoint.
+
+That container is built in a **separate repo**, one directory over: [`../speechcoach-deploy-target`](../speechcoach-deploy-target/FAUX-SERVER-AND-CICD-EXPLAINED.md). It's separate because this repo is public and the deploy private key must never land in it. Start with that document — it explains CI/CD from first principles before any mechanics — then follow [CP-02-BUILD-PLAN.md](CP-02-BUILD-PLAN.md) for the app side (`scripts/`, the runner, `deploy.yml`).
+
+⚠️ **One thing to know before you get there:** the cross-subdomain cookie layout you just stabilised here (`SESSION_DOMAIN`, `SANCTUM_STATEFUL_DOMAINS`, `CORS_ALLOWED_ORIGINS`) has to be set on the deploy target too. It lives in that server's `shared/.env`, placed by hand — `bin/provision.sh` writes it. A target without those silently falls back to `localhost:5173` and every authenticated request breaks in a way that looks like a frontend bug.

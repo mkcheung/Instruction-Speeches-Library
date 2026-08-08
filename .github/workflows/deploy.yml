@@ -1,0 +1,55 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]        # ⚠️ master, NOT main. This repo's default branch
+                              # is master, and getting it wrong fails by doing
+                              # NOTHING — no error anywhere, just no deploy.
+    paths-ignore:
+      - '**.md'               # docs commits shouldn't touch the server.
+                              # NOTE: '**.md' matches at any depth (docs/a.md),
+                              # unlike '*.md' which is root-only. And a commit
+                              # touching only workflow files DOES deploy — it
+                              # doesn't match '**.md'.
+  workflow_dispatch:          # lets you re-run a deploy without a code change
+                              # while iterating. You will want this.
+
+concurrency:
+  group: deploy-production    # arbitrary label; it just has to be spelled
+                              # identically everywhere you use it.
+  cancel-in-progress: false   # WHY false: cancelling a deploy halfway leaves
+                              # files half-copied and migrations half-run.
+                              # (For tests the opposite is right — those results
+                              # were going to be superseded anyway.)
+  queue: max                  # WHY: the DEFAULT is `single`, which CANCELS the
+                              # pending run when a newer one queues. Three rapid
+                              # pushes would deploy twice and silently skip the
+                              # middle commit. `max` queues them FIFO instead.
+                              # ⚠️ `queue: max` + `cancel-in-progress: true` is a
+                              # validation error, and no linter catches it.
+
+jobs:
+  ci:                         # NOT "test" — ci.yml's own job is already named
+    uses: ./.github/workflows/ci.yml   # `test`, which would render "test / test"
+
+  deploy:
+    needs: ci                 # WHY: no green, no deploy. Do NOT add
+                              # `if: always()` — it silently defeats the gate
+                              # that is the entire point of this checkpoint.
+    runs-on: [self-hosted, macOS, ARM64]   # a GitHub-hosted runner cannot reach
+                                           # your laptop. These three labels are
+                                           # auto-assigned; all must match.
+    environment: production   # scopes the secrets below to this job only, and
+                              # records the deployment in the repo sidebar
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Deploy
+        env:
+          # DEPLOY_HOST is a VARIABLE, not a secret. As a secret, GitHub would
+          # redact the literal string "127.0.0.1" from every log line in every
+          # job, and unrelated output would sprout *** for no reason.
+          DEPLOY_HOST:     ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KEY:      ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: ./scripts/deploy.sh

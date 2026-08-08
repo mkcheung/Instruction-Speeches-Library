@@ -94,7 +94,7 @@ Recorded because each would have taught something false:
 
 1. **The H.264 gotcha inverted.** Since Playwright **1.57**, `chromium` is Chrome for Testing on macOS arm64 and Linux x64 — and **has** H.264. The problem **relocated to arm64 Linux**, which means it now fires on your own machine via Docker. Better lesson, opposite fact. ([CP-04](CP-04-services-and-caching.md))
 2. **Every `actions/*` major was stale**, with a hard deadline in September 2026.
-3. **Manual approval gates are public-repo-only** below Enterprise — so for a solo learner on a private repo, that lesson is unavailable. ([CP-02](CP-02-deployment-and-secrets.md), [CP-12](CP-12-required-checks.md))
+3. **Manual approval gates are public-repo-only** below Enterprise — so for a solo learner on a private repo, that lesson is unavailable. On **Free**, going private also costs you environment secrets and deployment-branch restrictions; you cannot configure an environment at all. ([CP-02](CP-02-deployment-and-secrets.md), [CP-12](CP-12-required-checks.md))
 
 ### Still unverified — check before relying on these
 

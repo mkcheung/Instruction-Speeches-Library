@@ -3,6 +3,14 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_call:      # WHY: required before `uses:` can call this file.
+                      # A "reusable workflow" is a whole workflow file invoked
+                      # as a JOB — different from an Action, which is a single
+                      # STEP. Same `uses:` keyword, two different levels:
+                      #   steps: - uses: actions/checkout@v7   <- an Action
+                      #   jobs:  ci: {uses: ./…/ci.yml}        <- this
+                      # Adding it has NO effect on the push/pull_request
+                      # triggers above — triggers are independent.
 
 jobs:
   test:
