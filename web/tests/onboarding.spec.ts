@@ -17,7 +17,7 @@ test('test', async ({ page, context }) => {
     email = `onboarding-test-${unique}@example.com`;
     const username = `test${unique}`;
 
-    await page.goto('http://localhost:5173/register');
+    await page.goto('https://app.speechcoach.test/register');
     await page.getByRole('textbox', { name: 'Email' }).click();
     await page.getByRole('textbox', { name: 'Email' }).fill(email);
     await page.getByRole('textbox', { name: 'Email' }).press('Tab');
@@ -25,7 +25,7 @@ test('test', async ({ page, context }) => {
     await page.getByRole('textbox', { name: 'Password', exact: true }).press('Tab');
     await page.getByRole('textbox', { name: 'Confirm password' }).fill('testpass@1234');
     await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page).toHaveURL('http://localhost:5173/verify');
+    await expect(page).toHaveURL('https://app.speechcoach.test/verify');
     const page1 = await context.newPage();
     await page1.goto('http://localhost:8025/');
     // Clicking the row just opens Mailpit's inline preview (no popup) — the
@@ -54,5 +54,5 @@ test('test', async ({ page, context }) => {
     await page2.getByRole('button', { name: 'Skip for now' }).click();
     await page2.getByRole('button', { name: 'View your profile' }).click();
 
-    await expect(page2).toHaveURL(`http://localhost:5173/u/${username}`);
+    await expect(page2).toHaveURL(`https://app.speechcoach.test/u/${username}`);
 });
