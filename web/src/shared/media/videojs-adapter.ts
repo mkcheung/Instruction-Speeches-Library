@@ -42,6 +42,29 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
     sources: [{ src: options.initialUrl, type: 'video/mp4' }],
   })
 
+  // STEP-04-every-video-plays.md §9.5's poster-flash mitigation.
+  // Reassigning `player.src(...)` on a URL refresh (below) resets the
+  // media element's internal "show poster" state, so — without this — the
+  // poster image flashes back over the video mid-playback every time the
+  // presigned URL is refreshed. `loadeddata` fires once a frame is
+  // actually decoded and ready to paint, so clearing the poster there
+  // means the browser has nothing to show once real video content exists;
+  // `emptied` fires when `src` is reassigned (both on a genuine new video
+  // AND on our own refresh reassignment) and is the only correct moment to
+  // put the poster attribute back, since that's when the element has no
+  // frame at all again. Both handlers are registered exactly ONCE, here,
+  // for the life of this player — via `.on()`, not `.one()` re-armed per
+  // cycle — so they naturally fire again on every subsequent refresh
+  // without ever being re-registered (no duplicate-listener accumulation
+  // the way the error-driven refresh handlers below have to guard against
+  // with explicit `.one()`/`.off()` pairs, since those ARE re-added per
+  // error).
+  if (options.poster) {
+    const originalPoster = options.poster
+    player.on('loadeddata', () => player.poster(''))
+    player.on('emptied', () => player.poster(originalPoster))
+  }
+
   let refreshing = false
 
   player.on('error', () => {

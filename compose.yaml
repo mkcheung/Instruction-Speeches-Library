@@ -50,16 +50,20 @@ services:
   # (STEP-03-upload-and-watch.md) — the cleanest illustration of
   # image-versus-container there is: `queue-worker` is built from the exact
   # same `runtime` target as `app`, differing only in the command it runs.
-  # §9.2's full worker tuning (separate --queue processes, retry_after,
-  # CPUQuota, nice) is STEP-04; this is deliberately the minimal form —
-  # `after_commit => true` (TranscodeSpeechAsset) is the one non-negotiable
-  # that ships with S3.
+  # STEP-04 (§9.2) splits the transcode queue OUT of this service into its
+  # own `ffmpeg-worker` service below, because `--timeout` is a per-PROCESS
+  # setting: the `default` queue here (mail, etc.) wants ~60s, transcode
+  # wants ~3700s, and one `queue:work` process can't have both. This service
+  # now only ever drains the short-timeout `default` queue —
+  # `after_commit => true` (TranscodeSpeechAsset) still applies to jobs
+  # dispatched from here, it's just that no transcode job is ever routed to
+  # this queue/connection.
   queue-worker:
     build:
       context: .
       dockerfile: Dockerfile
       target: runtime
-    command: php artisan queue:work --sleep=1 --tries=1
+    command: php artisan queue:work --queue=default --timeout=60 --sleep=1 --tries=1
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,6 +73,61 @@ services:
         condition: service_healthy
     env_file:
       - api/.env
+    networks:
+      - default
+
+  # §9.2's transcode worker, split out of `queue-worker` above: its own
+  # process (so its own `--timeout`), its own queue/connection
+  # (`redis-long`/`transcode` — config/queue.php, `retry_after => 3900`,
+  # owned by another agent hardening App\Jobs\TranscodeSpeechAsset in
+  # parallel with this file), and built from the `ffmpeg-worker` Dockerfile
+  # stage so ffmpeg never has to be present in `app`/`web`.
+  #
+  # >>> Built from a distro (apk) package, per the GPL note on the
+  # >>> `ffmpeg-worker` Dockerfile stage — THIS IMAGE MUST NEVER BE PUSHED
+  # >>> TO A REGISTRY. Nothing in .github/workflows/*.yml pushes images
+  # >>> today (confirmed by reading ci.yml/deploy.yml), so there's no
+  # >>> existing guardrail to lean on — if a registry-push step is added
+  # >>> later, it must explicitly skip this service/target.
+  #
+  # `--timeout=3700` sits between TranscodeSpeechAsset's own `$timeout=3600`
+  # and `redis-long`'s `retry_after=>3900` — the ordering §9.2 requires so a
+  # process kill and a queue-release can't race each other. `nice -n 19` is
+  # the process-level throttle; `cpus`/`mem_limit` below are this compose
+  # deploy's equivalent of §9.2's systemd `CPUQuota=150%` (this repo deploys
+  # via `scripts/deploy.sh` + Compose on the target host, not bare-metal
+  # systemd units — confirmed by reading scripts/deploy.sh, no systemd unit
+  # path exists here). Concurrency 1 is just "run one replica of this
+  # service" — no `deploy.replicas`, no second copy.
+  #
+  # `-threads 2` (an ffmpeg CLI flag, not a compose/Docker setting) belongs
+  # in the actual `ffmpeg` invocation in FfmpegTranscoder.php, not here —
+  # not added in this file.
+  ffmpeg-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ffmpeg-worker
+    command: sh -c "nice -n 19 php artisan queue:work redis-long --queue=transcode --timeout=3700 --tries=1 --sleep=1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
+    # Headroom, relative to `app`/`web` (which currently have NO limits at
+    # all): a runaway/pathological ffmpeg encode must not be able to starve
+    # the web tier's CPU or get OOM-killed alongside it. 1.5 CPUs and 2GiB
+    # is generous for a single 1080p libx264 encode (well above what `-threads
+    # 2` on the ffmpeg side will actually use) while still leaving the rest
+    # of a typical dev/small-prod host (app, web, postgres, valkey,
+    # seaweedfs, mailpit) room to run. Revisit alongside real hardware specs
+    # at deploy time — these are dev-sane defaults, not a capacity plan.
+    cpus: "1.5"
+    mem_limit: "2g"
     networks:
       - default
 

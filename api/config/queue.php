@@ -73,6 +73,24 @@ return [
             'after_commit' => false,
         ],
 
+        // Same Redis/Valkey instance as `redis` above (same connection/host/
+        // port/database env vars) — only `retry_after` differs. Used only by
+        // TranscodeSpeechAsset (MODERNIZATION_PLAN §9.2): a transcode can
+        // legitimately run for many minutes, and the default `redis`
+        // connection's 90s `retry_after` would let the queue release a
+        // second worker onto the same job — and the same underlying
+        // ffmpeg process — while the first is still working. Must stay
+        // above the job's `$timeout` (3600s) or Laravel's own "job ran
+        // longer than retry_after" warning becomes a real double-dispatch.
+        'redis-long' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => env('REDIS_QUEUE', 'default'),
+            'retry_after' => (int) env('REDIS_QUEUE_LONG_RETRY_AFTER', 3900),
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
         'deferred' => [
             'driver' => 'deferred',
         ],

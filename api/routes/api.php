@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PresignController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\QueueStatusController;
 use App\Http\Controllers\Api\SpeechController;
 use App\Http\Controllers\Api\SpeechUploadController;
 use App\Http\Resources\UserResource;
@@ -60,6 +61,17 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.speeches.assets.retry');
     Route::get('/speeches/{speech}/assets/{asset}/playback-url', [SpeechUploadController::class, 'playbackUrl'])
         ->name('api.speeches.assets.playback-url');
+
+    // STEP-04-every-video-plays.md §9.5: posters/sprites (delivered via
+    // SpeechResource) plus the two supporting endpoints — frame picking and
+    // the transcode-queue backpressure gauge.
+    Route::post('/speeches/{speech}/assets/{asset}/poster-frame', [SpeechUploadController::class, 'setPosterFrame'])
+        ->name('api.speeches.assets.poster-frame');
+
+    // Global (not speech/asset-scoped, matching §9.5's literal wording) —
+    // the UI's "processing is backed up" banner reads this directly.
+    Route::get('/queue/transcode-depth', QueueStatusController::class)
+        ->name('api.queue.transcode-depth');
 });
 
 // Public identity view — no auth (§7.1: viewing another user's public profile

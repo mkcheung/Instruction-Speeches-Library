@@ -58,4 +58,35 @@ class SpeechAssetFactory extends Factory
             'failure_detail' => 'ffprobe: unsupported codec for remux-only pipeline',
         ]);
     }
+
+    /**
+     * §9.5: a poster frame. `is_primary` defaults false since a speech can
+     * have several poster variants (srcset) but at most one primary — call
+     * sites that need the primary row opt in explicitly.
+     */
+    public function poster(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'kind' => 'poster',
+            'format' => 'jpeg',
+            'path' => 'speeches/'.Str::ulid().'/poster.jpg',
+            'width' => 1280,
+            'height' => 720,
+        ]);
+    }
+
+    /**
+     * §9.5: the hover-scrub sprite sheet — fixed 5x2 tile geometry per the
+     * spec's ffmpeg call (`fps=10/DURATION,scale=160:-2,tile=5x2`).
+     */
+    public function sprite(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'kind' => 'sprite',
+            'format' => 'jpeg',
+            'path' => 'speeches/'.Str::ulid().'/sprite.jpg',
+            'width' => 800,
+            'height' => 180,
+        ]);
+    }
 }

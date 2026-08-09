@@ -60,16 +60,23 @@ FROM php:8.4-fpm-alpine AS runtime
 # deletion, and exif_read_data() (ext-exif) is what the feature test reads
 # the re-encoded file back with to prove it.
 #
-# ffmpeg is new in S3, for App\Services\Transcoding\FfmpegTranscoder — it is
-# a runtime binary shelled out to (via Illuminate\Support\Facades\Process),
-# never a PHP extension, so it has no docker-php-ext-install step and needs
-# no dev/runtime library split the way gd/zip/intl do above. This same image
-# runs as both the `app` and `queue-worker` services (§21.4's "two
-# containers, one image" lesson), so ffmpeg only needs to be installed once,
-# here, for both.
+# ffmpeg was here in S3 (installed alongside these libs, shared by `app` and
+# `queue-worker`). STEP-04 moves it OUT of this stage entirely: only
+# App\Services\Transcoding\FfmpegTranscoder shells out to it (verified by
+# grepping api/app for `ffmpeg`/`ffprobe` — AppServiceProvider binds
+# FakeTranscoder outside the real transcode worker, so neither `app` nor the
+# default-queue `queue-worker` ever calls the real binary), and Alpine's own
+# `apk info -a ffmpeg` build config shows `--enable-gpl --enable-libx264`
+# (verified directly: `docker run --rm alpine:3.20 sh -c "apk add ffmpeg &&
+# ffmpeg -version"` prints that exact configure line) — i.e. this is a GPL
+# binary the same way Debian's is, not an LGPL-only build. §5.6/§9.2's
+# GPL-isolation mitigation (own container, built from a distro package,
+# never pushed to a registry) only means anything if the `app`/`web` images
+# never carry the binary in the first place. See the `ffmpeg-worker` stage
+# below for where it now lives.
 RUN apk add --no-cache postgresql-dev libzip-dev libzip zip icu-dev icu-libs \
     libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev \
-    libpng libjpeg-turbo libwebp freetype ffmpeg \
+    libpng libjpeg-turbo libwebp freetype \
     && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
     && docker-php-ext-install pdo_pgsql opcache zip bcmath intl gd exif \
     && apk del --no-cache libzip-dev icu-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev
@@ -80,6 +87,35 @@ RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cac
 USER www-data
 EXPOSE 9000
 CMD ["php-fpm"]
+
+# ---- ffmpeg-worker: the `ffmpeg-worker` compose service ONLY. -------------
+# GPL boundary (§5.6, §9.2, MODERNIZATION_PLAN.md §12.3/§21): FFmpeg built
+# with `--enable-gpl` (required for libx264, which this pipeline needs for
+# H.264 encoding) is GPL-licensed. GPL obligations trigger on DISTRIBUTING
+# the binary, not on running it, so the mitigation is: keep it in its own
+# image, built from a distro package (apk, same as before — confirmed above
+# that Alpine's `ffmpeg` package is already `--enable-gpl --enable-libx264`,
+# so there is no "safer" apk build to switch to; isolation is the only lever
+# here), and NEVER PUSH THIS IMAGE TO A REGISTRY.
+#
+# >>> THIS IMAGE MUST NEVER BE PUSHED TO A REGISTRY. <<<
+# As of this stage's addition, .github/workflows/ci.yml and deploy.yml push
+# nothing anywhere (deploy.yml rsyncs api/ source and builds on the target
+# host; ci.yml only runs `docker compose up --build` locally to the runner)
+# — so there is no existing guardrail this could slip through today. If a
+# future change adds `docker push`/`docker/build-push-action` or any
+# registry step, it MUST explicitly exclude the `ffmpeg-worker` target/tag,
+# or this GPL boundary silently breaks.
+#
+# Built FROM `runtime`, not fresh from php:8.4-fpm-alpine: it wants the same
+# PHP/artisan/queue:work environment as the other workers (it's still a
+# Laravel queue worker process, just with ffmpeg added), and this stage is
+# already local-only/never-pushed, so there's no distribution-surface reason
+# to slim it down further.
+FROM runtime AS ffmpeg-worker
+USER root
+RUN apk add --no-cache ffmpeg
+USER www-data
 
 # ---- nginx: the `web` service. Serves the built SPA and proxies /api to app:9000 ----
 FROM nginx:1.27-alpine AS nginx

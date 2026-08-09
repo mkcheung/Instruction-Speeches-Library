@@ -16,6 +16,7 @@ class FakePlayer {
   srcCalls: unknown[] = []
   playCalled = false
   private _error: { code: number } | null = null
+  private _poster: string | undefined = undefined
 
   on(event: string, handler: () => void) {
     this.one(event, handler, false)
@@ -64,6 +65,11 @@ class FakePlayer {
   play() {
     this.playCalled = true
     return Promise.resolve()
+  }
+
+  poster(value?: string) {
+    if (value !== undefined) this._poster = value
+    return this._poster
   }
 }
 
@@ -141,5 +147,67 @@ describe('videojs-adapter refresh-on-error', () => {
     await flush()
 
     expect(refreshUrl).toHaveBeenCalledTimes(2)
+  })
+})
+
+/**
+ * STEP-04-every-video-plays.md §9.5's poster-flash mitigation: reassigning
+ * `src` on a URL refresh resets the media element's internal "show
+ * poster" state, so without this the poster flashes back over the video
+ * mid-playback. `loadeddata` clears the `poster` attribute (nothing left
+ * to flash); `emptied` (fired when `src` is reassigned) puts it back, and
+ * both are registered exactly once — not re-armed per refresh — so they
+ * keep working correctly across arbitrarily many refresh cycles without
+ * accumulating duplicate listeners.
+ */
+describe('videojs-adapter poster-flash mitigation', () => {
+  it('clears the poster attribute once the first frame has loaded', () => {
+    const player = createVideoJsPlayer(document.createElement('video'), {
+      initialUrl: 'https://stale.example/video.mp4',
+      refreshUrl: vi.fn(),
+      poster: 'https://example.com/poster.jpg',
+    }) as unknown as FakePlayer
+
+    player.emit('loadeddata')
+
+    expect(player.poster()).toBe('')
+  })
+
+  it('restores the poster on emptied and re-clears it on the following loadeddata (repeatable across cycles)', () => {
+    const player = createVideoJsPlayer(document.createElement('video'), {
+      initialUrl: 'https://stale.example/video.mp4',
+      refreshUrl: vi.fn(),
+      poster: 'https://example.com/poster.jpg',
+    }) as unknown as FakePlayer
+
+    player.emit('loadeddata')
+    expect(player.poster()).toBe('')
+
+    // A URL refresh reassigns `src`, which resets the element — `emptied`
+    // fires, then a fresh `loadeddata` once the new source has a frame.
+    player.emit('emptied')
+    expect(player.poster()).toBe('https://example.com/poster.jpg')
+
+    player.emit('loadeddata')
+    expect(player.poster()).toBe('')
+
+    // A second refresh cycle must behave identically — proving the
+    // listeners were not consumed/left stale after the first cycle.
+    player.emit('emptied')
+    expect(player.poster()).toBe('https://example.com/poster.jpg')
+    player.emit('loadeddata')
+    expect(player.poster()).toBe('')
+  })
+
+  it('does nothing when no poster option was provided', () => {
+    const player = createVideoJsPlayer(document.createElement('video'), {
+      initialUrl: 'https://stale.example/video.mp4',
+      refreshUrl: vi.fn(),
+    }) as unknown as FakePlayer
+
+    player.emit('loadeddata')
+    player.emit('emptied')
+
+    expect(player.poster()).toBeUndefined()
   })
 })

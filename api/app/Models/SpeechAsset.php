@@ -37,12 +37,16 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property bool $is_primary
  * @property string|null $upload_id
  * @property int|null $client_declared_bytes
+ * @property int|null $width
+ * @property int|null $height
+ * @property string|null $poster_time_seconds
  */
 #[Fillable([
     'speech_id', 'kind', 'format', 'rendition', 'disk', 'path',
     'original_filename', 'mime_type', 'byte_size', 'duration_seconds',
     'status', 'failure_code', 'failure_detail', 'is_primary',
     'upload_id', 'client_declared_bytes',
+    'width', 'height', 'poster_time_seconds',
 ])]
 class SpeechAsset extends Model
 {
@@ -67,6 +71,9 @@ class SpeechAsset extends Model
             'client_declared_bytes' => 'integer',
             'duration_seconds' => 'decimal:3',
             'is_primary' => 'boolean',
+            'width' => 'integer',
+            'height' => 'integer',
+            'poster_time_seconds' => 'decimal:3',
         ];
     }
 }

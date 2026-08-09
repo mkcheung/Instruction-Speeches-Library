@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { NoPosterPlaceholder } from '@/components/speech/NoPosterPlaceholder'
+import { SpeechPoster } from '@/components/speech/SpeechPoster'
 import { StatusBadge, SupersedesBadge } from '@/components/speech/StatusBadge'
 import { useListSpeechesQuery } from '@/features/speech/speechApi'
 
@@ -12,10 +12,10 @@ import { useListSpeechesQuery } from '@/features/speech/speechApi'
  * interval the whole time this page is mounted; RTK Query starts/stops the
  * poll automatically with the component, so there's nothing to tear down
  * by hand, and a background GET every few seconds is cheap enough not to
- * need the extra complexity of turning it off once everything settles. No
- * posters exist yet (§9.5 is a later step) — every card renders
- * NoPosterPlaceholder, which is the point: a posterless card that reads as
- * intentional, not broken.
+ * need the extra complexity of turning it off once everything settles.
+ * `SpeechPoster` (STEP-04 §9.5) renders the real poster once one exists,
+ * falling back to the same intentional-not-broken placeholder it always
+ * has for speeches that don't have one yet.
  */
 export default function MySpeeches() {
   const { data, isLoading } = useListSpeechesQuery(undefined, { pollingInterval: 3000 })
@@ -44,7 +44,7 @@ export default function MySpeeches() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {speeches.map((speech) => (
           <Card key={speech.id}>
-            <NoPosterPlaceholder ulid={speech.ulid} title={speech.title} className="rounded-b-none" />
+            <SpeechPoster speech={speech} className="rounded-b-none" />
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 {speech.title}
