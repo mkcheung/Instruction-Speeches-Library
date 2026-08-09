@@ -88,3 +88,21 @@ jobs:
       - name: Test JS
         working-directory: web
         run: npx vitest run
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright
+        working-directory: web
+        run: npx playwright test tests/example.spec.ts
+
+      - name: Upload test artifacts
+        if: always()          # <- THE line. Without it, this step is skipped whenever the test above fails.
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7

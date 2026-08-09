@@ -16,3 +16,8 @@ test('get started link', async ({ page }) => {
   // Expects page to have a heading with the name of Installation.
   await expect(page.getByRole('heading', { name: 'Installation' })).toBeVisible();
 });
+
+test('locale-dependent date check', async () => {
+  const formatted = new Date(2026, 0, 5).toLocaleDateString();
+  expect(formatted).toBe('1/5/2026'); // works on your Mac; may differ on Linux CI
+});
