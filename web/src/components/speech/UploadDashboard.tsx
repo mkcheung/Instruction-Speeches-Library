@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Uppy from '@uppy/core'
 import AwsS3 from '@uppy/aws-s3'
 import Dashboard from '@uppy/react/dashboard'
@@ -31,6 +31,20 @@ import type { CompletedPart } from '@/features/speech/types'
  * of file size. What §9.1's "~20 MB threshold" buys in the reference design
  * (avoiding multipart overhead for small files) is deliberately given up
  * here for one upload code path end to end.
+ *
+ * The Uppy instance is created AND destroyed inside the same `useEffect`
+ * (not `useState`-lazy-init + a separate destroy-on-cleanup effect). That
+ * split is a real, easy-to-hit bug, not a style preference: under
+ * `<StrictMode>` (main.tsx — dev only, never production), React
+ * mounts→cleans up→remounts every effect once as a bug-detection pass. A
+ * `useState`-created singleton survives that remount (state persists), but
+ * a `useEffect` cleanup that calls `uppy.destroy()` fires on the FIRST,
+ * throwaway unmount too — tearing down the one-and-only Uppy instance the
+ * still-live `<Dashboard>` is wired to, which is exactly why the dashboard
+ * rendered as an empty, unresponsive box the first time this was tried in
+ * dev. Creating fresh inside the effect means StrictMode's extra
+ * mount/destroy cycle produces a second, equally valid instance instead of
+ * corrupting the first one.
  */
 export function UploadDashboard({
   speechId,
@@ -39,16 +53,25 @@ export function UploadDashboard({
   speechId: number
   onAssetReady: (assetId: number) => void
 }) {
-  // A plain mutable box, deliberately NOT `useRef` — the Uppy plugin
-  // callbacks below are constructed inside this `useState` lazy
-  // initializer (i.e. during render), and React's ref-safety lint rule
-  // flags any `useRef` value closed over there as "may be read during
-  // render." It never actually is (Uppy only invokes these on real upload
-  // events), but a plain object sidesteps the rule without fighting it.
-  const [pendingAssetId] = useState<{ current: number | null }>(() => ({ current: null }))
+  const [uppy, setUppy] = useState<Uppy | null>(null)
 
-  const [uppy] = useState(() =>
-    new Uppy({
+  // Read the latest `onAssetReady` from inside the effect without making
+  // it a dependency — the parent passes a fresh closure every render, and
+  // depending on it would tear down and recreate the upload (and any
+  // in-progress file selection) on every keystroke elsewhere on the page.
+  const onAssetReadyRef = useRef(onAssetReady)
+  useEffect(() => {
+    onAssetReadyRef.current = onAssetReady
+  })
+
+  useEffect(() => {
+    // A plain mutable box, deliberately NOT `useRef` — closed over by the
+    // plugin callbacks below, which only ever run from real Uppy upload
+    // events (never during render), so there's no ref-during-render hazard
+    // here the way there would be if this were read outside the effect.
+    const pendingAssetId: { current: number | null } = { current: null }
+
+    const instance = new Uppy({
       restrictions: { maxNumberOfFiles: 1, allowedFileTypes: ['video/*'] },
     }).use(AwsS3, {
       shouldUseMultipart: true,
@@ -98,7 +121,7 @@ export function UploadDashboard({
           )
           .unwrap()
 
-        onAssetReady(result.asset.id)
+        onAssetReadyRef.current(result.asset.id)
 
         return {}
       },
@@ -116,10 +139,16 @@ export function UploadDashboard({
       async listParts() {
         return []
       },
-    }),
-  )
+    })
 
-  useEffect(() => () => uppy.destroy(), [uppy])
+    setUppy(instance)
+
+    return () => {
+      instance.destroy()
+    }
+  }, [speechId])
+
+  if (!uppy) return null
 
   return <Dashboard uppy={uppy} proudlyDisplayPoweredByUppy={false} />
 }

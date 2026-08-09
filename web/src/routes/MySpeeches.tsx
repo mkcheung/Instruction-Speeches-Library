@@ -6,12 +6,19 @@ import { StatusBadge, SupersedesBadge } from '@/components/speech/StatusBadge'
 import { useListSpeechesQuery } from '@/features/speech/speechApi'
 
 /**
- * STEP-03-upload-and-watch.md's "my speeches." No posters exist yet (§9.5
- * is a later step) — every card renders NoPosterPlaceholder, which is the
- * point: a posterless card that reads as intentional, not broken.
+ * STEP-03-upload-and-watch.md's "my speeches" — "the card shows
+ * `processing`, then `ready`" is a live transition the demo script watches
+ * happen, not something that needs a manual page reload. Polls at a fixed
+ * interval the whole time this page is mounted; RTK Query starts/stops the
+ * poll automatically with the component, so there's nothing to tear down
+ * by hand, and a background GET every few seconds is cheap enough not to
+ * need the extra complexity of turning it off once everything settles. No
+ * posters exist yet (§9.5 is a later step) — every card renders
+ * NoPosterPlaceholder, which is the point: a posterless card that reads as
+ * intentional, not broken.
  */
 export default function MySpeeches() {
-  const { data, isLoading } = useListSpeechesQuery()
+  const { data, isLoading } = useListSpeechesQuery(undefined, { pollingInterval: 3000 })
 
   if (isLoading) {
     return (
