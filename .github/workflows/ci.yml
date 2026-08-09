@@ -89,20 +89,119 @@ jobs:
         working-directory: web
         run: npx vitest run
 
+  # CP-03's "tie it to something real" follow-on: the actual STEP-03 e2e
+  # spec, run against the actual docker-compose stack — not a toy site.
+  # Runs independently of `test` above (no `needs:`) so a slow/flaky e2e
+  # run never blocks the fast unit-test signal.
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # STEP-02-first-deploy.md's domain layout, reproduced on the runner:
+      # two hostnames sharing a registrable domain, both resolving locally.
+      - name: Add speechcoach.test hosts entries
+        run: |
+          echo "127.0.0.1 app.speechcoach.test" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 api.speechcoach.test" | sudo tee -a /etc/hosts
+
+      # Not `mkcert -install`: that imports the local CA into the runner's
+      # NSS/system trust stores, which is one more thing to get right
+      # (certutil, browser-specific trust DBs) for a value playwright.config.ts
+      # already gets around with `ignoreHTTPSErrors: true`. Generating the
+      # leaf cert alone is enough — nginx just needs *a* cert to terminate
+      # TLS with, real trust chain or not.
+      - name: Install mkcert and generate TLS certs
+        run: |
+          curl -sSL -o /usr/local/bin/mkcert https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+          chmod +x /usr/local/bin/mkcert
+          mkcert -cert-file docker/certs/speechcoach.test.pem \
+                 -key-file  docker/certs/speechcoach.test-key.pem \
+                 app.speechcoach.test api.speechcoach.test
+
+      # No `php artisan key:generate` here (unlike the `test` job) — that
+      # needs vendor/ installed on the runner just for this one value, and
+      # api/.env is only read by `docker compose` (env_file:) to populate
+      # the app/queue-worker containers, which build their own vendor/
+      # inside the image regardless. APP_KEY's only real requirement is
+      # "32 random bytes, base64, prefixed" — openssl gets there directly.
+      - name: Prepare api/.env
+        working-directory: api
+        run: |
+          cp .env.example .env
+          sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" .env
+
+      # web/.env.example still documents the OLDER same-origin :8080 proxy
+      # (pre-STEP-02); the real local .env (gitignored, matching what these
+      # specs assert against) points at the app./api. subdomain split —
+      # reproduce that exact value here rather than the example file's.
+      - name: Prepare web/.env
+        working-directory: web
+        run: |
+          echo "VITE_API_URL=https://api.speechcoach.test" > .env
+          echo "VITE_ENABLE_SPIKES=false" >> .env
+
+      - name: Install JS dependencies
+        working-directory: web
+        run: npm ci
+
       - name: Install Playwright browsers
         working-directory: web
         run: npx playwright install --with-deps chromium
 
-      - name: Run Playwright
+      # `--wait` (Compose v2) blocks until every service with a healthcheck
+      # reports healthy, and fails fast if one goes unhealthy instead of
+      # letting a doomed run limp to the Playwright step before failing
+      # there with a far less obvious error.
+      - name: Start the docker compose stack
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Run migrations
+        run: docker compose exec -T app php artisan migrate --force
+
+      # Vite is deliberately NOT containerized (§21.2) — nginx's
+      # app.speechcoach.test server block proxies to
+      # host.docker.internal:5173, i.e. THIS runner, exactly like a local
+      # dev machine. Backgrounded so later steps in this job can still run;
+      # GitHub Actions keeps background processes alive for the rest of the
+      # job, only the runner's teardown at job end kills them.
+      - name: Start the Vite dev server
         working-directory: web
-        run: npx playwright test tests/example.spec.ts
+        run: nohup npm run dev > /tmp/vite.log 2>&1 &
+
+      - name: Wait for app.speechcoach.test to answer
+        run: |
+          for i in $(seq 1 30); do
+            if curl -skf https://app.speechcoach.test/ -o /dev/null; then
+              echo "up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "--- vite log ---"; cat /tmp/vite.log
+          echo "--- web container log ---"; docker compose logs web --tail=50
+          exit 1
+
+      - name: Run Playwright (speech-create e2e)
+        working-directory: web
+        run: npx playwright test tests/speech-create.spec.ts --project=chromium
 
       - name: Upload test artifacts
-        if: always()          # <- THE line. Without it, this step is skipped whenever the test above fails.
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: e2e-playwright-report
           path: |
             web/playwright-report/
             web/test-results/
           retention-days: 7
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
