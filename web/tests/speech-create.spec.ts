@@ -20,8 +20,15 @@ import { execSync } from 'node:child_process';
 let email: string;
 
 test.afterEach(() => {
+    // `speeches.user_id` is `ON DELETE RESTRICT` (§6.3 — deliberate: a
+    // speech outliving its speaker's account deletion is a real product
+    // decision, not something to cascade away by accident). This test
+    // creates a speech, so deleting straight from `users` is now blocked
+    // by the FK it used to never touch — delete the dependent `speeches`
+    // row(s) first (their `speech_assets` cascade automatically) and only
+    // then the user.
     execSync(
-        `docker exec instruction-speeches-library-postgres-1 psql -U speechcoach -d speechcoach -c "delete from users where email = '${email}'"`,
+        `docker exec instruction-speeches-library-postgres-1 psql -U speechcoach -d speechcoach -c "delete from speeches where user_id = (select id from users where email = '${email}'); delete from users where email = '${email}'"`,
     );
 });
 
