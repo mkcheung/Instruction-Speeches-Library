@@ -30,6 +30,15 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+
+    /* The real-stack e2e specs (tests/speech-create.spec.ts etc.) hit
+     * https://app.speechcoach.test / api.speechcoach.test over TLS from a
+     * cert `mkcert` generates fresh in CI. Its local CA is never imported
+     * into a trust store there (no NSS/certutil dance needed) — this is
+     * the deliberate tradeoff instead: the cert is genuinely self-signed
+     * from Chromium's point of view, and that's fine, since what these
+     * tests are proving is app behavior, not certificate trust chains. */
+    ignoreHTTPSErrors: true,
   },
 
   /* Configure projects for major browsers */
