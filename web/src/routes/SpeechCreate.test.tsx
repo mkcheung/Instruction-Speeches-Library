@@ -31,8 +31,15 @@ describe('SpeechCreate', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
-      if (url.includes('/api/speeches') && !url.match(/\d/)) {
-        // GET /api/speeches (list, for the supersedes picker)
+      if (url.includes('/api/speeches') && !url.match(/\/\d/)) {
+        // GET /api/speeches (list, for the supersedes picker) — matching on
+        // "no numeric PATH SEGMENT" rather than "no digit anywhere" is not
+        // a style nit: the default API_URL (src/lib/api.ts, used whenever
+        // VITE_API_URL isn't set — e.g. in CI, which has no .env file)
+        // falls back to http://localhost:8000, and "8000" itself contains
+        // digits. A bare /\d/ check misfires against the origin, not just
+        // a would-be /api/speeches/7 path, and only "worked" locally
+        // because .env sets a digit-free VITE_API_URL that masked it.
         return jsonResponse({ speeches: [EXISTING_SPEECH], meta: { current_page: 1, last_page: 1, total: 1 } })
       }
       throw new Error(`unexpected fetch: ${url}`)
