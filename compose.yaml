@@ -33,6 +33,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_healthy
+      valkey:
+        condition: service_healthy
     env_file:
       - api/.env
     healthcheck:
@@ -41,6 +43,32 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    networks:
+      - default
+
+  # STEP-03's "two containers from the same image with a different command"
+  # (STEP-03-upload-and-watch.md) — the cleanest illustration of
+  # image-versus-container there is: `queue-worker` is built from the exact
+  # same `runtime` target as `app`, differing only in the command it runs.
+  # §9.2's full worker tuning (separate --queue processes, retry_after,
+  # CPUQuota, nice) is STEP-04; this is deliberately the minimal form —
+  # `after_commit => true` (TranscodeSpeechAsset) is the one non-negotiable
+  # that ships with S3.
+  queue-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: php artisan queue:work --sleep=1 --tries=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
     networks:
       - default
 
@@ -99,6 +127,11 @@ services:
     ports:
       - "5433:5432"   # GUI client access (§21.5) — 5433 avoids colliding with a native host Postgres on 5432
 
+  # §9.1: after this service is healthy on a fresh volume, run
+  # `docker compose exec app php artisan media:configure-cors` once — the
+  # browser's direct multipart PUTs (App\Services\MultipartUploadService)
+  # need the bucket to expose `ETag` cross-origin, or completion fails
+  # silently. See App\Console\Commands\ConfigureMediaCorsCommand.
   seaweedfs:
     image: chrislusf/seaweedfs:latest
     command:
@@ -123,6 +156,21 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    networks:
+      - default
+
+  # §9.2: "Redis + Horizon (self-hosted Redis is free...)". Valkey is the
+  # BSD-licensed drop-in replacement, wire-compatible with Redis and the
+  # protocol Laravel's `redis` queue/cache driver already speaks — no
+  # `predis`/config changes beyond pointing REDIS_HOST here.
+  valkey:
+    image: valkey/valkey:8-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
     networks:
       - default
 

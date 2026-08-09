@@ -5,15 +5,17 @@ import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { authApi } from '@/features/auth/authApi'
 import { profileApi } from '@/features/profile/profileApi'
+import { speechApi } from '@/features/speech/speechApi'
 
 export function createTestStore() {
   return configureStore({
     reducer: {
       [authApi.reducerPath]: authApi.reducer,
       [profileApi.reducerPath]: profileApi.reducer,
+      [speechApi.reducerPath]: speechApi.reducer,
     },
     middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware().concat(authApi.middleware, profileApi.middleware),
+      getDefaultMiddleware().concat(authApi.middleware, profileApi.middleware, speechApi.middleware),
   })
 }
 

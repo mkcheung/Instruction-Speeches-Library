@@ -12,6 +12,9 @@ import VerifyEmail from '@/routes/VerifyEmail'
 import Onboarding from '@/routes/Onboarding'
 import ProfileEdit from '@/routes/ProfileEdit'
 import PublicProfile from '@/routes/PublicProfile'
+import MySpeeches from '@/routes/MySpeeches'
+import SpeechCreate from '@/routes/SpeechCreate'
+import SpeechWatch from '@/routes/SpeechWatch'
 import { RequireAuth, RequireGuest, RequireVerified } from '@/components/auth/AuthShell'
 import { UnauthenticatedRedirect } from '@/components/auth/UnauthenticatedRedirect'
 import { isSpikesEnabled } from '@/lib/spikes-guard'
@@ -79,6 +82,37 @@ function App() {
             }
           />
           <Route path="/u/:username" element={<PublicProfile />} />
+
+          <Route
+            path="/speeches"
+            element={
+              <RequireAuth>
+                <RequireVerified>
+                  <MySpeeches />
+                </RequireVerified>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/speeches/new"
+            element={
+              <RequireAuth>
+                <RequireVerified>
+                  <SpeechCreate />
+                </RequireVerified>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/speeches/:id"
+            element={
+              <RequireAuth>
+                <RequireVerified>
+                  <SpeechWatch />
+                </RequireVerified>
+              </RequireAuth>
+            }
+          />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
