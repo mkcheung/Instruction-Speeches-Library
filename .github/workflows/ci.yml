@@ -160,11 +160,25 @@ jobs:
       # reports healthy, and fails fast if one goes unhealthy instead of
       # letting a doomed run limp to the Playwright step before failing
       # there with a far less obvious error.
-      - name: Start the docker compose stack
-        run: docker compose up -d --build --wait --wait-timeout 300
+      # `queue-worker` deliberately excluded here: it runs `php artisan
+      # queue:work` from the moment its container starts, and that touches
+      # the `cache` table (CACHE_STORE=database) on its very first loop
+      # iteration — before migrations have run, that table doesn't exist
+      # yet and the container crashes immediately. `--wait` treats a
+      # crashed container as a hard failure, so bringing queue-worker up
+      # in the same breath as everything else races the schema. This
+      # isn't CI-specific: it's a real ordering requirement (migrate
+      # before anything that reads the schema starts), just one that
+      # never surfaced locally because a human naturally runs migrate
+      # before ever starting queue-worker by hand.
+      - name: Start the docker compose stack (excluding queue-worker)
+        run: docker compose up -d --build --wait --wait-timeout 300 postgres seaweedfs valkey mailpit app web
 
       - name: Run migrations
         run: docker compose exec -T app php artisan migrate --force
+
+      - name: Start queue-worker
+        run: docker compose up -d --build --wait --wait-timeout 60 queue-worker
 
       # Vite is deliberately NOT containerized (§21.2) — nginx's
       # app.speechcoach.test server block proxies to
