@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Services\Transcoding\FakeTranscoder;
+use App\Services\Transcoding\FfmpegTranscoder;
+use App\Services\Transcoding\TranscoderContract;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -14,7 +17,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // §9.4 rule 2's adapter seam: FakeTranscoder in testing/CI so the
+        // upload flow is testable without real ffmpeg (STEP-03), the
+        // remux-only FfmpegTranscoder everywhere else (dev/prod) until
+        // STEP-04 replaces the binding with the full pipeline.
+        $this->app->bind(TranscoderContract::class, function () {
+            return $this->app->environment('testing')
+                ? new FakeTranscoder
+                : new FfmpegTranscoder;
+        });
     }
 
     /**

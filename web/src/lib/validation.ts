@@ -78,3 +78,24 @@ export const onboardingStep2Schema = z.object({
 })
 
 export type OnboardingStep2FormValues = z.infer<typeof onboardingStep2Schema>
+
+/**
+ * STEP-03-upload-and-watch.md / §6.11: `change_note` is required whenever
+ * `supersedes_id` is set — same rule the server enforces
+ * (`CreateSpeechRequest`'s `required_with:supersedes_id`), duplicated here
+ * for immediate feedback only.
+ */
+export const speechCreateSchema = z
+  .object({
+    title: z.string().min(1, 'Title is required.').max(255),
+    description: z.string().max(2000, 'Description must be at most 2000 characters.').optional(),
+    delivered_on: z.string().optional(),
+    supersedes_id: z.number().int().positive().optional(),
+    change_note: z.string().max(1000, 'Change note must be at most 1000 characters.').optional(),
+  })
+  .refine((data) => !data.supersedes_id || !!data.change_note?.trim(), {
+    message: 'Say what changed since the earlier attempt.',
+    path: ['change_note'],
+  })
+
+export type SpeechCreateFormValues = z.infer<typeof speechCreateSchema>

@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PresignController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\SpeechController;
+use App\Http\Controllers\Api\SpeechUploadController;
 use App\Http\Resources\UserResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,6 +40,26 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'updateSelf'])->name('api.profile.update');
     Route::patch('/profile/username', [ProfileController::class, 'updateUsername'])->name('api.profile.username');
     Route::post('/avatar', [AvatarController::class, 'update'])->name('api.avatar.update');
+
+    // STEP-03-upload-and-watch.md (§9, §6.11): upload and watch. Ownership
+    // is checked inline in each controller method, not via a Policy — no
+    // Policy classes exist in this codebase yet (matches S1/S2's pattern).
+    Route::get('/speeches', [SpeechController::class, 'index'])->name('api.speeches.index');
+    Route::post('/speeches', [SpeechController::class, 'store'])->name('api.speeches.store');
+    Route::get('/speeches/{speech}', [SpeechController::class, 'show'])->name('api.speeches.show');
+
+    Route::post('/speeches/{speech}/assets/uploads', [SpeechUploadController::class, 'createUpload'])
+        ->name('api.speeches.assets.uploads.create');
+    Route::post('/speeches/{speech}/assets/{asset}/uploads/{uploadId}/parts/{partNumber}', [SpeechUploadController::class, 'signPart'])
+        ->name('api.speeches.assets.uploads.sign-part');
+    Route::post('/speeches/{speech}/assets/{asset}/uploads/{uploadId}/complete', [SpeechUploadController::class, 'complete'])
+        ->name('api.speeches.assets.uploads.complete');
+    Route::delete('/speeches/{speech}/assets/{asset}/uploads/{uploadId}', [SpeechUploadController::class, 'abort'])
+        ->name('api.speeches.assets.uploads.abort');
+    Route::post('/speeches/{speech}/assets/{asset}/retry', [SpeechUploadController::class, 'retry'])
+        ->name('api.speeches.assets.retry');
+    Route::get('/speeches/{speech}/assets/{asset}/playback-url', [SpeechUploadController::class, 'playbackUrl'])
+        ->name('api.speeches.assets.playback-url');
 });
 
 // Public identity view — no auth (§7.1: viewing another user's public profile
