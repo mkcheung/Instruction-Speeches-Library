@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Speech\CreateSpeechRequest;
 use App\Http\Resources\SpeechResource;
 use App\Models\Speech;
+use App\Models\SpeechAsset;
 use App\Services\SpeechService;
+use Closure;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,7 +26,7 @@ class SpeechController extends Controller
     public function index(Request $request): JsonResponse
     {
         $speeches = $request->user()->speeches()
-            ->with(['primaryVideo', 'supersedes'])
+            ->with(self::eagerLoads())
             ->latest()
             ->paginate(20);
 
@@ -42,7 +45,7 @@ class SpeechController extends Controller
         $speech = $speeches->create($request->user(), $request->validated());
 
         return new JsonResponse([
-            'speech' => new SpeechResource($speech->load(['primaryVideo', 'supersedes'])),
+            'speech' => new SpeechResource($speech->load(self::eagerLoads())),
         ], Response::HTTP_CREATED);
     }
 
@@ -53,7 +56,28 @@ class SpeechController extends Controller
         }
 
         return new JsonResponse([
-            'speech' => new SpeechResource($speech->load(['primaryVideo', 'supersedes'])),
+            'speech' => new SpeechResource($speech->load(self::eagerLoads())),
         ]);
+    }
+
+    /**
+     * `assets` here is deliberately scoped to `kind IN ('poster','sprite')`
+     * — SpeechResource's poster/sprite blocks (§9.5) need those rows, but a
+     * blanket `with('assets')` would also drag in every `source`/`captions`
+     * row this endpoint never serializes. `primaryVideo` stays a separate
+     * named eager-load (unchanged from STEP-03) rather than folding video
+     * into the same constrained `assets` load, since SpeechResource still
+     * reads `primary_video` off that relation specifically.
+     *
+     * @return array<int|string, string|Closure(HasMany<SpeechAsset, Speech>): mixed>
+     */
+    private static function eagerLoads(): array
+    {
+        return [
+            'primaryVideo',
+            'supersedes',
+            /** @param HasMany<SpeechAsset, Speech> $query */
+            'assets' => fn (HasMany $query) => $query->whereIn('kind', ['poster', 'sprite']),
+        ];
     }
 }

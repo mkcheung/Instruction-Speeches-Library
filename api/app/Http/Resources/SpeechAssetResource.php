@@ -25,6 +25,12 @@ class SpeechAssetResource extends JsonResource
             'status' => $this->status,
             'failure_code' => $this->failure_code,
             'duration_seconds' => $this->duration_seconds,
+            // Only meaningful for poster/sprite rows (kind='video'/'source'/
+            // 'captions' leave these null — the cast already returns null
+            // rather than 0/'', so no special-casing is needed here).
+            'width' => $this->width,
+            'height' => $this->height,
+            'poster_time_seconds' => $this->poster_time_seconds,
         ];
     }
 }

@@ -10,7 +10,7 @@ on:
                       #   steps: - uses: actions/checkout@v7   <- an Action
                       #   jobs:  ci: {uses: ./…/ci.yml}        <- this
                       # Adding it has NO effect on the push/pull_request
-                      # triggers above — triggers are independent.
+                      # triggers above — triggers are independent. #
 
 jobs:
   test:
@@ -36,6 +36,18 @@ jobs:
          node-version: '22'
          cache: npm
          cache-dependency-path: web/package-lock.json
+
+      # setup-php has no built-in Composer cache (unlike setup-node's `cache: npm`
+      # above) because PHP projects don't share npm's one-canonical-location
+      # convention. WHY the lockfile hash as the key: it must change exactly
+      # when dependencies change, not more often (defeats the cache) and not
+      # less (silently runs stale dependencies forever).
+      - name: Cache Composer dependencies
+        uses: actions/cache@v6
+        with:
+          path: api/vendor
+          key: composer-${{ hashFiles('api/composer.lock') }}
+          restore-keys: composer-
 
       - name: Install PHP dependencies
         working-directory: api

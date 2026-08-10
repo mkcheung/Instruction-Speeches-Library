@@ -17,5 +17,31 @@ use App\Models\SpeechAsset;
  */
 interface TranscoderContract
 {
+    /**
+     * Unchanged signature (STEP-03). §9.5: on a successful transcode
+     * (remux OR full re-encode), implementations automatically run the
+     * poster pipeline afterwards with an automatic (not speaker-chosen)
+     * seek time, AND generate the one-time sprite strip — both derived
+     * from the just-written rendition, never the source upload.
+     */
     public function transcode(SpeechAsset $videoAsset): void;
+
+    /**
+     * §9.5's "let the speaker choose a frame" / sprite-picker affordance.
+     * Regenerates JUST the poster set (never the sprite — that's a
+     * transcode-time-only pass, since it doesn't depend on a chosen frame)
+     * for an ALREADY-`ready` video asset.
+     *
+     * `$explicitTimeSeconds === null` means "use the automatic
+     * `clamp(0.10 * duration, 2, 30)` seek", same as transcode()'s
+     * post-transcode call. A non-null value is a speaker/coach-chosen
+     * frame — clamped only to `[0, duration]`, deliberately without the
+     * `[2, 30]` automatic-seek clamp, since the user explicitly picked it.
+     *
+     * Callers (a job/controller owned elsewhere) are responsible for
+     * guarding that `$videoAsset->status === 'ready'` before calling this;
+     * implementations do not throw on a bad state, matching the
+     * never-throw contract above.
+     */
+    public function generatePoster(SpeechAsset $videoAsset, ?float $explicitTimeSeconds): void;
 }

@@ -48,11 +48,56 @@ describe('StatusBadge', () => {
     renderWithProviders(
       <StatusBadge
         speech={speechWith({
-          primary_video: { id: 9, kind: 'video', status, failure_code: null, duration_seconds: null },
+          primary_video: { id: 9, kind: 'video', status, failure_code: null, duration_seconds: null, width: null, height: null, poster_time_seconds: null },
         })}
       />,
     )
     expect(screen.getByTestId('speech-card-status')).toHaveTextContent(label)
+  })
+
+  it('shows "N videos ahead of yours" while processing, from the queue-depth query', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.includes('/queue/transcode-depth')) return jsonResponse({ depth: 3 })
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithProviders(
+      <StatusBadge
+        speech={speechWith({
+          primary_video: { id: 9, kind: 'video', status: 'processing', failure_code: null, duration_seconds: null, width: null, height: null, poster_time_seconds: null },
+        })}
+      />,
+    )
+
+    expect(screen.getByTestId('speech-card-status')).toHaveTextContent('Processing')
+    await waitFor(() => {
+      expect(screen.getByTestId('speech-card-status')).toHaveTextContent('3 videos ahead of yours')
+    })
+  })
+
+  it('shows "You\'re next" when the queue depth is 0', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.includes('/queue/transcode-depth')) return jsonResponse({ depth: 0 })
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWithProviders(
+      <StatusBadge
+        speech={speechWith({
+          primary_video: { id: 9, kind: 'video', status: 'processing', failure_code: null, duration_seconds: null, width: null, height: null, poster_time_seconds: null },
+        })}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('speech-card-status')).toHaveTextContent("You're next")
+    })
   })
 
   it('renders Failed with a working Retry button', async () => {
@@ -73,7 +118,7 @@ describe('StatusBadge', () => {
       <StatusBadge
         speech={speechWith({
           id: 42,
-          primary_video: { id: 9, kind: 'video', status: 'failed', failure_code: 'unsupported_format', duration_seconds: null },
+          primary_video: { id: 9, kind: 'video', status: 'failed', failure_code: 'unsupported_format', duration_seconds: null, width: null, height: null, poster_time_seconds: null },
         })}
       />,
     )

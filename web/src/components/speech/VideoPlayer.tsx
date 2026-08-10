@@ -26,9 +26,18 @@ import { createVideoJsPlayer } from '@/shared/media/videojs-adapter'
 export function VideoPlayer({
   initialUrl,
   refreshUrl,
+  poster,
+  onPlayerReady,
 }: {
   initialUrl: string
   refreshUrl: () => Promise<string>
+  /** STEP-04 §9.5: the speech's real poster URL, if one exists yet — wired
+   * straight into video.js's own `poster` option. */
+  poster?: string
+  /** Hands the caller the underlying video.js player instance once created
+   * (e.g. so `SpeechWatch` can read `currentTime()` for "use current
+   * frame") — never re-created for the same mounted player. */
+  onPlayerReady?: (player: ReturnType<typeof createVideoJsPlayer>) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
 
@@ -40,6 +49,11 @@ export function VideoPlayer({
   const refreshUrlRef = useRef(refreshUrl)
   useEffect(() => {
     refreshUrlRef.current = refreshUrl
+  })
+
+  const onPlayerReadyRef = useRef(onPlayerReady)
+  useEffect(() => {
+    onPlayerReadyRef.current = onPlayerReady
   })
 
   useEffect(() => {
@@ -54,11 +68,15 @@ export function VideoPlayer({
     const player = createVideoJsPlayer(videoEl, {
       initialUrl,
       refreshUrl: () => refreshUrlRef.current(),
+      poster,
     })
+
+    onPlayerReadyRef.current?.(player)
 
     return () => {
       player.dispose()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialUrl])
 
   return (

@@ -1,7 +1,26 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useRetryAssetMutation } from '@/features/speech/speechApi'
+import { useGetTranscodeDepthQuery, useRetryAssetMutation } from '@/features/speech/speechApi'
 import type { Speech } from '@/features/speech/types'
+
+/**
+ * STEP-04-every-video-plays.md §9.5's backpressure text — "N videos ahead
+ * of yours" / "You're next" — read off the global transcode-queue-depth
+ * gauge. Polled at a slow, cheap interval; while the depth query hasn't
+ * resolved yet this renders nothing extra so it never blocks the existing
+ * "Processing" label.
+ */
+function QueueDepthHint() {
+  const { data, isSuccess } = useGetTranscodeDepthQuery(undefined, { pollingInterval: 5000 })
+
+  if (!isSuccess || !data) return null
+
+  return (
+    <span className="text-xs text-muted-foreground">
+      {data.depth > 0 ? `${data.depth} video${data.depth === 1 ? '' : 's'} ahead of yours` : "You're next"}
+    </span>
+  )
+}
 
 /**
  * STEP-03-upload-and-watch.md: "'my speeches' with speech-card-status
@@ -32,11 +51,20 @@ export function StatusBadge({ speech }: { speech: Speech }) {
     )
   }
 
-  if (asset.status === 'processing' || asset.status === 'uploading') {
+  if (asset.status === 'uploading') {
     return (
       <Badge variant="secondary" data-testid="speech-card-status">
-        {asset.status === 'uploading' ? 'Uploading' : 'Processing'}
+        Uploading
       </Badge>
+    )
+  }
+
+  if (asset.status === 'processing') {
+    return (
+      <div className="flex items-center gap-2" data-testid="speech-card-status">
+        <Badge variant="secondary">Processing</Badge>
+        <QueueDepthHint />
+      </div>
     )
   }
 

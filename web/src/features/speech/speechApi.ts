@@ -6,10 +6,12 @@ import type {
   CreateUploadPayload,
   CreateUploadResponse,
   PlaybackUrlResponse,
+  SetPosterFramePayload,
   Speech,
   SpeechAsset,
   SpeechListResponse,
   SignPartResponse,
+  TranscodeDepthResponse,
 } from '@/features/speech/types'
 
 /**
@@ -87,6 +89,29 @@ export const speechApi = createApi({
     getPlaybackUrl: builder.query<PlaybackUrlResponse, { speechId: number; assetId: number }>({
       query: ({ speechId, assetId }) => `/api/speeches/${speechId}/assets/${assetId}/playback-url`,
     }),
+    /** STEP-04 §9.5's backpressure gauge — global, not speech-scoped.
+     * Polled unconditionally at a slow interval by whatever renders it
+     * (`StatusBadge`); a background GET every few seconds is cheap enough
+     * not to need gating on "is anything actually processing right now." */
+    getTranscodeDepth: builder.query<TranscodeDepthResponse, void>({
+      query: () => '/api/queue/transcode-depth',
+    }),
+    /** STEP-04 §9.5's frame-picking endpoint — poster regeneration happens
+     * async in the background, so this only invalidates the speech (the
+     * next poll of `getSpeech`/`listSpeeches` picks up the regenerated
+     * poster once it's ready); callers should not block on this resolving
+     * before showing the new poster. */
+    setPosterFrame: builder.mutation<
+      { asset: SpeechAsset },
+      { speechId: number; assetId: number; body: SetPosterFramePayload }
+    >({
+      query: ({ speechId, assetId, body }) => ({
+        url: `/api/speeches/${speechId}/assets/${assetId}/poster-frame`,
+        method: 'POST',
+        body,
+      }),
+      invalidatesTags: (_result, _error, arg) => [{ type: 'Speech', id: arg.speechId }],
+    }),
   }),
 })
 
@@ -100,4 +125,6 @@ export const {
   useAbortUploadMutation,
   useRetryAssetMutation,
   useLazyGetPlaybackUrlQuery,
+  useGetTranscodeDepthQuery,
+  useSetPosterFrameMutation,
 } = speechApi
