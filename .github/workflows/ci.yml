@@ -10,7 +10,7 @@ on:
                       #   steps: - uses: actions/checkout@v7   <- an Action
                       #   jobs:  ci: {uses: ./…/ci.yml}        <- this
                       # Adding it has NO effect on the push/pull_request
-                      # triggers above — triggers are independent.
+                      # triggers above — triggers are independent. #
 
 jobs:
   test:
