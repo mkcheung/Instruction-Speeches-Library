@@ -55,6 +55,12 @@ export interface SpeechSprite {
 export interface Speech {
   id: number
   ulid: string
+  /** Not confirmed on the current `SpeechResource` as of STEP-04 — added
+   * here as an assumed field STEP-05's owner-only affordances (invite
+   * button, track selector) need to gate on `user_id === current user's
+   * id`. Follow up once the backend half of STEP-05 lands; if the field
+   * name or presence differs, this is a one-line fix. */
+  user_id?: number
   title: string
   description: string | null
   delivered_on: string | null

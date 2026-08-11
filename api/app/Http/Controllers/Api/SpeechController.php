@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Speech\CreateSpeechRequest;
 use App\Http\Resources\SpeechResource;
+use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\SpeechService;
@@ -15,11 +16,14 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * "My speeches" and single-speech read/create. STEP-03 has no review-grant
- * mechanism yet (§6.3: that arrives in S5), so a speech is visible only to
- * its owner — a second Member gets 404, not 403, matching the "second
- * Member cannot fetch it" acceptance item's spirit (don't confirm existence
- * to a non-owner).
+ * "My speeches" and single-speech read/create. `show` is a two-tier read
+ * as of STEP-05 (§7.3): non-existence and "not visible to you at all" both
+ * 404 (don't confirm existence to a stranger), an invited-but-not-yet-
+ * accepted reviewer gets a reduced metadata payload (no signed playback
+ * URL — that still lives behind SpeechUploadController::playbackUrl,
+ * gated separately by an access-granting review), and the owner or an
+ * access-granting reviewer gets the full payload this endpoint always
+ * returned pre-S5.
  */
 class SpeechController extends Controller
 {
@@ -51,12 +55,48 @@ class SpeechController extends Controller
 
     public function show(Request $request, Speech $speech): JsonResponse
     {
-        if ($speech->user_id !== $request->user()->id) {
+        $user = $request->user();
+        $isOwner = $speech->user_id === $user->id;
+
+        // §7.3's own review row (if any) drives both tiers below — one
+        // query, reused, rather than a visibility EXISTS check plus a
+        // second separate query for the row's own status.
+        $review = $isOwner ? null : Review::query()
+            ->where('speech_id', $speech->id)
+            ->where('reviewer_id', $user->id)
+            ->whereNull('revoked_at')
+            ->first();
+
+        $isGranting = $review !== null && in_array($review->status, Review::ACCESS_GRANTING, true);
+
+        // Not the owner, and either no live (non-revoked) review row at
+        // all, or one that's neither granting nor still `invited`
+        // (declined/abandoned) — don't confirm existence to a stranger.
+        if (! $isOwner && ! $isGranting && ($review === null || $review->status !== 'invited')) {
             return new JsonResponse(['message' => 'No such speech.'], Response::HTTP_NOT_FOUND);
         }
 
+        if ($isOwner || $isGranting) {
+            return new JsonResponse([
+                'speech' => new SpeechResource($speech->load(self::eagerLoads())),
+            ]);
+        }
+
+        // Invited but not yet accepted: reduced metadata tier only —
+        // title, duration, speaker's name, the invitation message. No
+        // signed playback URL.
+        $speech->loadMissing('user');
+
         return new JsonResponse([
-            'speech' => new SpeechResource($speech->load(self::eagerLoads())),
+            'speech' => [
+                'id' => $speech->id,
+                'ulid' => $speech->ulid,
+                'title' => $speech->title,
+                'duration_seconds' => $speech->duration_seconds,
+                'speaker_name' => trim("{$speech->user->first_name} {$speech->user->last_name}"),
+                'invitation_message' => $review->invitation_message,
+                'review_status' => $review->status,
+            ],
         ]);
     }
 

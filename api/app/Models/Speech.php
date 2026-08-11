@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\SpeechFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -69,6 +70,14 @@ class Speech extends Model
     }
 
     /**
+     * @return HasMany<Review, $this>
+     */
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(Review::class);
+    }
+
+    /**
      * The earlier attempt this speech replaces, if any (§6.11).
      *
      * @return BelongsTo<Speech, $this>
@@ -101,6 +110,29 @@ class Speech extends Model
         return $this->hasOne(SpeechAsset::class)
             ->where('kind', 'video')
             ->where('is_primary', true);
+    }
+
+    /**
+     * MODERNIZATION_PLAN §7.3: the two-tier access rule as one query scope.
+     * A speech is visible to a user if they own it, or if they hold a
+     * review on it whose `status` is access-granting (Review::ACCESS_GRANTING)
+     * and which has not been revoked. Deliberately does NOT include
+     * `status = 'invited'` — an invitee who hasn't accepted yet gets a
+     * separate, reduced-payload metadata tier (see SpeechController::show),
+     * not full visibility through this scope.
+     *
+     * @param  Builder<Speech>  $q
+     * @return Builder<Speech>
+     */
+    public function scopeVisibleTo(Builder $q, User $user): Builder
+    {
+        return $q->where(fn ($q) => $q
+            ->where('speeches.user_id', $user->id)
+            ->orWhereExists(fn ($s) => $s->selectRaw('1')->from('reviews')
+                ->whereColumn('reviews.speech_id', 'speeches.id')
+                ->where('reviews.reviewer_id', $user->id)
+                ->whereIn('reviews.status', Review::ACCESS_GRANTING)
+                ->whereNull('reviews.revoked_at')));
     }
 
     protected static function booted(): void

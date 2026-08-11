@@ -15,6 +15,7 @@ import PublicProfile from '@/routes/PublicProfile'
 import MySpeeches from '@/routes/MySpeeches'
 import SpeechCreate from '@/routes/SpeechCreate'
 import SpeechWatch from '@/routes/SpeechWatch'
+import Dashboard from '@/routes/Dashboard'
 import { RequireAuth, RequireGuest, RequireVerified } from '@/components/auth/AuthShell'
 import { UnauthenticatedRedirect } from '@/components/auth/UnauthenticatedRedirect'
 import { isSpikesEnabled } from '@/lib/spikes-guard'
@@ -109,6 +110,17 @@ function App() {
               <RequireAuth>
                 <RequireVerified>
                   <SpeechWatch />
+                </RequireVerified>
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <RequireVerified>
+                  <Dashboard />
                 </RequireVerified>
               </RequireAuth>
             }

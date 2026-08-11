@@ -2,10 +2,13 @@
 
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PresignController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\QueueStatusController;
+use App\Http\Controllers\Api\ReviewController;
+use App\Http\Controllers\Api\ReviewerDirectoryController;
 use App\Http\Controllers\Api\SpeechController;
 use App\Http\Controllers\Api\SpeechUploadController;
 use App\Http\Resources\UserResource;
@@ -72,6 +75,42 @@ Route::middleware('auth:sanctum')->group(function () {
     // the UI's "processing is backed up" banner reads this directly.
     Route::get('/queue/transcode-depth', QueueStatusController::class)
         ->name('api.queue.transcode-depth');
+
+    // STEP-05-invitation-loop.md (§6.3, §6.11, §7.3, §7.5): the invitation
+    // loop. Deliberately NO route anywhere lists "reviewable speeches" or
+    // an open pool (§7.1) — /reviewers (the directory, below) is the only
+    // discovery mechanism.
+    Route::post('/speeches/{speech}/reviews', [ReviewController::class, 'invite'])
+        ->name('api.speeches.reviews.invite');
+    Route::get('/speeches/{speech}/reviews', [ReviewController::class, 'forSpeech'])
+        ->name('api.speeches.reviews.index');
+
+    Route::post('/reviews/{review}/accept', [ReviewController::class, 'accept'])
+        ->name('api.reviews.accept');
+    Route::post('/reviews/{review}/decline', [ReviewController::class, 'decline'])
+        ->name('api.reviews.decline');
+    Route::post('/reviews/{review}/withdraw', [ReviewController::class, 'withdraw'])
+        ->name('api.reviews.withdraw');
+    Route::post('/reviews/{review}/revoke', [ReviewController::class, 'revoke'])
+        ->name('api.reviews.revoke');
+    Route::post('/reviews/{review}/revoke-and-purge', [ReviewController::class, 'revokeAndPurge'])
+        ->name('api.reviews.revoke-and-purge');
+    Route::post('/reviews/{review}/abandon', [ReviewController::class, 'abandon'])
+        ->name('api.reviews.abandon');
+    Route::get('/reviews', [ReviewController::class, 'index'])
+        ->name('api.reviews.index');
+
+    // §6.3/§7.1: the reviewer directory — browsable/filterable/searchable,
+    // the only mechanism for finding someone to invite.
+    Route::get('/reviewers', [ReviewerDirectoryController::class, 'index'])
+        ->name('api.reviewers.index');
+
+    // §7.5's in-app notification bell — read/mark-read over Laravel's stock
+    // DatabaseNotification rows written by ReviewService's queued notices.
+    Route::get('/notifications', [NotificationController::class, 'index'])
+        ->name('api.notifications.index');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])
+        ->name('api.notifications.read');
 });
 
 // Public identity view — no auth (§7.1: viewing another user's public profile

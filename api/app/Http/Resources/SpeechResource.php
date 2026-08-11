@@ -46,6 +46,7 @@ class SpeechResource extends JsonResource
         return [
             'id' => $this->id,
             'ulid' => $this->ulid,
+            'user_id' => $this->user_id,
             'title' => $this->title,
             'description' => $this->description,
             'delivered_on' => $this->delivered_on?->toDateString(),

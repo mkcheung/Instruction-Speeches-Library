@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\Review;
+use App\Models\Speech;
 use App\Models\User;
+use App\Policies\ReviewPolicy;
+use App\Policies\SpeechPolicy;
 use App\Services\Transcoding\FakeTranscoder;
 use App\Services\Transcoding\FfmpegTranscoder;
 use App\Services\Transcoding\TranscoderContract;
@@ -39,6 +43,28 @@ class AppServiceProvider extends ServiceProvider
         // 500s for a real user.
         Model::preventLazyLoading(! $this->app->isProduction());
 
+        // STEP-05: first Policy classes in this codebase. Explicit
+        // Gate::policy registration rather than relying purely on Laravel's
+        // {Model}Policy naming-convention discovery, so it's obvious from
+        // this file alone which model maps to which policy.
+        Gate::policy(Speech::class, SpeechPolicy::class);
+        Gate::policy(Review::class, ReviewPolicy::class);
+
+        // Dotted ability names, registered explicitly so the string a
+        // controller passes to authorize()/can() is the exact same string
+        // Gate::before's $mustFallThrough checks below — the whole point
+        // of the dotted `review.*` convention over the bare `{Model}Policy`
+        // method-name convention is that "review.accept" reads
+        // unambiguously as the coaching ability the fall-through list is
+        // guarding, wherever either is referenced.
+        Gate::define('review.accept', [ReviewPolicy::class, 'accept']);
+        Gate::define('review.decline', [ReviewPolicy::class, 'decline']);
+        Gate::define('review.withdraw', [ReviewPolicy::class, 'withdraw']);
+        Gate::define('review.abandon', [ReviewPolicy::class, 'abandon']);
+        Gate::define('review.revoke', [ReviewPolicy::class, 'revoke']);
+        Gate::define('review.purge', [ReviewPolicy::class, 'purge']);
+        Gate::define('speech.invite', [SpeechPolicy::class, 'invite']);
+
         // Admin's override is a SCOPED Gate::before, not a blanket one
         // (§7.2) — a blanket hook would bypass the very policies Admin must
         // NOT have, e.g. reviewing. Written now, before any concrete
@@ -53,6 +79,8 @@ class AppServiceProvider extends ServiceProvider
 
             static $mustFallThrough = [
                 'review.accept', 'review.decline', 'review.publish',   // coaching is an act
+                'review.withdraw', 'review.abandon',                   // ditto — reviewer-only acts
+                'speech.invite',                                       // ownership, not an admin power
                 'annotation.create', 'annotation.update',
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',
