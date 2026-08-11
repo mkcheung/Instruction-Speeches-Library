@@ -99,3 +99,17 @@ export const speechCreateSchema = z
   })
 
 export type SpeechCreateFormValues = z.infer<typeof speechCreateSchema>
+
+/**
+ * STEP-05-invitation-loop.md's invite composer. `reviewer_id` is picked
+ * off the directory list, not typed — shape-checked here mainly for the
+ * message length and the two booleans' presence.
+ */
+export const inviteReviewerSchema = z.object({
+  reviewer_id: z.number().int().positive('Pick a reviewer from the directory first.'),
+  invitation_message: z.string().max(1000, 'Message must be at most 1000 characters.').optional(),
+  allow_preview: z.boolean(),
+  prior_commentary_shared: z.boolean(),
+})
+
+export type InviteReviewerFormValues = z.infer<typeof inviteReviewerSchema>

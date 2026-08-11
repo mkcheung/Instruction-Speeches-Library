@@ -9,6 +9,7 @@ use App\Http\Requests\Speech\SetPosterFrameRequest;
 use App\Http\Resources\SpeechAssetResource;
 use App\Jobs\GeneratePoster;
 use App\Jobs\TranscodeSpeechAsset;
+use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\MediaUrlSigner;
@@ -31,6 +32,30 @@ class SpeechUploadController extends Controller
     private function authorizeOwner(Request $request, Speech $speech): void
     {
         abort_unless($speech->user_id === $request->user()->id, Response::HTTP_NOT_FOUND, 'No such speech.');
+    }
+
+    /**
+     * STEP-05 §7.3: the playback-URL endpoint is the one place upload
+     * ownership widens to "owner OR an access-granting review" — a
+     * reviewer who has accepted (or further) can watch, everyone else
+     * (including an invited-but-not-yet-accepted reviewer) gets the same
+     * 404 a stranger would, never a 403 that would confirm the speech
+     * exists.
+     */
+    private function authorizeGrantingAccess(Request $request, Speech $speech): void
+    {
+        if ($speech->user_id === $request->user()->id) {
+            return;
+        }
+
+        $granted = Review::query()
+            ->where('speech_id', $speech->id)
+            ->where('reviewer_id', $request->user()->id)
+            ->whereIn('status', Review::ACCESS_GRANTING)
+            ->whereNull('revoked_at')
+            ->exists();
+
+        abort_unless($granted, Response::HTTP_NOT_FOUND, 'No such speech.');
     }
 
     /**
@@ -167,7 +192,7 @@ class SpeechUploadController extends Controller
      */
     public function playbackUrl(Request $request, Speech $speech, SpeechAsset $asset, MediaUrlSigner $signer): JsonResponse
     {
-        $this->authorizeOwner($request, $speech);
+        $this->authorizeGrantingAccess($request, $speech);
         abort_unless($asset->speech_id === $speech->id && $asset->status === 'ready', Response::HTTP_NOT_FOUND);
 
         return new JsonResponse(['url' => $signer->presign($asset->path)]);

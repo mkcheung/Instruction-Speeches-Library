@@ -4,16 +4,21 @@ import type Player from 'video.js/dist/types/player'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
+import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
+import { TrackSelector } from '@/components/review/TrackSelector'
 import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutation } from '@/features/speech/speechApi'
 import type { SpeechSprite } from '@/features/speech/types'
+import { useGetMeQuery } from '@/features/auth/authApi'
 import { cn } from '@/lib/utils'
 
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
   const { data: speech, isLoading } = useGetSpeechQuery(speechId, { skip: !speechId })
+  const { data: me } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
   const [initialUrl, setInitialUrl] = useState<string | null>(null)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const playerRef = useRef<Player | null>(null)
 
   const asset = speech?.primary_video
@@ -42,12 +47,21 @@ export default function SpeechWatch() {
     )
   }
 
+  const isOwner = !!me?.user && speech.user_id !== undefined && Number(me.user.id) === speech.user_id
+
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-10">
       <Card>
-        <CardHeader>
-          <CardTitle>{speech.title}</CardTitle>
-          {speech.description && <CardDescription>{speech.description}</CardDescription>}
+        <CardHeader className="flex flex-row items-start justify-between gap-2">
+          <div>
+            <CardTitle>{speech.title}</CardTitle>
+            {speech.description && <CardDescription>{speech.description}</CardDescription>}
+          </div>
+          {isOwner && !inviteOpen && (
+            <Button type="button" size="sm" onClick={() => setInviteOpen(true)}>
+              Invite a reviewer
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {asset?.status === 'ready' && initialUrl ? (
@@ -68,6 +82,17 @@ export default function SpeechWatch() {
           )}
         </CardContent>
       </Card>
+
+      {isOwner && inviteOpen && (
+        <InviteReviewerDialog
+          speechId={speechId}
+          supersedesId={speech.supersedes?.id}
+          onClose={() => setInviteOpen(false)}
+          onInvited={() => setInviteOpen(false)}
+        />
+      )}
+
+      {isOwner && <TrackSelector speechId={speechId} />}
     </div>
   )
 }
