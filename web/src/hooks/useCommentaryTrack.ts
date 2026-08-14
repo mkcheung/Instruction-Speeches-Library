@@ -66,6 +66,7 @@ export function useCommentaryTrack(
     data: fetched,
     error,
     isFetching,
+    refetch,
   } = useGetAnnotationsQuery(
     !enabled || selected === NO_COMMENTARY ? skipToken : { speechId, reviewId: selected },
   )
@@ -73,10 +74,11 @@ export function useCommentaryTrack(
   // §5.4/§8.5's cross-fade: `displayed` is what's actually fed to the
   // engine and rendered — switching `selected` doesn't swap it
   // immediately. Instead: suppress (empty cues, so everything currently
-  // visible fades out), then after CROSSFADE_OUT_MS swap `displayed` to
-  // the new data and let the engine fade the new set in.
+  // visible fades out), then once BOTH the fade-out window has elapsed and
+  // the new review's data has arrived, swap `displayed` and let the engine
+  // fade the new set in.
   const [displayed, setDisplayed] = useState<Annotation[]>(EMPTY_ANNOTATIONS)
-  const [suppressed, setSuppressed] = useState(false)
+  const [fadeDone, setFadeDone] = useState(true)
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
@@ -86,32 +88,47 @@ export function useCommentaryTrack(
   }, [])
 
   const select = (next: CommentarySelection) => {
-    if (next === selected) return
+    if (next === selected) {
+      // Re-selecting the current chip is what the error banner's "Try
+      // again" means — `setSelected` to the same value is a no-op for RTK
+      // Query, so the retry has to be explicit or the banner advertises a
+      // dead button.
+      if (error && next !== NO_COMMENTARY) void refetch()
+      return
+    }
     setSelected(next)
-    setSuppressed(true)
+    setFadeDone(false)
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current)
-    fadeTimerRef.current = setTimeout(() => {
-      setSuppressed(false)
-      // The array swap itself happens in the effect below once the new
-      // review's data (if any) has actually arrived — for "No commentary"
-      // there's nothing to wait for.
-      if (next === NO_COMMENTARY) setDisplayed(EMPTY_ANNOTATIONS)
-    }, CROSSFADE_OUT_MS)
+    fadeTimerRef.current = setTimeout(() => setFadeDone(true), CROSSFADE_OUT_MS)
   }
 
-  // Once the newly-selected review's annotations arrive (and the fade-out
-  // window has elapsed), swap the displayed array — the "swap the array"
+  /** Is the data backing the CURRENT selection actually in hand? False
+   * while the new reviewer's request is in flight and false forever on a
+   * 403/404 — the timer alone must never un-suppress, or a fetch slower
+   * than the fade re-reveals the PREVIOUS reviewer's overlays under the new
+   * reviewer's name (and an error would leave them up permanently, which is
+   * exactly the silent fall-back the contract forbids). */
+  const dataReady =
+    selected === NO_COMMENTARY || (!!fetched && fetched.review_id === selected)
+
+  // Once the newly-selected review's annotations arrive AND the fade-out
+  // window has elapsed, swap the displayed array — the "swap the array"
   // step; the hook re-evaluates synchronously at the current time once
   // `displayed` changes, fading the new set in.
   useEffect(() => {
-    if (selected === NO_COMMENTARY) return
+    if (!fadeDone) return
+    if (selected === NO_COMMENTARY) {
+      const clear = () => setDisplayed(EMPTY_ANNOTATIONS)
+      clear()
+      return
+    }
     if (!fetched || fetched.review_id !== selected) return
-    if (suppressed) return
     const swapIn = () => setDisplayed(fetched.annotations)
     swapIn()
-  }, [fetched, selected, suppressed])
+  }, [fetched, selected, fadeDone])
 
-  const cues = suppressed ? EMPTY_ANNOTATIONS : displayed
+  const crossfading = !fadeDone || !dataReady
+  const cues = crossfading ? EMPTY_ANNOTATIONS : displayed
   const activeIds = useTimedAnnotations(videoEl, cues)
   const currentTime = useVideoCurrentTime(videoEl)
   useIosFullscreenSubtitles(videoEl, cues)
@@ -141,8 +158,15 @@ export function useCommentaryTrack(
     prefetch,
     error,
     isFetching,
-    fetchedReviewerName: fetched?.reviewer?.name,
-    annotations: displayed,
+    // Only name the reviewer once their data is the data on screen —
+    // otherwise `TrackSelector`'s "…hasn't left commentary yet" empty state
+    // fires against the deliberately-emptied cross-fade array.
+    fetchedReviewerName: crossfading ? undefined : fetched?.reviewer?.name,
+    // `cues`, not `displayed`: the overlay and the transcript are two
+    // presentations of the SAME set (§8.5/§8.6), so the transcript must not
+    // keep listing the outgoing reviewer's rows while the overlays are
+    // suppressed — least of all under the new reviewer's name after an error.
+    annotations: cues,
     activeIds,
     currentTime,
     seek,

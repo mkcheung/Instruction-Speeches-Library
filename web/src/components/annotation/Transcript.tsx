@@ -61,6 +61,13 @@ export function Transcript({
   const rowRefs = useRef(new Map<string, HTMLLIElement>())
   const suppressUntilRef = useRef(0)
   const programmaticScrollRef = useRef(false)
+  const settleTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     if (!currentId) return
@@ -70,13 +77,31 @@ export function Transcript({
     if (container.matches(':focus-within')) return
     if (Date.now() < suppressUntilRef.current) return
 
+    // Deliberately NOT `row.scrollIntoView()`: that scrolls every
+    // scrollable ancestor including the document, so once this list is
+    // below the fold every cue change during playback would drag the whole
+    // page down and the video off-screen. Scroll only our own container,
+    // by the minimum delta — `block: 'nearest'` semantics, hand-rolled.
+    const rowRect = row.getBoundingClientRect()
+    const boxRect = container.getBoundingClientRect()
+    let delta = 0
+    if (rowRect.top < boxRect.top) delta = rowRect.top - boxRect.top
+    else if (rowRect.bottom > boxRect.bottom) delta = rowRect.bottom - boxRect.bottom
+    // Already fully in view (and, in jsdom, every rect is zero) — no scroll
+    // to attribute, so don't arm the flag either.
+    if (delta === 0) return
+
     programmaticScrollRef.current = true
-    // jsdom (this project's test environment) doesn't implement
-    // `scrollIntoView` at all — optional-chained so tests don't need a
-    // manual polyfill for behavior this component doesn't otherwise
-    // depend on.
-    row.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
-    window.setTimeout(() => {
+    // jsdom (this project's test environment) implements neither
+    // `scrollTo` on elements nor layout — optional-chained so tests don't
+    // need a polyfill for behavior this component doesn't otherwise depend on.
+    container.scrollTo?.({ top: container.scrollTop + delta, behavior: 'smooth' })
+    // One timer at a time: overlapping settles let an earlier one clear the
+    // flag mid-animation, after which our own smooth scroll is read as a
+    // manual scroll and suppresses auto-scroll for 4s.
+    if (settleTimerRef.current !== null) window.clearTimeout(settleTimerRef.current)
+    settleTimerRef.current = window.setTimeout(() => {
+      settleTimerRef.current = null
       programmaticScrollRef.current = false
     }, PROGRAMMATIC_SCROLL_SETTLE_MS)
   }, [currentId])

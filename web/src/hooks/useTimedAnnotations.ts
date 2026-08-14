@@ -29,6 +29,10 @@ const RECONCILE_MS = 250
 
 const METADATA_TRACK_LABEL = 'annotation-engine'
 
+/** Shared identity for "nothing active" so resetting can bail out of the
+ * state update instead of handing React a fresh empty Set every time. */
+const EMPTY_ACTIVE: ReadonlySet<string> = new Set()
+
 interface TrackEntry {
   track: TextTrack
   cuesById: Map<string, VTTCue>
@@ -167,7 +171,15 @@ export function useTimedAnnotations(
   // so a body/topic/kind-only edit never triggers a rebuild and never
   // storms `cuechange`.
   useEffect(() => {
-    if (!videoEl) return
+    if (!videoEl) {
+      // No element means no driver and no reconciler are running, so
+      // nothing would ever correct a set left over from the previous
+      // element — return empty rather than a frozen active set (same reset
+      // `useVideoCurrentTime` does). Identity-stable so this can't loop.
+      const reset = () => setActive((prev) => (prev.size === 0 ? prev : EMPTY_ACTIVE))
+      reset()
+      return
+    }
     reconcileTrackCues(videoEl, cuesRef.current)
     publish(videoEl)
   }, [videoEl, signature])
