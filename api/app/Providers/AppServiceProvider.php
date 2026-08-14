@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
+use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
 use App\Services\Transcoding\FakeTranscoder;
@@ -65,6 +66,14 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('review.purge', [ReviewPolicy::class, 'purge']);
         Gate::define('speech.invite', [SpeechPolicy::class, 'invite']);
 
+        // STEP-06: bare (undotted) ability name, matching the exact
+        // literal `Gate::authorize('readAnnotations', [$review])` call the
+        // frozen backend/frontend contract specifies. Registered explicitly
+        // rather than relying on the Review::class policy binding above —
+        // AnnotationPolicy is a distinct class from ReviewPolicy even
+        // though both act on a Review argument.
+        Gate::define('readAnnotations', [AnnotationPolicy::class, 'readAnnotations']);
+
         // Admin's override is a SCOPED Gate::before, not a blanket one
         // (§7.2) — a blanket hook would bypass the very policies Admin must
         // NOT have, e.g. reviewing. Written now, before any concrete
@@ -82,6 +91,8 @@ class AppServiceProvider extends ServiceProvider
                 'review.withdraw', 'review.abandon',                   // ditto — reviewer-only acts
                 'speech.invite',                                       // ownership, not an admin power
                 'annotation.create', 'annotation.update',
+                'readAnnotations',                                     // AnnotationPolicy's own admin branch runs the dual-role assert
+
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',
             ];

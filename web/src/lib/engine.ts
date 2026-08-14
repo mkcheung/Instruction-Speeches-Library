@@ -10,23 +10,34 @@
  * a body-text edit doesn't storm `cuechange` on every video on the page.
  */
 
-/** A single annotation's raw, possibly-invalid timing input. */
+/**
+ * A single annotation's raw, possibly-invalid timing input.
+ *
+ * Field names are `start_seconds`/`duration_seconds` — the exact JSON keys
+ * from `GET /api/speeches/{speech}/annotations` (STEP-06's frozen
+ * contract) — deliberately NOT renamed to camelCase. The contract's
+ * `useTimedAnnotations(videoEl, cues, opts)` takes the API response's
+ * `annotations` array "mapped 1:1 (no renaming) except each cue is run
+ * through a single normalize() function before use," so this type (and
+ * `normalize`'s signature) has to speak the wire format directly rather
+ * than through an intermediate renamed shape.
+ */
 export interface CueSpec {
   id: string
-  startSeconds: number
-  durationSeconds: number
+  start_seconds: number
+  duration_seconds: number
 }
 
 /** Pure, exported, unit-testable without a browser. */
 /** ONE normalization function, used by BOTH the reconciler and the cue builder. */
 export function normalize(c: CueSpec): { start: number; end: number } | null {
-  if (!Number.isFinite(c.startSeconds)) return null
-  const start = Math.max(0, c.startSeconds)
+  if (!Number.isFinite(c.start_seconds)) return null
+  const start = Math.max(0, c.start_seconds)
   // Math.max(0.05, NaN) is NaN — an unguarded duration makes `end` NaN,
   // `t < NaN` false, and the annotation silently never appears.
   const dur =
-    Number.isFinite(c.durationSeconds) && c.durationSeconds > 0
-      ? c.durationSeconds
+    Number.isFinite(c.duration_seconds) && c.duration_seconds > 0
+      ? c.duration_seconds
       : 6
   return { start, end: start + Math.max(0.05, dur) }
 }
@@ -57,7 +68,7 @@ export function computeActive(
  */
 export function timingSignature(cues: readonly CueSpec[]): string {
   return cues
-    .map((c) => `${c.id}|${c.startSeconds}|${c.durationSeconds}`)
+    .map((c) => `${c.id}|${c.start_seconds}|${c.duration_seconds}`)
     .sort()
     .join(';')
 }

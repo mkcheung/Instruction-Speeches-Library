@@ -14,9 +14,9 @@ import { useCueLatencyDrivers } from '@/hooks/useCueLatencyDrivers'
 
 /** Fixture data — unstyled, unpersisted, per STEP-00's "deliberately stubbed". */
 const FIXTURE_CUES: CueSpec[] = [
-  { id: 'cue-1', startSeconds: 2, durationSeconds: 3 },
-  { id: 'cue-2', startSeconds: 6, durationSeconds: 4 },
-  { id: 'cue-3', startSeconds: 11, durationSeconds: 2.5 },
+  { id: 'cue-1', start_seconds: 2, duration_seconds: 3 },
+  { id: 'cue-2', start_seconds: 6, duration_seconds: 4 },
+  { id: 'cue-3', start_seconds: 11, duration_seconds: 2.5 },
 ]
 
 interface CueTimingPanelProps {
@@ -63,7 +63,7 @@ export default function CueTimingPanel({ video }: CueTimingPanelProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-xs text-muted-foreground">
-          Fixture cues: {cues.map((c) => `${c.id}@${c.startSeconds}s`).join(', ')}
+          Fixture cues: {cues.map((c) => `${c.id}@${c.start_seconds}s`).join(', ')}
         </p>
 
         <div className="flex items-center gap-2">

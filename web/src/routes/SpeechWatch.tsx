@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
 import { TrackSelector } from '@/components/review/TrackSelector'
+import { OverlayStack } from '@/components/annotation/OverlayStack'
+import { getVideoElement } from '@/shared/media/videojs-adapter'
+import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutation } from '@/features/speech/speechApi'
 import type { SpeechSprite } from '@/features/speech/types'
 import { useGetMeQuery } from '@/features/auth/authApi'
@@ -20,6 +23,11 @@ export default function SpeechWatch() {
   const [initialUrl, setInitialUrl] = useState<string | null>(null)
   const [inviteOpen, setInviteOpen] = useState(false)
   const playerRef = useRef<Player | null>(null)
+  // Render-triggering state, deliberately not a bare ref — §8.2: a ref
+  // mutation doesn't re-render, so `useTimedAnnotations` (inside
+  // `useCommentaryTrack`) would never see the element and would silently
+  // never attach.
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
 
   const asset = speech?.primary_video
 
@@ -39,6 +47,13 @@ export default function SpeechWatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset?.id, asset?.status])
 
+  const isOwner =
+    !!me?.user && !!speech && speech.user_id !== undefined && Number(me.user.id) === speech.user_id
+
+  // Called unconditionally (Rules of Hooks) even before `speech` has
+  // loaded — `enabled: isOwner` keeps its queries skipped until then.
+  const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner)
+
   if (isLoading || !speech) {
     return (
       <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
@@ -46,8 +61,6 @@ export default function SpeechWatch() {
       </div>
     )
   }
-
-  const isOwner = !!me?.user && speech.user_id !== undefined && Number(me.user.id) === speech.user_id
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-10">
@@ -65,14 +78,30 @@ export default function SpeechWatch() {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {asset?.status === 'ready' && initialUrl ? (
-            <VideoPlayer
-              initialUrl={initialUrl}
-              refreshUrl={refreshUrl}
-              poster={speech.poster?.url}
-              onPlayerReady={(player) => {
-                playerRef.current = player
-              }}
-            />
+            // `relative` so OverlayStack's absolutely-positioned nodes sit
+            // over the actual video frame (§8.5) rather than below it —
+            // OverlayStack itself is `aria-hidden`/`pointer-events:none`
+            // per §8.6, so it never blocks the player's own controls.
+            <div className="relative">
+              <VideoPlayer
+                initialUrl={initialUrl}
+                refreshUrl={refreshUrl}
+                poster={speech.poster?.url}
+                onPlayerReady={(player) => {
+                  playerRef.current = player
+                  setVideoEl(getVideoElement(player))
+                }}
+              />
+              {isOwner && (
+                <div className="pointer-events-none absolute inset-0 flex flex-col justify-end p-3">
+                  <OverlayStack
+                    annotations={commentary.annotations}
+                    activeIds={commentary.activeIds}
+                    currentTime={commentary.currentTime}
+                  />
+                </div>
+              )}
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">Not ready to play yet.</p>
           )}
@@ -92,7 +121,22 @@ export default function SpeechWatch() {
         />
       )}
 
-      {isOwner && <TrackSelector speechId={speechId} />}
+      {isOwner && (
+        <TrackSelector
+          options={commentary.options}
+          optionsLoading={commentary.optionsLoading}
+          selected={commentary.selected}
+          onSelect={commentary.select}
+          onPrefetch={commentary.prefetch}
+          error={commentary.error}
+          isFetching={commentary.isFetching}
+          fetchedReviewerName={commentary.fetchedReviewerName}
+          annotations={commentary.annotations}
+          activeIds={commentary.activeIds}
+          currentTime={commentary.currentTime}
+          onSeek={commentary.seek}
+        />
+      )}
     </div>
   )
 }

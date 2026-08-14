@@ -1,43 +1,55 @@
-import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { useListSpeechReviewsQuery } from '@/features/review/reviewApi'
-import type { Review } from '@/features/review/types'
+import { Transcript } from '@/components/annotation/Transcript'
+import { NO_COMMENTARY, type CommentarySelection, type CommentaryTrackOption } from '@/hooks/useCommentaryTrack'
+import type { Annotation } from '@/features/annotation/types'
 import { cn } from '@/lib/utils'
 
-const NO_COMMENTARY = 'none' as const
-
 /**
- * STEP-05-invitation-loop.md's speaker-facing track selector — a real
- * ARIA radiogroup offering every reviewer whose review is on the speech,
- * plus "No commentary" as a genuine selectable option (not a placeholder).
- * `listSpeechReviews` (`GET /api/speeches/{speech}/reviews`) is already
- * filtered server-side to access-granting, non-revoked reviews (§7.3), so
- * every row that comes back is a real option — nothing to re-filter here.
- * Owner-only; callers must gate rendering on `speech.user_id === current
- * user's id` themselves — per the plan this "is not rendered for
- * reviewers at all."
+ * STEP-06-watch-commentary.md's speaker-facing track selector, completing
+ * the STEP-05 stub (which only tracked local selection state and rendered
+ * a placeholder — "wiring a real player track is STEP-06's job").
  *
- * Annotations don't exist until STEP-06, so picking a reviewer's track
- * here only updates local selection state and shows the honest stubbed
- * empty state ("X hasn't left commentary yet") — wiring a real player
- * track is STEP-06's job.
+ * `listSpeechReviews` (`GET /api/speeches/{speech}/reviews`, confirmed
+ * against `api/routes/api.php` / `ReviewController::forSpeech`) is already
+ * filtered server-side to access-granting, non-revoked reviews, so every
+ * row is a real radiogroup option. Owner-only; callers must gate
+ * rendering on `speech.user_id === current user's id` themselves, same as
+ * before.
+ *
+ * Purely presentational — the radiogroup, error/loading states and
+ * transcript. The fetch, cross-fade and engine wiring live in
+ * `useCommentaryTrack` (shared with `SpeechWatch`, which needs the same
+ * `activeIds`/`annotations` to position `OverlayStack` over the actual
+ * `<video>` element rather than below it in this card).
  */
-export function TrackSelector({ speechId }: { speechId: number }) {
-  const { data: reviews, isLoading } = useListSpeechReviewsQuery(speechId)
-  const [selected, setSelected] = useState<number | typeof NO_COMMENTARY>(NO_COMMENTARY)
-
-  const options: Array<{ key: number | typeof NO_COMMENTARY; label: string; review: Review | null }> = [
-    { key: NO_COMMENTARY, label: 'No commentary', review: null },
-    ...(reviews ?? []).map((review) => ({
-      key: review.id,
-      label: review.reviewer?.name ?? 'Reviewer',
-      review,
-    })),
-  ]
-
-  const selectedOption = options.find((option) => option.key === selected)
-
-  if (isLoading) return null
+export function TrackSelector({
+  options,
+  optionsLoading,
+  selected,
+  onSelect,
+  onPrefetch,
+  error,
+  isFetching,
+  fetchedReviewerName,
+  annotations,
+  activeIds,
+  currentTime,
+  onSeek,
+}: {
+  options: CommentaryTrackOption[]
+  optionsLoading: boolean
+  selected: CommentarySelection
+  onSelect: (next: CommentarySelection) => void
+  onPrefetch: (next: CommentarySelection) => void
+  error: unknown
+  isFetching: boolean
+  fetchedReviewerName: string | undefined
+  annotations: readonly Annotation[]
+  activeIds: ReadonlySet<string>
+  currentTime: number
+  onSeek: (seconds: number) => void
+}) {
+  if (optionsLoading) return null
 
   return (
     <Card>
@@ -55,7 +67,9 @@ export function TrackSelector({ speechId }: { speechId: number }) {
                 type="button"
                 role="radio"
                 aria-checked={isChecked}
-                onClick={() => setSelected(option.key)}
+                onClick={() => onSelect(option.key)}
+                onMouseEnter={() => onPrefetch(option.key)}
+                onFocus={() => onPrefetch(option.key)}
                 className={cn(
                   'rounded-full border px-3 py-1 text-sm transition-colors',
                   isChecked
@@ -69,11 +83,24 @@ export function TrackSelector({ speechId }: { speechId: number }) {
           })}
         </div>
 
-        {selectedOption?.review && (
-          <p className="text-sm text-muted-foreground">
-            {selectedOption.review.reviewer?.name ?? 'This reviewer'} hasn't left commentary yet.
+        {/* Reject-don't-silently-fall-back-to-"No commentary": a 403/404/422
+            from the annotations endpoint is a real error state, matching
+            the backend's rule (STEP-06 contract). */}
+        {Boolean(error) && (
+          <p role="alert" className="text-sm text-[var(--color-danger)]">
+            Couldn't load this reviewer's commentary. Try again, or pick another track.
           </p>
         )}
+
+        {selected !== NO_COMMENTARY && isFetching && !fetchedReviewerName && !error && (
+          <p className="text-sm text-muted-foreground">Loading commentary…</p>
+        )}
+
+        {selected !== NO_COMMENTARY && fetchedReviewerName && annotations.length === 0 && !error && (
+          <p className="text-sm text-muted-foreground">{fetchedReviewerName} hasn't left commentary yet.</p>
+        )}
+
+        <Transcript annotations={annotations} activeIds={activeIds} currentTime={currentTime} onSeek={onSeek} />
       </CardContent>
     </Card>
   )
