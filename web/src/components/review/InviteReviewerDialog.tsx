@@ -45,6 +45,24 @@ export function InviteReviewerDialog({
   const [formError, setFormError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  const [page, setPage] = useState(1)
+
+  // Both filter controls reset paging in their own handler rather than in an
+  // effect on `[debouncedSearch, credential]`: setting state from an effect
+  // renders the stale page once before correcting it (and trips
+  // `react-hooks/set-state-in-effect`). Without the reset, a search typed
+  // while on page 3 asks for page 3 of a result set that may only have one,
+  // and the directory renders empty.
+  const changeSearch = (next: string) => {
+    setSearch(next)
+    setPage(1)
+  }
+
+  const changeCredential = (next: '' | 'member' | 'coach') => {
+    setCredential(next)
+    setPage(1)
+  }
+
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
     return () => clearTimeout(handle)
@@ -53,6 +71,7 @@ export function InviteReviewerDialog({
   const { data, isLoading: isSearching } = useSearchReviewersQuery({
     search: debouncedSearch || undefined,
     credential: credential || undefined,
+    page,
   })
 
   const [inviteReviewer, { isLoading: isInviting }] = useInviteReviewerMutation()
@@ -98,6 +117,7 @@ export function InviteReviewerDialog({
   })
 
   const reviewers = data?.reviewers ?? []
+  const lastPage = data?.meta.last_page ?? 1
 
   return (
     <Card data-testid="invite-reviewer-panel">
@@ -123,7 +143,7 @@ export function InviteReviewerDialog({
                 id="reviewer-search"
                 placeholder="Search by name or username…"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => changeSearch(event.target.value)}
               />
             </div>
 
@@ -135,7 +155,7 @@ export function InviteReviewerDialog({
                   size="sm"
                   variant={credential === option ? 'default' : 'outline'}
                   aria-pressed={credential === option}
-                  onClick={() => setCredential(option)}
+                  onClick={() => changeCredential(option)}
                 >
                   {option === '' ? 'All' : option === 'coach' ? 'Coaches' : 'Members'}
                 </Button>
@@ -171,6 +191,32 @@ export function InviteReviewerDialog({
                 )
               })}
             </div>
+
+            {lastPage > 1 && (
+              <div className="flex items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={page <= 1 || isSearching}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </Button>
+                <span aria-live="polite" className="text-xs text-muted-foreground">
+                  Page {page} of {lastPage}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={page >= lastPage || isSearching}
+                  onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
+                >
+                  Next
+                </Button>
+              </div>
+            )}
             <FieldMessage message={errors.reviewer_id?.message} />
 
             <div className="flex flex-col gap-1.5">

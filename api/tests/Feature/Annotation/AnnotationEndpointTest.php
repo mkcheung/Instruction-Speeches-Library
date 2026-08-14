@@ -215,3 +215,90 @@ it('matches the frozen contract\'s response shape exactly', function () {
     ]);
     expect($response->json('annotations.0.id'))->toBeString();
 });
+
+/**
+ * Regression coverage for the policy/track-selector disagreement found in
+ * review: ReviewController::forSpeech lists every ACCESS_GRANTING review,
+ * so gating the speaker on `status === 'published'` alone made each of
+ * those tracks a guaranteed 403 and left STEP-05 §43's "…hasn't left
+ * commentary yet" empty state unreachable.
+ */
+it('lets the speaker open an accepted reviewer\'s track and get an honest empty set, not a 403', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+
+    $review = makeAcceptedReview($speaker, $reviewer);
+
+    $response = $this->actingAs($speaker)
+        ->getJson("/api/speeches/{$review->speech_id}/annotations?review_id={$review->id}");
+
+    $response->assertOk();
+    expect($response->json('annotations'))->toBe([]);
+    expect($response->json('review_id'))->toBe($review->id);
+});
+
+it('still hides an in_progress reviewer\'s drafts from the speaker while the track is readable', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+
+    $review = makeAcceptedReview($speaker, $reviewer);
+    $review->update(['status' => 'in_progress']);
+
+    Annotation::factory()->for($review)->draft()->create([
+        'body' => 'Half-formed thought the speaker must never read.',
+        'start_seconds' => 5.0,
+    ]);
+
+    // Widening the REVIEW gate must not widen the ROW filter: the review
+    // opens, the draft stays invisible.
+    $response = $this->actingAs($speaker)
+        ->getJson("/api/speeches/{$review->speech_id}/annotations?review_id={$review->id}");
+
+    $response->assertOk();
+    expect($response->json('annotations'))->toBe([]);
+});
+
+it('still refuses the speaker a review that never reached an access-granting status', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+
+    $review = makeAcceptedReview($speaker, $reviewer);
+    $review->update(['status' => 'invited']);
+
+    $this->actingAs($speaker)
+        ->getJson("/api/speeches/{$review->speech_id}/annotations?review_id={$review->id}")
+        ->assertForbidden();
+});
+
+it('still refuses a stranger every access-granting status', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $stranger = User::factory()->create();
+    $stranger->assignRole('member');
+
+    $review = makeAcceptedReview($speaker, $reviewer);
+
+    foreach (Review::ACCESS_GRANTING as $status) {
+        $review->update(['status' => $status]);
+
+        $this->actingAs($stranger)
+            ->getJson("/api/speeches/{$review->speech_id}/annotations?review_id={$review->id}")
+            ->assertForbidden();
+    }
+});

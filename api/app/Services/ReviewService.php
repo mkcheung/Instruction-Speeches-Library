@@ -27,15 +27,19 @@ class ReviewService
      * blind insert:
      *
      *  - no row yet -> create one, status `invited`.
-     *  - existing row, status `declined`/`abandoned`, not revoked -> reuse
-     *    it: reset to `invited`, refresh `invited_at`/message/flags. This
-     *    is the "re-inviting someone who declined reuses the existing row"
-     *    acceptance item.
+     *  - existing row, status `declined`/`abandoned`, OR revoked in any
+     *    status -> reuse it: reset to `invited`, clear the revocation
+     *    tombstone, refresh `invited_at`/message/flags. This is the
+     *    "re-inviting someone who declined reuses the existing row"
+     *    acceptance item, plus the revoked case the unique constraint would
+     *    otherwise make permanent.
      *  - existing row in any other live status (`invited`, `accepted`,
-     *    `in_progress`, `published`) -> already invited/active; return the
-     *    existing row as-is rather than duplicating or erroring, so a
-     *    double-click on "invite" behaves the same as a double-click on
-     *    "accept" (both idempotent per the acceptance criteria).
+     *    `in_progress`, `published`) and not revoked -> already
+     *    invited/active; return the existing row as-is rather than
+     *    duplicating or erroring, so a double-click on "invite" behaves the
+     *    same as a double-click on "accept" (both idempotent per the
+     *    acceptance criteria) — and, unlike the two branches above, sends
+     *    no second notification.
      *
      * `assertNotSelfReview` runs first and unconditionally — before any
      * row is touched — because §7.4 requires this to be a service-level
@@ -52,7 +56,14 @@ class ReviewService
     ): Review {
         $this->assertNotSelfReview($speech, $reviewer->id);
 
-        $review = DB::transaction(function () use ($speech, $reviewer, $speaker, $message, $allowPreview, $priorCommentaryShared, $invitedBy) {
+        // Whether THIS call is the one that created or reset the invitation.
+        // `$review->status === 'invited'` cannot answer that on its own: it
+        // is equally true of the idempotent no-op branch, where a repeat
+        // invite of an already-invited reviewer would re-send the email and
+        // the bell row every time the speaker double-clicks.
+        $freshlyInvited = false;
+
+        $review = DB::transaction(function () use ($speech, $reviewer, $speaker, $message, $allowPreview, $priorCommentaryShared, $invitedBy, &$freshlyInvited) {
             /** @var Review|null $existing */
             $existing = Review::query()
                 ->where('speech_id', $speech->id)
@@ -61,6 +72,8 @@ class ReviewService
                 ->first();
 
             if ($existing === null) {
+                $freshlyInvited = true;
+
                 return Review::query()->create([
                     'speech_id' => $speech->id,
                     'reviewer_id' => $reviewer->id,
@@ -75,7 +88,15 @@ class ReviewService
                 ]);
             }
 
-            if (in_array($existing->status, ['declined', 'abandoned'], true)) {
+            // A revoked row is re-invitable regardless of the status it was
+            // revoked under. Without this, `UNIQUE(speech_id, reviewer_id)`
+            // makes revocation permanent: the row can never be inserted
+            // again, and the branches below would return it untouched — 201
+            // Created, no notification, `revoked_at` still set, so the
+            // reviewer stays locked out of a speech they were just
+            // re-invited to. Revocation is an access-removal event (§7.3),
+            // not a ban.
+            if ($existing->revoked_at !== null || in_array($existing->status, ['declined', 'abandoned'], true)) {
                 $existing->fill([
                     'invited_by_id' => ($invitedBy ?? $speaker)->id,
                     'invitation_message' => $message,
@@ -90,6 +111,7 @@ class ReviewService
                     'last_transition_at' => now(),
                 ]);
                 $existing->save();
+                $freshlyInvited = true;
 
                 return $existing;
             }
@@ -99,11 +121,14 @@ class ReviewService
             return $existing;
         });
 
-        if ($review->status === 'invited') {
+        if ($freshlyInvited) {
             $review->setRelation('reviewer', $reviewer);
             $review->setRelation('speech', $speech);
             $review->setRelation('invitedBy', $invitedBy ?? $speaker);
-            $reviewer->notify(new ReviewInvited($review));
+            // `afterCommit`, not a bare call: see `accept`'s docblock — being
+            // below the `DB::transaction` above only helps when this service
+            // is the outermost transaction, which a caller can change.
+            DB::afterCommit(fn () => $reviewer->notify(new ReviewInvited($review)));
         }
 
         return $review;
@@ -126,15 +151,26 @@ class ReviewService
      * duplicate-write error. `lockForUpdate()` inside the transaction
      * serializes the two requests; the second one finds `status` already
      * `accepted` and no-ops.
+     *
+     * The notification is deferred with `DB::afterCommit`, not merely moved
+     * below the `DB::transaction` call. `config/queue.php` sets
+     * `after_commit => false` on every connection, so a queued notification
+     * dispatched inside an open transaction reaches the worker before the
+     * row it describes, and a rollback tells the speaker the review was
+     * accepted when it wasn't. Placing it after the closure is not enough:
+     * `DB::transaction` nests as a SAVEPOINT, so when a caller wraps this
+     * in its own transaction the inner "commit" commits nothing.
+     * `afterCommit` fires on the OUTERMOST commit, and runs inline when no
+     * transaction is open at all.
      */
     public function accept(Review $review): Review
     {
-        return DB::transaction(function () use ($review) {
+        [$locked, $transitioned] = DB::transaction(function () use ($review) {
             /** @var Review $locked */
             $locked = Review::query()->with(['speechOwner', 'reviewer', 'speech'])->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== 'invited') {
-                return $locked;
+                return [$locked, false];
             }
 
             $locked->status = 'accepted';
@@ -142,20 +178,24 @@ class ReviewService
             $locked->last_transition_at = now();
             $locked->save();
 
-            $locked->speechOwner?->notify(new ReviewAccepted($locked));
-
-            return $locked;
+            return [$locked, true];
         });
+
+        if ($transitioned) {
+            DB::afterCommit(fn () => $locked->speechOwner?->notify(new ReviewAccepted($locked)));
+        }
+
+        return $locked;
     }
 
     public function decline(Review $review): Review
     {
-        return DB::transaction(function () use ($review) {
+        [$locked, $transitioned] = DB::transaction(function () use ($review) {
             /** @var Review $locked */
             $locked = Review::query()->with(['speechOwner', 'reviewer', 'speech'])->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status !== 'invited') {
-                return $locked;
+                return [$locked, false];
             }
 
             $locked->status = 'declined';
@@ -163,10 +203,14 @@ class ReviewService
             $locked->last_transition_at = now();
             $locked->save();
 
-            $locked->speechOwner?->notify(new ReviewDeclined($locked));
-
-            return $locked;
+            return [$locked, true];
         });
+
+        if ($transitioned) {
+            DB::afterCommit(fn () => $locked->speechOwner?->notify(new ReviewDeclined($locked)));
+        }
+
+        return $locked;
     }
 
     /**
@@ -204,12 +248,22 @@ class ReviewService
      * review stays `published` (the commentary existed) but `revoked_at`
      * being non-null is what Speech::scopeVisibleTo/readAnnotations gate
      * on, so the reviewer immediately loses reach to the speech.
+     *
+     * Idempotent, like every other verb here. Re-revoking must NOT re-stamp
+     * the tombstone: `revocation_reason` is shown to the reviewer, and a
+     * second revoke — a double-click, or a retry after a timeout — arrives
+     * with `reason` null from a UI that no longer prompts for one, which
+     * would overwrite the explanation they were given with nothing.
      */
     public function revoke(Review $review, User $revokedBy, ?string $reason): Review
     {
         return DB::transaction(function () use ($review, $revokedBy, $reason) {
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->revoked_at !== null) {
+                return $locked;
+            }
 
             $locked->revoked_at = now();
             $locked->revoked_by_id = $revokedBy->id;
