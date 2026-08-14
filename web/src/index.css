@@ -177,3 +177,36 @@ body {
     @apply font-sans;
   }
 }
+
+/**
+ * STEP-06-watch-commentary.md / MODERNIZATION_PLAN.md §5.4 — the fade.
+ *
+ * Every annotation node stays mounted (see `OverlayStack.tsx`); this
+ * class + the `data-visible` attribute toggle is what actually animates
+ * it. 600ms because the brief asks for commentary "slowly appearing." An
+ * opaque-ish scrim (`--card` mixed 92% over transparent) rather than a
+ * fully translucent one — contrast against a moving video is
+ * unmeasurable otherwise. `--card` stands in for the plan's `--surface`
+ * token, which this codebase doesn't define separately.
+ */
+.annotation-overlay {
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity var(--annotation-fade, 600ms) ease-out,
+    transform var(--annotation-fade, 600ms) ease-out;
+  will-change: opacity, transform;
+  pointer-events: none;
+  max-width: min(48ch, 90cqw);
+  background: color-mix(in oklab, var(--card) 92%, transparent);
+}
+.annotation-overlay[data-visible='true'] {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .annotation-overlay {
+    transition-duration: 1ms;
+    transform: none;
+  }
+}

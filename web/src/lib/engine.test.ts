@@ -3,90 +3,96 @@ import { computeActive, normalize, timingSignature, type CueSpec } from './engin
 
 describe('normalize', () => {
   it('returns start/end for a normal cue', () => {
-    expect(normalize({ id: 'a', startSeconds: 10, durationSeconds: 5 })).toEqual({
+    expect(normalize({ id: 'a', start_seconds: 10, duration_seconds: 5 })).toEqual({
       start: 10,
       end: 15,
     })
   })
 
   it('clamps a negative start to 0', () => {
-    expect(normalize({ id: 'a', startSeconds: -5, durationSeconds: 5 })).toEqual({
+    expect(normalize({ id: 'a', start_seconds: -5, duration_seconds: 5 })).toEqual({
       start: 0,
       end: 5,
     })
   })
 
-  it('returns null when startSeconds is NaN', () => {
-    expect(normalize({ id: 'a', startSeconds: NaN, durationSeconds: 5 })).toBeNull()
+  it('returns null when start_seconds is NaN', () => {
+    expect(normalize({ id: 'a', start_seconds: NaN, duration_seconds: 5 })).toBeNull()
   })
 
-  it('returns null when startSeconds is +Infinity', () => {
+  it('returns null when start_seconds is +Infinity', () => {
     expect(
-      normalize({ id: 'a', startSeconds: Infinity, durationSeconds: 5 }),
+      normalize({ id: 'a', start_seconds: Infinity, duration_seconds: 5 }),
     ).toBeNull()
   })
 
-  it('returns null when startSeconds is -Infinity', () => {
+  it('returns null when start_seconds is -Infinity', () => {
     expect(
-      normalize({ id: 'a', startSeconds: -Infinity, durationSeconds: 5 }),
+      normalize({ id: 'a', start_seconds: -Infinity, duration_seconds: 5 }),
     ).toBeNull()
   })
 
-  it('defaults duration to 6 when durationSeconds is NaN (guarded, not NaN-propagated)', () => {
-    expect(normalize({ id: 'a', startSeconds: 10, durationSeconds: NaN })).toEqual({
+  it('defaults duration to 6 when duration_seconds is NaN (guarded, not NaN-propagated)', () => {
+    expect(normalize({ id: 'a', start_seconds: 10, duration_seconds: NaN })).toEqual({
       start: 10,
       end: 16,
     })
   })
 
-  it('defaults duration to 6 when durationSeconds is zero', () => {
-    expect(normalize({ id: 'a', startSeconds: 10, durationSeconds: 0 })).toEqual({
+  it('defaults duration to 6 when duration_seconds is zero', () => {
+    expect(normalize({ id: 'a', start_seconds: 10, duration_seconds: 0 })).toEqual({
       start: 10,
       end: 16,
     })
   })
 
-  it('defaults duration to 6 when durationSeconds is negative', () => {
-    expect(normalize({ id: 'a', startSeconds: 10, durationSeconds: -3 })).toEqual({
+  it('defaults duration to 6 when duration_seconds is negative', () => {
+    expect(normalize({ id: 'a', start_seconds: 10, duration_seconds: -3 })).toEqual({
       start: 10,
       end: 16,
     })
   })
 
   it('floors a tiny positive duration at 0.05', () => {
-    expect(normalize({ id: 'a', startSeconds: 10, durationSeconds: 0.001 })).toEqual({
+    expect(normalize({ id: 'a', start_seconds: 10, duration_seconds: 0.001 })).toEqual({
       start: 10,
       end: 10.05,
     })
   })
 
   it('accepts a duration exactly at the 0.05 floor unchanged', () => {
-    expect(normalize({ id: 'a', startSeconds: 0, durationSeconds: 0.05 })).toEqual({
+    expect(normalize({ id: 'a', start_seconds: 0, duration_seconds: 0.05 })).toEqual({
       start: 0,
       end: 0.05,
     })
   })
 
-  it('treats durationSeconds Infinity as invalid (falls back to default 6)', () => {
+  it('treats duration_seconds Infinity as invalid (falls back to default 6)', () => {
     // Number.isFinite(Infinity) is false, so this takes the default-duration branch.
     expect(
-      normalize({ id: 'a', startSeconds: 0, durationSeconds: Infinity }),
+      normalize({ id: 'a', start_seconds: 0, duration_seconds: Infinity }),
     ).toEqual({ start: 0, end: 6 })
   })
 
-  it('handles startSeconds of exactly 0', () => {
-    expect(normalize({ id: 'a', startSeconds: 0, durationSeconds: 5 })).toEqual({
+  it('handles start_seconds of exactly 0', () => {
+    expect(normalize({ id: 'a', start_seconds: 0, duration_seconds: 5 })).toEqual({
       start: 0,
       end: 5,
     })
+  })
+
+  it('preserves microsecond-precision start/duration exactly (no float rounding)', () => {
+    expect(
+      normalize({ id: 'a', start_seconds: 14.000123, duration_seconds: 5.999877 }),
+    ).toEqual({ start: 14.000123, end: 20.0 })
   })
 })
 
 describe('computeActive', () => {
   const cues: CueSpec[] = [
-    { id: 'a', startSeconds: 0, durationSeconds: 5 }, // [0, 5)
-    { id: 'b', startSeconds: 5, durationSeconds: 5 }, // [5, 10)
-    { id: 'c', startSeconds: 3, durationSeconds: 10 }, // [3, 13) — overlaps a and b
+    { id: 'a', start_seconds: 0, duration_seconds: 5 }, // [0, 5)
+    { id: 'b', start_seconds: 5, duration_seconds: 5 }, // [5, 10)
+    { id: 'c', start_seconds: 3, duration_seconds: 10 }, // [3, 13) — overlaps a and b
   ]
 
   it('includes a cue at its exact start boundary (start <= t)', () => {
@@ -116,21 +122,21 @@ describe('computeActive', () => {
 
   it('skips cues that normalize to null (NaN start)', () => {
     const withInvalid: CueSpec[] = [
-      { id: 'bad', startSeconds: NaN, durationSeconds: 5 },
-      { id: 'good', startSeconds: 0, durationSeconds: 5 },
+      { id: 'bad', start_seconds: NaN, duration_seconds: 5 },
+      { id: 'good', start_seconds: 0, duration_seconds: 5 },
     ]
     expect(computeActive(withInvalid, 1)).toEqual(new Set(['good']))
   })
 
   it('clamps a negative start so the cue can be active at t=0', () => {
     const negativeStart: CueSpec[] = [
-      { id: 'a', startSeconds: -10, durationSeconds: 5 },
+      { id: 'a', start_seconds: -10, duration_seconds: 5 },
     ]
     expect(computeActive(negativeStart, 0)).toEqual(new Set(['a']))
   })
 
   it('treats a zero duration as the default 6s window, not an empty window', () => {
-    const zeroDur: CueSpec[] = [{ id: 'a', startSeconds: 0, durationSeconds: 0 }]
+    const zeroDur: CueSpec[] = [{ id: 'a', start_seconds: 0, duration_seconds: 0 }]
     expect(computeActive(zeroDur, 5.9)).toEqual(new Set(['a']))
     expect(computeActive(zeroDur, 6)).toEqual(new Set())
   })
@@ -145,43 +151,63 @@ describe('computeActive', () => {
 
   it('returns all cues simultaneously active when they fully overlap', () => {
     const overlapping: CueSpec[] = [
-      { id: 'x', startSeconds: 0, durationSeconds: 10 },
-      { id: 'y', startSeconds: 0, durationSeconds: 10 },
+      { id: 'x', start_seconds: 0, duration_seconds: 10 },
+      { id: 'y', start_seconds: 0, duration_seconds: 10 },
     ]
     expect(computeActive(overlapping, 5)).toEqual(new Set(['x', 'y']))
+  })
+
+  it('excludes a cue one microsecond before its start', () => {
+    const cue: CueSpec[] = [{ id: 'a', start_seconds: 10, duration_seconds: 5 }]
+    expect(computeActive(cue, 10 - 0.000001).has('a')).toBe(false)
+  })
+
+  it('includes a cue one microsecond after its start', () => {
+    const cue: CueSpec[] = [{ id: 'a', start_seconds: 10, duration_seconds: 5 }]
+    expect(computeActive(cue, 10 + 0.000001).has('a')).toBe(true)
+  })
+
+  it('excludes a cue one microsecond after its end', () => {
+    const cue: CueSpec[] = [{ id: 'a', start_seconds: 10, duration_seconds: 5 }]
+    expect(computeActive(cue, 15 + 0.000001).has('a')).toBe(false)
+  })
+
+  it('includes a cue one microsecond before its end', () => {
+    const cue: CueSpec[] = [{ id: 'a', start_seconds: 10, duration_seconds: 5 }]
+    expect(computeActive(cue, 15 - 0.000001).has('a')).toBe(true)
   })
 })
 
 describe('timingSignature', () => {
   it('is stable across array order (sorted by id)', () => {
     const a: CueSpec[] = [
-      { id: 'b', startSeconds: 5, durationSeconds: 2 },
-      { id: 'a', startSeconds: 0, durationSeconds: 1 },
+      { id: 'b', start_seconds: 5, duration_seconds: 2 },
+      { id: 'a', start_seconds: 0, duration_seconds: 1 },
     ]
     const b: CueSpec[] = [
-      { id: 'a', startSeconds: 0, durationSeconds: 1 },
-      { id: 'b', startSeconds: 5, durationSeconds: 2 },
+      { id: 'a', start_seconds: 0, duration_seconds: 1 },
+      { id: 'b', start_seconds: 5, duration_seconds: 2 },
     ]
     expect(timingSignature(a)).toBe(timingSignature(b))
   })
 
   it('changes when a start time changes', () => {
-    const before: CueSpec[] = [{ id: 'a', startSeconds: 0, durationSeconds: 1 }]
-    const after: CueSpec[] = [{ id: 'a', startSeconds: 1, durationSeconds: 1 }]
+    const before: CueSpec[] = [{ id: 'a', start_seconds: 0, duration_seconds: 1 }]
+    const after: CueSpec[] = [{ id: 'a', start_seconds: 1, duration_seconds: 1 }]
     expect(timingSignature(before)).not.toBe(timingSignature(after))
   })
 
   it('changes when a duration changes', () => {
-    const before: CueSpec[] = [{ id: 'a', startSeconds: 0, durationSeconds: 1 }]
-    const after: CueSpec[] = [{ id: 'a', startSeconds: 0, durationSeconds: 2 }]
+    const before: CueSpec[] = [{ id: 'a', start_seconds: 0, duration_seconds: 1 }]
+    const after: CueSpec[] = [{ id: 'a', start_seconds: 0, duration_seconds: 2 }]
     expect(timingSignature(before)).not.toBe(timingSignature(after))
   })
 
   it('is unaffected by fields outside id/start/duration (no body text baked in)', () => {
     // CueSpec has no body field, but this documents the contract: only
     // timing may rebuild cues, so the signature must be a pure function of
-    // id/startSeconds/durationSeconds and nothing else.
-    const cues: CueSpec[] = [{ id: 'a', startSeconds: 1, durationSeconds: 2 }]
+    // id/start_seconds/duration_seconds and nothing else.
+    const cues: CueSpec[] = [{ id: 'a', start_seconds: 1, duration_seconds: 2 }]
     expect(timingSignature(cues)).toBe(timingSignature(cues))
   })
 
@@ -190,13 +216,13 @@ describe('timingSignature', () => {
   })
 
   it('produces distinct signatures for different id sets of the same size', () => {
-    const a: CueSpec[] = [{ id: 'a', startSeconds: 0, durationSeconds: 1 }]
-    const b: CueSpec[] = [{ id: 'z', startSeconds: 0, durationSeconds: 1 }]
+    const a: CueSpec[] = [{ id: 'a', start_seconds: 0, duration_seconds: 1 }]
+    const b: CueSpec[] = [{ id: 'z', start_seconds: 0, duration_seconds: 1 }]
     expect(timingSignature(a)).not.toBe(timingSignature(b))
   })
 
   it('includes NaN/negative values verbatim (raw input, not normalized)', () => {
-    const cues: CueSpec[] = [{ id: 'a', startSeconds: NaN, durationSeconds: -3 }]
+    const cues: CueSpec[] = [{ id: 'a', start_seconds: NaN, duration_seconds: -3 }]
     expect(timingSignature(cues)).toBe('a|NaN|-3')
   })
 })

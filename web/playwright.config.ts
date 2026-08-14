@@ -43,19 +43,34 @@ export default defineConfig({
 
   /* Configure projects for major browsers */
   projects: [
+    /* CP-05: the setup-PROJECT pattern, which replaced `globalSetup` as
+     * the documented way to do this. It logs each fixture role in once and
+     * saves the session cookies to playwright/.auth/*.json; every browser
+     * project below depends on it, so the auth files are regenerated on
+     * every run rather than committed (they are live session cookies —
+     * playwright/.auth/ is gitignored, and must stay that way). */
+    /* Ordered ahead of `setup` because these specs run against the Vite
+     * DEV server (see warmup.setup.ts for the measured reason). */
+    { name: 'warmup', testMatch: /warmup\.setup\.ts/ },
+
+    { name: 'setup', testMatch: /auth\.setup\.ts/, dependencies: ['warmup'] },
+
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
     },
 
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
+      dependencies: ['setup'],
     },
 
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      dependencies: ['setup'],
     },
 
     /* Test against mobile viewports. */

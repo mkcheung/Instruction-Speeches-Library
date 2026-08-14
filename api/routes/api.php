@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\NotificationController;
@@ -84,6 +85,12 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.speeches.reviews.invite');
     Route::get('/speeches/{speech}/reviews', [ReviewController::class, 'forSpeech'])
         ->name('api.speeches.reviews.index');
+
+    // STEP-06-watch-commentary.md: read-only. `review_id` is a required
+    // query param (FormRequest-validated), not a route segment — matches
+    // the frozen backend/frontend contract exactly.
+    Route::get('/speeches/{speech}/annotations', [AnnotationController::class, 'index'])
+        ->name('api.speeches.annotations.index');
 
     Route::post('/reviews/{review}/accept', [ReviewController::class, 'accept'])
         ->name('api.reviews.accept');

@@ -108,3 +108,18 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
 
   return player
 }
+
+/**
+ * STEP-06-watch-commentary.md needs the raw `HTMLMediaElement` to drive
+ * `useTimedAnnotations` (VTTCue/TextTrack live on the element, not the
+ * video.js `Player` wrapper). Per STEP-03's boundary, this file is "the
+ * one file allowed to touch `player.tech()`" — so that call is centralized
+ * here, once, rather than every consumer reaching into the player itself.
+ * Returns `null` before the player has a tech attached (shouldn't happen
+ * post-`createVideoJsPlayer`, but the tech API is officially untyped).
+ */
+export function getVideoElement(player: Player): HTMLVideoElement | null {
+  const tech = player.tech({ IWillNotUseThisInPlugins: true })
+  const el = tech?.el() as Element | undefined
+  return el instanceof HTMLVideoElement ? el : null
+}
