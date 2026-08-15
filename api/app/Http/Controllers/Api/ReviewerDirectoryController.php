@@ -24,6 +24,13 @@ class ReviewerDirectoryController extends Controller
             ->with('profile')
             ->orderBy('first_name')
             ->orderBy('last_name')
+            // `id` breaks ties: `first_name`/`last_name` are not unique, and
+            // without a deterministic final sort key the same user can appear
+            // on two pages (or on neither) as the engine reorders equal rows
+            // between the two LIMIT/OFFSET queries.
+            ->orderBy('id')
+            // `page` itself needs no argument — Illuminate\Pagination\
+            // PaginationState resolves it from the request query string.
             ->paginate(20);
 
         return new JsonResponse([

@@ -85,7 +85,29 @@ class SeedAnnotationsCommand extends Command
             );
         }
 
-        $this->info("Seeded 3 fixture annotations onto review #{$review->id}.");
+        // Publishing rows is only half the transition: until STEP-07 gives
+        // publication a real service, nothing else moves the review itself,
+        // and the demo script's step 2 ("pick that reviewer") reads through
+        // AnnotationPolicy — which gates the speaker on the review's status,
+        // not on the rows. Seeding published rows under an `invited` review
+        // therefore 403s the exact click the script tells you to make.
+        //
+        // The counters are recomputed from the table rather than incremented,
+        // so a re-run stays idempotent and can never drift past the
+        // `published_annotations_count <= annotations_count` CHECK.
+        $counts = Annotation::query()->where('review_id', $review->id);
+
+        $review->forceFill([
+            'status' => 'published',
+            'responded_at' => $review->responded_at ?? $now,
+            'first_published_at' => $review->first_published_at ?? $now,
+            'last_published_at' => $now,
+            'last_transition_at' => $now,
+            'annotations_count' => (clone $counts)->count(),
+            'published_annotations_count' => (clone $counts)->whereNotNull('published_at')->count(),
+        ])->save();
+
+        $this->info("Seeded 3 fixture annotations onto review #{$review->id} and marked it published.");
 
         return self::SUCCESS;
     }

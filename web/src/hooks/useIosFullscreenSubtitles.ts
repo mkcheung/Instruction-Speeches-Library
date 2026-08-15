@@ -26,6 +26,11 @@ function getOrCreateSubtitleTrack(video: HTMLVideoElement): TextTrack {
   let track = subtitleTrackCache.get(video)
   if (!track) {
     track = video.addTextTrack('subtitles', SUBTITLE_TRACK_LABEL, 'en')
+    // `addTextTrack` creates the track in `hidden` mode, which is enough
+    // for video.js to list an empty "Commentary" entry in its captions menu
+    // on every platform. It's only ever meant to be `showing` inside iOS
+    // native fullscreen, so start it fully disabled.
+    track.mode = 'disabled'
     subtitleTrackCache.set(video, track)
   }
   return track

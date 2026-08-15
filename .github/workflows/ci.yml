@@ -189,6 +189,26 @@ jobs:
       - name: Run migrations
         run: docker compose exec -T app php artisan migrate --force
 
+      # WHY this step exists: CP-05 added tests/auth.setup.ts and made every
+      # browser project depend on the `setup` project, so EVERY Playwright
+      # run now begins by logging in as E2ESeeder's fixture users
+      # (member@e2e.test etc.). `migrate --force` creates the schema and
+      # nothing else, and E2ESeeder is deliberately NOT in DatabaseSeeder's
+      # chain — it is opt-in precisely because it mints real accounts with a
+      # known password (see DatabaseSeeder's own comment). Without this
+      # step those accounts simply do not exist in CI: all three logins fail
+      # on bad credentials, the app never leaves /login, and auth.setup.ts
+      # dies on `page.waitForURL(.../onboarding)` after 30s — identically on
+      # every retry, which is what tells you it is missing data and not the
+      # Vite stall that warmup.setup.ts exists to absorb.
+      #
+      # `--class=E2ESeeder` unqualified on purpose: Laravel's SeedCommand
+      # prefixes `Database\Seeders\` when the value contains no backslash,
+      # which sidesteps quoting a namespace through YAML *and* the shell.
+      # E2ESeeder calls RoleSeeder itself, so roles are covered.
+      - name: Seed E2E fixture data
+        run: docker compose exec -T app php artisan db:seed --class=E2ESeeder --force
+
       - name: Start queue-worker
         run: docker compose up -d --build --wait --wait-timeout 60 queue-worker
 

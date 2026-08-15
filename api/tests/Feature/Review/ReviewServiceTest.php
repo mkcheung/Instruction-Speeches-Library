@@ -4,7 +4,9 @@ use App\Exceptions\SelfReviewNotPermittedException;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
+use App\Notifications\ReviewInvited;
 use App\Services\ReviewService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 /**
@@ -136,4 +138,95 @@ it('revoke sets revoked_at without changing status', function () {
     expect($revoked->status)->toBe('published');
     expect($revoked->revoked_at)->not->toBeNull();
     expect($revoked->revocation_reason)->toBe('no longer needed');
+});
+
+/**
+ * Regression coverage for the four ReviewService defects found in review.
+ * Each of these passed the suite before the fix because nothing exercised
+ * the second call — every existing test invites, revokes or notifies once.
+ */
+it('re-invites a revoked reviewer by clearing the tombstone on the existing row', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $speech = Speech::factory()->for($speaker)->create();
+
+    $service = app(ReviewService::class);
+    $review = $service->invite($speaker, $speech, $reviewer, null, false, false);
+    $service->accept($review);
+    $service->revoke($review->fresh(), $speaker, 'wrong person');
+
+    $reinvited = $service->invite($speaker, $speech, $reviewer, 'sorry, come back', false, false);
+
+    // UNIQUE(speech_id, reviewer_id) means the row must be REUSED, not
+    // recreated — and the tombstone must be gone, or the reviewer stays
+    // locked out of a speech they were just re-invited to.
+    expect($reinvited->id)->toBe($review->id);
+    expect($reinvited->status)->toBe('invited');
+    expect($reinvited->revoked_at)->toBeNull();
+    expect($reinvited->revoked_by_id)->toBeNull();
+    expect($reinvited->revocation_reason)->toBeNull();
+    expect(Review::query()->where('speech_id', $speech->id)->where('reviewer_id', $reviewer->id)->count())->toBe(1);
+
+    Notification::assertSentTo($reviewer, ReviewInvited::class, fn () => true);
+});
+
+it('does not re-notify a reviewer when an already-invited reviewer is invited again', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $speech = Speech::factory()->for($speaker)->create();
+
+    $service = app(ReviewService::class);
+    $service->invite($speaker, $speech, $reviewer, null, false, false);
+    $service->invite($speaker, $speech, $reviewer, null, false, false);
+
+    // The no-op branch leaves status 'invited', so a status-based guard
+    // would fire a second email and bell row on every double-click.
+    Notification::assertSentToTimes($reviewer, ReviewInvited::class, 1);
+});
+
+it('keeps the original revocation reason when revoke is called twice', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $review = Review::factory()->for($speaker, 'speechOwner')->published()->create(['speech_owner_id' => $speaker->id]);
+
+    $service = app(ReviewService::class);
+    $first = $service->revoke($review, $speaker, 'no longer needed');
+    $second = $service->revoke($review->fresh(), $speaker, null);
+
+    // A retry arrives with reason null from a UI that no longer prompts —
+    // it must not wipe the explanation the reviewer was already shown.
+    expect($second->revocation_reason)->toBe('no longer needed');
+    expect($second->revoked_at->timestamp)->toBe($first->revoked_at->timestamp);
+    expect($second->revoked_by_id)->toBe($speaker->id);
+});
+
+it('does not notify the speaker when an accept transaction rolls back', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $speech = Speech::factory()->for($speaker)->create();
+
+    $service = app(ReviewService::class);
+    $review = $service->invite($speaker, $speech, $reviewer, null, false, false);
+
+    // Notifying inside the transaction means a rollback still tells the
+    // speaker the review was accepted. Wrapping the call in an outer
+    // transaction that rolls back reproduces exactly that.
+    try {
+        DB::transaction(function () use ($service, $review) {
+            $service->accept($review);
+            throw new RuntimeException('rolled back');
+        });
+    } catch (RuntimeException) {
+        // expected
+    }
+
+    expect(Review::query()->whereKey($review->id)->value('status'))->toBe('invited');
+    Notification::assertNothingSentTo($speaker);
 });

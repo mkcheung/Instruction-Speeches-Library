@@ -40,3 +40,39 @@ it('fails cleanly for an unknown review id', function () {
 
     expect($exitCode)->not->toBe(0);
 });
+
+/**
+ * Regression coverage for the seeder half-transition found in review: it
+ * published the ROWS but left the REVIEW at its prior status, so STEP-06's
+ * demo script 403'd at step 2 ("pick that reviewer") — the exact click the
+ * script tells you to make.
+ */
+it('marks the review published so the speaker can actually open the seeded track', function () {
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = Review::factory()->accepted()->create([
+        'speech_id' => $speech->id,
+        'reviewer_id' => $reviewer->id,
+        'speech_owner_id' => $speaker->id,
+    ]);
+
+    Artisan::call('annotations:seed', ['review' => $review->id]);
+
+    $review->refresh();
+    expect($review->status)->toBe('published');
+    expect($review->first_published_at)->not->toBeNull();
+    expect($review->last_published_at)->not->toBeNull();
+    expect($review->annotations_count)->toBe(3);
+    expect($review->published_annotations_count)->toBe(3);
+
+    // Counters are recomputed, not incremented, so a re-run can never drift
+    // past the `published_annotations_count <= annotations_count` CHECK.
+    $firstPublishedAt = $review->first_published_at;
+    Artisan::call('annotations:seed', ['review' => $review->id]);
+
+    $review->refresh();
+    expect($review->annotations_count)->toBe(3);
+    expect($review->published_annotations_count)->toBe(3);
+    expect($review->first_published_at->timestamp)->toBe($firstPublishedAt->timestamp);
+});

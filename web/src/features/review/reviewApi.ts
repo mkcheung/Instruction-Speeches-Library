@@ -48,12 +48,19 @@ export const reviewApi = createApi({
     }),
     /** §6.3's reviewer directory — the only discovery mechanism (no open
      * pool). `credential` is optional so "browse everyone" is a real
-     * first state, not just a search-only box. */
-    searchReviewers: builder.query<ReviewerDirectoryResponse, { search?: string; credential?: 'member' | 'coach' }>({
-      query: ({ search, credential }) => {
+     * first state, not just a search-only box. `page` is not optional
+     * decoration: the endpoint paginates at 20 and reports `last_page`, so
+     * without sending it the twenty-first reviewer onward is unreachable in
+     * the only place reviewers can be found at all. */
+    searchReviewers: builder.query<
+      ReviewerDirectoryResponse,
+      { search?: string; credential?: 'member' | 'coach'; page?: number }
+    >({
+      query: ({ search, credential, page }) => {
         const params = new URLSearchParams()
         if (search) params.set('search', search)
         if (credential) params.set('credential', credential)
+        if (page && page > 1) params.set('page', String(page))
         const qs = params.toString()
         return `/api/reviewers${qs ? `?${qs}` : ''}`
       },

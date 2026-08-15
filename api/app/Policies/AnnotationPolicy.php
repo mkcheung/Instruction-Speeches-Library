@@ -51,8 +51,23 @@ class AnnotationPolicy
         // drift), and a drifted counter would silently deny a speaker
         // commentary they were actually delivered. `status` is the only
         // authorization input.
+        //
+        // Any access-granting status, NOT `published` alone. The plan's
+        // worked example says `=== 'published'`, but STEP-05 §"all three
+        // names" requires the speaker's track selector to list every
+        // accepted reviewer and STEP-05 §43 requires selecting one to show
+        // "…hasn't left commentary yet" — "an honest empty state that
+        // survives into step 06 unchanged". A published-only gate makes
+        // every one of those tracks a guaranteed 403 instead, so the empty
+        // state is unreachable and the radiogroup is a list of errors.
+        // This widens WHICH REVIEWS the speaker may open, never WHICH ROWS
+        // they get back: Annotation::scopeVisibleTo still hands a
+        // non-author `published_at IS NOT NULL` only, so an accepted or
+        // in_progress review reads as an empty set and a coach's drafts
+        // stay invisible — the §8.5 requirement is enforced there, per
+        // row, which is the layer that actually holds it.
         if ($review->speech->user_id === $user->id) {
-            return $review->status === 'published';
+            return in_array($review->status, Review::ACCESS_GRANTING, true);
         }
 
         return false;                                             // the requirement

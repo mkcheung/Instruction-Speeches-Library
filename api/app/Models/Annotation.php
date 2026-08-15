@@ -71,9 +71,11 @@ class Annotation extends Model
      *   needs to special-case revocation itself.
      * - Admin sees every row, unconditionally (§7.3: moderation).
      * - The speaker (anyone else who reaches this scope, which
-     *   `readAnnotations` only allows when `review.status === 'published'`)
+     *   `readAnnotations` allows for any access-granting review status)
      *   sees only `published_at IS NOT NULL` rows. A draft written after
-     *   publication must never appear here, however new it is.
+     *   publication must never appear here, however new it is — and on an
+     *   `accepted`/`in_progress` review, where nothing is published yet,
+     *   that makes this scope return the empty set rather than a leak.
      *
      * @param  Builder<Annotation>  $q
      * @return Builder<Annotation>
