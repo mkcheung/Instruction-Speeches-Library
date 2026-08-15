@@ -210,3 +210,41 @@ body {
     transform: none;
   }
 }
+
+/**
+ * STEP-07-write-commentary.md: the live preview reuses `OverlayStack`
+ * unchanged except for this attribute — `data-draft="true"` gets a dashed
+ * border so the coach can tell what's provisional (their own in-progress
+ * composer draft) from what's already saved, without a second overlay
+ * implementation.
+ */
+.annotation-overlay[data-draft='true'] {
+  border-style: dashed;
+  border-color: var(--color-accent);
+}
+
+/**
+ * STEP-07 §8.4's timeline strip. The playhead is a CSS custom property
+ * (`--playhead-percent`, written by `usePlayheadPercent`'s rAF loop
+ * directly onto this element, never through React state — see that
+ * hook's comment) so scrubbing costs zero React renders. Markers are
+ * `%`-positioned buttons so a window resize costs zero JS.
+ */
+.annotation-timeline {
+  position: relative;
+  --playhead-percent: 0%;
+}
+.annotation-timeline__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--playhead-percent);
+  width: 2px;
+  background: var(--color-danger);
+  pointer-events: none;
+  transform: translateX(-1px);
+}
+.annotation-timeline__row {
+  position: relative;
+  height: 1.5rem;
+}

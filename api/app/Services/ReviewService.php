@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Exceptions\SelfReviewNotPermittedException;
+use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
@@ -306,7 +307,125 @@ class ReviewService
         });
     }
 
-    // accepted -> in_progress is driven by annotation creation, which
-    // doesn't exist until Step 06 (STEP-06-watch-commentary.md); no method
-    // here yet on purpose.
+    /**
+     * STEP-07's uniform security property, applied by the controller to
+     * every write route: "never accept a client-supplied review_id" — the
+     * caller's own review is always resolved from `(speech, $user)`, never
+     * a route or body parameter. `firstOrFail()` 404s when the caller
+     * holds no review at all on this speech, which is indistinguishable to
+     * them from "this speech has no such review" — exactly the non-leaking
+     * behavior STEP-07 calls for.
+     *
+     * Lives here rather than in `AnnotationController` so the controller
+     * stays a thin caller of `ReviewService`, matching the rule this same
+     * step already holds `AnnotationService` to (§8.5: "that cannot be a
+     * controller's responsibility").
+     */
+    public function findOwnReview(Speech $speech, User $user): Review
+    {
+        return Review::query()
+            ->where('speech_id', $speech->id)
+            ->where('reviewer_id', $user->id)
+            ->firstOrFail();
+    }
+
+    /**
+     * STEP-07-write-commentary.md §8.4: "accepted -> in_progress on first
+     * annotation", plus the counter-cache increment every annotation write
+     * needs. Called from `App\Services\AnnotationService::create()` on the
+     * SAME `Review` instance that method already holds `lockForUpdate()`ed,
+     * inside that method's open transaction — this method deliberately
+     * takes no lock and opens no transaction of its own. Doing either here
+     * would be a second round trip against a row the caller already holds
+     * locked, not a correctness fix; it would also risk a second SAVEPOINT
+     * inside the same request for no benefit.
+     *
+     * "First-ever annotation" is read off the counter cache BEFORE
+     * incrementing it, not a live COUNT(*) — per §10.4's "check this
+     * transactionally against the counter cache under lockForUpdate(), not
+     * a live COUNT(*)" (also enforced by the cap check in AnnotationService
+     * itself).
+     */
+    public function recordAnnotationActivity(Review $review): Review
+    {
+        $isFirstAnnotation = $review->annotations_count === 0;
+
+        $review->annotations_count++;
+
+        if ($isFirstAnnotation && $review->status === 'accepted') {
+            $review->status = 'in_progress';
+            $review->last_transition_at = now();
+        }
+
+        $review->save();
+
+        return $review;
+    }
+
+    /**
+     * STEP-07 §8.4/§10.2: publish every live draft row in the caller's own
+     * review. "Publish" and "publish-additions" are the same call — a
+     * review already `published` with nothing new to publish just returns
+     * a zero delta without erroring, which is what makes re-running this
+     * safe rather than a special second endpoint.
+     *
+     * The bulk `UPDATE ... WHERE published_at IS NULL` is correct here,
+     * unlike `delete()` below, which insists on a single model-instance
+     * delete: publish has no per-row side effect beyond the counter, and
+     * this method reads the delta directly off the bulk update's own
+     * affected-row count rather than issuing a second query to learn it.
+     *
+     * @return array{0: Review, 1: int} [$review, $publishedCountForThisCall]
+     */
+    public function publish(Review $review): array
+    {
+        return DB::transaction(function () use ($review) {
+            /** @var Review $locked */
+            $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+
+            $delta = Annotation::query()
+                ->where('review_id', $locked->id)
+                ->whereNull('published_at')
+                ->update(['published_at' => now()]);
+
+            $locked->published_annotations_count += $delta;
+            $locked->first_published_at ??= now();
+            $locked->last_published_at = now();
+            $locked->status = 'published';
+            $locked->last_transition_at = now();
+            $locked->save();
+
+            return [$locked, $delta];
+        });
+    }
+
+    /**
+     * STEP-07: grouped with `abandon()` above per the plan's own text —
+     * both route through ReviewService, both are the reviewer's own act
+     * over their own set. "Empties the set" is meant as one atomic
+     * operation (STEP-07's own wording), so the bulk soft-delete below
+     * deliberately skips Annotation's per-row `deleting` event (see that
+     * model's own comment) and both counters are reset to 0 directly, in
+     * this same transaction, instead of relying on it.
+     *
+     * Must leave `status`, the access grant (`revoked_at`/`speech_id`/
+     * `reviewer_id`) and the acceptance record (`responded_at`) completely
+     * untouched — an explicit STEP-07 acceptance criterion, so this method
+     * touches nothing on `$locked` besides the two counters.
+     */
+    public function clearAnnotations(Review $review): Review
+    {
+        return DB::transaction(function () use ($review) {
+            /** @var Review $locked */
+            $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+
+            Annotation::query()->where('review_id', $locked->id)->delete();
+
+            $locked->annotations_count = 0;
+            $locked->published_annotations_count = 0;
+            $locked->save();
+
+            return $locked;
+        });
+    }
 }

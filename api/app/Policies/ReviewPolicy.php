@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Review;
 use App\Models\User;
+use App\Policies\Concerns\GrantsReviewWriteAccess;
 
 /**
  * MODERNIZATION_PLAN §7.1/§7.4. First Policy classes in this codebase —
@@ -22,6 +23,8 @@ use App\Models\User;
  */
 class ReviewPolicy
 {
+    use GrantsReviewWriteAccess;
+
     /**
      * §7.1's categorical rule, spelled out exactly as the plan gives it:
      * an Admin can never accept an invitation, full stop, before any other
@@ -84,6 +87,30 @@ class ReviewPolicy
     public function purge(User $user, Review $review): bool
     {
         return $review->speech_owner_id === $user->id || $user->hasRole('admin');
+    }
+
+    /**
+     * STEP-07-write-commentary.md: publish (and publish-additions — a
+     * re-run on an already-`published` review) is the reviewer's own act,
+     * same ownership pattern as accept/decline/withdraw/abandon above.
+     * `ACCESS_GRANTING` includes `published` itself, which is what makes
+     * publish-additions reachable rather than a one-shot transition.
+     */
+    public function publish(User $user, Review $review): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $review);
+    }
+
+    /**
+     * STEP-07: grouped with `abandon` per the plan's own text — both route
+     * through ReviewService, both are the reviewer's own destructive act
+     * over their own set, never an Admin power (§7.1's "admin never acts
+     * as a reviewer" invariant applies here exactly as it does everywhere
+     * else in this file).
+     */
+    public function clearAnnotations(User $user, Review $review): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $review);
     }
 
     /**

@@ -2,8 +2,10 @@
 
 namespace App\Policies;
 
+use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\User;
+use App\Policies\Concerns\GrantsReviewWriteAccess;
 
 /**
  * MODERNIZATION_PLAN §7.3 "Requirement: coaches may not read each other's
@@ -18,6 +20,8 @@ use App\Models\User;
  */
 class AnnotationPolicy
 {
+    use GrantsReviewWriteAccess;
+
     public function readAnnotations(User $user, Review $review): bool
     {
         // The author, unless their access was revoked — then a read-only
@@ -71,5 +75,34 @@ class AnnotationPolicy
         }
 
         return false;                                             // the requirement
+    }
+
+    /**
+     * STEP-07-write-commentary.md: the write-path gate for annotation
+     * CRUD. `reviewerOwnsActiveReview` (GrantsReviewWriteAccess) carries
+     * the categorical admin denial, the `revoked_at` check, and the
+     * `Review::ACCESS_GRANTING` check — see that trait's docblock for why
+     * each is there.
+     */
+    public function create(User $user, Review $review): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $review);
+    }
+
+    /**
+     * `$annotation->review` is usually already eager-loaded by the
+     * controller (`setRelation`, after it confirms the annotation belongs
+     * to the caller's own review) before `authorize()` runs — but falls
+     * back to a normal lazy load if called from anywhere that hasn't done
+     * that, so this method is correct standalone too.
+     */
+    public function update(User $user, Annotation $annotation): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $annotation->review);
+    }
+
+    public function delete(User $user, Annotation $annotation): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $annotation->review);
     }
 }

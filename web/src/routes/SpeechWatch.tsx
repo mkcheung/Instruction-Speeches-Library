@@ -7,12 +7,25 @@ import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
+import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
 import { getVideoElement } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
+import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
 import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutation } from '@/features/speech/speechApi'
 import type { SpeechSprite } from '@/features/speech/types'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { cn } from '@/lib/utils'
+
+/**
+ * Imperative DOM write, not a React state mutation — same pattern (and
+ * same reason) as `useCommentaryTrack.ts`'s own `seekVideo`: pulled out to
+ * module scope so the compiler's props/hook-argument immutability check
+ * doesn't mistake writing `videoEl.currentTime` for a React immutability
+ * bug (`videoEl` is state, but the DOM node it points at is not).
+ */
+function seekVideo(video: HTMLVideoElement, seconds: number): void {
+  video.currentTime = seconds
+}
 
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
@@ -53,6 +66,12 @@ export default function SpeechWatch() {
   // Called unconditionally (Rules of Hooks) even before `speech` has
   // loaded — `enabled: isOwner` keeps its queries skipped until then.
   const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner)
+
+  // STEP-07: a non-owner who is themselves an access-granting reviewer of
+  // this speech gets the authoring composer instead of the owner's
+  // read-only TrackSelector — `enabled: !isOwner` keeps this skipped for
+  // the owner and for a still-loading `speech`.
+  const { review: myReview } = useMyReviewForSpeech(speechId, !isOwner && !!speech)
 
   if (isLoading || !speech) {
     return (
@@ -135,6 +154,21 @@ export default function SpeechWatch() {
           activeIds={commentary.activeIds}
           currentTime={commentary.currentTime}
           onSeek={commentary.seek}
+        />
+      )}
+
+      {!isOwner && myReview && asset?.status === 'ready' && initialUrl && (
+        <AnnotationComposerPanel
+          speechId={speechId}
+          review={myReview}
+          videoEl={videoEl}
+          durationSeconds={
+            asset.duration_seconds !== null ? Number(asset.duration_seconds) : (videoEl?.duration ?? 0)
+          }
+          userId={me?.user.id}
+          onSeek={(seconds) => {
+            if (videoEl) seekVideo(videoEl, seconds)
+          }}
         />
       )}
     </div>

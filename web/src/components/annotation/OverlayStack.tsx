@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import type { Annotation } from '@/features/annotation/types'
 import { useDeferredRemoval } from '@/hooks/useDeferredRemoval'
 import { normalize } from '@/lib/engine'
+import { compareByStartThenId } from '@/lib/annotationOrder'
 import { cn } from '@/lib/utils'
 
 /** MODERNIZATION_PLAN.md §8.5: cap at three simultaneous overlays; the
@@ -13,11 +14,6 @@ const WINDOW_SECONDS = 12
 /** Matches `.annotation-overlay`'s 600ms CSS transition in `index.css`,
  * plus a small buffer so the unmount happens after the fade completes. */
 const GHOST_MS = 650
-
-function compareByStartThenId(a: Annotation, b: Annotation): number {
-  if (a.start_seconds !== b.start_seconds) return a.start_seconds - b.start_seconds
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-}
 
 /**
  * §8.5/§5.4: every annotation node stays mounted for as long as it's in
@@ -32,6 +28,7 @@ export function OverlayStack({
   activeIds,
   currentTime,
   anchor = 'default',
+  draftIds,
 }: {
   annotations: readonly Annotation[]
   /** From `useTimedAnnotations` — the FULL active set, uncapped. */
@@ -45,6 +42,17 @@ export function OverlayStack({
    * plumbing.
    */
   anchor?: 'top' | 'default'
+  /**
+   * STEP-07-write-commentary.md's composer extension: ids the CALLER
+   * considers provisional (a dashed border, via `data-draft`). Deliberately
+   * not a field on `Annotation` itself — draft-ness is presentation-only,
+   * decided by whichever component is feeding this array (the composer
+   * already knows which id is its own in-progress draft), never something
+   * `OverlayStack` or the engine derives on its own. Optional and unused by
+   * every STEP-06 caller (`TrackSelector`/`SpeechWatch`'s speaker view),
+   * which never marks anything as a draft.
+   */
+  draftIds?: ReadonlySet<string>
 }) {
   const sorted = useMemo(
     () => [...annotations].sort(compareByStartThenId),
@@ -90,6 +98,7 @@ export function OverlayStack({
           data-testid={`overlay-${a.id}`}
           data-visible={visibleIds.has(a.id) ? 'true' : 'false'}
           data-kind={a.kind}
+          data-draft={draftIds?.has(a.id) ? 'true' : undefined}
           className="annotation-overlay rounded-md border border-border px-3 py-2 text-sm"
         >
           {a.body}

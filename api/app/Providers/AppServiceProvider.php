@@ -44,6 +44,14 @@ class AppServiceProvider extends ServiceProvider
         // 500s for a real user.
         Model::preventLazyLoading(! $this->app->isProduction());
 
+        // §10.4 "alongside it": STEP-07 adds several new mass-assignment-
+        // heavy write endpoints (annotation create/update) where a
+        // silently-discarded `lock_version` or `client_uuid` on a malformed
+        // payload is exactly the bug class these two catch. Same
+        // dev/test-on, production-off shape as preventLazyLoading above.
+        Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());
+        Model::preventAccessingMissingAttributes(! $this->app->isProduction());
+
         // STEP-05: first Policy classes in this codebase. Explicit
         // Gate::policy registration rather than relying purely on Laravel's
         // {Model}Policy naming-convention discovery, so it's obvious from
@@ -74,6 +82,16 @@ class AppServiceProvider extends ServiceProvider
         // though both act on a Review argument.
         Gate::define('readAnnotations', [AnnotationPolicy::class, 'readAnnotations']);
 
+        // STEP-07: the authoring surface. `annotation.create/update/delete`
+        // and `review.publish` were already reserved in $mustFallThrough
+        // below by whoever built S05/S06 — this is where they finally get
+        // a Gate::define and a policy method behind them.
+        Gate::define('annotation.create', [AnnotationPolicy::class, 'create']);
+        Gate::define('annotation.update', [AnnotationPolicy::class, 'update']);
+        Gate::define('annotation.delete', [AnnotationPolicy::class, 'delete']);
+        Gate::define('review.publish', [ReviewPolicy::class, 'publish']);
+        Gate::define('review.clearAnnotations', [ReviewPolicy::class, 'clearAnnotations']);
+
         // Admin's override is a SCOPED Gate::before, not a blanket one
         // (§7.2) — a blanket hook would bypass the very policies Admin must
         // NOT have, e.g. reviewing. Written now, before any concrete
@@ -90,7 +108,8 @@ class AppServiceProvider extends ServiceProvider
                 'review.accept', 'review.decline', 'review.publish',   // coaching is an act
                 'review.withdraw', 'review.abandon',                   // ditto — reviewer-only acts
                 'speech.invite',                                       // ownership, not an admin power
-                'annotation.create', 'annotation.update',
+                'annotation.create', 'annotation.update', 'annotation.delete',
+                'review.clearAnnotations',                             // STEP-07: never an admin power either
                 'readAnnotations',                                     // AnnotationPolicy's own admin branch runs the dual-role assert
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops

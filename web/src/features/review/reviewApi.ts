@@ -1,7 +1,9 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
+import { annotationApi } from '@/features/annotation/annotationApi'
 import type {
   InviteReviewerPayload,
+  PublishReviewResponse,
   Review,
   ReviewerDirectoryResponse,
   ReviewSections,
@@ -100,6 +102,29 @@ export const reviewApi = createApi({
       transformResponse: (response: { review: Review }) => response.review,
       invalidatesTags: (_result, _error, id) => [{ type: 'Review', id }, 'Review'],
     }),
+    /**
+     * STEP-07-write-commentary.md's frozen contract (4):
+     * `POST /api/reviews/{review}/publish` — review-scoped (the route
+     * lives under `/reviews/{review}`, not `/speeches/{speech}`), so this
+     * lives here rather than in `annotationApi.ts` even though it flips
+     * every annotation row in the set. `annotationApi`'s `'Annotations'`
+     * tag lives in a different RTK Query slice — cross-slice invalidation
+     * is done explicitly via `dispatch(annotationApi.util.invalidateTags)`
+     * in `onQueryStarted` rather than `invalidatesTags`, which can only
+     * reach tags in this same `createApi` instance.
+     */
+    publishReview: builder.mutation<PublishReviewResponse, number>({
+      query: (id) => ({ url: `/api/reviews/${id}/publish`, method: 'POST' }),
+      invalidatesTags: (_result, _error, id) => [{ type: 'Review', id }, 'Review'],
+      async onQueryStarted(id, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled
+          dispatch(annotationApi.util.invalidateTags([{ type: 'Annotations', id }]))
+        } catch {
+          // Publish failed — nothing to invalidate.
+        }
+      },
+    }),
   }),
 })
 
@@ -113,4 +138,5 @@ export const {
   useWithdrawReviewMutation,
   useRevokeReviewMutation,
   useAbandonReviewMutation,
+  usePublishReviewMutation,
 } = reviewApi

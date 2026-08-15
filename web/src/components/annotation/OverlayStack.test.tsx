@@ -4,7 +4,16 @@ import { OverlayStack } from './OverlayStack'
 import type { Annotation } from '@/features/annotation/types'
 
 function annotation(id: string, start_seconds: number, body = `body-${id}`): Annotation {
-  return { id, start_seconds, duration_seconds: 6, kind: 'observation', topic: null, body }
+  return {
+    id,
+    start_seconds,
+    duration_seconds: 6,
+    kind: 'observation',
+    topic: null,
+    body,
+    lock_version: 0,
+    client_uuid: `uuid-${id}`,
+  }
 }
 
 describe('OverlayStack', () => {
@@ -73,5 +82,30 @@ describe('OverlayStack', () => {
   it('marks the whole overlay container aria-hidden and non-interactive', () => {
     render(<OverlayStack annotations={[]} activeIds={new Set()} currentTime={0} />)
     expect(screen.getByTestId('overlay-stack')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  /** STEP-07-write-commentary.md: the composer's live preview reuses
+   * `OverlayStack` unchanged except for `draftIds` → `data-draft="true"`,
+   * marking a row provisional with a dashed border (CSS in `index.css`). */
+  describe('draftIds (STEP-07)', () => {
+    it('marks a node in draftIds with data-draft="true"', () => {
+      const annotations = [annotation('a', 0), annotation('b', 0)]
+      render(
+        <OverlayStack
+          annotations={annotations}
+          activeIds={new Set(['a', 'b'])}
+          currentTime={0}
+          draftIds={new Set(['a'])}
+        />,
+      )
+      expect(screen.getByTestId('overlay-a')).toHaveAttribute('data-draft', 'true')
+      expect(screen.getByTestId('overlay-b')).not.toHaveAttribute('data-draft')
+    })
+
+    it('renders nothing draft-marked when draftIds is omitted (every STEP-06 caller)', () => {
+      const annotations = [annotation('a', 0)]
+      render(<OverlayStack annotations={annotations} activeIds={new Set(['a'])} currentTime={0} />)
+      expect(screen.getByTestId('overlay-a')).not.toHaveAttribute('data-draft')
+    })
   })
 })
