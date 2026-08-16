@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { LogoutButton } from '@/components/layout/LogoutButton'
 import {
   useAcceptReviewMutation,
   useDeclineReviewMutation,
@@ -38,7 +39,10 @@ export default function Dashboard() {
     <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-10">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">My reviews</h1>
-        <NotificationBell />
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <LogoutButton />
+        </div>
       </div>
 
       <DashboardSection title="Invitations awaiting response" empty="No pending invitations.">

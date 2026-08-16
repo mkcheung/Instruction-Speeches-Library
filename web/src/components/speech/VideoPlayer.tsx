@@ -71,7 +71,15 @@ export function VideoPlayer({
       poster,
     })
 
-    onPlayerReadyRef.current?.(player)
+    // `player.tech()` (what `getVideoElement` reads) is not guaranteed
+    // attached synchronously right after `videojs()` returns — video.js's
+    // own documented contract is that anything tech-dependent waits for
+    // `player.ready()`. Calling the callback synchronously here left
+    // `videoEl` stuck `null` for STEP-06's annotation engine (and anything
+    // else downstream of `onPlayerReady`), since it's never retried.
+    player.ready(() => {
+      onPlayerReadyRef.current?.(player)
+    })
 
     return () => {
       player.dispose()

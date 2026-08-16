@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SpeechPoster } from '@/components/speech/SpeechPoster'
 import { StatusBadge, SupersedesBadge } from '@/components/speech/StatusBadge'
+import { LogoutButton } from '@/components/layout/LogoutButton'
 import { useListSpeechesQuery } from '@/features/speech/speechApi'
 
 /**
@@ -39,6 +40,7 @@ export default function MySpeeches() {
             My reviews
           </Button>
           <Button render={<Link to="/speeches/new" />}>Upload a speech</Button>
+          <LogoutButton />
         </div>
       </div>
 
