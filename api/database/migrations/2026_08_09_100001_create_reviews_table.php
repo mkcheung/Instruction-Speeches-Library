@@ -37,6 +37,15 @@ return new class extends Migration
      * No `deleted_at`, ever: a review is either revoked (tombstoned in
      * place via `revoked_at`, status untouched) or hard-deleted entirely
      * by `revokeAndPurge` — there is no soft-delete state for this table.
+     *
+     * STEP-07 driver-parity fix: `ck_reviews_counters_nonnegative` used to
+     * exist only on the PostgreSQL branch below, so a counter-decrement bug
+     * (annotation delete/clearAnnotations) could pass the SQLite-driven test
+     * suite and only surface in production. Added to both branches here,
+     * in place, rather than as a follow-up migration — this file has never
+     * been touched since its creation commit and no production data exists
+     * yet (pre-S14; see MODERNIZATION_PLAN §12.1's "decide the shape early,
+     * run the ALTER late").
      */
     public function up(): void
     {
@@ -70,6 +79,8 @@ return new class extends Migration
                         CHECK (status IN ('invited', 'declined', 'accepted', 'in_progress', 'published', 'abandoned')),
                     CONSTRAINT ck_reviews_counter_cache
                         CHECK (published_annotations_count <= annotations_count),
+                    CONSTRAINT ck_reviews_counters_nonnegative
+                        CHECK (annotations_count >= 0 AND published_annotations_count >= 0),
                     FOREIGN KEY (speech_id) REFERENCES speeches (id) ON DELETE CASCADE,
                     FOREIGN KEY (reviewer_id) REFERENCES users (id) ON DELETE SET NULL,
                     FOREIGN KEY (speech_owner_id) REFERENCES users (id) ON DELETE RESTRICT,

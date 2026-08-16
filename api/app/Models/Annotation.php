@@ -101,4 +101,39 @@ class Annotation extends Model
             'lock_version' => 'integer',
         ];
     }
+
+    /**
+     * STEP-07-write-commentary.md: single-row soft-delete must decrement
+     * `reviews.annotations_count` (and `published_annotations_count` too,
+     * if the row being deleted was published) in the SAME transaction as
+     * the delete. A `deleting` model event is the only place this can
+     * live and still fire for a real single-row delete — MODERNIZATION_
+     * PLAN's own warning ("Eloquent's SoftDeletes never fires a database
+     * ON DELETE CASCADE") generalizes to model events too: a BULK delete
+     * (as `clearAnnotations` deliberately uses) skips this listener
+     * entirely, which is why that method resets both counters directly
+     * instead of relying on it. `App\Services\AnnotationService::delete()`
+     * is the only caller expected to reach this listener, and it always
+     * calls `$annotation->delete()` on a model instance, never a
+     * query-builder bulk delete, specifically so this fires.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (Annotation $annotation): void {
+            /** @var Review|null $review */
+            $review = Review::query()->whereKey($annotation->review_id)->lockForUpdate()->first();
+
+            if ($review === null) {
+                return;
+            }
+
+            $review->annotations_count = max(0, $review->annotations_count - 1);
+
+            if ($annotation->published_at !== null) {
+                $review->published_annotations_count = max(0, $review->published_annotations_count - 1);
+            }
+
+            $review->save();
+        });
+    }
 }

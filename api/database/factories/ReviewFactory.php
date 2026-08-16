@@ -30,6 +30,13 @@ class ReviewFactory extends Factory
             'status' => 'invited',
             'invited_at' => now(),
             'last_transition_at' => now(),
+            // Explicitly 0, not omitted: the DB column defaults to 0
+            // NOT NULL (see the migration), so a factory-built in-memory
+            // instance should reflect that rather than leaving the key
+            // unset — matches the same fix applied to UserFactory for
+            // first_name/last_name/username.
+            'annotations_count' => 0,
+            'published_annotations_count' => 0,
         ];
     }
 

@@ -105,6 +105,25 @@ class ReviewController extends Controller
     }
 
     /**
+     * `POST /reviews/{review}/publish` — STEP-07-write-commentary.md.
+     * Publish (and publish-additions, a re-run against an already-
+     * `published` review) the caller's own draft rows. `published_count`
+     * is the delta from THIS request only, not the cumulative total — the
+     * demo script's "annotate three, press Publish, it shows a count".
+     */
+    public function publish(Request $request, Review $review, ReviewService $reviews): JsonResponse
+    {
+        $this->authorize('review.publish', $review);
+
+        [$updated, $publishedCount] = $reviews->publish($review);
+
+        return new JsonResponse([
+            'published_count' => $publishedCount,
+            'review' => new ReviewResource($updated),
+        ]);
+    }
+
+    /**
      * `GET /reviews` — the reviewer dashboard (§7.5), four exact sorted
      * sections. `?section=` narrows to one; omitted returns all four
      * grouped, so the frontend can render the full dashboard in one call.

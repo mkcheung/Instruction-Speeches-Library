@@ -5,7 +5,16 @@ import { Transcript } from './Transcript'
 import type { Annotation } from '@/features/annotation/types'
 
 function annotation(id: string, start_seconds: number): Annotation {
-  return { id, start_seconds, duration_seconds: 6, kind: 'observation', topic: null, body: `body-${id}` }
+  return {
+    id,
+    start_seconds,
+    duration_seconds: 6,
+    kind: 'observation',
+    topic: null,
+    body: `body-${id}`,
+    lock_version: 0,
+    client_uuid: `uuid-${id}`,
+  }
 }
 
 /** `<li>` has no accessible name of its own, so tests locate a row via its

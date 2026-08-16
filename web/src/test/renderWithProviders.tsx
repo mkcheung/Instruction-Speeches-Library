@@ -8,6 +8,7 @@ import { profileApi } from '@/features/profile/profileApi'
 import { speechApi } from '@/features/speech/speechApi'
 import { reviewApi } from '@/features/review/reviewApi'
 import { notificationApi } from '@/features/notification/notificationApi'
+import { annotationApi } from '@/features/annotation/annotationApi'
 
 export function createTestStore() {
   return configureStore({
@@ -17,6 +18,7 @@ export function createTestStore() {
       [speechApi.reducerPath]: speechApi.reducer,
       [reviewApi.reducerPath]: reviewApi.reducer,
       [notificationApi.reducerPath]: notificationApi.reducer,
+      [annotationApi.reducerPath]: annotationApi.reducer,
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware().concat(
@@ -25,6 +27,7 @@ export function createTestStore() {
         speechApi.middleware,
         reviewApi.middleware,
         notificationApi.middleware,
+        annotationApi.middleware,
       ),
   })
 }

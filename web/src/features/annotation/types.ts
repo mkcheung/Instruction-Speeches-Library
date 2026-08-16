@@ -11,7 +11,18 @@ export type AnnotationKind = 'praise' | 'correction' | 'observation'
 
 /** One row of `annotations` in the response body. `id` is a **string** —
  * the contract is explicit that the engine (`web/src/lib/engine.ts`) uses
- * string cue ids throughout, so nothing downstream ever does `Number(id)`. */
+ * string cue ids throughout, so nothing downstream ever does `Number(id)`.
+ *
+ * STEP-07-write-commentary.md's frozen contract: `lock_version` (optimistic
+ * locking, §10.2) and `client_uuid` (create idempotency key, minted
+ * client-side) are additive to the STEP-06 shape above — every existing
+ * consumer of `Annotation` (OverlayStack, Transcript, useTimedAnnotations)
+ * keeps working unchanged. Deliberately NOT adding a `published_at`/`draft`
+ * field here: the frozen contract never named one, and draft-ness for the
+ * live preview is presentation-only, decided by the composer (which knows
+ * its own in-progress tmp_ id), not a property of the row itself — see
+ * `OverlayStack`'s `draftIds` prop.
+ */
 export interface Annotation {
   id: string
   start_seconds: number
@@ -19,6 +30,59 @@ export interface Annotation {
   kind: AnnotationKind
   topic: string | null
   body: string
+  lock_version: number
+  client_uuid: string
+}
+
+/** `POST /speeches/{speech}/annotations` body. Idempotent on `client_uuid`
+ * — a repeat POST with the same `client_uuid` returns the existing row,
+ * 200, not an error (also how the 6-second Undo toast un-deletes: it
+ * re-POSTs with the identical `client_uuid` and field values). */
+export interface CreateAnnotationPayload {
+  client_uuid: string
+  body: string
+  start_seconds: number
+  duration_seconds?: number
+  kind?: AnnotationKind
+  topic?: string | null
+}
+
+/** `PATCH /speeches/{speech}/annotations/{annotation}` body — must include
+ * the `lock_version` last seen, per §10.2's optimistic locking. */
+export interface UpdateAnnotationPayload {
+  lock_version: number
+  body?: string
+  start_seconds?: number
+  duration_seconds?: number
+  kind?: AnnotationKind
+  topic?: string | null
+}
+
+/**
+ * The 409 response body on a `PATCH` version conflict. `conflictSource` is
+ * read from the response rather than hardcoded — the contract says it is
+ * ALWAYS the literal string `"self"` for annotations (single-writer-per-
+ * review), but the frontend doesn't assume that; it renders whatever the
+ * backend actually sent so a reconciliation pass can catch drift.
+ */
+export interface AnnotationConflictResponse {
+  message: string
+  conflictSource: string
+  current: Annotation
+}
+
+function hasConflictShape(value: unknown): value is AnnotationConflictResponse {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'current' in value &&
+    typeof (value as { current?: unknown }).current === 'object'
+  )
+}
+
+/** Type guard for the RTK Query error `data` payload on a 409. */
+export function isAnnotationConflict(data: unknown): data is AnnotationConflictResponse {
+  return hasConflictShape(data)
 }
 
 export interface AnnotationsReviewer {

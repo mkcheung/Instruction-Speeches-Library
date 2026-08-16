@@ -95,3 +95,21 @@ export interface InviteReviewerPayload {
 export interface RevokeReviewPayload {
   reason?: string | null
 }
+
+/**
+ * STEP-07-write-commentary.md's frozen contract (4): `POST /api/reviews
+ * /{review}/publish` — publishes all of the caller's own draft rows in
+ * that review, including the "publish-additions" case (safe to call again
+ * after adding more; only publishes what's new). `published_count` is the
+ * number newly published by THIS request, not the set's total — the demo
+ * script's "press Publish, it shows a count" refers to this field. The
+ * exact shape of `review` beyond the fields already on `Review` is not
+ * pinned down by the frozen contract text; typed as the same `Review`
+ * shape every other mutation in this file returns, since nothing suggests
+ * otherwise — flag for the reconciliation pass if the real backend
+ * response differs.
+ */
+export interface PublishReviewResponse {
+  published_count: number
+  review: Review
+}

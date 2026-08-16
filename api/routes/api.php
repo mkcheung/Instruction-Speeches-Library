@@ -92,6 +92,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/speeches/{speech}/annotations', [AnnotationController::class, 'index'])
         ->name('api.speeches.annotations.index');
 
+    // STEP-07-write-commentary.md: the authoring surface. None of these
+    // accept a client-supplied review_id anywhere (route, query or body) —
+    // the caller's own review is always resolved server-side from
+    // (speech, $request->user()), so no reviewer can construct a URL
+    // targeting a peer's review.
+    Route::post('/speeches/{speech}/annotations', [AnnotationController::class, 'store'])
+        ->name('api.speeches.annotations.store');
+    Route::patch('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'update'])
+        ->name('api.speeches.annotations.update');
+    Route::delete('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'destroy'])
+        ->name('api.speeches.annotations.destroy');
+    Route::delete('/speeches/{speech}/annotation-sets/me', [AnnotationController::class, 'clearMine'])
+        ->name('api.speeches.annotation-sets.clear-mine');
+
     Route::post('/reviews/{review}/accept', [ReviewController::class, 'accept'])
         ->name('api.reviews.accept');
     Route::post('/reviews/{review}/decline', [ReviewController::class, 'decline'])
@@ -104,6 +118,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.reviews.revoke-and-purge');
     Route::post('/reviews/{review}/abandon', [ReviewController::class, 'abandon'])
         ->name('api.reviews.abandon');
+    Route::post('/reviews/{review}/publish', [ReviewController::class, 'publish'])
+        ->name('api.reviews.publish');
     Route::get('/reviews', [ReviewController::class, 'index'])
         ->name('api.reviews.index');
 
