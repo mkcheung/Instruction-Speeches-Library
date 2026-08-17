@@ -120,6 +120,67 @@ USER root
 RUN apk add --no-cache ffmpeg
 USER www-data
 
+# ---- whisper-cli build: compiles whisper.cpp's CLI, nothing else. --------
+# A SEPARATE build stage (not reused from `vendor`/`runtime`) so the C++
+# toolchain (build-base, cmake, git) it needs never has to touch the final
+# `whisper-worker` layer below — only the resulting `whisper-cli` binary is
+# copied out of this stage (STEP-09-captions.md / the frozen STEP-09
+# backend contract §6: "adds a build stage that compiles whisper.cpp's CLI
+# ... and copies only the resulting binary into the final layer").
+#
+# `faster-whisper` (Python + CTranslate2) was considered and rejected —
+# see the frozen contract §6 for the full reasoning (no prebuilt musl/
+# Alpine wheels, doesn't fit this Dockerfile's all-stages-share-one-PHP-
+# base shape the way `apk add ffmpeg` did). whisper.cpp is a self-
+# contained C++ binary, buildable from source with a standard Alpine
+# `build-base`/`cmake` toolchain, closer in shape to the ffmpeg precedent
+# immediately above.
+#
+# whisper.cpp itself is MIT-licensed (unlike ffmpeg's `--enable-gpl`
+# build above) — no GPL-isolation reasoning applies to THIS stage. The
+# model WEIGHTS carry their own, separate license terms — see the
+# `whisper-worker` service block in compose.yaml for that license-boundary
+# comment; nothing about weights belongs in this image-build stage at all,
+# since they are mounted as a volume, never baked in (STEP-09.md: "mount
+# them as a volume rather than baking them into the image").
+FROM alpine:3.20 AS whisper-build
+RUN apk add --no-cache build-base cmake git
+WORKDIR /build
+# Pinned to a tag, not a moving branch — a floating `master` checkout would
+# make this build (and therefore the `whisper-cli` binary's behavior)
+# non-reproducible between two people running `docker compose build` on
+# different days.
+RUN git clone --branch v1.7.2 --depth 1 https://github.com/ggerganov/whisper.cpp.git .
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --config Release --target whisper-cli -j"$(nproc)"
+
+# ---- whisper-worker: the `whisper-worker` compose service ONLY. ----------
+# Built FROM `runtime`, not fresh from `alpine`/`php:8.4-fpm-alpine`: same
+# reasoning as `ffmpeg-worker` immediately above — it wants the same PHP/
+# artisan/queue:work environment as the other workers, it's still a
+# Laravel queue worker process, just with `whisper-cli` added. Only the
+# compiled binary is copied in from `whisper-build`, not that stage's
+# build toolchain — keeps this final layer as slim as `ffmpeg-worker`'s.
+#
+# `libgomp` is whisper-cli's OpenMP runtime dependency (linked at build
+# time by the default CPU backend) — without it present in THIS layer
+# (distinct from the build stage, which has its own via build-base), the
+# binary fails to start with a missing-shared-library error.
+#
+# Model weights are NOT baked into this image anywhere — see the
+# `whisper-worker` compose service for the `whisper-models` read-only
+# named-volume mount and its license-boundary comment.
+#
+# >>> This stage also `apk add`s `ffmpeg` (WhisperTranscriber extracts a
+# >>> 16kHz mono WAV before handing audio to whisper-cli) — the SAME GPL
+# >>> boundary as `ffmpeg-worker` above therefore applies here too: THIS
+# >>> IMAGE MUST NEVER BE PUSHED TO A REGISTRY either.
+FROM runtime AS whisper-worker
+USER root
+RUN apk add --no-cache libgomp ffmpeg
+COPY --from=whisper-build /build/build/bin/whisper-cli /usr/local/bin/whisper-cli
+USER www-data
+
 # ---- nginx: the `web` service. Serves the built SPA and proxies /api to app:9000 ----
 FROM nginx:1.27-alpine AS nginx
 COPY --from=webbuild /web/dist /usr/share/nginx/html

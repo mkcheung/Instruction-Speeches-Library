@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * MODERNIZATION_PLAN §6.3, §9. One row per uploaded/derived file. `status`
@@ -40,6 +41,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $width
  * @property int|null $height
  * @property string|null $poster_time_seconds
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 #[Fillable([
     'speech_id', 'kind', 'format', 'rendition', 'disk', 'path',

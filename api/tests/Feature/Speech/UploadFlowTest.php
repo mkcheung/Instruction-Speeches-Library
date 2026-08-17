@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\GenerateCaptions;
 use App\Jobs\TranscodeSpeechAsset;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
@@ -87,6 +88,71 @@ it('completes an upload: reconciles the real byte_size, marks the source ready, 
     expect($video->is_primary)->toBeTrue();
 
     Queue::assertPushed(TranscodeSpeechAsset::class, fn ($job) => $job->speechAssetId === $video->id);
+});
+
+/**
+ * STEP-09-captions.md (R11): dispatched from the SAME transaction as
+ * TranscodeSpeechAsset, on a genuinely different queue/connection literal
+ * — this is what actually delivers "a two-second remux still completes in
+ * seconds instead of waiting behind a five-minute transcription".
+ */
+it('also dispatches GenerateCaptions on a separate queue when captions are enabled', function () {
+    Queue::fake();
+
+    $user = User::factory()->create(['quota_bytes' => 1_000_000_000]);
+    $speech = Speech::factory()->for($user)->create(['captions_enabled' => true]);
+    $asset = SpeechAsset::factory()->for($speech)->create([
+        'status' => 'uploading',
+        'upload_id' => 'fake-upload-id',
+        'client_declared_bytes' => 1,
+    ]);
+
+    $this->mock(MultipartUploadService::class, function ($mock) {
+        $mock->shouldReceive('complete')->once()->andReturn(['byte_size' => 40_000_000]);
+    });
+
+    $this->actingAs($user)->postJson(
+        "/api/speeches/{$speech->id}/assets/{$asset->id}/uploads/fake-upload-id/complete",
+        ['parts' => [['part_number' => 1, 'etag' => '"abc123"']]],
+    )->assertOk();
+
+    $captions = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'captions')->sole();
+    expect($captions->status)->toBe('processing');
+    expect($captions->format)->toBe('vtt');
+
+    Queue::assertPushed(GenerateCaptions::class, function ($job) use ($captions) {
+        return $job->captionsAssetId === $captions->id
+            && $job->connection === 'redis-long'
+            && $job->queue === 'captions';
+    });
+
+    // TranscodeSpeechAsset is pushed too, but onto a DIFFERENT queue name
+    // on the same connection — the R11 guarantee this test exists for.
+    Queue::assertPushed(TranscodeSpeechAsset::class, fn ($job) => $job->connection === 'redis-long' && $job->queue === 'transcode');
+});
+
+it('does not create a captions asset or dispatch GenerateCaptions when captions_enabled is false', function () {
+    Queue::fake();
+
+    $user = User::factory()->create(['quota_bytes' => 1_000_000_000]);
+    $speech = Speech::factory()->for($user)->create(['captions_enabled' => false]);
+    $asset = SpeechAsset::factory()->for($speech)->create([
+        'status' => 'uploading',
+        'upload_id' => 'fake-upload-id',
+        'client_declared_bytes' => 1,
+    ]);
+
+    $this->mock(MultipartUploadService::class, function ($mock) {
+        $mock->shouldReceive('complete')->once()->andReturn(['byte_size' => 40_000_000]);
+    });
+
+    $this->actingAs($user)->postJson(
+        "/api/speeches/{$speech->id}/assets/{$asset->id}/uploads/fake-upload-id/complete",
+        ['parts' => [['part_number' => 1, 'etag' => '"abc123"']]],
+    )->assertOk();
+
+    expect(SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'captions')->exists())->toBeFalse();
+    Queue::assertNotPushed(GenerateCaptions::class);
 });
 
 it('aborting an upload releases both quota counters and deletes the asset', function () {

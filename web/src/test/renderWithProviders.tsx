@@ -10,6 +10,8 @@ import { reviewApi } from '@/features/review/reviewApi'
 import { notificationApi } from '@/features/notification/notificationApi'
 import { annotationApi } from '@/features/annotation/annotationApi'
 import { essayApi } from '@/features/essay/essayApi'
+import { captionApi } from '@/features/caption/captionApi'
+import { transcriptApi } from '@/features/transcript/transcriptApi'
 
 export function createTestStore() {
   return configureStore({
@@ -21,6 +23,8 @@ export function createTestStore() {
       [notificationApi.reducerPath]: notificationApi.reducer,
       [annotationApi.reducerPath]: annotationApi.reducer,
       [essayApi.reducerPath]: essayApi.reducer,
+      [captionApi.reducerPath]: captionApi.reducer,
+      [transcriptApi.reducerPath]: transcriptApi.reducer,
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware().concat(
@@ -31,6 +35,8 @@ export function createTestStore() {
         notificationApi.middleware,
         annotationApi.middleware,
         essayApi.middleware,
+        captionApi.middleware,
+        transcriptApi.middleware,
       ),
   })
 }

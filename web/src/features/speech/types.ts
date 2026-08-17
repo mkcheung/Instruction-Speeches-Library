@@ -70,6 +70,15 @@ export interface Speech {
   delivered_on: string | null
   change_note: string | null
   created_at: string
+  /** STEP-09-FROZEN-CONTRACT.md §3: the speaker's off-switch for future
+   * caption/transcript generation runs (`speeches.captions_enabled`,
+   * `NOT NULL DEFAULT true`) — reconciled against the real
+   * `SpeechResource`, which now always includes it. Toggling this off
+   * does NOT retroactively delete an already-generated transcript, only
+   * gates future runs; no frontend surface writes this yet (no settings
+   * UI was in STEP-09's frontend scope), so it is read-only from this
+   * client for now. */
+  captions_enabled: boolean
   primary_video: SpeechAsset | null
   poster?: SpeechPoster
   sprite?: SpeechSprite

@@ -131,6 +131,68 @@ services:
     networks:
       - default
 
+  # STEP-09-captions.md / the frozen STEP-09 backend contract §6: the
+  # caption/transcript pipeline's worker — its own process, own queue
+  # (`redis-long`/`captions`, config/queue.php), own compose service, so a
+  # multi-minute whisper.cpp run can NEVER sit behind (or in front of) a
+  # transcode job on `ffmpeg-worker`'s queue (R11 — the whole reason this
+  # is a separate service and not a third command on `ffmpeg-worker`).
+  #
+  # >>> Built from the `whisper-worker` Dockerfile stage, which also `apk
+  # >>> add`s ffmpeg for audio extraction — THIS IMAGE MUST NEVER BE PUSHED
+  # >>> TO A REGISTRY, same GPL-isolation reasoning as `ffmpeg-worker`
+  # >>> above. whisper.cpp's OWN code is MIT, unaffected by this — see the
+  # >>> Dockerfile stage's own comment.
+  #
+  # >>> MODEL WEIGHTS LICENSE (STEP-09.md §4's own warning): `faster-
+  # >>> whisper`/`whisper.cpp` are MIT, but the GGUF/ggml MODEL FILE mounted
+  # >>> from `whisper-models` below carries ITS OWN separate license terms
+  # >>> (OpenAI's Whisper model weights are MIT-licensed as of the models
+  # >>> this project pins — verify against whichever exact model file is
+  # >>> downloaded before any commercial use, per STEP-09.md's explicit
+  # >>> "check before any commercial use" instruction). This comment is the
+  # >>> recorded license-boundary note the frozen contract §6 requires;
+  # >>> there is no repo-root LICENSE/NOTICE file precedent to extend
+  # >>> instead (confirmed by reading the repo root).
+  #
+  # `whisper-models` is a NAMED VOLUME, read-only here, matching the
+  # `postgres-data`/`seaweedfs-data` convention — model weights are NEVER
+  # baked into the image (STEP-09.md: "mount them as a volume rather than
+  # baking them into the image", or every rebuild ships hundreds of MB).
+  # Populating it (a one-time `docker compose run --rm whisper-worker sh -c
+  # "wget -O /models/ggml-base.en.bin <pinned-digest-URL>"`-style step,
+  # pinned by the model file's published digest, not just a filename) is a
+  # manual one-time setup step, not automated by this compose file — no
+  # init-container/entrypoint download script exists yet in this repo.
+  #
+  # `cpus`/`mem_limit` are set INDEPENDENTLY from `ffmpeg-worker`'s
+  # (1.5/2g) per the frozen contract §6 ("inherit the same pattern, not the
+  # same values") — whisper.cpp's CPU-bound inference on the heaviest
+  # container in the stack (STEP-09.md) gets more headroom than a single
+  # ffmpeg encode; these are dev-sane defaults pending real hardware
+  # numbers, not a capacity plan.
+  whisper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: whisper-worker
+    command: sh -c "nice -n 19 php artisan queue:work redis-long --queue=captions --timeout=1800 --tries=1 --sleep=1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
+    volumes:
+      - whisper-models:/models:ro
+    cpus: "2.0"
+    mem_limit: "4g"
+    networks:
+      - default
+
   web:
     build:
       context: .
@@ -259,3 +321,4 @@ networks:
 volumes:
   postgres-data:
   seaweedfs-data:
+  whisper-models:

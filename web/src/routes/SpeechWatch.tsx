@@ -9,11 +9,16 @@ import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
+import { useCaptionsAnchor } from '@/components/annotation/captionsAnchor'
 import { EssayEditorPanel } from '@/components/essay/EssayEditorPanel'
 import { EssayReadOnlyPanel } from '@/components/essay/EssayReadOnlyPanel'
-import { getVideoElement } from '@/shared/media/videojs-adapter'
+import { CaptionEditor } from '@/components/caption/CaptionEditor'
+import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
+import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
+import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
+import { useCaptionsJob, useCaptionsBlobUrl } from '@/hooks/useCaptionsJob'
 import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutation } from '@/features/speech/speechApi'
 import type { SpeechSprite } from '@/features/speech/types'
 import { useGetMeQuery } from '@/features/auth/authApi'
@@ -47,6 +52,12 @@ export default function SpeechWatch() {
   // W2/W4: the real ratio, once the browser has decoded metadata — takes
   // priority over the poster-seeded guess below once it arrives.
   const [measuredAr, setMeasuredAr] = useState<number | undefined>(undefined)
+  // STEP-09: the real native `TextTrack` once `setCaptionsTrack` has
+  // attached one — `null` until both the player is ready AND a caption
+  // job has produced VTT text. Render-triggering state (not a ref, same
+  // reasoning as `videoEl` above) — `useCaptionsAnchor`/`CaptionsToggle`
+  // both need a re-render when this changes.
+  const [captionsTrack, setCaptionsTrackState] = useState<TextTrack | null>(null)
 
   const asset = speech?.primary_video
 
@@ -97,6 +108,36 @@ export default function SpeechWatch() {
       : undefined
   const assetAr = asset && asset.width && asset.height ? asset.width / asset.height : undefined
   const videoAr = measuredAr ?? posterAr ?? assetAr ?? 16 / 9
+
+  // STEP-09-captions.md's acceptance list: the video reaches `ready`
+  // before the caption job finishes, so this is gated on the VIDEO
+  // asset's own readiness, not on anything caption-specific — a speech
+  // with no captions yet (or ever) still plays fine, this hook just never
+  // finds anything to attach.
+  const { captions } = useCaptionsJob(speechId, asset?.status === 'ready')
+  const captionsBlobUrl = useCaptionsBlobUrl(
+    captions?.status === 'ready' && captions.vtt ? captions.vtt : undefined,
+  )
+
+  // Attaches/replaces the native `<track kind="captions">` once the
+  // player exists (`videoEl` only becomes non-null once `player.ready()`
+  // has fired — see `onPlayerReady` below) and whenever a fresh caption
+  // URL shows up (job completes, or a caption edit re-derives the VTT and
+  // this effect's `captionsBlobUrl` dependency changes). Deliberately does
+  // NOT recreate the whole player (unlike the `initialUrl`-keyed effect
+  // that builds it) — captions attach onto the existing player instance.
+  useEffect(() => {
+    const player = playerRef.current
+    if (!player || !videoEl) return
+    setCaptionsTrack(player, captionsBlobUrl ? { src: captionsBlobUrl, label: 'English' } : null)
+    setCaptionsTrackState(getCaptionsTrack(player))
+  }, [videoEl, captionsBlobUrl])
+
+  // §8.6/STEP-09's "Deliberately stubbed" hook, live for the first time:
+  // anchors the annotation overlay to the top whenever captions are
+  // showing, so native bottom-centre captions and the overlay never
+  // collide.
+  const captionsAnchor = useCaptionsAnchor(captionsTrack)
 
   const isOwner =
     !!me?.user && !!speech && speech.user_id !== undefined && Number(me.user.id) === speech.user_id
@@ -176,12 +217,38 @@ export default function SpeechWatch() {
                     annotations={commentary.annotations}
                     activeIds={commentary.activeIds}
                     currentTime={commentary.currentTime}
+                    anchor={captionsAnchor}
                   />
                 </div>
               )}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Not ready to play yet.</p>
+          )}
+
+          {/* STEP-09-captions.md's acceptance list: "captions and
+              annotations are on different tracks and toggle
+              independently." This toggle only touches `captionsTrack`'s
+              own `mode` — nothing here reads or writes the annotation
+              overlay's visibility. Shown to every viewer who can play the
+              video (not owner-gated, unlike the overlay/tab strip below —
+              captions are an accessibility surface, §8.6, not reviewer
+              feedback). */}
+          {asset?.status === 'ready' && initialUrl && (
+            <div className="flex items-center gap-2">
+              <CaptionsToggle track={captionsTrack} />
+              {/* `'unavailable'` (no captions asset was ever created — off
+                  at upload time, per §3's `captions_enabled` gate) renders
+                  no message at all: there is nothing to retry or wait on,
+                  same "honest empty state, not an error" treatment
+                  `CaptionController::show`'s own doc comment describes. */}
+              {captions?.status === 'failed' && (
+                <span className="text-xs text-[var(--color-danger)]">Captions unavailable.</span>
+              )}
+              {(captions?.status === 'uploading' || captions?.status === 'processing') && (
+                <span className="text-xs text-muted-foreground">Captions processing…</span>
+              )}
+            </div>
           )}
 
           {/* W3/W5: was unconditionally rendered — a permissions leak (a
@@ -214,6 +281,7 @@ export default function SpeechWatch() {
           <TabsList aria-label="Reviewer feedback">
             <TabsTab value="notes">Notes</TabsTab>
             <TabsTab value="essay">Essay</TabsTab>
+            <TabsTab value="transcript">Transcript</TabsTab>
           </TabsList>
           <TabsPanel value="notes">
             <TrackSelector
@@ -238,6 +306,20 @@ export default function SpeechWatch() {
               reviewerName={commentary.options.find((o) => o.key === commentary.selected)?.label}
             />
           </TabsPanel>
+          {/* STEP-09-FROZEN-CONTRACT.md §5: the caption editor lives here,
+              on the same tab as the transcript — speaker-only
+              (`updateCaptions` is ownership-only, §1), so only the
+              `isOwner` tab strip gets the editable version; the
+              non-owner tab strip below gets the read-only
+              `TranscriptPanel` instead. */}
+          <TabsPanel value="transcript">
+            <CaptionEditor
+              speechId={speechId}
+              onSeek={(seconds) => {
+                if (videoEl) seekVideo(videoEl, seconds)
+              }}
+            />
+          </TabsPanel>
         </Tabs>
       )}
 
@@ -246,6 +328,7 @@ export default function SpeechWatch() {
           <TabsList aria-label="Your feedback">
             <TabsTab value="notes">Notes</TabsTab>
             <TabsTab value="essay">Essay</TabsTab>
+            <TabsTab value="transcript">Transcript</TabsTab>
           </TabsList>
           <TabsPanel value="notes">
             <AnnotationComposerPanel
@@ -263,6 +346,17 @@ export default function SpeechWatch() {
           </TabsPanel>
           <TabsPanel value="essay">
             <EssayEditorPanel speechId={speechId} review={myReview} />
+          </TabsPanel>
+          {/* Read-only for a reviewer — `readCaptions` grants read access
+              same as the speech itself (§1), but `updateCaptions` stays
+              owner-only, so no `CaptionEditor` here. */}
+          <TabsPanel value="transcript">
+            <TranscriptPanel
+              speechId={speechId}
+              onSeek={(seconds) => {
+                if (videoEl) seekVideo(videoEl, seconds)
+              }}
+            />
           </TabsPanel>
         </Tabs>
       )}

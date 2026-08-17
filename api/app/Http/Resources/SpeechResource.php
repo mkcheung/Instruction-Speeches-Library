@@ -51,6 +51,7 @@ class SpeechResource extends JsonResource
             'description' => $this->description,
             'delivered_on' => $this->delivered_on?->toDateString(),
             'change_note' => $this->change_note,
+            'captions_enabled' => (bool) $this->captions_enabled,
             'created_at' => $this->created_at,
             'primary_video' => new SpeechAssetResource($this->whenLoaded('primaryVideo')),
             'poster' => $this->when($primaryPoster !== null, fn () => [

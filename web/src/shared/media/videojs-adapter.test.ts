@@ -77,7 +77,7 @@ vi.mock('video.js', () => ({
   default: vi.fn(() => new FakePlayer()),
 }))
 
-const { createVideoJsPlayer } = await import('@/shared/media/videojs-adapter')
+const { createVideoJsPlayer, setCaptionsTrack, getCaptionsTrack } = await import('@/shared/media/videojs-adapter')
 
 function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0))
@@ -209,5 +209,77 @@ describe('videojs-adapter poster-flash mitigation', () => {
     player.emit('emptied')
 
     expect(player.poster()).toBeUndefined()
+  })
+})
+
+/**
+ * STEP-09-captions.md/STEP-09-FROZEN-CONTRACT.md §5's "a real `<track
+ * kind='captions' default>`" — exercised against a fake player exposing
+ * just the four video.js text-track methods these two functions actually
+ * call (`remoteTextTracks`/`removeRemoteTextTrack`/`addRemoteTextTrack`/
+ * `textTracks`). Plain arrays stand in for video.js's `TextTrackList` —
+ * both have `.length` and numeric indexing, the only two things
+ * `videojs-adapter.ts`'s own `toArray` helper reads off them.
+ */
+type FakeTrack = { kind: string; mode: TextTrackMode; label?: string; src?: string }
+
+function fakeCaptionsPlayer() {
+  const tracks: FakeTrack[] = []
+  const player = {
+    remoteTextTracks: () => tracks,
+    textTracks: () => tracks,
+    removeRemoteTextTrack: (track: FakeTrack) => {
+      const index = tracks.indexOf(track)
+      if (index >= 0) tracks.splice(index, 1)
+    },
+    addRemoteTextTrack: (options: { kind: string; src: string; label?: string; default?: boolean }) => {
+      const track: FakeTrack = {
+        kind: options.kind,
+        mode: options.default ? 'showing' : 'disabled',
+        label: options.label,
+        src: options.src,
+      }
+      tracks.push(track)
+      return { track }
+    },
+  }
+  return { player, tracks }
+}
+
+describe('setCaptionsTrack/getCaptionsTrack', () => {
+  it('getCaptionsTrack is null before any captions track is attached', () => {
+    const { player } = fakeCaptionsPlayer()
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBeNull()
+  })
+
+  it('attaches a real kind="captions" default track, readable back via getCaptionsTrack', () => {
+    const { player } = fakeCaptionsPlayer()
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], {
+      src: 'blob:fake-vtt-url',
+      label: 'English',
+    })
+
+    const track = getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])
+    expect(track).not.toBeNull()
+    expect(track?.kind).toBe('captions')
+    expect(track?.mode).toBe('showing') // `default: true` per the adapter's own call
+  })
+
+  it('replacing the captions URL removes the old track rather than accumulating a second one', () => {
+    const { player, tracks } = fakeCaptionsPlayer()
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], { src: 'blob:one' })
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], { src: 'blob:two' })
+
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0].src).toBe('blob:two')
+  })
+
+  it('passing null removes any existing captions track', () => {
+    const { player } = fakeCaptionsPlayer()
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], { src: 'blob:one' })
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).not.toBeNull()
+
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], null)
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBeNull()
   })
 })

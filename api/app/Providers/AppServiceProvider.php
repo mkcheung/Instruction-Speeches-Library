@@ -8,6 +8,9 @@ use App\Models\User;
 use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
+use App\Services\Captions\CaptionTranscriberContract;
+use App\Services\Captions\FakeCaptionTranscriber;
+use App\Services\Captions\WhisperTranscriber;
 use App\Services\Essay\EssayRenderer;
 use App\Services\Essay\NullEssayRenderer;
 use App\Services\Transcoding\FakeTranscoder;
@@ -39,6 +42,18 @@ class AppServiceProvider extends ServiceProvider
         // today (no real renderer exists yet in any environment — nothing
         // in this step calls EssayRenderer::render() at all).
         $this->app->bind(EssayRenderer::class, NullEssayRenderer::class);
+
+        // STEP-09-captions.md / the frozen STEP-09 backend contract §6:
+        // the exact same testing/dev-prod split as TranscoderContract
+        // above, for the exact same reason — FakeCaptionTranscriber in
+        // testing/CI so the upload/caption flow is testable without a real
+        // whisper.cpp binary or GGUF model weights present, WhisperTranscriber
+        // everywhere else.
+        $this->app->bind(CaptionTranscriberContract::class, function () {
+            return $this->app->environment('testing')
+                ? new FakeCaptionTranscriber
+                : new WhisperTranscriber;
+        });
     }
 
     /**
@@ -106,6 +121,17 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('essay.update', [AnnotationPolicy::class, 'essayUpdate']);
         Gate::define('essay.publish', [AnnotationPolicy::class, 'essayPublish']);
 
+        // STEP-09-captions.md / the frozen STEP-09 backend contract §1-§2:
+        // the caption read/write surface. `caption.readCaptions` is
+        // registered for the same explicit-naming reason every other
+        // dotted ability here is, but per §2 of the contract does NOT go
+        // into $mustFallThrough below — widening admin read access isn't
+        // the same failure mode as widening admin write access (same
+        // reasoning essay reads are exempt for). Only `caption.update`
+        // needs the guard.
+        Gate::define('caption.readCaptions', [SpeechPolicy::class, 'readCaptions']);
+        Gate::define('caption.update', [SpeechPolicy::class, 'updateCaptions']);
+
         // PLAN-APP-HEADER.md S4: wires up ReviewPolicy::viewDirectory, which
         // existed as dead code (P2) — ReviewerDirectoryController made no
         // authorization call at all. Registered explicitly, same as every
@@ -139,6 +165,13 @@ class AppServiceProvider extends ServiceProvider
                 // plan's explicit "An Admin cannot... write an essay"
                 // acceptance criterion (MODERNIZATION_PLAN.md:2384).
                 'essay.update', 'essay.publish',
+
+                // STEP-09: ownership-only, same bug class as essay.update/
+                // publish immediately above — without this here, the
+                // blanket admin bypass would silently grant admins
+                // caption-write, contradicting SpeechPolicy::updateCaptions'
+                // "owner ('the speaker') only" contract.
+                'caption.update',
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',

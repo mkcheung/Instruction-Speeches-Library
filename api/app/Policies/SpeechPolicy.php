@@ -34,4 +34,29 @@ class SpeechPolicy
             ->whereNull('revoked_at')
             ->exists();
     }
+
+    /**
+     * STEP-09-captions.md / the frozen STEP-09 backend contract §1.
+     * Deliberately NOT `AnnotationPolicy::readAnnotations` — captions/
+     * transcripts belong to the Speech and can exist with zero reviews.
+     * Reuses `view()`'s exact visibility (owner OR an active non-revoked
+     * reviewer per `Review::ACCESS_GRANTING`) because a reviewer coaching
+     * a speech needs to read captions/transcript the same as they can
+     * watch the video.
+     */
+    public function readCaptions(User $user, Speech $speech): bool
+    {
+        return $this->view($user, $speech);
+    }
+
+    /**
+     * Ownership-only — same shape as `invite()` above. Matches
+     * STEP-09.md's "speaker-editable" language and
+     * MODERNIZATION_PLAN.md:1760's "The speaker can edit the VTT"
+     * verbatim: no reviewer or admin path, ever.
+     */
+    public function updateCaptions(User $user, Speech $speech): bool
+    {
+        return $speech->user_id === $user->id;
+    }
 }

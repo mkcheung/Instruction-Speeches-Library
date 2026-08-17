@@ -130,3 +130,72 @@ export function getVideoElement(player: Player): HTMLVideoElement | null {
   const el = tech?.el() as Element | undefined
   return el instanceof HTMLVideoElement ? el : null
 }
+
+/**
+ * video.js's own `TextTrackList`/`TextTrack` types (`dist/types/tracks/*`)
+ * don't declare a numeric indexer on the list (only `.length`, per its
+ * shared `TrackList` base) even though the runtime object is indexable —
+ * a real, if imprecise, upstream type gap. This is the one place that
+ * reads across that gap, so every caller downstream keeps working with the
+ * plain DOM `TextTrack` type (`captionsAnchor.ts`, `OverlayStack.tsx`
+ * already type against it) rather than video.js's parallel internal one.
+ */
+function toArray<T>(list: { length: number }): T[] {
+  const items: T[] = []
+  for (let i = 0; i < list.length; i++) {
+    items.push((list as unknown as Record<number, T>)[i])
+  }
+  return items
+}
+
+/**
+ * STEP-09-captions.md/STEP-09-FROZEN-CONTRACT.md §5: "a real `<track
+ * kind='captions' default>` — so the browser's native renderer and the
+ * user's own caption styling apply." Added via `addRemoteTextTrack`
+ * (rather than threaded into `videojs(...)`'s own `tracks` option at
+ * construction) because the caption VTT is only known once
+ * `captionApi`'s `getCaptions` query resolves, well after the player is
+ * created — this must be callable at any point in the player's life, not
+ * just at construction.
+ *
+ * Removes any previously-added remote captions track first (`manualCleanup:
+ * false` on `addRemoteTextTrack` means video.js already clears remote
+ * tracks on a `src` change, e.g. the §9.3 URL-refresh path — this covers
+ * the OTHER case, a caller passing a fresh caption URL, or `null`, without
+ * the video source itself changing), so repeated calls never accumulate
+ * duplicate `<track>`s. Callers read the resulting `TextTrack` back via
+ * `getCaptionsTrack`, not a return value here — video.js's own
+ * `HTMLTrackElement` type doesn't expose `.track` (another type gap; the
+ * documented way to read it back is `player.textTracks()`).
+ */
+export function setCaptionsTrack(
+  player: Player,
+  captions: { src: string; label?: string; srclang?: string } | null,
+): void {
+  const existing = toArray<TextTrack>(player.remoteTextTracks())
+  for (const track of existing) {
+    if (track.kind === 'captions') player.removeRemoteTextTrack(track)
+  }
+
+  if (!captions) return
+
+  player.addRemoteTextTrack(
+    {
+      kind: 'captions',
+      src: captions.src,
+      srclang: captions.srclang ?? 'en',
+      label: captions.label ?? 'English',
+      default: true,
+    },
+    false,
+  )
+}
+
+/** The current `kind: 'captions'` `TextTrack`, if one has been added via
+ * `setCaptionsTrack` — `null` otherwise. Callers (`useCaptionsAnchor`, the
+ * CC toggle) poll/read `.mode` off this, exactly as `captionsAnchor.ts`'s
+ * docblock always expected a real caller to supply. */
+export function getCaptionsTrack(player: Player): TextTrack | null {
+  const tracks = toArray<TextTrack>(player.textTracks())
+  return tracks.find((t) => t.kind === 'captions') ?? null
+}

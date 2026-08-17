@@ -7,6 +7,7 @@ use App\Http\Requests\Speech\CompleteUploadRequest;
 use App\Http\Requests\Speech\CreateUploadRequest;
 use App\Http\Requests\Speech\SetPosterFrameRequest;
 use App\Http\Resources\SpeechAssetResource;
+use App\Jobs\GenerateCaptions;
 use App\Jobs\GeneratePoster;
 use App\Jobs\TranscodeSpeechAsset;
 use App\Models\Review;
@@ -148,6 +149,24 @@ class SpeechUploadController extends Controller
 
             TranscodeSpeechAsset::dispatch($video->id);
 
+            // STEP-09-captions.md (R11): dispatched here, alongside the
+            // video transcode, NOT after it — captions run on a genuinely
+            // separate queue/worker (App\Jobs\GenerateCaptions ->
+            // `redis-long`/`captions`) so a five-minute whisper.cpp run
+            // never delays the video reaching `ready`. Only when the
+            // speaker hasn't turned captions off (§20 Q12's off-switch).
+            if ($speech->captions_enabled) {
+                $captions = $speech->assets()->create([
+                    'kind' => 'captions',
+                    'format' => 'vtt',
+                    'disk' => $asset->disk,
+                    'path' => "speeches/{$speech->ulid}/{$speech->ulid}/captions.vtt",
+                    'status' => 'processing',
+                ]);
+
+                GenerateCaptions::dispatch($captions->id);
+            }
+
             return $video;
         });
 
@@ -171,17 +190,28 @@ class SpeechUploadController extends Controller
     }
 
     /**
-     * Safe because the transcoder is idempotent (§9.2): re-dispatching a
-     * `failed` video asset just runs the same deterministic pipeline again.
+     * Safe because both pipelines are idempotent on their own asset row
+     * (§9.2's rule, and STEP-09-captions.md's acceptance criterion "a
+     * speech whose caption job fails still plays; the failure is visible
+     * and retryable"): re-dispatching a `failed` video OR captions asset
+     * just runs the same deterministic pipeline again, independently of
+     * the other asset's own status.
      */
     public function retry(Request $request, Speech $speech, SpeechAsset $asset): JsonResponse
     {
         $this->authorizeOwner($request, $speech);
-        abort_unless($asset->speech_id === $speech->id && $asset->kind === 'video' && $asset->status === 'failed', Response::HTTP_NOT_FOUND);
+        abort_unless(
+            $asset->speech_id === $speech->id && in_array($asset->kind, ['video', 'captions'], true) && $asset->status === 'failed',
+            Response::HTTP_NOT_FOUND,
+        );
 
         $asset->update(['status' => 'processing', 'failure_code' => null, 'failure_detail' => null]);
 
-        TranscodeSpeechAsset::dispatch($asset->id)->afterCommit();
+        if ($asset->kind === 'video') {
+            TranscodeSpeechAsset::dispatch($asset->id)->afterCommit();
+        } else {
+            GenerateCaptions::dispatch($asset->id)->afterCommit();
+        }
 
         return new JsonResponse(['asset' => new SpeechAssetResource($asset)]);
     }
