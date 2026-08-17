@@ -105,4 +105,28 @@ class AnnotationPolicy
     {
         return $this->reviewerOwnsActiveReview($user, $annotation->review);
     }
+
+    /**
+     * STEP-08-essay.md: the essay-write gate, registered as `essay.update`.
+     * Deliberately named `essayUpdate` rather than `update` — this method
+     * takes a `Review`, not an `Annotation`, and `update()` above is
+     * already bound to that other signature via `Gate::define`. Delegates
+     * to the exact same `reviewerOwnsActiveReview` trait method as every
+     * other write-path ability on this class, per the frozen STEP-08
+     * contract's "extend, do not parallel".
+     */
+    public function essayUpdate(User $user, Review $review): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $review);
+    }
+
+    /**
+     * `essay.publish`. Same delegation as `essayUpdate()` above — publish
+     * is a write, subject to the same reviewer-owns-active-review rule
+     * `ReviewPolicy::publish` already applies to publishing annotations.
+     */
+    public function essayPublish(User $user, Review $review): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $review);
+    }
 }

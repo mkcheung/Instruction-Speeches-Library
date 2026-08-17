@@ -42,6 +42,12 @@ use Illuminate\Support\Carbon;
  * @property string|null $revocation_reason
  * @property int $annotations_count
  * @property int $published_annotations_count
+ * @property string|null $essay_html
+ * @property string|null $essay_text
+ * @property Carbon|null $essay_published_at
+ * @property Carbon|null $essay_updated_at
+ * @property int $essay_words
+ * @property int $essay_lock_version
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -51,6 +57,12 @@ use Illuminate\Support\Carbon;
     'status', 'invited_at', 'responded_at', 'first_published_at',
     'last_published_at', 'last_transition_at', 'revoked_at', 'revoked_by_id',
     'revocation_reason', 'annotations_count', 'published_annotations_count',
+    // STEP-08: the essay columns. `essay_lock_version` is intentionally
+    // mass-assignable, same as `lock_version` on Annotation — EssayService
+    // sets it explicitly on every write, never leaves it to a DB default
+    // after the first row.
+    'essay_html', 'essay_text', 'essay_published_at', 'essay_updated_at',
+    'essay_words', 'essay_lock_version',
 ])]
 class Review extends Model
 {
@@ -127,6 +139,10 @@ class Review extends Model
             'revoked_at' => 'datetime',
             'annotations_count' => 'integer',
             'published_annotations_count' => 'integer',
+            'essay_published_at' => 'datetime',
+            'essay_updated_at' => 'datetime',
+            'essay_words' => 'integer',
+            'essay_lock_version' => 'integer',
         ];
     }
 }

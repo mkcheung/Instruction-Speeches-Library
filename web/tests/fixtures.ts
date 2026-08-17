@@ -44,3 +44,15 @@ export const USERS = {
 export const SHARED_SPEECH_ID = 9101
 export const REVIEW_COACH_A_ID = 9201
 export const REVIEW_COACH_B_ID = 9202
+
+/**
+ * CP-08. Reviewer A's essay is seeded PUBLISHED; reviewer B's is seeded
+ * empty. That split is deliberate and load-bearing: the write specs type
+ * into B and the read/isolation specs read A, so neither can disturb the
+ * other's fixture no matter what order they run in.
+ *
+ * This text must match `E2ESeeder::ESSAY_COACH_A_TEXT` exactly. There is no
+ * mechanism keeping the two in sync — if the seeder's copy changes, the
+ * speaker-read assertion fails loudly, which is the intended outcome.
+ */
+export const ESSAY_COACH_A_TEXT = 'The close landed better than the open.'

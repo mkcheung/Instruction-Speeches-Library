@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
+use App\Http\Controllers\Api\EssayController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OnboardingController;
@@ -113,6 +114,16 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.speeches.annotations.destroy');
     Route::delete('/speeches/{speech}/annotation-sets/me', [AnnotationController::class, 'clearMine'])
         ->name('api.speeches.annotation-sets.clear-mine');
+
+    // STEP-08-essay.md: the essay surface. Same "reads take an explicit
+    // review_id, writes derive the caller's own review server-side" split
+    // as the annotation routes above, for the same reason.
+    Route::get('/speeches/{speech}/essay', [EssayController::class, 'show'])
+        ->name('api.speeches.essay.show');
+    Route::put('/speeches/{speech}/essay', [EssayController::class, 'update'])
+        ->name('api.speeches.essay.update');
+    Route::post('/speeches/{speech}/essay/publish', [EssayController::class, 'publish'])
+        ->name('api.speeches.essay.publish');
 
     Route::post('/reviews/{review}/accept', [ReviewController::class, 'accept'])
         ->name('api.reviews.accept');

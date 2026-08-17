@@ -59,9 +59,10 @@ test('an accepted reviewer can reach the speech they were invited to', async ({ 
   await page.goto(SPEECH_URL)
 
   // The grant is what's under test — reviewer A can load a speech they do
-  // not own. (This fixture seeds no `ready` speech_asset, so the player
-  // itself renders "Not ready to play yet."; playback needs a real
-  // transcoded object in SeaweedFS and is not what CP-05 is proving.)
+  // not own. (CP-08 added a `ready` speech_asset to this fixture so the
+  // reviewer's Notes/Essay tab strip mounts at all, but no object backs it
+  // in SeaweedFS, so the player still fails to load. Playback is not what
+  // CP-05 is proving, and this assertion is on the title either way.)
   await expect(page.getByText('E2E shared speech (two reviewers)')).toBeVisible()
 
   await reviewer.close()

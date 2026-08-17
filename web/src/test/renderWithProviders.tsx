@@ -2,13 +2,14 @@ import type { ReactElement } from 'react'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { authApi } from '@/features/auth/authApi'
 import { profileApi } from '@/features/profile/profileApi'
 import { speechApi } from '@/features/speech/speechApi'
 import { reviewApi } from '@/features/review/reviewApi'
 import { notificationApi } from '@/features/notification/notificationApi'
 import { annotationApi } from '@/features/annotation/annotationApi'
+import { essayApi } from '@/features/essay/essayApi'
 
 export function createTestStore() {
   return configureStore({
@@ -19,6 +20,7 @@ export function createTestStore() {
       [reviewApi.reducerPath]: reviewApi.reducer,
       [notificationApi.reducerPath]: notificationApi.reducer,
       [annotationApi.reducerPath]: annotationApi.reducer,
+      [essayApi.reducerPath]: essayApi.reducer,
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware().concat(
@@ -28,19 +30,31 @@ export function createTestStore() {
         reviewApi.middleware,
         notificationApi.middleware,
         annotationApi.middleware,
+        essayApi.middleware,
       ),
   })
 }
 
+/**
+ * STEP-08 needs `useBlocker` (the unsaved-changes guard) to work under
+ * test, which throws "must be used within a data router" under a plain
+ * `<MemoryRouter>` — same reason `App.tsx` moved to `createBrowserRouter`.
+ * `ui` is mounted as the element of a single catch-all route rather than
+ * navigated to, so every existing caller (many of which pass their own
+ * nested `<Routes>/<Route>` as `ui` for their own param matching, e.g.
+ * `PublicProfile.test.tsx`) keeps working unchanged.
+ */
 export function renderWithProviders(
   ui: ReactElement,
   { route = '/', store = createTestStore() }: { route?: string; store?: ReturnType<typeof createTestStore> } = {},
 ) {
+  const router = createMemoryRouter([{ path: '*', element: ui }], { initialEntries: [route] })
   return {
     store,
+    router,
     ...render(
       <Provider store={store}>
-        <MemoryRouter initialEntries={[route]}>{ui}</MemoryRouter>
+        <RouterProvider router={router} />
       </Provider>,
     ),
   }
