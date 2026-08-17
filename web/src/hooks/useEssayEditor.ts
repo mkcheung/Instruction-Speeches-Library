@@ -169,9 +169,93 @@ export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorRe
     scheduleSaveRef.current = scheduleSave
   }, [scheduleSave])
 
+  /**
+   * Best-effort PUT that does not depend on this component still being
+   * mounted, or on React state surviving the call. Shared by the `pagehide`
+   * beacon and the unmount cleanup below — §10.2's "flush on unload with
+   * `fetch(url, { keepalive: true })`; `sendBeacon` cannot set the CSRF
+   * header".
+   *
+   * `pagehide` ONLY — the unmount cleanup deliberately uses `flush()`
+   * instead; see the long note there for why `keepalive` is the wrong tool
+   * once the page is going to survive.
+   *
+   * Everything it needs comes from refs, never from the render closure: it
+   * fires from a listener registered under `[]` deps, so reading state
+   * directly would send whatever was true on first render.
+   */
+  const beaconSave = useCallback(() => {
+    if (autosaveStateRef.current !== 'dirty') return
+    const token = readXsrfCookie()
+    try {
+      void fetch(`${API_URL}/api/speeches/${speechId}/essay`, {
+        method: 'PUT',
+        credentials: 'include',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(token ? { 'X-XSRF-TOKEN': token } : {}),
+        },
+        body: JSON.stringify({ html: htmlRef.current, lock_version: lockVersionRef.current }),
+      })
+    } catch {
+      // Best-effort on the way out — nothing more to do.
+    }
+  }, [speechId])
+
+  const beaconSaveRef = useRef(beaconSave)
+  useEffect(() => {
+    beaconSaveRef.current = beaconSave
+  }, [beaconSave])
+
+  const flushRef = useRef(flush)
+  useEffect(() => {
+    flushRef.current = flush
+  }, [flush])
+
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (!timerRef.current) return
+      // A debounced save was still pending when this hook went away.
+      //
+      // Clearing the timer alone — which is all this cleanup used to do —
+      // is silent data loss, and the essay editor unmounts far more often
+      // than "the user left the page": the Notes/Essay tab strip unmounts
+      // the inactive panel, so every tab switch within 750ms of a keystroke
+      // threw the words away. Neither guard covers it — `useBlocker` sees
+      // no route change and `pagehide` sees no unload — so the text
+      // vanished from the server AND from the editor, with no warning.
+      // Caught by `web/tests/essay-editor.spec.ts`; structurally invisible
+      // to the unit tests, which never unmount the panel.
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+
+      // `flush()`, deliberately NOT the `pagehide` beacon, even though the
+      // beacon is right there and looks like the same job. Two reasons,
+      // both of which bite exactly the user this fix exists to protect:
+      //
+      //  1. `keepalive` caps a request body at 64KB, and over that the
+      //     fetch REJECTS rather than sends. STEP-08's own acceptance list
+      //     has "a 30,000-word essay round-trips without truncation" —
+      //     ~180KB. So the beacon would silently drop precisely the long
+      //     essays, and `try { void fetch() } catch {}` cannot even catch
+      //     it, because a rejected promise is not a synchronous throw.
+      //     `pagehide` has no choice (the page is dying); an unmount does,
+      //     because the page is still very much alive.
+      //  2. The beacon is a raw `fetch`, so it never runs `invalidatesTags`
+      //     and RTK Query keeps serving the pre-save cache entry for
+      //     `keepUnusedDataFor` (60s default). Coming back to the Essay tab
+      //     inside that window would re-seed the editor from stale data:
+      //     the words missing from the screen despite being safe on the
+      //     server, and a stale `lock_version` that turns the next
+      //     keystroke into a 409 — a conflict banner about a conflict with
+      //     yourself. `flush()` goes through the mutation, so the cache is
+      //     invalidated and the remount reads what was actually saved.
+      //
+      // Firing after unmount is fine: the fetch is already in flight and
+      // React 18+ drops the resulting state updates silently.
+      void flushRef.current()
     }
   }, [])
 
@@ -209,35 +293,15 @@ export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorRe
 
   const toggleShowBoth = useCallback(() => setShowBoth((s) => !s), [])
 
-  // Best-effort flush on tab close — §10.2's "flush on unload with
-  // `fetch(url, { keepalive: true })`; `sendBeacon` cannot set the CSRF
-  // header", mirrored from `useAnnotationEditor.ts` exactly, minus the
-  // create/update branch (essay only ever PUTs).
+  // Best-effort flush on tab close — mirrored from `useAnnotationEditor.ts`
+  // minus the create/update branch (essay only ever PUTs). Uses `beaconSave`,
+  // not `flush()` — see that docblock for why the unmount cleanup above
+  // deliberately does the opposite.
   useEffect(() => {
-    const handler = () => {
-      if (autosaveStateRef.current !== 'dirty') return
-      const currentHtml = htmlRef.current
-      const url = `${API_URL}/api/speeches/${speechId}/essay`
-      const token = readXsrfCookie()
-      try {
-        void fetch(url, {
-          method: 'PUT',
-          credentials: 'include',
-          keepalive: true,
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            ...(token ? { 'X-XSRF-TOKEN': token } : {}),
-          },
-          body: JSON.stringify({ html: currentHtml, lock_version: lockVersionRef.current }),
-        })
-      } catch {
-        // Best-effort on the way out — nothing more to do.
-      }
-    }
+    const handler = () => beaconSaveRef.current()
     window.addEventListener('pagehide', handler)
     return () => window.removeEventListener('pagehide', handler)
-  }, [speechId])
+  }, [])
 
   return {
     html,
