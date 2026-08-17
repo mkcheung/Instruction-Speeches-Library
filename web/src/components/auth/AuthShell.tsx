@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react'
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useGetMeQuery } from '@/features/auth/authApi'
+import { getErrorStatus } from '@/lib/errorStatus'
 
 function FullPageSpinner() {
   return (
@@ -11,12 +12,7 @@ function FullPageSpinner() {
 }
 
 function isUnauthenticated(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'status' in error &&
-    (error as { status?: unknown }).status === 401
-  )
+  return getErrorStatus(error) === 401
 }
 
 /** Redirects to `/login` (preserving the attempted location) unless the

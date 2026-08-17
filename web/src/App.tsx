@@ -16,8 +16,10 @@ import MySpeeches from '@/routes/MySpeeches'
 import SpeechCreate from '@/routes/SpeechCreate'
 import SpeechWatch from '@/routes/SpeechWatch'
 import Dashboard from '@/routes/Dashboard'
+import ReviewerDirectory from '@/routes/ReviewerDirectory'
 import { RequireAuth, RequireGuest, RequireVerified } from '@/components/auth/AuthShell'
 import { UnauthenticatedRedirect } from '@/components/auth/UnauthenticatedRedirect'
+import { AppLayout } from '@/components/layout/AppLayout'
 import { isSpikesEnabled } from '@/lib/spikes-guard'
 
 /**
@@ -72,59 +74,30 @@ function App() {
               </RequireAuth>
             }
           />
-          <Route
-            path="/profile"
-            element={
-              <RequireAuth>
-                <RequireVerified>
-                  <ProfileEdit />
-                </RequireVerified>
-              </RequireAuth>
-            }
-          />
           <Route path="/u/:username" element={<PublicProfile />} />
 
+          {/* D1 — one layout route renders the header/sidebar once for
+              all five authenticated routes, instead of a header import
+              per page. All five carry identical guards (`RequireAuth` +
+              `RequireVerified`), checked route by route before hoisting
+              them here — a single differing guard would have made this
+              unsafe. */}
           <Route
-            path="/speeches"
             element={
               <RequireAuth>
                 <RequireVerified>
-                  <MySpeeches />
+                  <AppLayout />
                 </RequireVerified>
               </RequireAuth>
             }
-          />
-          <Route
-            path="/speeches/new"
-            element={
-              <RequireAuth>
-                <RequireVerified>
-                  <SpeechCreate />
-                </RequireVerified>
-              </RequireAuth>
-            }
-          />
-          <Route
-            path="/speeches/:id"
-            element={
-              <RequireAuth>
-                <RequireVerified>
-                  <SpeechWatch />
-                </RequireVerified>
-              </RequireAuth>
-            }
-          />
-
-          <Route
-            path="/dashboard"
-            element={
-              <RequireAuth>
-                <RequireVerified>
-                  <Dashboard />
-                </RequireVerified>
-              </RequireAuth>
-            }
-          />
+          >
+            <Route path="/speeches" element={<MySpeeches />} />
+            <Route path="/speeches/new" element={<SpeechCreate />} />
+            <Route path="/speeches/:id" element={<SpeechWatch />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/profile" element={<ProfileEdit />} />
+            <Route path="/reviewers" element={<ReviewerDirectory />} />
+          </Route>
 
           <Route path="*" element={<NotFound />} />
         </Routes>

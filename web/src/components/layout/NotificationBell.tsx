@@ -1,16 +1,26 @@
-import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  PopoverRoot,
+  PopoverTrigger,
+  PopoverPortal,
+  PopoverPositioner,
+  PopoverPopup,
+} from '@/components/ui/popover'
 import { useListNotificationsQuery, useMarkNotificationReadMutation } from '@/features/notification/notificationApi'
 import type { Notification } from '@/features/notification/types'
 import { cn } from '@/lib/utils'
 
 /**
- * STEP-05-invitation-loop.md's "in-app notification bell." This codebase
- * has no shared header/nav component yet to mount it on permanently (no
- * `components/layout/*` existed before this step) — it's a standalone,
- * self-contained widget any authenticated page can drop in; `Dashboard.tsx`
- * does.
+ * STEP-05-invitation-loop.md's "in-app notification bell," rebuilt on
+ * Base UI's `popover` per D6 (PLAN-APP-HEADER.md) before moving into the
+ * global header — the original panel was a bare `<div>` with a `<ul>`
+ * inside: no `role`, no `Esc`, no outside-click, no `aria-haspopup`. D6's
+ * condition was "bring the bell up to the same bar as the user menu in
+ * the same change, or leave it on Dashboard"; this is that change.
+ * `popover` defaults `modal` to `false`, matching D7's requirement that
+ * the header not scroll-lock the page over a playing video on
+ * `SpeechWatch`.
  */
 function describe(notification: Notification): string {
   const { type, actor_name: actor, speech_title: title } = notification.data
@@ -27,8 +37,8 @@ function describe(notification: Notification): string {
       return speech
   }
 }
+
 export function NotificationBell() {
-  const [open, setOpen] = useState(false)
   const { data } = useListNotificationsQuery(undefined, { pollingInterval: 30000 })
   const [markRead] = useMarkNotificationReadMutation()
 
@@ -36,50 +46,54 @@ export function NotificationBell() {
   const unreadCount = data?.unread_count ?? 0
 
   return (
-    <div className="relative">
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+    <PopoverRoot modal={false}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+          />
+        }
+        className="relative"
       >
         <BellIcon />
-      </Button>
-      {unreadCount > 0 && (
-        <Badge
-          variant="destructive"
-          className="absolute -right-1 -top-1 h-4 min-w-4 justify-center px-1 text-[10px]"
-        >
-          {unreadCount > 9 ? '9+' : unreadCount}
-        </Badge>
-      )}
-
-      {open && (
-        <div className="absolute right-0 z-10 mt-2 w-72 rounded-lg border border-border bg-card p-2 shadow-lg">
-          {notifications.length === 0 && (
-            <p className="px-2 py-4 text-center text-sm text-muted-foreground">No notifications.</p>
-          )}
-          <ul className="flex flex-col gap-1">
-            {notifications.map((notification) => (
-              <li key={notification.id}>
-                <button
-                  type="button"
-                  onClick={() => !notification.read_at && markRead(notification.id)}
-                  className={cn(
-                    'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
-                    !notification.read_at && 'font-medium',
-                  )}
-                >
-                  {describe(notification)}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
+        {unreadCount > 0 && (
+          <Badge
+            variant="destructive"
+            className="absolute -right-1 -top-1 h-4 min-w-4 justify-center px-1 text-[10px]"
+          >
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </Badge>
+        )}
+      </PopoverTrigger>
+      <PopoverPortal>
+        <PopoverPositioner align="end">
+          <PopoverPopup aria-label="Notifications">
+            {notifications.length === 0 && (
+              <p className="px-2 py-4 text-center text-sm text-muted-foreground">No notifications.</p>
+            )}
+            <ul className="flex flex-col gap-1">
+              {notifications.map((notification) => (
+                <li key={notification.id}>
+                  <button
+                    type="button"
+                    onClick={() => !notification.read_at && markRead(notification.id)}
+                    className={cn(
+                      'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
+                      !notification.read_at && 'font-medium',
+                    )}
+                  >
+                    {describe(notification)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </PopoverPopup>
+        </PopoverPositioner>
+      </PopoverPortal>
+    </PopoverRoot>
   )
 }
 

@@ -13,6 +13,9 @@ export function hueFromId(id: string): number {
 }
 
 /** A pleasant, consistent saturation/lightness pair — only the hue varies. */
+export const COLOR_SATURATION = 0.55
+export const COLOR_LIGHTNESS = 0.45
+
 export function colorFromId(id: string): string {
-  return `hsl(${hueFromId(id)}deg 55% 45%)`
+  return `hsl(${hueFromId(id)}deg ${COLOR_SATURATION * 100}% ${COLOR_LIGHTNESS * 100}%)`
 }

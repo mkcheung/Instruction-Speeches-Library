@@ -123,14 +123,14 @@ export default function ProfileEdit() {
 
   if (isLoadingMe || isLoadingProfile || !profile || !username) {
     return (
-      <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         Loading…
       </div>
     )
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 px-4 py-10">
+    <div className="mx-auto flex flex-1 max-w-md flex-col justify-center gap-6 px-4 py-10">
       <Card>
         <CardHeader>
           <CardTitle>Photo</CardTitle>

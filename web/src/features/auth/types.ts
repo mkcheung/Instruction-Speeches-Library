@@ -15,6 +15,10 @@ export interface CurrentUser {
   first_name: string | null
   last_name: string | null
   username: string | null
+  /** `profile.display_name` if set, else `"{first_name} {last_name}".trim()`
+   * — same expression `PublicProfileResource` computes, so the header and
+   * `/profile` can never disagree about a user's name. */
+  display_name: string
   email_verified: boolean
   roles: string[]
   onboarding_completed: boolean
