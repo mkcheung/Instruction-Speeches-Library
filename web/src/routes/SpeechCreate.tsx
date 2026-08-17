@@ -60,7 +60,7 @@ export default function SpeechCreate() {
 
   if (createdSpeech) {
     return (
-      <div className="mx-auto flex min-h-svh max-w-xl flex-col justify-center gap-6 px-4 py-10">
+      <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 px-4 py-10">
         <Card>
           <CardHeader>
             <CardTitle>Upload "{createdSpeech.title}"</CardTitle>
@@ -82,7 +82,7 @@ export default function SpeechCreate() {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-xl flex-col justify-center gap-6 px-4 py-10">
+    <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 px-4 py-10">
       <Card>
         <CardHeader>
           <CardTitle>Upload a speech</CardTitle>

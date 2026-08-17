@@ -36,7 +36,14 @@ export interface VideoJsAdapterOptions {
 export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsAdapterOptions): Player {
   const player = videojs(element, {
     controls: true,
-    fluid: true,
+    // W1/W2 (PLAN-APP-HEADER.md): `fluid: true` sizes the player by a
+    // percentage `padding-top` derived from `videoWidth:videoHeight` and
+    // the CONTAINER'S WIDTH — a portrait clip in a 704px column renders
+    // 704x1252, and `max-height` cannot fix it (padding is outside the
+    // content box it constrains). `fill: true` makes the player stop
+    // computing its own height and just fill whatever box it's given —
+    // `SpeechWatch.tsx`'s `.relative` wrapper is that box (W2/W3).
+    fill: true,
     playsinline: true,
     poster: options.poster,
     sources: [{ src: options.initialUrl, type: 'video/mp4' }],

@@ -92,6 +92,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('review.publish', [ReviewPolicy::class, 'publish']);
         Gate::define('review.clearAnnotations', [ReviewPolicy::class, 'clearAnnotations']);
 
+        // PLAN-APP-HEADER.md S4: wires up ReviewPolicy::viewDirectory, which
+        // existed as dead code (P2) — ReviewerDirectoryController made no
+        // authorization call at all. Registered explicitly, same as every
+        // other dotted ability above.
+        Gate::define('viewDirectory', [ReviewPolicy::class, 'viewDirectory']);
+
         // Admin's override is a SCOPED Gate::before, not a blanket one
         // (§7.2) — a blanket hook would bypass the very policies Admin must
         // NOT have, e.g. reviewing. Written now, before any concrete
@@ -114,6 +120,12 @@ class AppServiceProvider extends ServiceProvider
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',
+
+                // S4: §7.1's matrix denies Admin the reviewer directory —
+                // without this, Gate::before's blanket admin bypass would
+                // short-circuit ReviewPolicy::viewDirectory to `true` and
+                // invert the intended admin-403/member-200 behaviour.
+                'viewDirectory',
             ];
 
             return in_array($ability, $mustFallThrough, true) ? null : true;

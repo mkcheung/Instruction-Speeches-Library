@@ -71,7 +71,15 @@ export function VideoPlayer({
       poster,
     })
 
-    onPlayerReadyRef.current?.(player)
+    // `player.tech()` (what `getVideoElement` reads) is not guaranteed
+    // attached synchronously right after `videojs()` returns — video.js's
+    // own documented contract is that anything tech-dependent waits for
+    // `player.ready()`. Calling the callback synchronously here left
+    // `videoEl` stuck `null` for STEP-06's annotation engine (and anything
+    // else downstream of `onPlayerReady`), since it's never retried.
+    player.ready(() => {
+      onPlayerReadyRef.current?.(player)
+    })
 
     return () => {
       player.dispose()
@@ -80,8 +88,18 @@ export function VideoPlayer({
   }, [initialUrl])
 
   return (
-    <div data-vjs-player>
-      <div ref={containerRef} />
+    // W2: `fill: true` needs a height chain, and `height: 100%` on these
+    // two divs is the WRONG way to give it one — `[data-vjs-player] > div`
+    // is `video.js`'s own inner div where the player root gets built, and
+    // percentage height against an auto-height parent collapses to 0.
+    // WORSE: WebKit specifically does not treat an `aspect-ratio`-derived
+    // height as "definite" for percentage resolution even when the outer
+    // box does have one (measured 349x0 in WebKit vs 349x620 elsewhere).
+    // Absolute positioning sidesteps percentage-height resolution
+    // altogether — the parent (`SpeechWatch.tsx`'s `.relative` wrapper)
+    // already establishes the positioning context.
+    <div data-vjs-player className="absolute inset-0">
+      <div ref={containerRef} className="absolute inset-0" />
     </div>
   )
 }

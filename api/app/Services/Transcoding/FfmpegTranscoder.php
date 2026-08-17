@@ -54,6 +54,15 @@ use Illuminate\Support\Facades\Storage;
  *   here. If a genuinely rotated source ever plays back sideways, this is
  *   the first place to add an explicit `-noautorotate`/transpose
  *   workaround and a regression fixture.
+ *
+ * PLAN-APP-HEADER.md W4 adds explicit rotation handling on top of the above
+ * — but only for the METADATA path (persisting display-correct width/
+ * height, see extractRotation()/displayDimensions()), not the encode path.
+ * The remux (`-c copy`) and re-encode commands are unchanged; a rotated
+ * source still relies on the player's/ffmpeg's own autorotate behavior to
+ * actually display right-side-up. What changed is that the *numbers this
+ * class writes to the database* now account for rotation, so a portrait
+ * phone clip isn't persisted with landscape dimensions.
  */
 class FfmpegTranscoder implements TranscoderContract
 {
@@ -185,12 +194,23 @@ class FfmpegTranscoder implements TranscoderContract
         @unlink($localSource);
         @unlink($tmpOutput);
 
+        // W4 (PLAN-APP-HEADER.md): persist the video's own display
+        // dimensions (rotation-corrected — see displayDimensions()) so the
+        // frontend can seed --video-ar on first paint instead of waiting
+        // for `loadedmetadata`, removing the 16:9-to-real-ratio layout
+        // jump on portrait video. Source 1 (poster dimensions) already
+        // covers the common case for free; this is the fallback for
+        // posterless speeches.
+        [$width, $height] = $this->displayDimensions($probe);
+
         $this->writeFinalStatus($videoAsset->id, [
             'status' => 'ready',
             'disk' => $source->disk,
             'path' => $outputPath,
             'byte_size' => Storage::disk($source->disk)->size($outputPath),
             'duration_seconds' => $probe['duration'],
+            'width' => $width,
+            'height' => $height,
         ]);
     }
 
@@ -471,7 +491,7 @@ class FfmpegTranscoder implements TranscoderContract
     }
 
     /**
-     * @param  array{codec_video: ?string, codec_audio: ?string, height: int, duration: float, pix_fmt: ?string}  $probe
+     * @param  array{codec_video: ?string, codec_audio: ?string, width: int, height: int, duration: float, pix_fmt: ?string, rotation: int}  $probe
      */
     private function buildVideoFilters(array $probe): ?string
     {
@@ -530,14 +550,24 @@ class FfmpegTranscoder implements TranscoderContract
     }
 
     /**
-     * @return array{codec_video: ?string, codec_audio: ?string, height: int, duration: float, pix_fmt: ?string}|null
+     * @return array{codec_video: ?string, codec_audio: ?string, width: int, height: int, duration: float, pix_fmt: ?string, rotation: int}|null
      */
     private function probe(string $localPath): ?array
     {
+        // W4 (PLAN-APP-HEADER.md): `width` added alongside the pre-existing
+        // `height` so the video asset's own dimensions can be persisted
+        // (writeFinalStatus below), not just used for the >1080p compliance
+        // check. `side_data_list` and the `rotate` tag are both requested
+        // because rotation can be signalled either way — a display-matrix
+        // side data entry (modern muxers) or the legacy `rotate` tag — and
+        // this is CODED width/height, before any rotation is applied; see
+        // extractRotation()/displayDimensions() below for why persisting
+        // these two numbers unmodified would be wrong for rotated phone
+        // video.
         $result = Process::run([
             'ffprobe', '-v', 'error',
             '-print_format', 'json',
-            '-show_entries', 'stream=codec_type,codec_name,height,pix_fmt:format=duration',
+            '-show_entries', 'stream=codec_type,codec_name,width,height,pix_fmt,side_data_list:stream_tags=rotate:format=duration',
             $localPath,
         ]);
 
@@ -566,14 +596,82 @@ class FfmpegTranscoder implements TranscoderContract
         return [
             'codec_video' => $video['codec_name'] ?? null,
             'codec_audio' => $audio['codec_name'] ?? null,
+            'width' => (int) ($video['width'] ?? 0),
             'height' => (int) ($video['height'] ?? 0),
             'duration' => (float) ($data['format']['duration'] ?? 0),
             'pix_fmt' => $video['pix_fmt'] ?? null,
+            'rotation' => $video !== null ? $this->extractRotation($video) : 0,
         ];
     }
 
     /**
-     * @param  array{codec_video: ?string, codec_audio: ?string, height: int, duration: float, pix_fmt: ?string}  $probe
+     * W4's rotation trap: ffprobe's `stream=width,height` is CODED
+     * dimensions, unaffected by a rotate-90 display matrix on a `-c copy`
+     * remux (§9.5 — an iPhone clip stored 1920x1080 with a rotation flag
+     * keeps that flag; the browser reports `videoWidth/Height` as the
+     * rotated 1080x1920). Persisting coded dimensions unmodified would
+     * reserve a landscape box for portrait content, reintroducing the
+     * exact layout jump W4 exists to remove — while a naive "dimensions
+     * are non-null" test would still pass.
+     *
+     * Checks the modern side-data form first (a "Display Matrix" entry
+     * carrying a `rotation` field, degrees, ffmpeg >= 4.x), then falls
+     * back to the legacy `rotate` stream tag some muxers still use.
+     * Normalizes to one of 0/90/180/270 — side-data rotation can be
+     * reported as a signed value (e.g. -90 for a clockwise phone turn) or
+     * outside [0,360), and anything that doesn't land on a right angle is
+     * treated as unrotated rather than guessed at.
+     *
+     * @param  array<string, mixed>  $video
+     */
+    private function extractRotation(array $video): int
+    {
+        $rotation = null;
+
+        foreach ($video['side_data_list'] ?? [] as $sideData) {
+            if (is_array($sideData) && array_key_exists('rotation', $sideData)) {
+                $rotation = (int) $sideData['rotation'];
+                break;
+            }
+        }
+
+        if ($rotation === null && isset($video['tags']['rotate'])) {
+            $rotation = (int) $video['tags']['rotate'];
+        }
+
+        if ($rotation === null) {
+            return 0;
+        }
+
+        $normalized = (($rotation % 360) + 360) % 360;
+
+        return in_array($normalized, [90, 180, 270], true) ? $normalized : 0;
+    }
+
+    /**
+     * Swaps the coded width/height when the stream is rotated a quarter
+     * turn either way — the display orientation a browser will actually
+     * decode to (W4). 180-degree rotation does not swap axes.
+     *
+     * @param  array{width: int, height: int, rotation: int}  $probe
+     * @return array{0: int|null, 1: int|null}
+     */
+    private function displayDimensions(array $probe): array
+    {
+        $width = $probe['width'] > 0 ? $probe['width'] : null;
+        $height = $probe['height'] > 0 ? $probe['height'] : null;
+
+        if ($width === null || $height === null) {
+            return [null, null];
+        }
+
+        return in_array($probe['rotation'], [90, 270], true)
+            ? [$height, $width]
+            : [$width, $height];
+    }
+
+    /**
+     * @param  array{codec_video: ?string, codec_audio: ?string, width: int, height: int, duration: float, pix_fmt: ?string, rotation: int}  $probe
      */
     private function isRemuxCompatible(array $probe): bool
     {

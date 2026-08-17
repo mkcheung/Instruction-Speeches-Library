@@ -5,9 +5,13 @@
  */
 
 /** `App\Http\Resources\SpeechAssetResource` — `failure_detail` is
- * admin-only and never reaches this client. `width`/`height`/
- * `poster_time_seconds` are only ever set on poster/sprite rows (STEP-04
- * §9.5) — `null` on `kind: 'source' | 'video' | 'captions'`. */
+ * admin-only and never reaches this client. `width`/`height` are set on
+ * poster/sprite rows (STEP-04 §9.5) and, since PLAN-APP-HEADER.md's W4, on
+ * `kind: 'video'` rows too (rotation-corrected — see
+ * `FfmpegTranscoder::displayDimensions`), as a `--video-ar` fallback for
+ * posterless speeches. Still `null` on `kind: 'source' | 'captions'`, and
+ * on any video row transcoded before W4 shipped. `poster_time_seconds`
+ * remains poster/sprite-only. */
 export interface SpeechAsset {
   id: number
   kind: 'source' | 'video' | 'captions'

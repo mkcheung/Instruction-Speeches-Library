@@ -38,7 +38,18 @@ export default function VideoPanel({ onVideoElement }: VideoPanelProps) {
         { credentials: 'include' },
       )
       if (!res.ok) {
-        setPresign({ status: 'error', message: `HTTP ${res.status}` })
+        // P0 fix (PLAN-APP-HEADER.md): the backend now requires a session
+        // and only signs paths it recognizes as belonging to the caller
+        // (their own avatar, or a speech they own/are reviewing) — an
+        // arbitrary object key like the original `spikes/sample.mp4`
+        // default no longer works from here at all, on either count.
+        const hint =
+          res.status === 401
+            ? ' — log into the app in this browser first'
+            : res.status === 403
+              ? ' — only your own avatars/{id}/… or speeches/{ulid}/… paths are signable now'
+              : ''
+        setPresign({ status: 'error', message: `HTTP ${res.status}${hint}` })
         return
       }
       const body = (await res.json()) as { url?: string }

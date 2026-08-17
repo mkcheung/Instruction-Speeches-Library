@@ -7,6 +7,7 @@ use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Actions\Fortify\UpdateUserProfileInformation;
 use App\Http\Responses\Fortify as FortifyResponses;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -50,6 +51,18 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
+
+        // Headless Fortify (`config('fortify.views') === false`) never
+        // registers the `password.reset` named route — that route only
+        // exists to serve Fortify's own Blade view. The reset page lives in
+        // the React frontend instead, so the notification's link must be
+        // built by hand, same as `VerifyEmailResponse` already does for the
+        // verification link.
+        ResetPassword::createUrlUsing(function ($notifiable, string $token) {
+            $email = urlencode($notifiable->getEmailForPasswordReset());
+
+            return rtrim(config('app.frontend_url'), '/')."/reset-password/{$token}?email={$email}";
+        });
 
         RateLimiter::for('login', function (Request $request) {
             $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());

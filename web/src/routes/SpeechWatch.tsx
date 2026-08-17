@@ -41,6 +41,9 @@ export default function SpeechWatch() {
   // `useCommentaryTrack`) would never see the element and would silently
   // never attach.
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
+  // W2/W4: the real ratio, once the browser has decoded metadata — takes
+  // priority over the poster-seeded guess below once it arrives.
+  const [measuredAr, setMeasuredAr] = useState<number | undefined>(undefined)
 
   const asset = speech?.primary_video
 
@@ -60,6 +63,38 @@ export default function SpeechWatch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset?.id, asset?.status])
 
+  // W2/W4: `videoEl` is a real `<video>` element (`getVideoElement`) — its
+  // own `loadedmetadata` gives the true, display-correct ratio (autorotate
+  // already applied by the browser), so this listens directly rather than
+  // going through video.js's player events.
+  useEffect(() => {
+    if (!videoEl) return
+    const updateFromElement = () => {
+      if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+        setMeasuredAr(videoEl.videoWidth / videoEl.videoHeight)
+      }
+    }
+    // Covers the case where metadata is already loaded by the time this
+    // effect attaches (e.g. a cached video), not just the future event.
+    updateFromElement()
+    videoEl.addEventListener('loadedmetadata', updateFromElement)
+    return () => videoEl.removeEventListener('loadedmetadata', updateFromElement)
+  }, [videoEl])
+
+  // W2's mandatory fallback chain: measured ratio (post-`loadedmetadata`)
+  // -> poster's persisted dimensions (display-correct, W4) -> the video
+  // asset's own persisted, rotation-corrected dimensions (W4 "Source 2",
+  // for the posterless case) -> 16/9. Never leave `--video-ar` unset — an
+  // unset custom property makes the width `calc()` invalid, `width` falls
+  // back to `auto`, and `margin-inline: auto` then collapses the box to
+  // 0x0 in every engine (measured).
+  const posterAr =
+    speech?.poster && speech.poster.width > 0 && speech.poster.height > 0
+      ? speech.poster.width / speech.poster.height
+      : undefined
+  const assetAr = asset && asset.width && asset.height ? asset.width / asset.height : undefined
+  const videoAr = measuredAr ?? posterAr ?? assetAr ?? 16 / 9
+
   const isOwner =
     !!me?.user && !!speech && speech.user_id !== undefined && Number(me.user.id) === speech.user_id
 
@@ -75,7 +110,7 @@ export default function SpeechWatch() {
 
   if (isLoading || !speech) {
     return (
-      <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
         Loading…
       </div>
     )
@@ -101,7 +136,28 @@ export default function SpeechWatch() {
             // over the actual video frame (§8.5) rather than below it —
             // OverlayStack itself is `aria-hidden`/`pointer-events:none`
             // per §8.6, so it never blocks the player's own controls.
-            <div className="relative">
+            //
+            // W2/W3: the width-calc box lives HERE, on this wrapper — not
+            // inside `VideoPlayer` — because this is `OverlayStack`'s
+            // positioning context. Applied any deeper, this div would
+            // stay full-column-width while the video centres beneath it,
+            // and the overlays would land offset from the actual frame.
+            // `--video-budget` feeds the width calc, not a `max-height`
+            // (that approach measurably does nothing — padding is outside
+            // the box it would constrain). Both custom properties carry
+            // an inline fallback too, so a `calc()` with an unset
+            // `--video-ar` never happens even for a single frame.
+            <div
+              className="relative mx-auto"
+              style={
+                {
+                  width: 'min(100%, calc(var(--video-budget, 620px) * var(--video-ar, 1.7777778)))',
+                  aspectRatio: 'var(--video-ar, 1.7777778)',
+                  '--video-ar': videoAr,
+                  '--video-budget': 'min(60svh, 620px)',
+                } as React.CSSProperties
+              }
+            >
               <VideoPlayer
                 initialUrl={initialUrl}
                 refreshUrl={refreshUrl}
@@ -125,7 +181,12 @@ export default function SpeechWatch() {
             <p className="text-sm text-muted-foreground">Not ready to play yet.</p>
           )}
 
-          {asset?.status === 'ready' && initialUrl && (
+          {/* W3/W5: was unconditionally rendered — a permissions leak (a
+              non-owner reviewer saw a "Use current frame" control for
+              someone else's speech) and, for a portrait speech with a
+              sprite, ~324px of chrome a reviewer never needed to pay for
+              at all. Gating it removes both at once. */}
+          {isOwner && asset?.status === 'ready' && initialUrl && (
             <PosterFramePicker speechId={speechId} assetId={asset.id} playerRef={playerRef} sprite={speech.sprite} />
           )}
         </CardContent>
@@ -224,8 +285,19 @@ export function PosterFramePicker({
 
   const totalFrames = sprite ? sprite.columns * sprite.rows : 0
   const duration = sprite?.duration_seconds ? Number(sprite.duration_seconds) : null
-  const cellWidth = sprite?.frame_width ? sprite.frame_width / sprite.columns : null
-  const cellHeight = sprite?.frame_height ? sprite.frame_height / sprite.rows : null
+  const rawCellWidth = sprite?.frame_width ? sprite.frame_width / sprite.columns : null
+  const rawCellHeight = sprite?.frame_height ? sprite.frame_height / sprite.rows : null
+
+  // W3: a portrait sprite's cells are tall (~284px for a 1080x1920
+  // source, vs. ~90px landscape) — uncapped, that alone can push the
+  // Commentary track heading well below the fold even with the player
+  // fix applied. Scale the whole strip (image + cell box together, so the
+  // background-position math stays pixel-accurate) down to a fixed
+  // height budget rather than cropping it.
+  const MAX_CELL_HEIGHT = 96
+  const scale = rawCellHeight && rawCellHeight > MAX_CELL_HEIGHT ? MAX_CELL_HEIGHT / rawCellHeight : 1
+  const cellWidth = rawCellWidth ? rawCellWidth * scale : null
+  const cellHeight = rawCellHeight ? rawCellHeight * scale : null
 
   return (
     <div className="flex flex-col gap-2">
@@ -261,7 +333,13 @@ export function PosterFramePicker({
                   width: cellWidth,
                   height: cellHeight,
                   backgroundImage: `url(${sprite.url})`,
-                  backgroundSize: `${sprite.frame_width}px ${sprite.frame_height}px`,
+                  // Scaled whole-sprite size, derived from the already
+                  // scaled+null-checked cell dimensions rather than
+                  // `sprite.frame_width`/`frame_height` directly (both
+                  // nullable — the `cellWidth && cellHeight` guard above
+                  // only narrows the derived locals, not the source
+                  // fields).
+                  backgroundSize: `${cellWidth * sprite.columns}px ${cellHeight * sprite.rows}px`,
                   backgroundPosition: `-${col * cellWidth}px -${row * cellHeight}px`,
                 }}
                 aria-label={`Use frame at ${timeSeconds.toFixed(1)}s`}
