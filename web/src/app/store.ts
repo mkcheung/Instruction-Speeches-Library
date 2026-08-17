@@ -5,6 +5,7 @@ import { speechApi } from '@/features/speech/speechApi'
 import { reviewApi } from '@/features/review/reviewApi'
 import { notificationApi } from '@/features/notification/notificationApi'
 import { annotationApi } from '@/features/annotation/annotationApi'
+import { essayApi } from '@/features/essay/essayApi'
 
 export const store = configureStore({
   reducer: {
@@ -14,6 +15,7 @@ export const store = configureStore({
     [reviewApi.reducerPath]: reviewApi.reducer,
     [notificationApi.reducerPath]: notificationApi.reducer,
     [annotationApi.reducerPath]: annotationApi.reducer,
+    [essayApi.reducerPath]: essayApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
@@ -23,6 +25,7 @@ export const store = configureStore({
       reviewApi.middleware,
       notificationApi.middleware,
       annotationApi.middleware,
+      essayApi.middleware,
     ),
 })
 

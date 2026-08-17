@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
+use App\Services\Essay\EssayRenderer;
+use App\Services\Essay\NullEssayRenderer;
 use App\Services\Transcoding\FakeTranscoder;
 use App\Services\Transcoding\FfmpegTranscoder;
 use App\Services\Transcoding\TranscoderContract;
@@ -31,6 +33,12 @@ class AppServiceProvider extends ServiceProvider
                 ? new FakeTranscoder
                 : new FfmpegTranscoder;
         });
+
+        // STEP-08-essay.md's seam: mirrors the TranscoderContract binding
+        // shape immediately above, except there is only one implementation
+        // today (no real renderer exists yet in any environment — nothing
+        // in this step calls EssayRenderer::render() at all).
+        $this->app->bind(EssayRenderer::class, NullEssayRenderer::class);
     }
 
     /**
@@ -92,6 +100,12 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('review.publish', [ReviewPolicy::class, 'publish']);
         Gate::define('review.clearAnnotations', [ReviewPolicy::class, 'clearAnnotations']);
 
+        // STEP-08-essay.md: the essay-write surface. Reads reuse
+        // `readAnnotations` unchanged (see that method's own docblock) —
+        // no new Gate for reads, only these two write abilities.
+        Gate::define('essay.update', [AnnotationPolicy::class, 'essayUpdate']);
+        Gate::define('essay.publish', [AnnotationPolicy::class, 'essayPublish']);
+
         // PLAN-APP-HEADER.md S4: wires up ReviewPolicy::viewDirectory, which
         // existed as dead code (P2) — ReviewerDirectoryController made no
         // authorization call at all. Registered explicitly, same as every
@@ -117,6 +131,14 @@ class AppServiceProvider extends ServiceProvider
                 'annotation.create', 'annotation.update', 'annotation.delete',
                 'review.clearAnnotations',                             // STEP-07: never an admin power either
                 'readAnnotations',                                     // AnnotationPolicy's own admin branch runs the dual-role assert
+
+                // STEP-08: the essay-write surface — same bug class the
+                // 2026-08-16 readiness review flagged. Without these two
+                // here, Gate::before's blanket admin bypass above would
+                // silently grant admins essay-write, contradicting the
+                // plan's explicit "An Admin cannot... write an essay"
+                // acceptance criterion (MODERNIZATION_PLAN.md:2384).
+                'essay.update', 'essay.publish',
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',

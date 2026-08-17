@@ -3,11 +3,14 @@ import { useParams } from 'react-router-dom'
 import type Player from 'video.js/dist/types/player'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
+import { EssayEditorPanel } from '@/components/essay/EssayEditorPanel'
+import { EssayReadOnlyPanel } from '@/components/essay/EssayReadOnlyPanel'
 import { getVideoElement } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
@@ -201,36 +204,67 @@ export default function SpeechWatch() {
         />
       )}
 
+      {/* STEP-08-FROZEN-CONTRACT.md's tab strip: notes stay adjacent to the
+          player (where the timestamp context lives), the essay goes
+          underneath in its own panel — the two are used in different
+          modes (notes while watching, essay after), so a tab strip rather
+          than a stack. */}
       {isOwner && (
-        <TrackSelector
-          options={commentary.options}
-          optionsLoading={commentary.optionsLoading}
-          selected={commentary.selected}
-          onSelect={commentary.select}
-          onPrefetch={commentary.prefetch}
-          error={commentary.error}
-          isFetching={commentary.isFetching}
-          fetchedReviewerName={commentary.fetchedReviewerName}
-          annotations={commentary.annotations}
-          activeIds={commentary.activeIds}
-          currentTime={commentary.currentTime}
-          onSeek={commentary.seek}
-        />
+        <Tabs defaultValue="notes">
+          <TabsList aria-label="Reviewer feedback">
+            <TabsTab value="notes">Notes</TabsTab>
+            <TabsTab value="essay">Essay</TabsTab>
+          </TabsList>
+          <TabsPanel value="notes">
+            <TrackSelector
+              options={commentary.options}
+              optionsLoading={commentary.optionsLoading}
+              selected={commentary.selected}
+              onSelect={commentary.select}
+              onPrefetch={commentary.prefetch}
+              error={commentary.error}
+              isFetching={commentary.isFetching}
+              fetchedReviewerName={commentary.fetchedReviewerName}
+              annotations={commentary.annotations}
+              activeIds={commentary.activeIds}
+              currentTime={commentary.currentTime}
+              onSeek={commentary.seek}
+            />
+          </TabsPanel>
+          <TabsPanel value="essay">
+            <EssayReadOnlyPanel
+              speechId={speechId}
+              reviewId={typeof commentary.selected === 'number' ? commentary.selected : null}
+              reviewerName={commentary.options.find((o) => o.key === commentary.selected)?.label}
+            />
+          </TabsPanel>
+        </Tabs>
       )}
 
       {!isOwner && myReview && asset?.status === 'ready' && initialUrl && (
-        <AnnotationComposerPanel
-          speechId={speechId}
-          review={myReview}
-          videoEl={videoEl}
-          durationSeconds={
-            asset.duration_seconds !== null ? Number(asset.duration_seconds) : (videoEl?.duration ?? 0)
-          }
-          userId={me?.user.id}
-          onSeek={(seconds) => {
-            if (videoEl) seekVideo(videoEl, seconds)
-          }}
-        />
+        <Tabs defaultValue="notes">
+          <TabsList aria-label="Your feedback">
+            <TabsTab value="notes">Notes</TabsTab>
+            <TabsTab value="essay">Essay</TabsTab>
+          </TabsList>
+          <TabsPanel value="notes">
+            <AnnotationComposerPanel
+              speechId={speechId}
+              review={myReview}
+              videoEl={videoEl}
+              durationSeconds={
+                asset.duration_seconds !== null ? Number(asset.duration_seconds) : (videoEl?.duration ?? 0)
+              }
+              userId={me?.user.id}
+              onSeek={(seconds) => {
+                if (videoEl) seekVideo(videoEl, seconds)
+              }}
+            />
+          </TabsPanel>
+          <TabsPanel value="essay">
+            <EssayEditorPanel speechId={speechId} review={myReview} />
+          </TabsPanel>
+        </Tabs>
       )}
     </div>
   )
