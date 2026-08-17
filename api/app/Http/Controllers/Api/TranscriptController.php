@@ -80,17 +80,26 @@ class TranscriptController extends Controller
         $userId = $request->user()->id;
         $driver = DB::connection()->getDriverName();
 
-        $speechIds = SpeechTranscript::query()
-            ->whereHas('speech', fn ($query) => $query->where('user_id', $userId))
-            ->when(
-                $driver === 'pgsql',
-                fn ($query) => $query->whereRaw("body_tsv @@ plainto_tsquery('english', ?)", [$q]),
-                fn ($query) => $query->where('body', 'like', '%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%'),
-            )
-            ->pluck('speech_id');
-
+        // A single query (whereHas over the transcript match, rather than
+        // a `pluck('speech_id')` into a second `Speech::whereIn`) — two
+        // round trips for one search was pure overhead.
         $speeches = Speech::query()
-            ->whereIn('id', $speechIds)
+            ->where('user_id', $userId)
+            ->whereHas('transcript', fn ($query) => $query->when(
+                $driver === 'pgsql',
+                fn ($q2) => $q2->whereRaw("body_tsv @@ plainto_tsquery('english', ?)", [$q]),
+                // Laravel's `where(..., 'like', ...)` does not append an
+                // `ESCAPE` clause on its own, and SQLite's LIKE recognizes
+                // no escape character without one — the backslash-escaping
+                // below was a no-op on this exact driver until this
+                // `whereRaw` made the escape character explicit. Without
+                // it, a literal `%`/`_` in a search query (e.g. "50% off")
+                // is still a live wildcard on the fallback path.
+                fn ($q2) => $q2->whereRaw(
+                    'body LIKE ? ESCAPE ?',
+                    ['%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%', '\\'],
+                ),
+            ))
             ->with(self::eagerLoads())
             ->latest()
             ->get();

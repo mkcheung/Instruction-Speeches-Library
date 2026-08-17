@@ -4,6 +4,7 @@ namespace App\Services\Captions;
 
 use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -85,25 +86,43 @@ class WhisperTranscriber implements CaptionTranscriberContract
             }
 
             $cues = Vtt::parse($vttContent);
-
-            Storage::disk($captionsAsset->disk)->put($captionsAsset->path, $vttContent);
-
-            $captionsAsset->update([
-                'status' => 'ready',
-                'byte_size' => Storage::disk($captionsAsset->disk)->size($captionsAsset->path),
-            ]);
-
             $derived = $this->deriver->derive($cues);
 
-            SpeechTranscript::query()->updateOrCreate(
-                ['speech_id' => $captionsAsset->speech_id],
-                [
-                    ...$derived,
-                    'language' => (string) config('captions.language'),
-                    'model' => (string) config('captions.model_name'),
-                    'source' => 'whisper',
-                ],
-            );
+            // Guarded write, same idempotency shape STEP-04's
+            // writeFinalStatus() uses: whisper.cpp can run for minutes, and
+            // a speaker can PUT a manual edit (CaptionService::update,
+            // which takes this same lock) while it's in flight. Without
+            // re-checking the row is still `processing` under the lock,
+            // this would unconditionally overwrite the speaker's edit with
+            // stale whisper output the moment the job finally finishes.
+            // The edit wins — this write is simply skipped, not retried.
+            DB::transaction(function () use ($captionsAsset, $vttContent, $derived) {
+                /** @var SpeechAsset|null $fresh */
+                $fresh = SpeechAsset::query()->whereKey($captionsAsset->id)->lockForUpdate()->first();
+
+                if ($fresh === null || $fresh->status !== 'processing') {
+                    return;
+                }
+
+                Storage::disk($fresh->disk)->put($fresh->path, $vttContent);
+
+                $fresh->update([
+                    'status' => 'ready',
+                    // The content was just written above, so its length is
+                    // known without a second disk/S3 stat round trip.
+                    'byte_size' => strlen($vttContent),
+                ]);
+
+                SpeechTranscript::query()->updateOrCreate(
+                    ['speech_id' => $fresh->speech_id],
+                    [
+                        ...$derived,
+                        'language' => (string) config('captions.language'),
+                        'model' => (string) config('captions.model_name'),
+                        'source' => 'whisper',
+                    ],
+                );
+            });
         } catch (InvalidVttException $e) {
             // whisper.cpp produced output this product's own VTT reader
             // can't parse — treat identically to any other transcription
@@ -123,10 +142,22 @@ class WhisperTranscriber implements CaptionTranscriberContract
 
     private function fail(SpeechAsset $captionsAsset, string $code, string $detail): void
     {
-        $captionsAsset->update([
-            'status' => 'failed',
-            'failure_code' => $code,
-            'failure_detail' => $detail,
-        ]);
+        // Same guard as the success path: don't flip a row back to
+        // `failed` if a speaker already hand-wrote captions (CaptionService
+        // ::update) while this whisper attempt was still running.
+        DB::transaction(function () use ($captionsAsset, $code, $detail) {
+            /** @var SpeechAsset|null $fresh */
+            $fresh = SpeechAsset::query()->whereKey($captionsAsset->id)->lockForUpdate()->first();
+
+            if ($fresh === null || $fresh->status !== 'processing') {
+                return;
+            }
+
+            $fresh->update([
+                'status' => 'failed',
+                'failure_code' => $code,
+                'failure_detail' => $detail,
+            ]);
+        });
     }
 }

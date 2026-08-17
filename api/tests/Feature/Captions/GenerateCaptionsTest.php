@@ -49,14 +49,18 @@ it('is a no-op if the captions asset no longer exists', function () {
     expect(SpeechTranscript::query()->count())->toBe(0);
 });
 
-it('is a no-op (defense in depth) when captions_enabled has been toggled off since dispatch', function () {
+it('fails the captions asset (defense in depth), not stays stuck processing, when captions_enabled has been toggled off since dispatch', function () {
     $speech = Speech::factory()->create(['captions_enabled' => false]);
     SpeechAsset::factory()->for($speech)->create(['status' => 'ready']);
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['status' => 'processing']);
 
     (new GenerateCaptions($captions->id))->handle(new FakeCaptionTranscriber);
 
-    expect($captions->fresh()->status)->toBe('processing');
+    // Must resolve to a terminal, retryable state — a silent no-op here
+    // would leave the row stuck at `processing` forever, since retry()
+    // only re-dispatches a `failed` asset.
+    expect($captions->fresh()->status)->toBe('failed');
+    expect($captions->fresh()->failure_code)->toBe('captions_disabled');
     expect(SpeechTranscript::query()->where('speech_id', $speech->id)->exists())->toBeFalse();
 });
 

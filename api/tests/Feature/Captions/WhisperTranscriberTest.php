@@ -122,3 +122,38 @@ it('fails cleanly when whisper-cli produces output this product cannot parse as 
     expect($captions->fresh()->status)->toBe('failed');
     expect($captions->fresh()->failure_code)->toBe('transcription_failed');
 });
+
+it('does not clobber a speaker edit that landed while whisper was still running', function () {
+    // Reconciliation-audit finding: whisper.cpp can run for minutes.
+    // CaptionService::update() (a speaker's manual edit) can resolve the
+    // same row to `ready` with hand-written content in the meantime — the
+    // job must not blindly overwrite storage/status/transcript with stale
+    // whisper output once it finally finishes.
+    Storage::fake('media');
+
+    $speech = Speech::factory()->create();
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    Storage::disk('media')->put($source->path, 'source-bytes');
+    $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing']);
+
+    $speakerVtt = "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nThe speaker's own correction.";
+    Storage::disk('media')->put($captions->path, $speakerVtt);
+    // Simulates CaptionService::update() having already resolved this row
+    // while the whisper.cpp process (faked below) was still "running".
+    $captions->update(['status' => 'ready']);
+    SpeechTranscript::factory()->for($speech)->create([
+        'body' => "The speaker's own correction.",
+        'source' => 'edited',
+    ]);
+
+    fakeWhisper("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nStale whisper output.");
+
+    (new WhisperTranscriber)->transcribe($source, $captions);
+
+    expect($captions->fresh()->status)->toBe('ready');
+    expect(Storage::disk('media')->get($captions->fresh()->path))->toBe($speakerVtt);
+
+    $transcript = SpeechTranscript::query()->where('speech_id', $speech->id)->sole();
+    expect($transcript->source)->toBe('edited');
+    expect($transcript->body)->toBe("The speaker's own correction.");
+});

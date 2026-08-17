@@ -199,11 +199,23 @@ class SpeechUploadController extends Controller
      */
     public function retry(Request $request, Speech $speech, SpeechAsset $asset): JsonResponse
     {
-        $this->authorizeOwner($request, $speech);
         abort_unless(
             $asset->speech_id === $speech->id && in_array($asset->kind, ['video', 'captions'], true) && $asset->status === 'failed',
             Response::HTTP_NOT_FOUND,
         );
+
+        // Captions retries go through the real caption.update gate
+        // (SpeechPolicy::updateCaptions) rather than this controller's own
+        // hardcoded owner check — currently the same rule (ownership-only)
+        // either way, but retrying a captions asset IS a captions write,
+        // and routing it through the same gate PUT /captions uses means
+        // the two can never silently diverge if updateCaptions is ever
+        // widened/narrowed independently.
+        if ($asset->kind === 'captions') {
+            $this->authorize('caption.update', $speech);
+        } else {
+            $this->authorizeOwner($request, $speech);
+        }
 
         $asset->update(['status' => 'processing', 'failure_code' => null, 'failure_detail' => null]);
 

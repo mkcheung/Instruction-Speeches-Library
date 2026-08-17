@@ -97,7 +97,21 @@ class GenerateCaptions implements ShouldQueue
         // that dispatched this job already checked captions_enabled, but a
         // speaker can toggle it off between dispatch and a worker actually
         // picking this job up (or a retry re-dispatching it later).
+        //
+        // Must resolve to `failed`, not a silent no-op: the row was just
+        // set to `processing` by the dispatcher (SpeechUploadController's
+        // upload-complete path, or `retry()`), and nothing else will ever
+        // move it off `processing` if this method returns without writing
+        // a terminal status — the asset (and CaptionEditor's "Captions are
+        // still processing..." UI) would be stuck forever, with no retry
+        // affordance, since retry() only re-dispatches a `failed` asset.
         if ($speech === null || ! $speech->captions_enabled) {
+            $captionsAsset->update([
+                'status' => 'failed',
+                'failure_code' => 'captions_disabled',
+                'failure_detail' => 'Captions are turned off for this speech.',
+            ]);
+
             return;
         }
 

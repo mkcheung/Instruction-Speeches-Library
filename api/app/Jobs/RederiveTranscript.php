@@ -118,14 +118,29 @@ class RederiveTranscript implements ShouldQueue
         // completed) falls back to the configured defaults.
         $existing = SpeechTranscript::query()->where('speech_id', $captionsAsset->speech_id)->first();
 
-        SpeechTranscript::query()->updateOrCreate(
-            ['speech_id' => $captionsAsset->speech_id],
-            [
-                ...$derived,
-                'language' => $existing->language ?? (string) config('captions.language'),
-                'model' => $existing->model ?? (string) config('captions.model_name'),
-                'source' => 'edited',
-            ],
-        );
+        $attributes = [
+            ...$derived,
+            // Explicit null check, not `?->`: `$existing` is legitimately
+            // null the first time a speaker hand-edits captions before any
+            // whisper run has ever completed for this speech (CaptionService's
+            // own documented case) — a plain `$existing->language` would
+            // fatal on every such first edit. (`$existing?->language ?? ...`
+            // is equivalent at runtime but trips a PHPStan false-positive —
+            // `language`/`model` are non-nullable `@property string`, so it
+            // can't see that the nullsafe is guarding against $existing
+            // itself being null, not the property.)
+            'language' => $existing !== null ? $existing->language : (string) config('captions.language'),
+            'model' => $existing !== null ? $existing->model : (string) config('captions.model_name'),
+            'source' => 'edited',
+        ];
+
+        // $existing was already fetched above — reuse it instead of
+        // updateOrCreate(), which would re-run the identical lookup as a
+        // second SELECT before writing.
+        if ($existing !== null) {
+            $existing->update($attributes);
+        } else {
+            SpeechTranscript::query()->create([...$attributes, 'speech_id' => $captionsAsset->speech_id]);
+        }
     }
 }

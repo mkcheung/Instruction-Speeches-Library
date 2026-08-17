@@ -41,16 +41,26 @@ class Vtt
             throw new InvalidVttException('A WebVTT file must begin with "WEBVTT".');
         }
 
+        $timingPattern = '/^(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})/';
+
         // Skip the header block (any header metadata lines) up to and
         // including the first blank line separating it from the cues.
-        while ($lines !== [] && trim($lines[0]) !== '') {
+        // Bounded by the first timing-line match, not blank-line alone: a
+        // WebVTT string missing the blank separator between "WEBVTT" and
+        // its first cue (no producer in this codebase emits one that way,
+        // but nothing stops a hand-crafted or third-party-exported PUT
+        // body from doing so) would otherwise have its entire first cue
+        // consumed as "header metadata" — parse() would then silently
+        // return zero cues instead of throwing, and
+        // UpdateCaptionsRequest's validator only checks that parse()
+        // doesn't throw, so a 422-should-have-fired input would pass
+        // straight through as an empty transcript.
+        while ($lines !== [] && trim($lines[0]) !== '' && ! preg_match($timingPattern, $lines[0])) {
             array_shift($lines);
         }
         while ($lines !== [] && trim($lines[0]) === '') {
             array_shift($lines);
         }
-
-        $timingPattern = '/^(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(?:(\d{2,}):)?(\d{2}):(\d{2})\.(\d{3})/';
 
         $cues = [];
         $block = [];
