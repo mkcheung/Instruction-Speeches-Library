@@ -71,6 +71,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Spike-wall opt-in
+    |--------------------------------------------------------------------------
+    |
+    | Mirrors the frontend's double guard (web/src/lib/spikes-guard.ts): the
+    | `/api/spikes/*` routes only exist when the app is running in local/
+    | testing AND this flag is explicitly on. Failing either half means the
+    | route is not registered at all, never merely forbidden.
+    |
+    */
+
+    'enable_spikes' => (bool) env('ENABLE_SPIKES', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

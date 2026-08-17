@@ -62,7 +62,7 @@ function compliantProbe(): array
 {
     return [
         'streams' => [
-            ['codec_type' => 'video', 'codec_name' => 'h264', 'height' => 720, 'pix_fmt' => 'yuv420p'],
+            ['codec_type' => 'video', 'codec_name' => 'h264', 'width' => 1280, 'height' => 720, 'pix_fmt' => 'yuv420p'],
             ['codec_type' => 'audio', 'codec_name' => 'aac'],
         ],
         'format' => ['duration' => '12.5'],
@@ -84,6 +84,12 @@ it('remuxes a compliant h264/aac source, marks the video asset ready, and genera
     expect($video->fresh()->path)->toBe("speeches/{$speech->ulid}/{$speech->ulid}/720p.mp4");
     Storage::disk('media')->assertExists($video->fresh()->path);
 
+    // W4 (PLAN-APP-HEADER.md): the video asset's own width/height are now
+    // persisted on a successful transcode, not just null forever — this is
+    // the fallback --video-ar source for a speech with no poster.
+    expect($video->fresh()->width)->toBe(1280);
+    expect($video->fresh()->height)->toBe(720);
+
     $posters = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'poster')->get();
     // Three widths x two formats.
     expect($posters)->toHaveCount(6);
@@ -98,6 +104,66 @@ it('remuxes a compliant h264/aac source, marks the video asset ready, and genera
     $sprite = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'sprite')->first();
     expect($sprite)->not->toBeNull();
     expect($sprite->is_primary)->toBeFalse();
+});
+
+it('swaps width/height for a 90-degree rotated source, so a portrait phone clip is not persisted as landscape', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+
+    // W4's trap: an iPhone clip stored 1920x1080 (coded, landscape) with a
+    // rotate-90 display matrix — ffprobe reports the coded dimensions, the
+    // browser decodes to 1080x1920 (portrait). Persisting the coded values
+    // unmodified would reserve a landscape box for portrait content.
+    fakeFfmpeg([
+        'streams' => [
+            [
+                'codec_type' => 'video', 'codec_name' => 'h264',
+                'width' => 1920, 'height' => 1080, 'pix_fmt' => 'yuv420p',
+                'side_data_list' => [
+                    ['side_data_type' => 'Display Matrix', 'rotation' => -90],
+                ],
+            ],
+            ['codec_type' => 'audio', 'codec_name' => 'aac'],
+        ],
+        'format' => ['duration' => '12.5'],
+    ]);
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    expect($video->fresh()->status)->toBe('ready');
+    expect($video->fresh()->width)->toBe(1080);
+    expect($video->fresh()->height)->toBe(1920);
+});
+
+it('does not swap width/height for an unrotated or 180-degree-rotated source', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+
+    fakeFfmpeg([
+        'streams' => [
+            [
+                'codec_type' => 'video', 'codec_name' => 'h264',
+                'width' => 1920, 'height' => 1080, 'pix_fmt' => 'yuv420p',
+                'side_data_list' => [
+                    ['side_data_type' => 'Display Matrix', 'rotation' => 180],
+                ],
+            ],
+            ['codec_type' => 'audio', 'codec_name' => 'aac'],
+        ],
+        'format' => ['duration' => '12.5'],
+    ]);
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    expect($video->fresh()->status)->toBe('ready');
+    expect($video->fresh()->width)->toBe(1920);
+    expect($video->fresh()->height)->toBe(1080);
 });
 
 it('fully transcodes an HEVC source instead of failing, via the full re-encode path', function () {

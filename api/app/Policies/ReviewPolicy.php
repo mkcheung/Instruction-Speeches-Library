@@ -114,10 +114,11 @@ class ReviewPolicy
     }
 
     /**
-     * `GET /reviews` — every authenticated Member/Coach may see their own
-     * dashboard; nothing role-gated here beyond "is this your row",
-     * enforced by the controller scoping the query to `reviewer_id`, not
-     * by this policy. Present for symmetry/future use.
+     * `GET /reviewers` — §7.1's matrix: every Member/Coach may browse the
+     * reviewer directory, an Admin may not. Wired into
+     * ReviewerDirectoryController::index via Gate::authorize
+     * (PLAN-APP-HEADER.md S4) — previously dead code (P2), so this method
+     * ran against nothing.
      */
     public function viewDirectory(User $user): bool
     {

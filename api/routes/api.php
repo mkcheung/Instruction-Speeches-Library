@@ -19,8 +19,16 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/health', HealthController::class)->name('api.health');
 
-// Spike-wall only (S0): no auth yet, per STEP-00-foundation.md.
-Route::get('/spikes/presign', PresignController::class)->name('api.spikes.presign');
+// Spike-wall only (S0). P0 fix (PLAN-APP-HEADER.md): this route was
+// unauthenticated and signed arbitrary storage paths — reachable by anyone,
+// no credentials needed, bypassing SpeechUploadController::authorizeGrantingAccess
+// entirely. It now requires a session, and PresignController itself 404s
+// unless both halves of the env/opt-in guard pass, mirroring the frontend's
+// double guard (web/src/lib/spikes-guard.ts) — see the controller for why
+// the guard lives there and not here.
+Route::middleware('auth:sanctum')
+    ->get('/spikes/presign', PresignController::class)
+    ->name('api.spikes.presign');
 
 // Fortify's own routes (register/login/logout/forgot-password/reset-password/
 // email verification) are registered by Laravel\Fortify\FortifyServiceProvider
