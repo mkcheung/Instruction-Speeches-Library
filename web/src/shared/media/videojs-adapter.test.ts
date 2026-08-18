@@ -112,6 +112,23 @@ function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
+describe('videojs-adapter player configuration', () => {
+  it('forces native HTML text tracks instead of video.js emulation', async () => {
+    const videojs = vi.mocked((await import('video.js')).default)
+    const element = document.createElement('video')
+
+    createVideoJsPlayer(element, {
+      initialUrl: 'https://example.com/video.mp4',
+      refreshUrl: vi.fn(),
+    })
+
+    expect(videojs).toHaveBeenLastCalledWith(
+      element,
+      expect.objectContaining({ html5: { nativeTextTracks: true } }),
+    )
+  })
+})
+
 describe('videojs-adapter refresh-on-error', () => {
   it('refreshes the URL and restores position + play state on MEDIA_ERR_NETWORK', async () => {
     const refreshUrl = vi.fn().mockResolvedValue('https://fresh.example/video.mp4')
@@ -299,9 +316,9 @@ describe('videojs-adapter poster-flash mitigation', () => {
 /**
  * STEP-09-captions.md/STEP-09-FROZEN-CONTRACT.md §5's "a real `<track
  * kind='captions' default>`" — exercised against a fake player exposing
- * just the four video.js text-track methods these two functions actually
- * call (`remoteTextTracks`/`removeRemoteTextTrack`/`addRemoteTextTrack`/
- * `textTracks`). Plain arrays stand in for video.js's `TextTrackList` —
+ * just the three video.js text-track methods these two functions actually
+ * call (`remoteTextTracks`/`removeRemoteTextTrack`/`addRemoteTextTrack`).
+ * Plain arrays stand in for video.js's `TextTrackList` —
  * both have `.length` and numeric indexing, the only two things
  * `videojs-adapter.ts`'s own `toArray` helper reads off them.
  */
@@ -309,7 +326,6 @@ function fakeCaptionsPlayer() {
   const tracks: FakeTrack[] = []
   const player = {
     remoteTextTracks: () => tracks,
-    textTracks: () => tracks,
     removeRemoteTextTrack: (track: FakeTrack) => {
       const index = tracks.indexOf(track)
       if (index >= 0) tracks.splice(index, 1)
@@ -345,6 +361,19 @@ describe('setCaptionsTrack/getCaptionsTrack', () => {
     expect(track).not.toBeNull()
     expect(track?.kind).toBe('captions')
     expect(track?.mode).toBe('showing') // `default: true` per the adapter's own call
+  })
+
+  it('reads the synchronous remote list instead of a stale general text-track mirror', () => {
+    const removed = { kind: 'captions', mode: 'showing', src: 'blob:removed' } as FakeTrack
+    const current = { kind: 'captions', mode: 'showing', src: 'blob:current' } as FakeTrack
+    const player = {
+      remoteTextTracks: () => [current],
+      // Native video.js can still expose the removed track here until its
+      // asynchronous list mirror catches up on the next task.
+      textTracks: () => [removed],
+    }
+
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBe(current)
   })
 
   it('replacing the captions URL removes the old track rather than accumulating a second one', () => {

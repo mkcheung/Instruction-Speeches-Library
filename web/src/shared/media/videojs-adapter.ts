@@ -58,6 +58,15 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
     fill: true,
     playsinline: true,
     poster: options.poster,
+    // video.js 8 defaults Chromium to emulated text tracks even though the
+    // browser implements native HTML text tracks. STEP-09's contract is
+    // deliberately stricter: captions must exist on the real
+    // HTMLVideoElement (`video.textTracks`) and as a real child `<track>`
+    // so browser-native rendering and user caption preferences apply.
+    // Without this override, `player.textTracks()` reports the emulated
+    // caption while `video.textTracks` and the DOM remain empty — making
+    // the UI claim "Captions on" for a track the browser does not own.
+    html5: { nativeTextTracks: true },
     sources: [{ src: options.initialUrl, type: 'video/mp4' }],
   })
 
@@ -178,8 +187,7 @@ function toArray<T>(list: { length: number }): T[] {
  * the video source itself changing), so repeated calls never accumulate
  * duplicate `<track>`s. Callers read the resulting `TextTrack` back via
  * `getCaptionsTrack`, not a return value here — video.js's own
- * `HTMLTrackElement` type doesn't expose `.track` (another type gap; the
- * documented way to read it back is `player.textTracks()`).
+ * `HTMLTrackElement` type doesn't expose `.track` (another type gap).
  */
 export function setCaptionsTrack(
   player: Player,
@@ -205,10 +213,15 @@ export function setCaptionsTrack(
 }
 
 /** The current `kind: 'captions'` `TextTrack`, if one has been added via
- * `setCaptionsTrack` — `null` otherwise. Callers (`useCaptionsAnchor`, the
- * CC toggle) poll/read `.mode` off this, exactly as `captionsAnchor.ts`'s
- * docblock always expected a real caller to supply. */
+ * `setCaptionsTrack` — `null` otherwise. Read the adapter-owned remote
+ * list, not `player.textTracks()`: with native tracks, video.js updates
+ * that general list asynchronously after a same-task replacement and can
+ * briefly return the track we just removed. `remoteTextTracks()` is
+ * updated synchronously by the add/remove calls above, so React always
+ * receives the live track whose `.mode` the browser actually renders.
+ * Callers (`useCaptionsAnchor`, the CC toggle) poll/read `.mode` off this,
+ * exactly as `captionsAnchor.ts`'s docblock expected. */
 export function getCaptionsTrack(player: Player): TextTrack | null {
-  const tracks = toArray<TextTrack>(player.textTracks())
+  const tracks = toArray<TextTrack>(player.remoteTextTracks())
   return tracks.find((t) => t.kind === 'captions') ?? null
 }

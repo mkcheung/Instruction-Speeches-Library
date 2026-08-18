@@ -203,7 +203,34 @@ test('Scenario A — native captions and annotations toggle independently', asyn
   const video = await waitForVideo(page)
 
   // Step 2: exactly one kind="captions" track, expected language/label,
-  // non-null cues, seeded cue text — plus the real <track> element.
+  // non-null cues, seeded cue text — plus the real <track> element. VTT
+  // loading is asynchronous relative to video metadata, so poll the full
+  // native-track contract rather than racing it with an immediate read.
+  // Keeping `count` in the polled value means duplicates cannot pass.
+  await expect
+    .poll(
+      async () => {
+        const captions = (await textTracksInfo(video)).filter((t) => t.kind === 'captions')
+        return {
+          count: captions.length,
+          label: captions.length === 1 ? captions[0].label : null,
+          language: captions.length === 1 ? captions[0].language : null,
+          cuesLoaded: captions.length === 1 && captions[0].cueCount > 0,
+          hasSeedCue:
+            captions.length === 1 &&
+            captions[0].cueTexts.join(' ').includes('welcome to the toastmasters showcase'),
+        }
+      },
+      { timeout: POLL_TIMEOUT, message: 'native captions track never loaded' },
+    )
+    .toEqual({
+      count: 1,
+      label: 'English',
+      language: 'en',
+      cuesLoaded: true,
+      hasSeedCue: true,
+    })
+
   const tracks = await textTracksInfo(video)
   const captionTracks = tracks.filter((t) => t.kind === 'captions')
   expect(captionTracks, 'exactly one captions track').toHaveLength(1)
@@ -359,6 +386,24 @@ test('Scenario B — editing a cue persists, re-derives, and survives reload', a
 
   const tracksAfterEdit = (await textTracksInfo(video)).filter((t) => t.kind === 'captions')
   expect(tracksAfterEdit, 'still exactly one captions track after the edit').toHaveLength(1)
+
+  // The React CC control must hold the replacement track, not the one
+  // video.js just removed. Native video.js updates its broad
+  // `player.textTracks()` mirror asynchronously after replacement, so
+  // this real-browser toggle catches a stale-handle regression that a
+  // native-list count/cue assertion alone cannot see.
+  const readCurrentCaptionMode = async () =>
+    video.evaluate((el) => {
+      const track = Array.from((el as unknown as BrowserVideoElement).textTracks).find(
+        (candidate) => candidate.kind === 'captions',
+      )
+      return track?.mode
+    })
+
+  await setCaptionsShowing(page, false)
+  await expect.poll(readCurrentCaptionMode, { timeout: POLL_TIMEOUT }).toBe('disabled')
+  await setCaptionsShowing(page, true)
+  await expect.poll(readCurrentCaptionMode, { timeout: POLL_TIMEOUT }).toBe('showing')
 
   // Step 5: reload to prove durability.
   await page.reload({ waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
