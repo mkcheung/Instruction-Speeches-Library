@@ -7,12 +7,12 @@ use App\Http\Requests\Speech\CompleteUploadRequest;
 use App\Http\Requests\Speech\CreateUploadRequest;
 use App\Http\Requests\Speech\SetPosterFrameRequest;
 use App\Http\Resources\SpeechAssetResource;
-use App\Jobs\GenerateCaptions;
 use App\Jobs\GeneratePoster;
 use App\Jobs\TranscodeSpeechAsset;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
+use App\Services\Captions\EnsureCaptionJob;
 use App\Services\MediaUrlSigner;
 use App\Services\MultipartUploadService;
 use App\Services\QuotaService;
@@ -123,7 +123,7 @@ class SpeechUploadController extends Controller
      * will update. `after_commit` (§9.2) is why the dispatch happens inside
      * the transaction rather than after it.
      */
-    public function complete(CompleteUploadRequest $request, Speech $speech, SpeechAsset $asset, string $uploadId, QuotaService $quota, MultipartUploadService $multipart): JsonResponse
+    public function complete(CompleteUploadRequest $request, Speech $speech, SpeechAsset $asset, string $uploadId, QuotaService $quota, MultipartUploadService $multipart, EnsureCaptionJob $captions): JsonResponse
     {
         $this->authorizeOwner($request, $speech);
         abort_unless($asset->speech_id === $speech->id && $asset->upload_id === $uploadId, Response::HTTP_NOT_FOUND);
@@ -135,7 +135,7 @@ class SpeechUploadController extends Controller
         $result = $multipart->complete($asset->path, $uploadId, $parts);
         $quota->releaseOnComplete($asset, $result['byte_size']);
 
-        $videoAsset = DB::transaction(function () use ($asset, $speech, $result) {
+        $videoAsset = DB::transaction(function () use ($asset, $speech, $result, $captions) {
             $asset->update(['status' => 'ready', 'byte_size' => $result['byte_size']]);
 
             $video = $speech->assets()->create([
@@ -154,18 +154,10 @@ class SpeechUploadController extends Controller
             // separate queue/worker (App\Jobs\GenerateCaptions ->
             // `redis-long`/`captions`) so a five-minute whisper.cpp run
             // never delays the video reaching `ready`. Only when the
-            // speaker hasn't turned captions off (§20 Q12's off-switch).
-            if ($speech->captions_enabled) {
-                $captions = $speech->assets()->create([
-                    'kind' => 'captions',
-                    'format' => 'vtt',
-                    'disk' => $asset->disk,
-                    'path' => "speeches/{$speech->ulid}/{$speech->ulid}/captions.vtt",
-                    'status' => 'processing',
-                ]);
-
-                GenerateCaptions::dispatch($captions->id);
-            }
+            // speaker hasn't turned captions off (§20 Q12's off-switch) —
+            // EnsureCaptionJob::ensureForUpload() owns that check now,
+            // centralizing it alongside the enable/retry call sites.
+            $captions->ensureForUpload($speech);
 
             return $video;
         });
@@ -197,7 +189,7 @@ class SpeechUploadController extends Controller
      * just runs the same deterministic pipeline again, independently of
      * the other asset's own status.
      */
-    public function retry(Request $request, Speech $speech, SpeechAsset $asset): JsonResponse
+    public function retry(Request $request, Speech $speech, SpeechAsset $asset, EnsureCaptionJob $captions): JsonResponse
     {
         abort_unless(
             $asset->speech_id === $speech->id && in_array($asset->kind, ['video', 'captions'], true) && $asset->status === 'failed',
@@ -213,17 +205,22 @@ class SpeechUploadController extends Controller
         // widened/narrowed independently.
         if ($asset->kind === 'captions') {
             $this->authorize('caption.update', $speech);
-        } else {
-            $this->authorizeOwner($request, $speech);
+
+            // captions-settings gap fix: "any disabled state -> retry ->
+            // 409 captions_disabled" — EnsureCaptionJob::retryAutomatic
+            // throws CaptionsDisabledException (rendered as a 409 by the
+            // exception itself) rather than silently re-enabling
+            // automation. Must never fall through to the video branch
+            // below.
+            $asset = $captions->retryAutomatic($speech, $asset);
+
+            return new JsonResponse(['asset' => new SpeechAssetResource($asset)]);
         }
+
+        $this->authorizeOwner($request, $speech);
 
         $asset->update(['status' => 'processing', 'failure_code' => null, 'failure_detail' => null]);
-
-        if ($asset->kind === 'video') {
-            TranscodeSpeechAsset::dispatch($asset->id)->afterCommit();
-        } else {
-            GenerateCaptions::dispatch($asset->id)->afterCommit();
-        }
+        TranscodeSpeechAsset::dispatch($asset->id)->afterCommit();
 
         return new JsonResponse(['asset' => new SpeechAssetResource($asset)]);
     }

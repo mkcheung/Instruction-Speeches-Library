@@ -35,16 +35,62 @@ class WhisperTranscriber implements CaptionTranscriberContract
 {
     public function __construct(private readonly TranscriptDeriver $deriver = new TranscriptDeriver) {}
 
-    public function transcribe(SpeechAsset $sourceAsset, SpeechAsset $captionsAsset): void
+    public function transcribe(SpeechAsset $sourceAsset, SpeechAsset $captionsAsset, string $attemptId): void
     {
+        // ffmpeg needs a `.wav`-suffixed output path to infer the WAV
+        // muxer, so the audio scratch file can't use tempnam()'s raw
+        // returned path directly — same "unlink the placeholder, use a
+        // suffixed sibling path" pattern `$outputBase`/`$outputVtt` below
+        // already use, applied consistently here too. The bug this fixes:
+        // the old code called `tempnam(...).'.wav'` WITHOUT unlinking the
+        // original tempnam'd placeholder first, so that zero-byte file was
+        // silently leaked on local disk on every single run (only the
+        // `.wav` sibling ever got cleaned up in `finally`).
         $localSource = tempnam(sys_get_temp_dir(), 'whisper_src_');
-        $localAudio = tempnam(sys_get_temp_dir(), 'whisper_audio_').'.wav';
+        $audioBase = tempnam(sys_get_temp_dir(), 'whisper_audio_');
+        @unlink($audioBase);
+        $localAudio = $audioBase.'.wav';
         $outputBase = tempnam(sys_get_temp_dir(), 'whisper_out_');
         @unlink($outputBase); // whisper.cpp writes {$outputBase}.vtt itself
         $outputVtt = $outputBase.'.vtt';
 
         try {
-            file_put_contents($localSource, Storage::disk($sourceAsset->disk)->get($sourceAsset->path));
+            $sourceStream = Storage::disk($sourceAsset->disk)->readStream($sourceAsset->path);
+
+            if ($sourceStream === null) {
+                $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
+
+                return;
+            }
+
+            $localHandle = fopen($localSource, 'wb');
+
+            if ($localHandle === false) {
+                fclose($sourceStream);
+                $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
+
+                return;
+            }
+
+            // Streamed copy, not `Storage::get()` buffered whole into
+            // memory first: a multi-hundred-MB source video must not be
+            // held in PHP memory just to land it on local disk for ffmpeg.
+            $copied = stream_copy_to_stream($sourceStream, $localHandle);
+            fclose($localHandle);
+            fclose($sourceStream);
+
+            if ($copied === false) {
+                $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
+
+                return;
+            }
+
+            // §4.1's first stage-boundary heartbeat: about to shell out to
+            // FFmpeg, which can itself take a noticeable slice of the
+            // overall 3600s job timeout on a large source. A no-op if some
+            // other transaction (disable, manual edit, a fresher re-enable)
+            // already took this row away from this attempt.
+            CaptionAttemptTracker::heartbeat($captionsAsset->id, $attemptId);
 
             // 16kHz mono PCM WAV: whisper.cpp's documented required input
             // format for its CLI (no on-the-fly resampling inside the
@@ -57,10 +103,15 @@ class WhisperTranscriber implements CaptionTranscriberContract
             ]);
 
             if (! $extract->successful()) {
-                $this->fail($captionsAsset, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
+                $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
 
                 return;
             }
+
+            // Second stage-boundary heartbeat: about to run whisper-cli
+            // itself, the long-running step this whole clock exists for
+            // (`captions.timeout_seconds`, up to 1800s).
+            CaptionAttemptTracker::heartbeat($captionsAsset->id, $attemptId);
 
             $whisper = Process::timeout((int) config('captions.timeout_seconds'))->run([
                 (string) config('captions.whisper_binary'),
@@ -72,7 +123,7 @@ class WhisperTranscriber implements CaptionTranscriberContract
             ]);
 
             if (! $whisper->successful() || ! file_exists($outputVtt)) {
-                $this->fail($captionsAsset, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
+                $this->fail($captionsAsset, $attemptId, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
 
                 return;
             }
@@ -80,13 +131,17 @@ class WhisperTranscriber implements CaptionTranscriberContract
             $vttContent = file_get_contents($outputVtt);
 
             if ($vttContent === false) {
-                $this->fail($captionsAsset, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
+                $this->fail($captionsAsset, $attemptId, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
 
                 return;
             }
 
             $cues = Vtt::parse($vttContent);
             $derived = $this->deriver->derive($cues);
+
+            // Third stage-boundary heartbeat: whisper-cli has finished and
+            // parsing succeeded, about to take the row lock and write.
+            CaptionAttemptTracker::heartbeat($captionsAsset->id, $attemptId);
 
             // Guarded write, same idempotency shape STEP-04's
             // writeFinalStatus() uses: whisper.cpp can run for minutes, and
@@ -96,15 +151,43 @@ class WhisperTranscriber implements CaptionTranscriberContract
             // this would unconditionally overwrite the speaker's edit with
             // stale whisper output the moment the job finally finishes.
             // The edit wins — this write is simply skipped, not retried.
-            DB::transaction(function () use ($captionsAsset, $vttContent, $derived) {
+            //
+            // captions-settings gap fix: this same `status === 'processing'`
+            // re-check is ALSO what stops a disabled-mid-flight attempt
+            // from ever publishing a `ready` result — no separate
+            // `captions_enabled` check is needed here.
+            // App\Services\Captions\EnsureCaptionJob::disable() takes the
+            // exact same `SpeechAsset::whereKey(...)->lockForUpdate()` and,
+            // if the row is still `processing` when it gets the lock, flips
+            // it straight to `failed`/`captions_disabled` atomically.
+            // Whichever of the two transactions (this one, or
+            // EnsureCaptionJob::disable()) acquires the row lock first
+            // wins; the other one's guard below then correctly no-ops,
+            // because by the time it gets the lock the status is no longer
+            // `processing` either way.
+            //
+            // §4.1 adds a second half to that same guard: `caption_attempt_id`
+            // must still equal `$attemptId` too, not just `status`. Without
+            // it, a disable -> re-enable cycle that lands WHILE this write is
+            // in flight would still look like a plain `processing` row to
+            // this check (the new attempt is also `processing`) and this
+            // stale attempt A could publish stale whisper output over
+            // attempt B's row.
+            DB::transaction(function () use ($captionsAsset, $vttContent, $derived, $attemptId) {
                 /** @var SpeechAsset|null $fresh */
                 $fresh = SpeechAsset::query()->whereKey($captionsAsset->id)->lockForUpdate()->first();
 
-                if ($fresh === null || $fresh->status !== 'processing') {
+                if ($fresh === null || $fresh->status !== 'processing' || $fresh->caption_attempt_id !== $attemptId) {
                     return;
                 }
 
-                Storage::disk($fresh->disk)->put($fresh->path, $vttContent);
+                if (! Storage::disk($fresh->disk)->put($fresh->path, $vttContent)) {
+                    // Rolls back this transaction (nothing committed) and
+                    // is caught below, outside the transaction, so the
+                    // asset resolves to `failed` rather than `ready` over
+                    // a VTT that never actually landed on disk.
+                    throw new CaptionStorageWriteException("Failed writing VTT to disk for caption asset {$fresh->id}.");
+                }
 
                 $fresh->update([
                     'status' => 'ready',
@@ -132,24 +215,37 @@ class WhisperTranscriber implements CaptionTranscriberContract
                 'caption_asset_id' => $captionsAsset->id,
                 'exception' => $e->getMessage(),
             ]);
-            $this->fail($captionsAsset, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
+            $this->fail($captionsAsset, $attemptId, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
+        } catch (CaptionStorageWriteException $e) {
+            Log::warning('WhisperTranscriber: writing the generated VTT to storage failed.', [
+                'caption_asset_id' => $captionsAsset->id,
+                'exception' => $e->getMessage(),
+            ]);
+            $this->fail($captionsAsset, $attemptId, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
         } finally {
+            // Every local scratch path this method creates, cleaned up on
+            // both the success and failure paths — including the
+            // whisper.cpp output `.vtt`, which lives outside the disk
+            // Storage abstraction entirely and would otherwise leak on
+            // every single run.
             @unlink($localSource);
             @unlink($localAudio);
             @unlink($outputVtt);
         }
     }
 
-    private function fail(SpeechAsset $captionsAsset, string $code, string $detail): void
+    private function fail(SpeechAsset $captionsAsset, string $attemptId, string $code, string $detail): void
     {
         // Same guard as the success path: don't flip a row back to
         // `failed` if a speaker already hand-wrote captions (CaptionService
-        // ::update) while this whisper attempt was still running.
-        DB::transaction(function () use ($captionsAsset, $code, $detail) {
+        // ::update) while this whisper attempt was still running — and
+        // (§4.1) don't flip it either if a disable -> re-enable already
+        // rotated a newer attempt id onto this row.
+        DB::transaction(function () use ($captionsAsset, $attemptId, $code, $detail) {
             /** @var SpeechAsset|null $fresh */
             $fresh = SpeechAsset::query()->whereKey($captionsAsset->id)->lockForUpdate()->first();
 
-            if ($fresh === null || $fresh->status !== 'processing') {
+            if ($fresh === null || $fresh->status !== 'processing' || $fresh->caption_attempt_id !== $attemptId) {
                 return;
             }
 

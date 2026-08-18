@@ -105,6 +105,13 @@ jobs:
   # spec, run against the actual docker-compose stack — not a toy site.
   # Runs independently of `test` above (no `needs:`) so a slow/flaky e2e
   # run never blocks the fast unit-test signal.
+  #
+  # STEP-09-VERIFICATION-PLAN.md §7 rewired this job to drive the built
+  # `web/dist` bundle through scripts/e2e-stack.sh (§3.1) instead of the
+  # host Vite dev server — the cold-Vite-transform stalls warmup.setup.ts
+  # exists to absorb and the HTTPS->HTTP mixed-content gap the E2E media
+  # proxy fixes are both known false-failure sources for the raw-Vite
+  # setup this job used to use; the built-bundle path removes both.
   e2e:
     runs-on: ubuntu-latest
 
@@ -117,48 +124,43 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      # STEP-02-first-deploy.md's domain layout, reproduced on the runner:
-      # two hostnames sharing a registrable domain, both resolving locally.
-      - name: Add speechcoach.test hosts entries
+      # scripts/e2e-stack.sh's own `prepare` command checks for these three
+      # hostnames but deliberately does not sudo on the caller's behalf
+      # (see that script's own comment) — this is that privileged step, run
+      # once, here. `media.speechcoach.test` (§3.1 point 3/4) is new
+      # relative to this job's pre-STEP-09 two-hostname layout.
+      - name: Add speechcoach.test hosts entries (app/api/media)
         run: |
           echo "127.0.0.1 app.speechcoach.test" | sudo tee -a /etc/hosts
           echo "127.0.0.1 api.speechcoach.test" | sudo tee -a /etc/hosts
+          echo "127.0.0.1 media.speechcoach.test" | sudo tee -a /etc/hosts
 
-      # Not `mkcert -install`: that imports the local CA into the runner's
-      # NSS/system trust stores, which is one more thing to get right
-      # (certutil, browser-specific trust DBs) for a value playwright.config.ts
-      # already gets around with `ignoreHTTPSErrors: true`. Generating the
-      # leaf cert alone is enough — nginx just needs *a* cert to terminate
-      # TLS with, real trust chain or not.
-      - name: Install mkcert and generate TLS certs
+      # Installed on PATH once, here — scripts/e2e-stack.sh's `prepare`
+      # command requires `mkcert` to already be present (it deliberately
+      # does not install tooling itself) and generates a SEPARATE cert
+      # (docker/certs-e2e/, covering all three hostnames including
+      # media.speechcoach.test) from the `test` job's/dev stack's own
+      # docker/certs/. Not `mkcert -install`: that imports the local CA
+      # into the runner's NSS/system trust stores, one more thing to get
+      # right for a value playwright.config.ts already gets around with
+      # `ignoreHTTPSErrors: true`.
+      - name: Install mkcert
         run: |
           curl -sSL -o /usr/local/bin/mkcert https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
           chmod +x /usr/local/bin/mkcert
-          mkcert -cert-file docker/certs/speechcoach.test.pem \
-                 -key-file  docker/certs/speechcoach.test-key.pem \
-                 app.speechcoach.test api.speechcoach.test
 
       # No `php artisan key:generate` here (unlike the `test` job) — that
       # needs vendor/ installed on the runner just for this one value, and
       # api/.env is only read by `docker compose` (env_file:) to populate
-      # the app/queue-worker containers, which build their own vendor/
-      # inside the image regardless. APP_KEY's only real requirement is
-      # "32 random bytes, base64, prefixed" — openssl gets there directly.
+      # the app/queue-worker/scheduler/etc. containers, which build their
+      # own vendor/ inside the image regardless. APP_KEY's only real
+      # requirement is "32 random bytes, base64, prefixed" — openssl gets
+      # there directly.
       - name: Prepare api/.env
         working-directory: api
         run: |
           cp .env.example .env
           sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" .env
-
-      # web/.env.example still documents the OLDER same-origin :8080 proxy
-      # (pre-STEP-02); the real local .env (gitignored, matching what these
-      # specs assert against) points at the app./api. subdomain split —
-      # reproduce that exact value here rather than the example file's.
-      - name: Prepare web/.env
-        working-directory: web
-        run: |
-          echo "VITE_API_URL=https://api.speechcoach.test" > .env
-          echo "VITE_ENABLE_SPIKES=false" >> .env
 
       - name: Install JS dependencies
         working-directory: web
@@ -168,73 +170,74 @@ jobs:
         working-directory: web
         run: npx playwright install --with-deps chromium
 
-      # `--wait` (Compose v2) blocks until every service with a healthcheck
-      # reports healthy, and fails fast if one goes unhealthy instead of
-      # letting a doomed run limp to the Playwright step before failing
-      # there with a far less obvious error.
-      # `queue-worker` deliberately excluded here: it runs `php artisan
-      # queue:work` from the moment its container starts, and that touches
-      # the `cache` table (CACHE_STORE=database) on its very first loop
-      # iteration — before migrations have run, that table doesn't exist
-      # yet and the container crashes immediately. `--wait` treats a
-      # crashed container as a hard failure, so bringing queue-worker up
-      # in the same breath as everything else races the schema. This
-      # isn't CI-specific: it's a real ordering requirement (migrate
-      # before anything that reads the schema starts), just one that
-      # never surfaced locally because a human naturally runs migrate
-      # before ever starting queue-worker by hand.
-      - name: Start the docker compose stack (excluding queue-worker)
-        run: docker compose up -d --build --wait --wait-timeout 300 postgres seaweedfs valkey mailpit app web
+      # §3.1: certs + /etc/hosts verification for all three E2E hostnames
+      # (the hosts entries themselves were added, with sudo, above —
+      # `prepare` only checks they exist).
+      - name: e2e-stack prepare (certs)
+        run: ./scripts/e2e-stack.sh prepare
 
-      - name: Run migrations
-        run: docker compose exec -T app php artisan migrate --force
-
-      # WHY this step exists: CP-05 added tests/auth.setup.ts and made every
-      # browser project depend on the `setup` project, so EVERY Playwright
-      # run now begins by logging in as E2ESeeder's fixture users
-      # (member@e2e.test etc.). `migrate --force` creates the schema and
-      # nothing else, and E2ESeeder is deliberately NOT in DatabaseSeeder's
-      # chain — it is opt-in precisely because it mints real accounts with a
-      # known password (see DatabaseSeeder's own comment). Without this
-      # step those accounts simply do not exist in CI: all three logins fail
-      # on bad credentials, the app never leaves /login, and auth.setup.ts
-      # dies on `page.waitForURL(.../onboarding)` after 30s — identically on
-      # every retry, which is what tells you it is missing data and not the
-      # Vite stall that warmup.setup.ts exists to absorb.
-      #
-      # `--class=E2ESeeder` unqualified on purpose: Laravel's SeedCommand
-      # prefixes `Database\Seeders\` when the value contains no backslash,
-      # which sidesteps quoting a namespace through YAML *and* the shell.
-      # E2ESeeder calls RoleSeeder itself, so roles are covered.
-      - name: Seed E2E fixture data
-        run: docker compose exec -T app php artisan db:seed --class=E2ESeeder --force
-
-      - name: Start queue-worker
-        run: docker compose up -d --build --wait --wait-timeout 60 queue-worker
-
-      # Vite is deliberately NOT containerized (§21.2) — nginx's
-      # app.speechcoach.test server block proxies to
-      # host.docker.internal:5173, i.e. THIS runner, exactly like a local
-      # dev machine. Backgrounded so later steps in this job can still run;
-      # GitHub Actions keeps background processes alive for the rest of the
-      # job, only the runner's teardown at job end kills them.
-      - name: Start the Vite dev server
-        working-directory: web
-        run: nohup npm run dev > /tmp/vite.log 2>&1 &
-
-      - name: Wait for app.speechcoach.test to answer
+      - name: docker compose config sanity (base + E2E override)
         run: |
-          for i in $(seq 1 30); do
-            if curl -skf https://app.speechcoach.test/ -o /dev/null; then
-              echo "up after ${i}s"; exit 0
-            fi
-            sleep 1
-          done
-          echo "--- vite log ---"; cat /tmp/vite.log
-          echo "--- web container log ---"; docker compose logs web --tail=50
-          exit 1
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.e2e.yaml config --quiet
 
-      - name: Run Playwright (speech-create e2e)
+      # §7 items 1-5 in one command: builds the production `web/dist`
+      # bundle (baked at image-build time via compose.e2e.yaml's
+      # VITE_API_URL build arg) and serves it through the E2E nginx
+      # override, migrates, runs `media:initialize` (idempotent
+      # bucket+CORS, replacing the old CORS-only manual prerequisite),
+      # seeds E2ESeeder, starts the default queue worker, and explicitly
+      # stops whisper-worker — see scripts/e2e-stack.sh's own `cmd_up` for
+      # the exact ordering.
+      - name: e2e-stack up --fresh
+        run: ./scripts/e2e-stack.sh up --fresh
+
+      # §3.3: the narrow caption fixture seeder, run explicitly AFTER
+      # E2ESeeder (which e2e-stack.sh's `up` already ran) — not folded into
+      # that script, per the plan's "do not make every existing... seeder
+      # pay for media setup."
+      - name: Seed E2E caption fixtures
+        run: docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml exec -T app php artisan db:seed --class=E2ECaptionsSeeder --force
+
+      - name: e2e-stack nginx-test
+        run: ./scripts/e2e-stack.sh nginx-test
+
+      - name: e2e-stack verify-signed-media
+        run: ./scripts/e2e-stack.sh verify-signed-media
+
+      # §4.2 item 4 / §7 item 8: the live Postgres generated `body_tsv`
+      # column + its GIN index — sqlite (the Pest suite's driver) cannot
+      # express either, so this is the only place either is ever checked
+      # against a real Postgres catalog.
+      - name: Verify Postgres caption/transcript search schema
+        run: ./scripts/verify-postgres-caption-schema.sh
+
+      # §7 item 6 / §4.2 item 3: "the temporal acceptance proof" — video
+      # must reach `ready` while captions stay queued/`processing` with
+      # only the transcode worker consuming its queue and the deterministic
+      # `caption-test-worker` held stopped.
+      #
+      # GAP, flagged honestly rather than silently skipped: this script is
+      # part of §3.1's `caption-test-worker`/Valkey-key test-control
+      # machinery, which had not landed on this branch as of this workflow
+      # being written (verified by `ls scripts/` — no such file). This step
+      # is left in, not removed or made `continue-on-error`, so CI visibly
+      # (and correctly) fails here until that script exists, rather than
+      # silently reporting green on a check that never ran.
+      - name: Verify caption/transcode worker isolation
+        run: ./scripts/verify-caption-worker-isolation.sh
+
+      # §7 item 7: forced re-derive overlap, concurrent enable/upload/
+      # retry, and attempt A -> disable -> re-enable B, against real
+      # PostgreSQL/Valkey with two normal workers plus controlled E2E
+      # caption workers.
+      #
+      # Same GAP as the step above — this script depends on the same
+      # not-yet-landed `caption-test-worker` control machinery.
+      - name: Verify caption concurrency invariants
+        run: ./scripts/verify-caption-concurrency.sh
+
+      - name: Run Playwright (speech-create, app-shell, essay-editor, captions)
         working-directory: web
         # R3 (PLAN-APP-HEADER.md): a new spec only runs in CI if it's
         # listed here — `testDir` alone isn't enough, this command names
@@ -242,9 +245,22 @@ jobs:
         # shell and D5's anonymous-visitor-stays-on-/u/username regression,
         # and needs the same E2ESeeder fixture data as `speech-create.spec.ts`.
         # `essay-editor.spec.ts` (CP-08) drives the real TipTap editor and
-        # needs that same fixture — specifically the `ready` speech_asset and
-        # the explicitly-reset essay columns E2ESeeder now writes.
-        run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts --project=chromium
+        # needs that same fixture. `captions.spec.ts` (§7 item 9, added
+        # here) is Chromium-only/serial by its own file-level `test.skip`,
+        # so listing it alongside the other three (which run on every
+        # browser project) is safe — non-chromium projects skip it
+        # themselves.
+        run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts tests/captions.spec.ts --project=chromium
+
+      # §7's scheduler paragraph: proves the actually-running `scheduler`
+      # compose service (not a direct `artisan media:reconcile` call) is
+      # what recovers a stale caption attempt, under the APP_ENV=e2e
+      # every-minute schedule. Runs after Playwright so a real caption
+      # fixture row has been exercised already; the script's own re-seed of
+      # E2ECaptionsSeeder at the end restores the processing fixture's
+      # liveness clocks regardless of run order.
+      - name: Verify caption recovery scheduler
+        run: ./scripts/verify-caption-recovery-scheduler.sh
 
       - name: Upload test artifacts
         if: always()
@@ -256,6 +272,14 @@ jobs:
             web/test-results/
           retention-days: 7
 
-      - name: Dump container logs on failure
+      # §7 item 10: "app/worker logs" — every service in the E2E project,
+      # not just app, so a caption-pipeline failure (queue-worker,
+      # ffmpeg-worker, whisper-worker, scheduler) is diagnosable from the
+      # same artifact set as the Playwright report above.
+      - name: Dump E2E stack container logs on failure
         if: failure()
-        run: docker compose logs --tail=200
+        run: docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml logs --tail=200
+
+      - name: Tear down the E2E stack
+        if: always()
+        run: ./scripts/e2e-stack.sh down

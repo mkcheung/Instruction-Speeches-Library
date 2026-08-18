@@ -39,14 +39,26 @@ class SpeechPolicy
      * STEP-09-captions.md / the frozen STEP-09 backend contract §1.
      * Deliberately NOT `AnnotationPolicy::readAnnotations` — captions/
      * transcripts belong to the Speech and can exist with zero reviews.
-     * Reuses `view()`'s exact visibility (owner OR an active non-revoked
-     * reviewer per `Review::ACCESS_GRANTING`) because a reviewer coaching
-     * a speech needs to read captions/transcript the same as they can
-     * watch the video.
+     * Deliberately NOT a delegation to `view()` either: `view()` also
+     * admits a merely-`invited` (not yet accepted) reviewer, since general
+     * speech visibility (e.g. seeing the invite exists) is looser than
+     * caption/transcript access. Full transcript text is more sensitive
+     * than "an invite exists" — an invited-but-not-yet-accepted reviewer
+     * must NOT be able to read it. This owns its own query: owner OR an
+     * active non-revoked reviewer whose status is in
+     * `Review::ACCESS_GRANTING` (accepted/in_progress/published).
      */
     public function readCaptions(User $user, Speech $speech): bool
     {
-        return $this->view($user, $speech);
+        if ($speech->user_id === $user->id) {
+            return true;
+        }
+
+        return $speech->reviews()
+            ->where('reviewer_id', $user->id)
+            ->whereIn('status', Review::ACCESS_GRANTING)
+            ->whereNull('revoked_at')
+            ->exists();
     }
 
     /**

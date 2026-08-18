@@ -31,6 +31,18 @@ export interface VideoJsAdapterOptions {
   /** Called on a retryable error; must resolve to a fresh presigned URL. */
   refreshUrl: () => Promise<string>
   poster?: string
+  /**
+   * Fired once the reassigned `src` has actually loaded (same
+   * `loadedmetadata` moment position/play-state get restored below) after
+   * an error-driven URL refresh. `addRemoteTextTrack`'s `manualCleanup:
+   * false` (see `setCaptionsTrack` below) means video.js strips any
+   * remote text track — including the caption `<track>` — on every `src`
+   * reassignment, this refresh path included. Nothing here re-adds one:
+   * that's the caller's job (`setCaptionsTrack` needs the caption URL,
+   * which this adapter doesn't have), so this callback is the caller's one
+   * hook to know a reattach is needed.
+   */
+  onSourceRefreshed?: () => void
 }
 
 export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsAdapterOptions): Player {
@@ -97,6 +109,7 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
           player.currentTime(resumeAt)
           if (wasPlaying) void player.play()?.catch(() => undefined)
           refreshing = false
+          options.onSourceRefreshed?.()
         }
         const onFailedAgain = () => {
           player.off('loadedmetadata', onLoaded)

@@ -146,6 +146,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/speeches/{speech}/captions', [CaptionController::class, 'update'])
         ->name('api.speeches.captions.update');
 
+    // captions-settings gap fix (post-STEP-09 code review): the missing
+    // write surface for `speeches.captions_enabled` — STEP-09 shipped the
+    // column and every defensive read of it, but no route to flip it.
+    // Owner-only (`caption.update`, the same gate `PUT /captions` uses),
+    // registered alongside the other caption routes above.
+    Route::patch('/speeches/{speech}/caption-settings', [CaptionController::class, 'updateSettings'])
+        ->name('api.speeches.caption-settings.update');
+
     Route::get('/speeches/{speech}/transcript', [TranscriptController::class, 'show'])
         ->name('api.speeches.transcript.show');
 

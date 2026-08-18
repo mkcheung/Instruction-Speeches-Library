@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
 import { useGetCaptionsQuery, useUpdateCaptionsMutation } from '@/features/caption/captionApi'
-import { useGetTranscriptQuery } from '@/features/transcript/transcriptApi'
+import { useGetTranscriptQuery, useSearchSpeechesQuery } from '@/features/transcript/transcriptApi'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -147,5 +147,45 @@ describe('captionApi', () => {
     // invalidation, which should trigger a refetch of the still-subscribed
     // transcript query.
     await waitFor(() => expect(transcriptCallCount).toBe(2))
+  })
+
+  it("a successful updateCaptions also invalidates transcriptApi's Search tag, refetching a subscribed search query", async () => {
+    let searchCallCount = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.endsWith('/api/speeches/1/captions') && methodOf(input, init) === 'PUT') {
+        return jsonResponse({
+          captions: { status: 'ready', vtt: 'WEBVTT\n\nedited', failure_code: null, updated_at: null, asset_id: null },
+        })
+      }
+      if (url.includes('/api/speeches/search')) {
+        searchCallCount += 1
+        return jsonResponse({ results: [] })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = createTestStore()
+    const localWrapper = ({ children }: { children: ReactNode }) => <Provider store={store}>{children}</Provider>
+
+    const { result } = renderHook(
+      () => ({ search: useSearchSpeechesQuery({ q: 'liberty' }), update: useUpdateCaptionsMutation() }),
+      { wrapper: localWrapper },
+    )
+
+    await waitFor(() => expect(result.current.search.data).toBeDefined())
+    expect(searchCallCount).toBe(1)
+
+    const [updateCaptions] = result.current.update
+    await act(async () => {
+      await updateCaptions({ speechId: 1, body: { vtt: 'WEBVTT\n\nedited' } }).unwrap()
+    })
+
+    // A caption edit re-derives `speech_transcripts.body`, which
+    // `searchSpeeches`'s tsvector match reads — a pre-warmed Search cache
+    // must refetch, not go stale forever.
+    await waitFor(() => expect(searchCallCount).toBe(2))
   })
 })

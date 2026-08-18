@@ -75,9 +75,10 @@ export interface Speech {
    * `NOT NULL DEFAULT true`) — reconciled against the real
    * `SpeechResource`, which now always includes it. Toggling this off
    * does NOT retroactively delete an already-generated transcript, only
-   * gates future runs; no frontend surface writes this yet (no settings
-   * UI was in STEP-09's frontend scope), so it is read-only from this
-   * client for now. */
+   * gates future runs. Written via `PATCH /speeches/{speech}/caption-
+   * settings` (`updateCaptionSettings` in `speechApi.ts`) — the
+   * captions-settings gap fix that added the missing write surface for
+   * this field. */
   captions_enabled: boolean
   primary_video: SpeechAsset | null
   poster?: SpeechPoster

@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SpeechDeletedException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Caption\UpdateCaptionSettingsRequest;
 use App\Http\Requests\Caption\UpdateCaptionsRequest;
 use App\Http\Resources\CaptionResource;
+use App\Http\Resources\SpeechResource;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Captions\CaptionService;
+use App\Services\Captions\EnsureCaptionJob;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -70,6 +73,38 @@ class CaptionController extends Controller
 
         return new JsonResponse([
             'captions' => new CaptionResource($this->toResourceArray($captionsAsset)),
+        ]);
+    }
+
+    /**
+     * `PATCH /speeches/{speech}/caption-settings`. Ownership-only, same
+     * `caption.update` gate as `PUT /captions` — flipping the automatic-
+     * captioning off-switch is a speaker act, not a reviewer or admin one
+     * (see SpeechPolicy::updateCaptions's own docblock; no new policy
+     * method needed since this is the identical ownership check).
+     *
+     * All the actual state-machine logic (the frozen table in the task
+     * brief) lives in App\Services\Captions\EnsureCaptionJob — this method
+     * is just the HTTP boundary: authorize, call the right service method,
+     * return the fresh speech so the frontend's optimistic-update/refetch
+     * has the real `captions_enabled` value without a second round trip.
+     */
+    public function updateSettings(UpdateCaptionSettingsRequest $request, string $speech, EnsureCaptionJob $captions): JsonResponse
+    {
+        $speechModel = $this->resolveSpeech($speech);
+
+        $this->authorize('caption.update', $speechModel);
+
+        $enabled = (bool) $request->validated('captions_enabled');
+
+        if ($enabled) {
+            $captions->enable($speechModel);
+        } else {
+            $captions->disable($speechModel);
+        }
+
+        return new JsonResponse([
+            'speech' => new SpeechResource($speechModel->fresh()),
         ]);
     }
 

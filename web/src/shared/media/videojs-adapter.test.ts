@@ -9,14 +9,43 @@ import { describe, expect, it, vi } from 'vitest'
  * player permanently unable to retry again later.
  */
 
+type FakeTrack = { kind: string; mode: TextTrackMode; label?: string; src?: string }
+
 class FakePlayer {
   listeners = new Map<string, Set<() => void>>()
   currentTimeValue = 0
   pausedValue = true
   srcCalls: unknown[] = []
   playCalled = false
+  /** Remote text tracks (e.g. captions), same shape `setCaptionsTrack`/
+   * `getCaptionsTrack` read/write in the real adapter. */
+  tracks: FakeTrack[] = []
   private _error: { code: number } | null = null
   private _poster: string | undefined = undefined
+
+  remoteTextTracks() {
+    return this.tracks
+  }
+
+  textTracks() {
+    return this.tracks
+  }
+
+  removeRemoteTextTrack(track: FakeTrack) {
+    const index = this.tracks.indexOf(track)
+    if (index >= 0) this.tracks.splice(index, 1)
+  }
+
+  addRemoteTextTrack(options: { kind: string; src: string; label?: string; default?: boolean }) {
+    const track: FakeTrack = {
+      kind: options.kind,
+      mode: options.default ? 'showing' : 'disabled',
+      label: options.label,
+      src: options.src,
+    }
+    this.tracks.push(track)
+    return { track }
+  }
 
   on(event: string, handler: () => void) {
     this.one(event, handler, false)
@@ -148,6 +177,61 @@ describe('videojs-adapter refresh-on-error', () => {
 
     expect(refreshUrl).toHaveBeenCalledTimes(2)
   })
+
+  /**
+   * The bug this guards: `addRemoteTextTrack`'s `manualCleanup: false`
+   * means video.js strips remote text tracks (the caption `<track>`
+   * included) on every `src` reassignment — including this adapter's own
+   * error-driven signed-URL refresh. Nothing about that refresh was
+   * visible to React before `onSourceRefreshed` existed, so
+   * `SpeechWatch.tsx`'s caption-attach effect never re-ran and the track
+   * silently stayed gone. `onSourceRefreshed` is the adapter's signal to
+   * the caller ("re-attach now") — this simulates video.js's real
+   * strip-on-`src`-change behavior (the `FakePlayer` stub doesn't do it
+   * itself, same as the real `HTMLMediaElement.src` setter isn't exercised
+   * under jsdom) and asserts the caller's `onSourceRefreshed` handler,
+   * reattaching via `setCaptionsTrack`, leaves exactly one surviving
+   * track — not zero (never reattached) and not two (accumulated).
+   */
+  it('onSourceRefreshed fires after the reloaded src settles, letting the caller reattach exactly one caption track', async () => {
+    const refreshUrl = vi.fn().mockResolvedValue('https://fresh.example/video.mp4')
+    const onSourceRefreshed = vi.fn()
+    const player = createVideoJsPlayer(document.createElement('video'), {
+      initialUrl: 'https://stale.example/video.mp4',
+      refreshUrl,
+      onSourceRefreshed,
+    }) as unknown as FakePlayer
+
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], {
+      src: 'blob:original',
+    })
+    expect(player.tracks).toHaveLength(1)
+
+    // Wire the reattach the way `SpeechWatch.tsx` does: the caller's own
+    // `onSourceRefreshed` handler is what calls `setCaptionsTrack` again.
+    onSourceRefreshed.mockImplementation(() => {
+      setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], {
+        src: 'blob:original',
+      })
+    })
+
+    player.setError(2)
+    player.emit('error')
+    await flush()
+    await flush()
+
+    // video.js's real `manualCleanup: false` behavior on `src` reassignment
+    // — `FakePlayer.src()` doesn't implement this itself, so it's simulated
+    // here, matching how `setCaptionsTrack`'s own doc comment describes it.
+    player.tracks.length = 0
+
+    expect(onSourceRefreshed).not.toHaveBeenCalled()
+    player.emit('loadedmetadata')
+
+    expect(onSourceRefreshed).toHaveBeenCalledTimes(1)
+    expect(player.tracks).toHaveLength(1)
+    expect(player.tracks[0].src).toBe('blob:original')
+  })
 })
 
 /**
@@ -221,8 +305,6 @@ describe('videojs-adapter poster-flash mitigation', () => {
  * both have `.length` and numeric indexing, the only two things
  * `videojs-adapter.ts`'s own `toArray` helper reads off them.
  */
-type FakeTrack = { kind: string; mode: TextTrackMode; label?: string; src?: string }
-
 function fakeCaptionsPlayer() {
   const tracks: FakeTrack[] = []
   const player = {

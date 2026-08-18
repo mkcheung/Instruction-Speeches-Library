@@ -49,6 +49,15 @@ export const captionApi = createApi({
      * actually succeeds. This is the one place `captionApi.ts` reaches
      * into another slice — deliberate, not an accident, and scoped to
      * exactly the cross-resource rule the contract calls out.
+     *
+     * `'Search'` is invalidated in the SAME dispatch, right alongside
+     * `Transcript` — a caption edit re-derives `speech_transcripts.body`,
+     * which is exactly what `searchSpeeches`'s `tsvector` match reads, so a
+     * pre-warmed Search cache goes stale the moment the write succeeds.
+     * There is no separate revision-convergence wait to line up with here:
+     * this `onQueryStarted` already invalidates `Transcript` immediately
+     * once `queryFulfilled` resolves (no polling in between), so `Search`
+     * follows that identical timing rather than waiting on anything else.
      */
     updateCaptions: builder.mutation<Captions, { speechId: number; body: UpdateCaptionsPayload }>({
       query: ({ speechId, body }) => ({
@@ -61,10 +70,12 @@ export const captionApi = createApi({
       async onQueryStarted({ speechId }, { dispatch, queryFulfilled }) {
         try {
           await queryFulfilled
-          dispatch(transcriptApi.util.invalidateTags([{ type: 'Transcript', id: speechId }]))
+          dispatch(
+            transcriptApi.util.invalidateTags([{ type: 'Transcript', id: speechId }, 'Search']),
+          )
         } catch {
-          // Write failed — leave the transcript cache alone; nothing was
-          // re-derived server-side.
+          // Write failed — leave the transcript/search caches alone;
+          // nothing was re-derived server-side.
         }
       },
     }),

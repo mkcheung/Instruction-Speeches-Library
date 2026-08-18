@@ -1,0 +1,44 @@
+# STEP-09 verification plan §6.4 "Isolated smoke harness". Applied ON TOP
+# of compose.yaml by scripts/whisper-smoke-stack.sh, under a dedicated
+# project name/network — never merged with compose.e2e.yaml or run without
+# that script's `-p` flag (see that script's own header comment for why a
+# bare `docker compose` is unsafe here).
+#
+# Only overrides what actually needs to differ from the dev stack:
+#   - the network name (so this project's containers never share a Docker
+#     network with the dev stack's `speechcoach-dev`, even though both
+#     stacks otherwise reuse the SAME service definitions from compose.yaml
+#     unchanged — `postgres`, `seaweedfs`, `valkey`, `whisper-worker`,
+#     `whisper-smoke`, `whisper-model-init`);
+#   - `postgres`/`seaweedfs`'s published host ports, cleared entirely — this
+#     stack's own containers reach them by service name over the compose
+#     network exactly like the dev stack's do, and nothing here needs a
+#     host-side GUI client the way the dev stack's 5433/8333 publishes
+#     exist for. Leaving compose.yaml's ports in place would collide with
+#     the dev stack (or the E2E stack) on the SAME host whenever this
+#     script runs alongside either of them, which the plan explicitly
+#     requires this harness not to do.
+#
+# `scripts/whisper-smoke-stack.sh` NEVER calls a bare `docker compose up`
+# against this pair of files — every command names its target services
+# explicitly (`postgres seaweedfs valkey`, `whisper-model-init`,
+# `whisper-smoke`, `whisper-worker`) via `docker compose run`/`up -d
+# <service>`, so `app`/`web`/`queue-worker`/`ffmpeg-worker`/`scheduler`
+# (all still defined, unmodified, in compose.yaml) are never built or
+# started by this harness at all — no profile gymnastics needed to keep
+# them out.
+services:
+  postgres:
+    # Plain `ports: []` does NOT clear compose.yaml's published port in an
+    # override file — Compose's default merge keeps the base list when the
+    # override list is empty (verified directly against this exact
+    # docker-compose CLI version). The `!override` tag (Compose Specification
+    # merge control) is what actually forces replacement rather than merge.
+    ports: !override []
+
+  seaweedfs:
+    ports: !override []
+
+networks:
+  default:
+    name: speechcoach-whisper-smoke

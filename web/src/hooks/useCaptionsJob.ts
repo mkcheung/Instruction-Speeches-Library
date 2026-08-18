@@ -8,7 +8,11 @@ import type { Captions } from '@/features/caption/types'
  * reaches `ready` before the caption job finishes" and "the `CC` button
  * lights up" once it does. This hook polls `captionApi`'s `getCaptions`
  * while the job is still in flight (`uploading`/`processing`) and stops
- * once it lands on a terminal state (`ready`/`failed`) — never polls
+ * once it lands on a terminal state (`ready`/`failed`/`unavailable` — the
+ * last one is what `CaptionController::show` synthesizes when no captions
+ * asset row exists at all, e.g. captions were off at upload time; there is
+ * nothing to ever transition away from there, so polling forever would
+ * just be a leak) — never polls
  * before `enabled` (the caller gates that on the video asset itself being
  * `ready`, so this never fires ahead of a speech that has no video yet
  * either).
@@ -28,7 +32,10 @@ export function useCaptionsJob(speechId: number, enabled: boolean) {
     { skip: !enabled, pollingInterval: enabled ? pollingInterval : 0 },
   )
 
-  const desiredPollingInterval = data && (data.status === 'ready' || data.status === 'failed') ? 0 : 4000
+  const desiredPollingInterval =
+    data && (data.status === 'ready' || data.status === 'failed' || data.status === 'unavailable')
+      ? 0
+      : 4000
   if (enabled && desiredPollingInterval !== pollingInterval) {
     setPollingInterval(desiredPollingInterval)
   }

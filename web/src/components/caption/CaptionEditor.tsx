@@ -65,7 +65,11 @@ export function CaptionEditor({ speechId, onSeek }: { speechId: number; onSeek: 
   }
 
   if (data.status !== 'ready' || !data.vtt) {
-    return <p className="text-sm text-muted-foreground">Captions are still processing…</p>
+    return (
+      <p role="status" className="text-sm text-muted-foreground">
+        Captions are still processing…
+      </p>
+    )
   }
 
   return <CaptionEditorInner speechId={speechId} vtt={data.vtt} onSeek={onSeek} />
@@ -88,6 +92,7 @@ function CaptionEditorInner({
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">Click a line to fix it. Changes save automatically.</p>
         <span
+          role="status"
           data-testid="caption-autosave-state"
           data-state={autosaveState}
           className={cn(
@@ -118,6 +123,7 @@ function CaptionEditorInner({
               <textarea
                 autoFocus
                 data-testid={`caption-cue-input-${cue.id}`}
+                aria-label={`Caption text at ${formatSpokenTimecode(cue.start)}`}
                 value={cue.text}
                 rows={2}
                 className="flex-1 resize-none rounded border border-border bg-background p-1 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"

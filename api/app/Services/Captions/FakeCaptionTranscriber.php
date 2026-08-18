@@ -31,8 +31,14 @@ class FakeCaptionTranscriber implements CaptionTranscriberContract
 
     public function __construct(private readonly TranscriptDeriver $deriver = new TranscriptDeriver) {}
 
-    public function transcribe(SpeechAsset $sourceAsset, SpeechAsset $captionsAsset): void
+    public function transcribe(SpeechAsset $sourceAsset, SpeechAsset $captionsAsset, string $attemptId): void
     {
+        // Test/dev double: no heartbeat/attempt-token compare-and-set here
+        // (nothing here runs long enough for the recovery reconciler to
+        // ever matter, and the attempt-token race itself is covered by
+        // dedicated Pest tests against WhisperTranscriber/GenerateCaptions
+        // directly, not through this fake). `$attemptId` is accepted only
+        // to satisfy CaptionTranscriberContract's shared signature.
         Storage::disk($captionsAsset->disk)->put($captionsAsset->path, self::FAKE_VTT);
 
         $captionsAsset->update([

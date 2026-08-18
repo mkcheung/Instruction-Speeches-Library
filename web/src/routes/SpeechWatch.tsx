@@ -15,6 +15,7 @@ import { EssayReadOnlyPanel } from '@/components/essay/EssayReadOnlyPanel'
 import { CaptionEditor } from '@/components/caption/CaptionEditor'
 import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
+import { CaptionSettingsToggle } from '@/components/caption/CaptionSettingsToggle'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
@@ -33,6 +34,41 @@ import { cn } from '@/lib/utils'
  */
 function seekVideo(video: HTMLVideoElement, seconds: number): void {
   video.currentTime = seconds
+}
+
+/**
+ * The full-height absolute wrapper `OverlayStack` renders into — the ONE
+ * element in this tree with room to place content in either the upper or
+ * lower half of the video frame. `OverlayStack.tsx` already computes the
+ * correct anchor-dependent justification for ITSELF
+ * (`anchor === 'top' ? 'items-start' : 'items-start justify-end'`), but
+ * that only controls how `OverlayStack`'s own children stack inside its
+ * own (content-sized) box — it does nothing for WHERE that box sits
+ * inside this taller wrapper. Previously this wrapper hardcoded
+ * `justify-end` unconditionally, so a top-anchored `OverlayStack` still
+ * rendered flush against the bottom of the video, regardless of anchor.
+ * The anchor-dependent justification belongs here too, on the element
+ * that actually has vertical room to move.
+ */
+export function OverlayPositioner({
+  anchor,
+  children,
+}: {
+  anchor: 'top' | 'default'
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      data-testid="overlay-positioner"
+      data-anchor={anchor}
+      className={cn(
+        'pointer-events-none absolute inset-0 flex flex-col p-3',
+        anchor === 'top' ? 'justify-start' : 'justify-end',
+      )}
+    >
+      {children}
+    </div>
+  )
 }
 
 export default function SpeechWatch() {
@@ -58,6 +94,15 @@ export default function SpeechWatch() {
   // reasoning as `videoEl` above) — `useCaptionsAnchor`/`CaptionsToggle`
   // both need a re-render when this changes.
   const [captionsTrack, setCaptionsTrackState] = useState<TextTrack | null>(null)
+  // Bumped by `VideoPlayer`'s `onSourceRefreshed` every time the
+  // error-driven signed-URL refresh (§9.3) actually reloads the video —
+  // video.js strips remote text tracks (including captions) on every
+  // `src` reassignment, and nothing else about that refresh is visible to
+  // React (it's entirely internal to `videojs-adapter.ts`'s error
+  // handler). Included in the caption-attach effect's own deps below so
+  // that effect re-runs and re-adds the caption track after every refresh,
+  // not just after the initial job completion or an edit.
+  const [sourceRefreshToken, setSourceRefreshToken] = useState(0)
 
   const asset = speech?.primary_video
 
@@ -131,7 +176,11 @@ export default function SpeechWatch() {
     if (!player || !videoEl) return
     setCaptionsTrack(player, captionsBlobUrl ? { src: captionsBlobUrl, label: 'English' } : null)
     setCaptionsTrackState(getCaptionsTrack(player))
-  }, [videoEl, captionsBlobUrl])
+    // `sourceRefreshToken` is otherwise unread here — its only job is to
+    // force this effect to re-run (and thus re-add the caption track)
+    // after a signed-URL refresh strips it, per the comment on its
+    // declaration above.
+  }, [videoEl, captionsBlobUrl, sourceRefreshToken])
 
   // §8.6/STEP-09's "Deliberately stubbed" hook, live for the first time:
   // anchors the annotation overlay to the top whenever captions are
@@ -210,16 +259,17 @@ export default function SpeechWatch() {
                   playerRef.current = player
                   setVideoEl(getVideoElement(player))
                 }}
+                onSourceRefreshed={() => setSourceRefreshToken((token) => token + 1)}
               />
               {isOwner && (
-                <div className="pointer-events-none absolute inset-0 flex flex-col justify-end p-3">
+                <OverlayPositioner anchor={captionsAnchor}>
                   <OverlayStack
                     annotations={commentary.annotations}
                     activeIds={commentary.activeIds}
                     currentTime={commentary.currentTime}
                     anchor={captionsAnchor}
                   />
-                </div>
+                </OverlayPositioner>
               )}
             </div>
           ) : (
@@ -243,10 +293,14 @@ export default function SpeechWatch() {
                   same "honest empty state, not an error" treatment
                   `CaptionController::show`'s own doc comment describes. */}
               {captions?.status === 'failed' && (
-                <span className="text-xs text-[var(--color-danger)]">Captions unavailable.</span>
+                <span role="alert" className="text-xs text-[var(--color-danger)]">
+                  Captions unavailable.
+                </span>
               )}
               {(captions?.status === 'uploading' || captions?.status === 'processing') && (
-                <span className="text-xs text-muted-foreground">Captions processing…</span>
+                <span role="status" className="text-xs text-muted-foreground">
+                  Captions processing…
+                </span>
               )}
             </div>
           )}
@@ -313,6 +367,15 @@ export default function SpeechWatch() {
               non-owner tab strip below gets the read-only
               `TranscriptPanel` instead. */}
           <TabsPanel value="transcript">
+            {/* captions-settings gap fix: the owner-only automatic-
+                captioning off-switch, mounted right above the editor it
+                affects (both live on the one tab this codebase already
+                scopes to `isOwner`). */}
+            {speech && (
+              <div className="mb-2">
+                <CaptionSettingsToggle speechId={speechId} captionsEnabled={speech.captions_enabled} />
+              </div>
+            )}
             <CaptionEditor
               speechId={speechId}
               onSeek={(seconds) => {

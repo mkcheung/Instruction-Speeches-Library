@@ -64,6 +64,16 @@ class CaptionService
                 'byte_size' => Storage::disk($captionsAsset->disk)->size($captionsAsset->path),
             ]);
 
+            // STEP-09-VERIFICATION-PLAN.md §4.1: "disable/manual edit
+            // invalidates it" — a manual edit is itself the resolution of
+            // whatever automatic attempt (if any) was in flight for this
+            // row. Retiring the token here means a still-running whisper
+            // attempt's own compare-and-set writes (WhisperTranscriber's
+            // guarded success/fail paths) can never land after this edit,
+            // even in the narrow window before its `status` write above is
+            // what a slower reader would otherwise rely on alone.
+            CaptionAttemptTracker::invalidate($captionsAsset);
+
             // STEP-09.md's own wording: "dispatches the re-derive job" —
             // kept asynchronous (rather than deriving inline here) so this
             // endpoint's response time doesn't grow with transcript size,

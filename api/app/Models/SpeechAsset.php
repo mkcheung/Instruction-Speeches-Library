@@ -41,6 +41,10 @@ use Illuminate\Support\Carbon;
  * @property int|null $width
  * @property int|null $height
  * @property string|null $poster_time_seconds
+ * @property string|null $caption_attempt_id
+ * @property Carbon|null $caption_queued_at
+ * @property Carbon|null $caption_started_at
+ * @property Carbon|null $caption_heartbeat_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -50,6 +54,7 @@ use Illuminate\Support\Carbon;
     'status', 'failure_code', 'failure_detail', 'is_primary',
     'upload_id', 'client_declared_bytes',
     'width', 'height', 'poster_time_seconds',
+    'caption_attempt_id', 'caption_queued_at', 'caption_started_at', 'caption_heartbeat_at',
 ])]
 class SpeechAsset extends Model
 {
@@ -77,6 +82,9 @@ class SpeechAsset extends Model
             'width' => 'integer',
             'height' => 'integer',
             'poster_time_seconds' => 'decimal:3',
+            'caption_queued_at' => 'datetime',
+            'caption_started_at' => 'datetime',
+            'caption_heartbeat_at' => 'datetime',
         ];
     }
 }

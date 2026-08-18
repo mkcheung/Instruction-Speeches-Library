@@ -1,0 +1,26 @@
+{
+  "_comment": "STEP-09 verification plan §6.1. Consumed by docker/whisper/init-model.sh (downloads+verifies into the RW whisper-models volume), and is the single source of truth WHISPER_MODEL_NAME should match so a weight or engine change cannot silently retain a stale model identifier. See 'checksum_verified'/'checksum_verified_note' below for how/when the sha256 was actually confirmed.",
+
+  "filename": "ggml-base.en.bin",
+
+  "source_url": "https://huggingface.co/ggerganov/whisper.cpp",
+
+  "revision": "80da2d8bfee42b0e836fc3a9890373e5defc00a6",
+
+  "download_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/80da2d8bfee42b0e836fc3a9890373e5defc00a6/ggml-base.en.bin",
+
+  "sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+
+  "checksum_verified": true,
+  "checksum_verified_note": "Independently re-verified during the STEP-09 verification plan §6.2/6.3/6.4 build session: built the whisper-model-init Dockerfile target, ran it for real against download_url above (network access was available in that sandbox), and confirmed the downloaded file's sha256sum matched this value exactly (a03779c8...002) via TWO separate checks — init-model.sh's own internal verification, and a second independent `sha256sum` run directly against the resulting named volume from outside that script. Not a claim about every mirror/CDN edge ever serving these exact bytes indefinitely — re-verify again if download_url or revision ever changes.",
+
+  "license": {
+    "name": "MIT",
+    "url": "https://huggingface.co/ggerganov/whisper.cpp/blob/main/LICENSE"
+  },
+
+  "whisper_cpp_commit": "6266a9f9e56a5b925e9892acf650f3eb1245814d",
+  "whisper_cpp_tag": "v1.7.2",
+
+  "model_id": "wcpp-6266a9f9-a03779c8"
+}
