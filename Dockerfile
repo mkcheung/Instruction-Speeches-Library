@@ -43,7 +43,21 @@ ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build
 
 # ---- php-fpm runtime: the `app` service ----
-FROM php:8.4-fpm-alpine AS runtime
+# Pinned to the `-alpine3.20` variant tag, not the floating `8.4-fpm-alpine`
+# tag (which resolves to Alpine 3.24 as of this writing) — STEP-09
+# verification plan §6.1 requires the build stage and this runtime stage to
+# sit on the SAME Alpine minor version so a shared library compiled in
+# `whisper-build` (alpine:3.20) is ABI-compatible with what ships in the
+# `whisper-worker` layer built FROM this stage. Re-verify both tags still
+# resolve to the same `VERSION_ID` (`docker run --rm <tag> cat
+# /etc/os-release`) before bumping either independently. No image in this
+# Dockerfile is pinned by digest today (grep confirms), so this follows the
+# existing tag-pinning convention rather than introducing a new one; at the
+# time this was written the two tags resolved to
+# php@sha256:0bc1be153ede95ff777ebfd0850be6233975e3d11fc0a2a660d2c55777f4fb5a
+# and alpine@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+# respectively, both Alpine 3.20.6.
+FROM php:8.4-fpm-alpine3.20 AS runtime
 # libzip, icu-libs, libpng, libjpeg-turbo, libwebp and freetype are the
 # RUNTIME shared libraries the zip/intl/gd extensions dlopen() at boot —
 # `apk del ...-dev` below only removes the build-time headers, never these,
@@ -119,6 +133,208 @@ FROM runtime AS ffmpeg-worker
 USER root
 RUN apk add --no-cache ffmpeg
 USER www-data
+
+# ---- whisper-cli build: compiles whisper.cpp's CLI, nothing else. --------
+# A SEPARATE build stage (not reused from `vendor`/`runtime`) so the C++
+# toolchain (build-base, cmake, git) it needs never has to touch the final
+# `whisper-worker` layer below — only the resulting `whisper-cli` binary is
+# copied out of this stage (STEP-09-captions.md / the frozen STEP-09
+# backend contract §6: "adds a build stage that compiles whisper.cpp's CLI
+# ... and copies only the resulting binary into the final layer").
+#
+# `faster-whisper` (Python + CTranslate2) was considered and rejected —
+# see the frozen contract §6 for the full reasoning (no prebuilt musl/
+# Alpine wheels, doesn't fit this Dockerfile's all-stages-share-one-PHP-
+# base shape the way `apk add ffmpeg` did). whisper.cpp is a self-
+# contained C++ binary, buildable from source with a standard Alpine
+# `build-base`/`cmake` toolchain, closer in shape to the ffmpeg precedent
+# immediately above.
+#
+# whisper.cpp itself is MIT-licensed (unlike ffmpeg's `--enable-gpl`
+# build above) — no GPL-isolation reasoning applies to THIS stage. The
+# model WEIGHTS carry their own, separate license terms — see the
+# `whisper-worker` service block in compose.yaml for that license-boundary
+# comment; nothing about weights belongs in this image-build stage at all,
+# since they are mounted as a volume, never baked in (STEP-09.md: "mount
+# them as a volume rather than baking them into the image").
+# Pinned to the exact commit tagged v1.7.2, not a moving branch or a
+# `git clone --branch` (STEP-09 verification plan §6.1: "A SHA is not a
+# valid replacement for `git clone --branch`" — a branch/tag clone still
+# trusts whatever GitHub currently serves for that ref name, which is
+# mutable). Instead this does a minimal shallow fetch of the exact commit
+# object and a detached checkout, then asserts `git rev-parse HEAD` matches
+# byte-for-byte before the build proceeds — GitHub allows fetching a
+# specific commit SHA directly (verified: `git fetch --depth 1 origin
+# <sha>` succeeds against this repo without needing a branch/tag ref).
+FROM alpine:3.20 AS whisper-build
+RUN apk add --no-cache build-base cmake git
+WORKDIR /build
+ARG WHISPER_CPP_COMMIT=6266a9f9e56a5b925e9892acf650f3eb1245814d
+RUN git init -q \
+    && git remote add origin https://github.com/ggerganov/whisper.cpp.git \
+    && git fetch --depth 1 origin "${WHISPER_CPP_COMMIT}" \
+    && git checkout -q FETCH_HEAD \
+    && actual="$(git rev-parse HEAD)" \
+    && if [ "$actual" != "${WHISPER_CPP_COMMIT}" ]; then \
+         echo "whisper.cpp commit mismatch: expected ${WHISPER_CPP_COMMIT}, got $actual" >&2; \
+         exit 1; \
+       fi
+# -DBUILD_SHARED_LIBS=OFF: STEP-09 verification plan §6.1's stated
+# preference (static linking) — upstream v1.7.2's CMakeLists.txt defaults
+# BUILD_SHARED_LIBS to ON on Linux (non-MinGW/non-Emscripten), which is why
+# the prior version of this stage silently produced a CLI binary that
+# dlopen()s libwhisper/libggml .so files never copied into the runtime
+# layer. WHISPER_BUILD_EXAMPLES stays ON because the CLI is built as an
+# example target, not part of the core library (confirmed by reading
+# upstream CMakeLists.txt: `option(WHISPER_BUILD_EXAMPLES ... ${WHISPER_STANDALONE})`).
+# WHISPER_BUILD_TESTS/WHISPER_BUILD_SERVER are turned off — this image never
+# runs either, and skipping them shortens the build.
+#
+# The build TARGET at this exact pinned commit is named `main`, not
+# `whisper-cli` — verified by reading examples/CMakeLists.txt and
+# examples/main/CMakeLists.txt at commit 6266a9f9e5 (`set(TARGET main)`,
+# `add_executable(${TARGET} main.cpp)`) and by actually building it in this
+# sandbox: `cmake --build build --target help` lists `main`, and
+# `--target whisper-cli` fails with "No rule to make target". Upstream
+# renamed this example to `whisper-cli` in a LATER commit than the one this
+# Dockerfile pins to, so building `--target whisper-cli` against v1.7.2's
+# exact tagged commit does not work. The binary is renamed to `whisper-cli`
+# at COPY time below so `api/config/captions.php`'s
+# `WHISPER_BINARY=/usr/local/bin/whisper-cli` default needs no change.
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=OFF \
+        -DWHISPER_BUILD_EXAMPLES=ON \
+        -DWHISPER_BUILD_TESTS=OFF \
+        -DWHISPER_BUILD_SERVER=OFF \
+    && cmake --build build --config Release --target main -j"$(nproc)"
+
+# ---- whisper-worker: the `whisper-worker` compose service ONLY. ----------
+# Built FROM `runtime`, not fresh from `alpine`/`php:8.4-fpm-alpine`: same
+# reasoning as `ffmpeg-worker` immediately above — it wants the same PHP/
+# artisan/queue:work environment as the other workers, it's still a
+# Laravel queue worker process, just with `whisper-cli` added. Only the
+# compiled binary is copied in from `whisper-build`, not that stage's
+# build toolchain — keeps this final layer as slim as `ffmpeg-worker`'s.
+#
+# `-DBUILD_SHARED_LIBS=OFF` above makes libwhisper/libggml themselves
+# static (no longer part of `ldd`'s output), but the binary still
+# dynamically links its C/C++ runtime deps — confirmed by actually building
+# it in this sandbox and running `ldd` against the output: `libgomp.so.1`
+# (OpenMP runtime, linked by ggml's default CPU backend),
+# `libstdc++.so.6`, and `libgcc_s.so.1`. GCC does not statically link
+# libgomp/libstdc++/libgcc by default (that needs explicit
+# `-static-libgomp -static-libstdc++ -static-libgcc`, not set here), so all
+# three packages are required in this layer or the binary fails to start
+# with a missing-shared-library error. `libstdc++`/`libgcc` are NOT pulled
+# in transitively by the `libgomp` apk package alone — verified directly:
+# installing only `libgomp` in a fresh alpine:3.20 container leaves
+# `libstdc++.so.6`/`libgcc_s.so.1` absent from the filesystem.
+#
+# Model weights are NOT baked into this image anywhere — see the
+# `whisper-worker` compose service for the `whisper-models` read-only
+# named-volume mount and its license-boundary comment.
+#
+# >>> This stage also `apk add`s `ffmpeg` (WhisperTranscriber extracts a
+# >>> 16kHz mono WAV before handing audio to whisper-cli) — the SAME GPL
+# >>> boundary as `ffmpeg-worker` above therefore applies here too: THIS
+# >>> IMAGE MUST NEVER BE PUSHED TO A REGISTRY either.
+FROM runtime AS whisper-worker
+USER root
+RUN apk add --no-cache libgomp libstdc++ libgcc ffmpeg
+# The build target at the pinned commit produces a binary named `main`
+# (see the whisper-build stage's comment above) — renamed to `whisper-cli`
+# here so `api/config/captions.php`'s `WHISPER_BINARY` default
+# (`/usr/local/bin/whisper-cli`) resolves without any app-side change.
+COPY --from=whisper-build /build/build/bin/main /usr/local/bin/whisper-cli
+# Same fixed in-image path `whisper-model-init` already uses for this exact
+# file (see that stage below) — STEP-09 verification plan §6.2/§6.3 need to
+# read the locked engine+weights `model_id` at RUNTIME (to assert a
+# transcript's `model` column matches it), and this is the only stage of
+# the three (`whisper-worker`, `whisper-smoke`, `whisper-model-init`) that
+# didn't already carry the file. `WHISPER_MODEL_LOCK` (config/captions.php)
+# points here by default so the app never needs a repo-relative path that
+# wouldn't exist inside a container at all.
+COPY docker/whisper/model.lock /docker/whisper/model.lock
+USER www-data
+
+# ---- vendor-dev: composer deps WITH dev packages (Pest, etc). ------------
+# STEP-09 verification plan §6.2: the production `vendor` stage above runs
+# `composer install --no-dev`, so plain `whisper-worker` has no Pest/
+# phpunit/mockery — `php artisan test` cannot truthfully run against it.
+# This is a SEPARATE stage (not a flag change to `vendor`) precisely so
+# `runtime`/`ffmpeg-worker`/`whisper-worker` — every image that IS allowed
+# to run in production — never gains a single dev dependency; only
+# `whisper-smoke` below ever copies anything out of this stage.
+FROM composer:2 AS vendor-dev
+WORKDIR /app
+COPY api/composer.json api/composer.lock ./
+RUN composer install --no-scripts --no-autoloader --prefer-dist
+COPY api/ .
+RUN composer dump-autoload --optimize
+
+# ---- whisper-smoke: the `whisper-smoke` compose service ONLY. ------------
+# STEP-09 verification plan §6.2: "Add a `whisper-smoke` Docker target
+# based on `whisper-worker` with dev Composer dependencies and
+# `pdo_sqlite` solely for the smoke test... The production worker
+# currently has `--no-dev` dependencies, so `php artisan test` cannot
+# truthfully be proposed against that image without this target/service."
+#
+# Built FROM `whisper-worker` (not `runtime`) so it inherits the real
+# `whisper-cli` binary and `ffmpeg` — this image runs
+# `RealWhisperAdapterSmokeTest` (api/tests/Feature/Captions) against the
+# ACTUAL compiled whisper.cpp binary and a real mounted model file, never
+# `FakeCaptionTranscriber`.
+#
+# `pdo_sqlite` is added only here: the production images never need it
+# (Postgres-only, `pdo_pgsql` already in `runtime`), and SQLite is what
+# this smoke test's own isolation contract requires (§6.2 item 1: "uses
+# SQLite and `Storage::fake('media')` for isolation").
+#
+# NEVER pushed to a registry either — inherits `whisper-worker`'s GPL
+# (ffmpeg) isolation boundary unchanged; this stage adds no new
+# distribution surface, just dev tooling on top.
+FROM whisper-worker AS whisper-smoke
+USER root
+RUN apk add --no-cache sqlite-dev \
+    && docker-php-ext-install pdo_sqlite \
+    && apk del --no-cache sqlite-dev \
+    && apk add --no-cache sqlite-libs
+COPY --from=vendor-dev /app/vendor /var/www/html/vendor
+# The committed fixture/README under api/tests/fixtures/whisper-smoke are
+# already present via `runtime`'s `COPY --from=vendor /app ...` (the
+# production `vendor` stage's `COPY api/ .` grabs the whole api/ tree,
+# tests/ included — only the Composer PACKAGES differ between `--no-dev`
+# and this stage's full install). This COPY only needs to replace the
+# vendor/ directory itself with one that actually contains Pest et al.
+RUN chown -R www-data:www-data /var/www/html/vendor
+# `runtime`'s `bootstrap/cache/packages.php`/`services.php` were generated
+# by the `vendor` stage's `--no-dev` composer install, so they list
+# whatever service providers non-dev packages register — NOT
+# pestphp/pest-plugin's, which is what actually registers `php artisan
+# test`. Without regenerating this cache against the dev-inclusive vendor/
+# just copied in above, `php artisan test` fails with "Command test is
+# not defined" despite Pest genuinely being on disk — caught by actually
+# running this exact command against a real build in this stage's own
+# verification, not by reading the Dockerfile.
+RUN php artisan package:discover --ansi
+USER www-data
+
+# ---- whisper-model-init: the `whisper-model-init` compose profile/service ----
+# STEP-09 verification plan §6.1, item 4. A tiny, throwaway image whose only
+# job is to run docker/whisper/init-model.sh against the RW `whisper-models`
+# volume mount defined for THIS service in compose.yaml (never the same
+# mount as `whisper-worker`'s, which stays read-only — see that service's
+# comment). Built from `alpine`, not `runtime`: it has nothing to do with
+# PHP/Laravel and pulling in the whole runtime layer for `curl`+`jq` would
+# be pure waste. Not reused from `whisper-build` either — that stage carries
+# a full C++ toolchain this only-ever-downloads-a-file service does not
+# need.
+FROM alpine:3.20 AS whisper-model-init
+RUN apk add --no-cache curl jq
+COPY docker/whisper/init-model.sh /usr/local/bin/init-model.sh
+COPY docker/whisper/model.lock /docker/whisper/model.lock
+RUN chmod +x /usr/local/bin/init-model.sh
+ENTRYPOINT ["/usr/local/bin/init-model.sh"]
 
 # ---- nginx: the `web` service. Serves the built SPA and proxies /api to app:9000 ----
 FROM nginx:1.27-alpine AS nginx

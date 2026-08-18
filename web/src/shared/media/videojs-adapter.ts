@@ -31,6 +31,18 @@ export interface VideoJsAdapterOptions {
   /** Called on a retryable error; must resolve to a fresh presigned URL. */
   refreshUrl: () => Promise<string>
   poster?: string
+  /**
+   * Fired once the reassigned `src` has actually loaded (same
+   * `loadedmetadata` moment position/play-state get restored below) after
+   * an error-driven URL refresh. `addRemoteTextTrack`'s `manualCleanup:
+   * false` (see `setCaptionsTrack` below) means video.js strips any
+   * remote text track — including the caption `<track>` — on every `src`
+   * reassignment, this refresh path included. Nothing here re-adds one:
+   * that's the caller's job (`setCaptionsTrack` needs the caption URL,
+   * which this adapter doesn't have), so this callback is the caller's one
+   * hook to know a reattach is needed.
+   */
+  onSourceRefreshed?: () => void
 }
 
 export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsAdapterOptions): Player {
@@ -46,6 +58,15 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
     fill: true,
     playsinline: true,
     poster: options.poster,
+    // video.js 8 defaults Chromium to emulated text tracks even though the
+    // browser implements native HTML text tracks. STEP-09's contract is
+    // deliberately stricter: captions must exist on the real
+    // HTMLVideoElement (`video.textTracks`) and as a real child `<track>`
+    // so browser-native rendering and user caption preferences apply.
+    // Without this override, `player.textTracks()` reports the emulated
+    // caption while `video.textTracks` and the DOM remain empty — making
+    // the UI claim "Captions on" for a track the browser does not own.
+    html5: { nativeTextTracks: true },
     sources: [{ src: options.initialUrl, type: 'video/mp4' }],
   })
 
@@ -97,6 +118,7 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
           player.currentTime(resumeAt)
           if (wasPlaying) void player.play()?.catch(() => undefined)
           refreshing = false
+          options.onSourceRefreshed?.()
         }
         const onFailedAgain = () => {
           player.off('loadedmetadata', onLoaded)
@@ -129,4 +151,77 @@ export function getVideoElement(player: Player): HTMLVideoElement | null {
   const tech = player.tech({ IWillNotUseThisInPlugins: true })
   const el = tech?.el() as Element | undefined
   return el instanceof HTMLVideoElement ? el : null
+}
+
+/**
+ * video.js's own `TextTrackList`/`TextTrack` types (`dist/types/tracks/*`)
+ * don't declare a numeric indexer on the list (only `.length`, per its
+ * shared `TrackList` base) even though the runtime object is indexable —
+ * a real, if imprecise, upstream type gap. This is the one place that
+ * reads across that gap, so every caller downstream keeps working with the
+ * plain DOM `TextTrack` type (`captionsAnchor.ts`, `OverlayStack.tsx`
+ * already type against it) rather than video.js's parallel internal one.
+ */
+function toArray<T>(list: { length: number }): T[] {
+  const items: T[] = []
+  for (let i = 0; i < list.length; i++) {
+    items.push((list as unknown as Record<number, T>)[i])
+  }
+  return items
+}
+
+/**
+ * STEP-09-captions.md/STEP-09-FROZEN-CONTRACT.md §5: "a real `<track
+ * kind='captions' default>` — so the browser's native renderer and the
+ * user's own caption styling apply." Added via `addRemoteTextTrack`
+ * (rather than threaded into `videojs(...)`'s own `tracks` option at
+ * construction) because the caption VTT is only known once
+ * `captionApi`'s `getCaptions` query resolves, well after the player is
+ * created — this must be callable at any point in the player's life, not
+ * just at construction.
+ *
+ * Removes any previously-added remote captions track first (`manualCleanup:
+ * false` on `addRemoteTextTrack` means video.js already clears remote
+ * tracks on a `src` change, e.g. the §9.3 URL-refresh path — this covers
+ * the OTHER case, a caller passing a fresh caption URL, or `null`, without
+ * the video source itself changing), so repeated calls never accumulate
+ * duplicate `<track>`s. Callers read the resulting `TextTrack` back via
+ * `getCaptionsTrack`, not a return value here — video.js's own
+ * `HTMLTrackElement` type doesn't expose `.track` (another type gap).
+ */
+export function setCaptionsTrack(
+  player: Player,
+  captions: { src: string; label?: string; srclang?: string } | null,
+): void {
+  const existing = toArray<TextTrack>(player.remoteTextTracks())
+  for (const track of existing) {
+    if (track.kind === 'captions') player.removeRemoteTextTrack(track)
+  }
+
+  if (!captions) return
+
+  player.addRemoteTextTrack(
+    {
+      kind: 'captions',
+      src: captions.src,
+      srclang: captions.srclang ?? 'en',
+      label: captions.label ?? 'English',
+      default: true,
+    },
+    false,
+  )
+}
+
+/** The current `kind: 'captions'` `TextTrack`, if one has been added via
+ * `setCaptionsTrack` — `null` otherwise. Read the adapter-owned remote
+ * list, not `player.textTracks()`: with native tracks, video.js updates
+ * that general list asynchronously after a same-task replacement and can
+ * briefly return the track we just removed. `remoteTextTracks()` is
+ * updated synchronously by the add/remove calls above, so React always
+ * receives the live track whose `.mode` the browser actually renders.
+ * Callers (`useCaptionsAnchor`, the CC toggle) poll/read `.mode` off this,
+ * exactly as `captionsAnchor.ts`'s docblock expected. */
+export function getCaptionsTrack(player: Player): TextTrack | null {
+  const tracks = toArray<TextTrack>(player.remoteTextTracks())
+  return tracks.find((t) => t.kind === 'captions') ?? null
 }

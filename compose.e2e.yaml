@@ -1,0 +1,165 @@
+# STEP-09 E2E verification plan §3.1/§3.2 — an OVERRIDE file, always run
+# together with the base compose.yaml (`docker compose -f compose.yaml -f
+# compose.e2e.yaml ...`, never alone: it has no `services:` of its own that
+# stand up a working stack in isolation). Owned end-to-end by
+# scripts/e2e-stack.sh, not invoked with a bare `docker compose` — see that
+# script's own header for why (dedicated project name + network, port-
+# collision guard against a running dev stack).
+#
+# What this changes relative to plain `docker compose up`, and nothing
+# else — every other service (postgres, valkey, seaweedfs's image itself,
+# mailpit) is intentionally left alone:
+#
+#   caption-test-worker -> a NEW service, not present in compose.yaml at
+#                      all (plan §3.1/§4.2 point 3): built from the same
+#                      `runtime` target `app`/`queue-worker` use (it never
+#                      shells out to whisper.cpp, so it doesn't need the
+#                      `whisper-worker` target's binary/ffmpeg), draining
+#                      the SAME `redis-long`/`captions` queue `whisper-
+#                      worker` does, with `CAPTION_TEST_WORKER=1` bound
+#                      alongside `APP_ENV=e2e` so
+#                      App\Providers\AppServiceProvider hands it
+#                      App\Services\Captions\DeterministicCaptionTranscriber
+#                      instead of WhisperTranscriber — a real queued job,
+#                      held/released through Valkey keys a bash script
+#                      controls, never a model. Stopped by default for the
+#                      same reason `whisper-worker` is (see that service's
+#                      own comment below): scripts/e2e-stack.sh's `up`
+#                      action stops both explicitly after `up -d`.
+#
+#   web            -> rebuilt with VITE_API_URL baked to the ABSOLUTE
+#                      https://api.speechcoach.test origin (cross-subdomain,
+#                      not the same-origin relative `/api/...` the dev/prod
+#                      build uses — plan §3.1 point 2: "preserving the
+#                      production-like cross-subdomain cookie/CORS path the
+#                      current specs exercise"), and served through
+#                      docker/nginx/e2e.conf instead of the baked-in
+#                      default.conf, which adds the media.speechcoach.test
+#                      vhost and drops default.conf's proxy-to-host-Vite
+#                      app. block (plan §3.1 point 1).
+#   app/queue-worker/ffmpeg-worker/whisper-worker
+#                  -> APP_ENV=e2e (distinct from `local`/`testing` — the
+#                      frozen contract's `caption-test-worker`/scheduler
+#                      gates key off this exact value) and
+#                      AWS_ENDPOINT_PUBLIC repointed from the dev-only
+#                      `http://localhost:8333` (mixed content under HTTPS —
+#                      plan §2's "Current E2E video is deliberately fake"
+#                      finding) to `https://media.speechcoach.test`, so
+#                      MediaUrlSigner (api/app/Services/MediaUrlSigner.php)
+#                      presigns URLs a browser can actually load.
+#
+# Certs: docker/certs/ (mkcert, app./api.speechcoach.test only) is the
+# DEV stack's cert and is left untouched — the E2E stack mounts a SEPARATE
+# directory, docker/certs-e2e/ (gitignored, generated fresh by
+# `scripts/e2e-stack.sh prepare`), covering all three E2E hostnames
+# including media.speechcoach.test, so the two stacks can run side by side
+# without either clobbering the other's certificate files.
+#
+# Network: compose.yaml hard-codes the dev network's literal name
+# (`speechcoach-dev`) via `networks.default.name` — an explicit `name:` is
+# NOT project-scoped in Docker, so two different Compose projects both
+# pointing at that same literal name would collide on (or share!) one
+# network. This override gives the E2E project its own literal name.
+# Project-scoped resources (named volumes, e.g. postgres-data) don't need
+# an equivalent override: `scripts/e2e-stack.sh` always passes a dedicated
+# `-p speechcoach-e2e` project name, and Compose already prefixes unnamed-
+# by-`name:` volumes with the project name, so `speechcoach-e2e_postgres-
+# data` is naturally distinct from the dev project's own volume.
+
+services:
+  web:
+    build:
+      args:
+        VITE_API_URL: "https://api.speechcoach.test"
+    volumes:
+      - ./docker/nginx/e2e.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/certs-e2e:/etc/nginx/certs:ro
+
+  app:
+    environment:
+      APP_ENV: e2e
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+
+  queue-worker:
+    environment:
+      APP_ENV: e2e
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+
+  ffmpeg-worker:
+    environment:
+      APP_ENV: e2e
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+
+  # Left `restart: unless-stopped` from the base file, same as dev — the
+  # real Whisper worker plays no part in the required browser lane (plan
+  # §7 CI wiring point 5: "leaves the Whisper worker stopped"). It is not
+  # stopped HERE because compose has no declarative "start stopped" state;
+  # scripts/e2e-stack.sh's `up` action stops it explicitly after `up -d`
+  # (`docker compose ... stop whisper-worker`) rather than encoding that
+  # as a compose-level override.
+  whisper-worker:
+    environment:
+      APP_ENV: e2e
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+
+  # STEP-09-VERIFICATION-PLAN.md §3.1/§4.2 point 3: a compose.yaml-absent
+  # service, built from the plain `runtime` target (same as `app`/`queue-
+  # worker` — never `whisper-worker`'s target, since this never shells out
+  # to whisper.cpp at all) that drains the exact same `redis-long`/
+  # `captions` queue whisper-worker does, running
+  # App\Services\Captions\DeterministicCaptionTranscriber instead
+  # (CAPTION_TEST_WORKER=1, gated to APP_ENV=e2e|testing by
+  # AppServiceProvider). Held/released through Valkey keys under the
+  # `caption-test-worker:` prefix — see that class's own docblock for the
+  # exact key names — so the worker-isolation and old-attempt-race scripts
+  # (§4.2 point 3, §4.1) can observe a real queued job without sleeping or
+  # ever invoking Whisper. Stopped by default, same reasoning and same
+  # "compose has no declarative 'start stopped' state" caveat as
+  # `whisper-worker` immediately above — scripts/e2e-stack.sh's `up` action
+  # stops this one too, right next to `whisper-worker`.
+  caption-test-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: php artisan queue:work redis-long --queue=captions --timeout=1800 --tries=1 --sleep=1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
+    environment:
+      APP_ENV: e2e
+      CAPTION_TEST_WORKER: "1"
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+    networks:
+      - default
+
+  # STEP-09-VERIFICATION-PLAN.md §4.1/§7: "the SAME media:reconcile schedule
+  # is every minute" under APP_ENV=e2e (routes/console.php's own
+  # `app()->environment('e2e')` branch) — without this override the
+  # scheduler service would inherit api/.env's real APP_ENV and run the
+  # production daily cadence here too, making the <=90s CI scheduler-smoke
+  # (§7) impossible to observe within a normal job timeout.
+  scheduler:
+    environment:
+      APP_ENV: e2e
+
+  # STEP-09 plan §6: version-pinned specifically for the E2E lane's
+  # determinism requirement (§3: "Deterministic E2E stack and fixtures") —
+  # the base compose.yaml's `chrislusf/seaweedfs:latest` is fine for a dev
+  # volume nobody diffs run-to-run, but a floating tag is exactly the kind
+  # of nondeterminism this override exists to remove from the tested
+  # artifact. `4.42` confirmed present on Docker Hub (chrislusf/seaweedfs)
+  # at the time this was pinned; re-verify if SeaweedFS cuts a new release.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.42
+
+networks:
+  default:
+    name: speechcoach-e2e

@@ -17,6 +17,7 @@ import SpeechCreate from '@/routes/SpeechCreate'
 import SpeechWatch from '@/routes/SpeechWatch'
 import Dashboard from '@/routes/Dashboard'
 import ReviewerDirectory from '@/routes/ReviewerDirectory'
+import Search from '@/routes/Search'
 import { RequireAuth, RequireGuest, RequireVerified } from '@/components/auth/AuthShell'
 import { UnauthenticatedRedirect } from '@/components/auth/UnauthenticatedRedirect'
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -110,6 +111,9 @@ const router = createBrowserRouter(
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile" element={<ProfileEdit />} />
         <Route path="/reviewers" element={<ReviewerDirectory />} />
+        {/* STEP-09-FROZEN-CONTRACT.md §5: top-level, not nested under a
+            speech — it queries across all of a user's own speeches. */}
+        <Route path="/search" element={<Search />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

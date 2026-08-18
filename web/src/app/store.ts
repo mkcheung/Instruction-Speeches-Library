@@ -6,6 +6,8 @@ import { reviewApi } from '@/features/review/reviewApi'
 import { notificationApi } from '@/features/notification/notificationApi'
 import { annotationApi } from '@/features/annotation/annotationApi'
 import { essayApi } from '@/features/essay/essayApi'
+import { captionApi } from '@/features/caption/captionApi'
+import { transcriptApi } from '@/features/transcript/transcriptApi'
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +18,8 @@ export const store = configureStore({
     [notificationApi.reducerPath]: notificationApi.reducer,
     [annotationApi.reducerPath]: annotationApi.reducer,
     [essayApi.reducerPath]: essayApi.reducer,
+    [captionApi.reducerPath]: captionApi.reducer,
+    [transcriptApi.reducerPath]: transcriptApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
@@ -26,6 +30,8 @@ export const store = configureStore({
       notificationApi.middleware,
       annotationApi.middleware,
       essayApi.middleware,
+      captionApi.middleware,
+      transcriptApi.middleware,
     ),
 })
 

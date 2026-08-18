@@ -42,6 +42,11 @@ const BASELINE_NAV_ITEMS: NavItem[] = [
   { label: 'My reviews', to: '/dashboard', icon: Home },
   { label: 'My speeches', to: '/speeches', end: true, icon: FileText },
   { label: 'Upload a speech', to: '/speeches/new', icon: Upload },
+  // STEP-09-FROZEN-CONTRACT.md §5: `/search` is a new top-level,
+  // unconditional destination (search is over the CURRENT user's own
+  // speeches only, so there's no role-gating question the way "Find
+  // reviewers" has).
+  { label: 'Search', to: '/search', icon: Search },
   { label: 'Edit profile', to: '/profile', icon: User },
 ]
 

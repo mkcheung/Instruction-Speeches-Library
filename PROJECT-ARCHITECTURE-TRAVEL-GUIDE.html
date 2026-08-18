@@ -1,0 +1,1037 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Speech Coaching Platform — Architecture Travel Guide</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 14mm 15mm 17mm;
+      @bottom-left {
+        content: "SPEECH COACHING PLATFORM  ·  ARCHITECTURE TRAVEL GUIDE";
+        color: #62717d;
+        font: 700 7.5pt "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif;
+        letter-spacing: .07em;
+      }
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        color: #15364b;
+        font: 800 8pt "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif;
+      }
+    }
+
+    @page cover {
+      margin: 0;
+      @bottom-left { content: none; }
+      @bottom-right { content: none; }
+    }
+
+    :root {
+      --ink: #173144;
+      --muted: #5b6b76;
+      --teal: #19786f;
+      --teal-2: #dff2ee;
+      --blue: #315f87;
+      --blue-2: #e8f0f7;
+      --gold: #e2a928;
+      --gold-2: #fff4d5;
+      --coral: #c9644f;
+      --coral-2: #fbe9e5;
+      --paper: #fbfaf6;
+      --line: #cfdae0;
+      --white: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: #d9d9d9; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--white);
+      font: 10.7pt/1.42 "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .sheet { break-after: page; }
+    .sheet:last-child { break-after: auto; }
+    .cover {
+      page: cover;
+      height: 297mm;
+      padding: 25mm 23mm 18mm;
+      color: white;
+      background:
+        radial-gradient(circle at 83% 13%, rgba(244,201,93,.95) 0 5mm, transparent 5.2mm),
+        radial-gradient(circle at 83% 13%, transparent 0 14mm, rgba(255,255,255,.15) 14.2mm 14.7mm, transparent 14.9mm),
+        linear-gradient(145deg, #15364b 0%, #174e5b 48%, #19786f 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .cover:after {
+      content: "";
+      position: absolute;
+      left: -18mm;
+      right: -18mm;
+      bottom: -33mm;
+      height: 90mm;
+      background: rgba(255,255,255,.07);
+      transform: rotate(-5deg);
+      border-top: 1px solid rgba(255,255,255,.18);
+    }
+    .eyebrow {
+      margin: 0 0 20mm;
+      font-size: 9pt;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: #bee8e0;
+    }
+    .cover h1 {
+      width: 142mm;
+      margin: 0;
+      font-size: 34pt;
+      line-height: 1.02;
+      letter-spacing: -.04em;
+      color: white;
+    }
+    .cover .subtitle {
+      width: 135mm;
+      margin: 9mm 0 0;
+      font-size: 16pt;
+      line-height: 1.35;
+      color: #e4f7f3;
+    }
+    .cover .memory-line {
+      width: 150mm;
+      margin-top: 28mm;
+      padding: 8mm 9mm;
+      border-left: 2.2mm solid #f4c95d;
+      background: rgba(8,35,48,.28);
+      font-size: 15pt;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .cover .meta {
+      position: absolute;
+      left: 23mm;
+      bottom: 19mm;
+      z-index: 2;
+      font-size: 9.5pt;
+      color: #d2ebe6;
+    }
+
+    h1, h2, h3, h4 { break-after: avoid; }
+    h1 {
+      margin: 0 0 3mm;
+      font-size: 23pt;
+      line-height: 1.08;
+      letter-spacing: -.025em;
+    }
+    h2 {
+      margin: 0 0 5mm;
+      color: var(--teal);
+      font-size: 11pt;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h3 {
+      margin: 4.5mm 0 1.8mm;
+      font-size: 13pt;
+      line-height: 1.2;
+    }
+    h4 {
+      margin: 0 0 1mm;
+      font-size: 10.3pt;
+    }
+    p { margin: 0 0 3mm; }
+    strong { color: #102c3f; }
+    ul, ol { margin: 1.5mm 0 3mm 5.5mm; padding-left: 4mm; }
+    li { margin: 0 0 1.4mm; }
+    code {
+      padding: .15em .35em;
+      border-radius: 3px;
+      background: #edf2f4;
+      color: #294a62;
+      font: 8.7pt/1.2 Menlo, Consolas, monospace;
+    }
+    .lede {
+      margin-bottom: 6mm;
+      color: #314e5f;
+      font-size: 13.2pt;
+      line-height: 1.42;
+    }
+    .rule {
+      width: 18mm;
+      height: 1.7mm;
+      margin: 0 0 5mm;
+      border-radius: 2mm;
+      background: var(--gold);
+    }
+    .kicker {
+      margin-bottom: 2mm;
+      color: var(--coral);
+      font-size: 8.5pt;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    .small { color: var(--muted); font-size: 8.8pt; }
+    .tiny { color: var(--muted); font-size: 7.5pt; }
+    .pill {
+      display: inline-block;
+      margin: 0 .8mm .8mm 0;
+      padding: .8mm 2.2mm;
+      border-radius: 20mm;
+      background: var(--blue-2);
+      color: #275373;
+      font-size: 8pt;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .tag {
+      display: inline-block;
+      margin-bottom: 1.5mm;
+      padding: .8mm 2mm;
+      border-radius: 1mm;
+      background: var(--ink);
+      color: white;
+      font-size: 7.2pt;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .card, .callout, .kid, .tech, .step, .system-box, table { break-inside: avoid; }
+    .card {
+      padding: 4mm;
+      border: .35mm solid var(--line);
+      border-radius: 3mm;
+      background: white;
+    }
+    .card p:last-child, .callout p:last-child, .kid p:last-child, .tech p:last-child { margin-bottom: 0; }
+    .callout {
+      margin: 4mm 0;
+      padding: 4mm 5mm;
+      border-left: 1.5mm solid var(--gold);
+      border-radius: 0 2.5mm 2.5mm 0;
+      background: var(--gold-2);
+    }
+    .kid, .tech {
+      padding: 3.7mm 4.2mm;
+      border-radius: 2.5mm;
+    }
+    .kid { background: var(--teal-2); }
+    .tech { background: var(--blue-2); }
+    .kid:before, .tech:before {
+      display: block;
+      margin-bottom: 1mm;
+      font-size: 7.5pt;
+      font-weight: 900;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+    .kid:before { content: "Explain it to a 10-year-old"; color: var(--teal); }
+    .tech:before { content: "Technical translation"; color: var(--blue); }
+    .warning {
+      padding: 3.5mm 4mm;
+      border: .4mm solid #e6b8ad;
+      border-radius: 2.5mm;
+      background: var(--coral-2);
+    }
+    .quote {
+      margin: 5mm 0;
+      padding: 4mm 6mm;
+      border-left: 1.7mm solid var(--teal);
+      color: #174b4b;
+      font-size: 14pt;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.5mm; }
+    .span-2 { grid-column: 1 / -1; }
+
+    .architecture {
+      display: grid;
+      grid-template-columns: 1fr 12mm 1fr;
+      align-items: stretch;
+      gap: 3mm;
+      margin: 5mm 0 4mm;
+    }
+    .system-box {
+      min-height: 30mm;
+      padding: 4mm;
+      border-radius: 3mm;
+      color: white;
+    }
+    .system-box h3 { margin: 0 0 1mm; color: white; }
+    .system-box p { margin: 0; font-size: 9pt; }
+    .react-box { background: #315f87; }
+    .laravel-box { background: #19786f; }
+    .db-box { background: #715b91; }
+    .store-box { background: #a55d45; }
+    .queue-box { background: #a17a19; }
+    .worker-box { background: #435968; }
+    .arrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gold);
+      font-size: 22pt;
+      font-weight: 900;
+    }
+    .architecture .wide { grid-column: 1 / -1; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 2.5mm;
+      margin: 4mm 0;
+    }
+    .step {
+      position: relative;
+      min-height: 36mm;
+      padding: 4mm 3.5mm 3mm;
+      border-top: 1.6mm solid var(--teal);
+      border-radius: 2mm;
+      background: #f3f7f8;
+    }
+    .step .num {
+      display: inline-flex;
+      width: 6.5mm;
+      height: 6.5mm;
+      margin-bottom: 2mm;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--teal);
+      color: white;
+      font-size: 8pt;
+      font-weight: 900;
+    }
+    .step h4 { color: var(--ink); }
+    .step p { font-size: 8.5pt; line-height: 1.32; }
+
+    table {
+      width: 100%;
+      margin: 3mm 0 5mm;
+      border-collapse: collapse;
+      font-size: 8.8pt;
+    }
+    th {
+      padding: 2.2mm 2.5mm;
+      color: white;
+      background: var(--ink);
+      text-align: left;
+      font-size: 7.8pt;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 2.2mm 2.5mm;
+      border-bottom: .25mm solid var(--line);
+      vertical-align: top;
+    }
+    tr:nth-child(even) td { background: #f5f7f7; }
+
+    .model {
+      display: grid;
+      grid-template-columns: 1fr 8mm 1.2fr 8mm 1fr;
+      align-items: center;
+      gap: 2mm;
+      margin: 5mm 0;
+    }
+    .model-node {
+      padding: 4mm;
+      border: .45mm solid var(--teal);
+      border-radius: 3mm;
+      background: var(--teal-2);
+      text-align: center;
+    }
+    .model-node strong { display: block; font-size: 12pt; }
+    .model-arrow { color: var(--coral); font-size: 17pt; font-weight: 900; text-align: center; }
+
+    .state-line {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2mm;
+      margin: 3mm 0 5mm;
+      font-size: 8.3pt;
+      font-weight: 800;
+    }
+    .state {
+      padding: 1.5mm 2.5mm;
+      border-radius: 12mm;
+      background: var(--blue-2);
+      color: #285270;
+    }
+    .state-arrow { color: var(--gold); }
+
+    .memory-grid {
+      display: grid;
+      grid-template-columns: 15mm 1fr;
+      gap: 2.5mm 4mm;
+      align-items: center;
+      margin-top: 4mm;
+    }
+    .letter {
+      display: flex;
+      width: 13mm;
+      height: 13mm;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      background: var(--teal);
+      color: white;
+      font-size: 16pt;
+      font-weight: 900;
+    }
+    .script {
+      margin: 3mm 0 5mm;
+      padding: 5mm;
+      border-radius: 3mm;
+      background: #142f42;
+      color: #eff9f7;
+      font-size: 11pt;
+      line-height: 1.52;
+    }
+    .script strong { color: #f4c95d; }
+    .checklist { list-style: none; margin-left: 0; padding-left: 0; }
+    .checklist li { position: relative; padding-left: 7mm; margin-bottom: 2mm; }
+    .checklist li:before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      top: -.2mm;
+      color: var(--teal);
+      font-weight: 900;
+    }
+    .footer-note {
+      margin-top: 6mm;
+      padding-top: 3mm;
+      border-top: .3mm solid var(--line);
+      color: var(--muted);
+      font-size: 7.5pt;
+    }
+  </style>
+</head>
+
+<body>
+  <section class="sheet cover">
+    <div class="eyebrow">Your travel-friendly architecture guide</div>
+    <h1>The Speech Coaching Platform</h1>
+    <div class="subtitle">How the whole system works, why you chose it, and how to explain it without sounding like a computer manual.</div>
+    <div class="memory-line">Ask → Check → Store → Queue → Work → Show</div>
+    <div class="meta">Plain-language edition · grounded in the repository · 18 August 2026</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Start here</div>
+    <h1>The one-minute version</h1>
+    <div class="rule"></div>
+    <p class="lede">A speaker uploads a private video, invites specific people, and receives feedback tied to exact moments. The system keeps the video safe, prepares it in the background, and shows the right note at the right second.</p>
+
+    <div class="grid-2">
+      <div class="kid">
+        <p>Imagine a private school theater. The <strong>speaker owns the stage</strong>. Invitations are tickets. A reviewer gets one folder for that performance and puts sticky notes at exact times: “Great pause at 1:23.”</p>
+      </div>
+      <div class="tech">
+        <p>A React single-page app calls a Laravel JSON API. PostgreSQL stores relationships and permissions; SeaweedFS stores media; Valkey queues work; FFmpeg and Whisper workers process video and captions.</p>
+      </div>
+    </div>
+
+    <h3>The six things to remember</h3>
+    <div class="grid-3">
+      <div class="card"><span class="tag">Front desk</span><h4>React</h4><p>Draws the screens and player in the browser.</p></div>
+      <div class="card"><span class="tag">Principal</span><h4>Laravel</h4><p>Checks identity, rules, and what happens next.</p></div>
+      <div class="card"><span class="tag">Ledger</span><h4>PostgreSQL</h4><p>Stores facts, links, states, and hard rules.</p></div>
+      <div class="card"><span class="tag">Warehouse</span><h4>SeaweedFS</h4><p>Stores the big video, picture, audio, and caption files.</p></div>
+      <div class="card"><span class="tag">Task board</span><h4>Valkey</h4><p>Holds jobs that should happen in the background.</p></div>
+      <div class="card"><span class="tag">Robots</span><h4>Workers</h4><p>Convert video, make captions, send mail, and repair stale work.</p></div>
+    </div>
+
+    <div class="quote">The database describes the speech. Object storage holds the speech. Laravel decides who may touch either.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">The map</div>
+    <h1>The architecture in one picture</h1>
+    <div class="rule"></div>
+
+    <div class="architecture">
+      <div class="system-box react-box"><h3>1. Browser</h3><p>React + Video.js<br>What the person sees and clicks.</p></div>
+      <div class="arrow">⇄</div>
+      <div class="system-box laravel-box"><h3>2. Laravel API</h3><p>Authentication, authorization, validation, business rules, JSON.</p></div>
+
+      <div class="system-box store-box"><h3>4. SeaweedFS</h3><p>Original videos, playable videos, posters, captions.</p></div>
+      <div class="arrow">↕</div>
+      <div class="system-box db-box"><h3>3. PostgreSQL</h3><p>Users, speeches, reviews, notes, statuses, file locations.</p></div>
+
+      <div class="system-box queue-box"><h3>5. Valkey queues</h3><p>Short jobs, video jobs, and caption jobs wait in separate lanes.</p></div>
+      <div class="arrow">→</div>
+      <div class="system-box worker-box"><h3>6. Workers</h3><p>Laravel worker · FFmpeg worker · Whisper worker · scheduler.</p></div>
+    </div>
+
+    <div class="callout">
+      <strong>The surprising shortcut:</strong> large video bytes do not travel through Laravel. Laravel gives the browser a temporary, narrowly scoped permission slip. The browser then uploads to or watches from SeaweedFS directly.
+    </div>
+
+    <h3>This is a modular monolith—not microservices</h3>
+    <p>There is <strong>one Laravel application and one business model</strong>. The separate containers are different jobs or infrastructure, not independent mini-products with separate databases and APIs. That keeps reasoning simple while isolating heavy work.</p>
+
+    <div class="grid-2">
+      <div class="kid"><p>One school has many rooms: office, library, warehouse, workshop. It is still one school.</p></div>
+      <div class="tech"><p>One deployable domain codebase serves HTTP and queue commands. Process boundaries isolate workload and dependencies.</p></div>
+    </div>
+
+    <div class="footer-note">The production web container serves the built React files with Nginx and forwards API requests to PHP-FPM. During development, Vite runs on the host for fast refresh.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Product shape</div>
+    <h1>The most important design decision</h1>
+    <div class="rule"></div>
+    <p class="lede">The <strong>Review</strong> row is both the reviewer’s permission to enter and the folder containing that reviewer’s work.</p>
+
+    <div class="model">
+      <div class="model-node"><strong>Speaker</strong>owns a speech</div>
+      <div class="model-arrow">→</div>
+      <div class="model-node"><strong>Speech</strong>private video + details</div>
+      <div class="model-arrow">→</div>
+      <div class="model-node"><strong>Review</strong>invite + access + work</div>
+    </div>
+    <div class="model">
+      <div class="model-node"><strong>Reviewer</strong>the invited person</div>
+      <div class="model-arrow">→</div>
+      <div class="model-node"><strong>Review folder</strong>one person × one speech</div>
+      <div class="model-arrow">→</div>
+      <div class="model-node"><strong>Feedback</strong>annotations + essay</div>
+    </div>
+
+    <div class="kid">
+      <p>A theater ticket has a person’s name and one show on it. The ticket opens the door. The same ticket number is printed on that person’s feedback folder. No ticket means no folder and no notes.</p>
+    </div>
+
+    <h3>Why this shape is powerful</h3>
+    <ul class="checklist">
+      <li>An annotation must belong to a review, so an unauthorised “orphan note” cannot exist.</li>
+      <li>One database rule allows only one review per person per speech.</li>
+      <li>Revoking the review removes the access grant at the same boundary that owns the feedback.</li>
+      <li>Reviewers cannot see one another’s folders or even use the reviewer count as a clue.</li>
+    </ul>
+
+    <div class="quote">Make wrong states impossible to represent, not merely forbidden in a document.</div>
+
+    <h3>Core cast of data</h3>
+    <table>
+      <thead><tr><th>Thing</th><th>What it means</th><th>What hangs from it</th></tr></thead>
+      <tbody>
+        <tr><td><strong>User / Profile</strong></td><td>An account and public identity.</td><td>Speeches, review invitations, notifications.</td></tr>
+        <tr><td><strong>Speech</strong></td><td>One private speaking attempt.</td><td>Assets, transcript, reviews, previous-attempt link.</td></tr>
+        <tr><td><strong>SpeechAsset</strong></td><td>A file record and processing status.</td><td>Source, playable video, poster, captions.</td></tr>
+        <tr><td><strong>Review</strong></td><td>One reviewer’s grant and body of work.</td><td>Timed annotations and one essay.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Privacy first</div>
+    <h1>Who can see what?</h1>
+    <div class="rule"></div>
+    <p class="lede">Every speech is private. There is no “public” switch and no open pool where strangers can claim a speech.</p>
+
+    <table>
+      <thead><tr><th>Person</th><th>May watch?</th><th>May read feedback?</th><th>May write?</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Speaker</strong></td><td>Own speech</td><td>Published reviewer work</td><td>Edits own captions; invites</td></tr>
+        <tr><td><strong>Invited reviewer</strong></td><td>Only after the grant reaches an access-giving state</td><td>Only their own review</td><td>Only their own review</td></tr>
+        <tr><td><strong>Unrelated member</strong></td><td>No</td><td>No</td><td>No</td></tr>
+        <tr><td><strong>Admin</strong></td><td>For moderation</td><td>For moderation</td><td>No coaching feedback</td></tr>
+      </tbody>
+    </table>
+
+    <h3>How the check happens</h3>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h4>Who are you?</h4><p>The session cookie identifies the signed-in account.</p></div>
+      <div class="step"><div class="num">2</div><h4>What do you want?</h4><p>The API route and request say “watch speech 42” or “edit note 7.”</p></div>
+      <div class="step"><div class="num">3</div><h4>Are you allowed?</h4><p>Laravel policies inspect ownership, roles, and review state.</p></div>
+      <div class="step"><div class="num">4</div><h4>Only then act</h4><p>Return data, sign a media URL, or make a change.</p></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="kid"><p>A session is a coat-check ticket matched against a live guest list. Cross your name off the list and your next request is refused.</p></div>
+      <div class="tech"><p>Sanctum/Fortify use stateful SPA sessions. Policies enforce record-level access; role checks handle capabilities.</p></div>
+    </div>
+
+    <h3>Why sessions instead of JWTs?</h3>
+    <p>This product often needs to <strong>take access away now</strong>: revoke a reviewer, suspend an account, or remove a role. A session is checked against server state on every request. A self-contained JWT remains valid until it expires.</p>
+    <div class="warning"><strong>Important nuance:</strong> a media link already issued is temporary, not magically recallable. Its short lifetime limits the remaining window, and Laravel refuses to issue a new link after access is revoked.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Frontend</div>
+    <h1>What happens in the browser</h1>
+    <div class="rule"></div>
+
+    <div class="grid-2">
+      <div class="card"><h3>React</h3><p>Draws pages as components. When state changes, it updates only the necessary screen pieces.</p><span class="pill">screens</span><span class="pill">components</span></div>
+      <div class="card"><h3>React Router</h3><p>Maps addresses such as <code>/speeches/:id</code> to the right page and protected layout.</p><span class="pill">navigation</span></div>
+      <div class="card"><h3>Redux Toolkit</h3><p>Holds shared screen state—the small facts several components need to agree on.</p><span class="pill">shared UI state</span></div>
+      <div class="card"><h3>RTK Query</h3><p>Fetches server data, caches it, reports loading/errors, and refreshes labelled data after changes.</p><span class="pill">server cache</span><span class="pill">API calls</span></div>
+      <div class="card"><h3>Video.js</h3><p>Wraps the browser video player and gives the app a consistent player adapter.</p><span class="pill">playback</span></div>
+      <div class="card"><h3>Tailwind + UI components</h3><p>Supplies design tokens, responsive styling, controls, and accessible primitives.</p><span class="pill">presentation</span></div>
+    </div>
+
+    <h3>The three-bucket state rule</h3>
+    <table>
+      <thead><tr><th>Put it here</th><th>When</th><th>Example</th></tr></thead>
+      <tbody>
+        <tr><td><strong>RTK Query</strong></td><td>The server owns the truth.</td><td>Speech, reviews, captions, transcript.</td></tr>
+        <tr><td><strong>Redux / route state</strong></td><td>Several UI pieces need the same choice.</td><td>Selected reviewer track.</td></tr>
+        <tr><td><strong>Local React / player state</strong></td><td>It changes very quickly or belongs to one component.</td><td>Typing draft, current video time.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout"><strong>Crucial performance choice:</strong> the playhead can change dozens of times per second. It stays out of Redux, so the whole page does not redraw on every frame. Think of a shared class whiteboard: a child tapping a pencil 60 times a second does not report every tap to the whiteboard keeper.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Backend</div>
+    <h1>What Laravel does</h1>
+    <div class="rule"></div>
+    <p class="lede">Laravel is the rule-keeper and coordinator. It should decide and record—not carry 200 MB videos through the office.</p>
+
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h4>Route</h4><p>Matches the URL and HTTP action to a controller.</p></div>
+      <div class="step"><div class="num">2</div><h4>Middleware</h4><p>Checks session, CSRF protection, verification, and shared rules.</p></div>
+      <div class="step"><div class="num">3</div><h4>Policy + validation</h4><p>Checks permission and whether submitted data has the right shape.</p></div>
+      <div class="step"><div class="num">4</div><h4>Service / model</h4><p>Runs the use case, changes data, signs storage, or dispatches a job.</p></div>
+    </div>
+
+    <h3>A concrete example: “Invite Jordan”</h3>
+    <ol>
+      <li>The browser sends a request to create a review for a speech.</li>
+      <li>Authentication proves who is making the request.</li>
+      <li>The speech policy proves that person owns the speech.</li>
+      <li>Validation proves Jordan is a valid reviewer and not a duplicate.</li>
+      <li>The review service creates the invitation in a transaction.</li>
+      <li>Laravel queues a notification and returns a safe JSON resource.</li>
+    </ol>
+
+    <h3>Seams are intentional</h3>
+    <div class="grid-2">
+      <div class="tech"><p><strong>Controllers stay thin:</strong> HTTP details in, response out. Reusable business work sits in services.</p></div>
+      <div class="tech"><p><strong>Policies stay central:</strong> a second screen cannot accidentally invent a different access rule.</p></div>
+      <div class="tech"><p><strong>Storage is abstracted:</strong> app code names a disk/path rather than hard-coding SeaweedFS everywhere.</p></div>
+      <div class="tech"><p><strong>Jobs are explicit:</strong> slow operations have statuses, retries, failure codes, and recovery.</p></div>
+    </div>
+
+    <div class="callout"><strong>Safe responses:</strong> API resources decide what leaves the server. Internal paths, command output, and detailed worker failures do not belong in user-facing JSON.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Data</div>
+    <h1>Why PostgreSQL and object storage have different jobs</h1>
+    <div class="rule"></div>
+
+    <div class="grid-2">
+      <div class="card">
+        <span class="tag">Ledger</span>
+        <h3>PostgreSQL</h3>
+        <p>Excellent at relationships and questions:</p>
+        <ul>
+          <li>Who owns this speech?</li>
+          <li>Did this reviewer accept?</li>
+          <li>Which notes are published?</li>
+          <li>Is this the one primary video?</li>
+        </ul>
+      </div>
+      <div class="card">
+        <span class="tag">Warehouse</span>
+        <h3>SeaweedFS</h3>
+        <p>Excellent at large byte objects:</p>
+        <ul>
+          <li>Original upload</li>
+          <li>Playable MP4</li>
+          <li>Poster image</li>
+          <li>WebVTT caption file</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="kid"><p>A library catalogue holds the title, owner, and shelf number. The actual giant book stays on the shelf. Stuffing the book into the index-card drawer would ruin the catalogue.</p></div>
+
+    <h3>Why video does not live in PostgreSQL</h3>
+    <ul class="checklist">
+      <li>Video seeking needs byte-range reads: “give me this small slice now.” Object storage speaks that language.</li>
+      <li>A large video read should not throw useful database pages out of memory.</li>
+      <li>Database backups stay focused on valuable relational facts instead of huge replaceable media bytes.</li>
+    </ul>
+
+    <h3>What PostgreSQL protects even if app code slips</h3>
+    <div class="grid-3">
+      <div class="card"><h4>Foreign keys</h4><p>A note cannot point to a review that does not exist.</p></div>
+      <div class="card"><h4>Unique rules</h4><p>One reviewer cannot get two folders for one speech.</p></div>
+      <div class="card"><h4>Checks + partial indexes</h4><p>Only valid states and one primary asset of each kind.</p></div>
+    </div>
+
+    <div class="callout"><strong>The trade-off:</strong> the database write and file write cannot be one transaction. Asset statuses such as <em>uploading</em>, <em>processing</em>, <em>ready</em>, and <em>failed</em> make that gap visible and repairable.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Journey 1</div>
+    <h1>Uploading a video</h1>
+    <div class="rule"></div>
+    <p class="lede">Laravel authorizes and coordinates. Uppy and the browser carry chunks directly to SeaweedFS.</p>
+
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h4>Ask</h4><p>React asks Laravel to create a speech and start an upload.</p></div>
+      <div class="step"><div class="num">2</div><h4>Get passes</h4><p>Laravel creates an asset row and signs temporary multipart upload URLs.</p></div>
+      <div class="step"><div class="num">3</div><h4>Carry chunks</h4><p>The browser sends chunks directly to SeaweedFS. Interrupted chunks can resume.</p></div>
+      <div class="step"><div class="num">4</div><h4>Confirm</h4><p>Laravel verifies completion and places processing jobs on queues.</p></div>
+    </div>
+
+    <div class="kid"><p>The principal writes a hall pass. The moving company carries boxes straight to the warehouse. The principal records that the delivery arrived but never lifts every box.</p></div>
+
+    <h3>Why multipart upload?</h3>
+    <p>A 200 MB video is split into pieces. If hotel Wi-Fi fails after piece 17, only unfinished pieces need to be retried. The server also avoids request-size and memory bottlenecks.</p>
+
+    <h3>Then two lanes begin</h3>
+    <div class="grid-2">
+      <div class="card">
+        <span class="tag">Video lane</span>
+        <h3>FFmpeg worker</h3>
+        <p>Inspects the source. It remuxes a compatible file or transcodes an incompatible one into browser-friendly MP4, then makes a poster.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Caption lane</span>
+        <h3>Whisper worker</h3>
+        <p>Extracts speech audio, runs local <code>whisper.cpp</code>, writes captions, and produces searchable transcript data.</p>
+      </div>
+    </div>
+
+    <div class="callout"><strong>User-experience win:</strong> the playable video can become ready while captions are still processing. Slow transcription does not hold the video hostage.</div>
+
+    <div class="state-line"><span class="state">uploading</span><span class="state-arrow">→</span><span class="state">processing</span><span class="state-arrow">→</span><span class="state">ready</span><span class="state-arrow">or</span><span class="state">failed + retry</span></div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Journey 2</div>
+    <h1>Watching a private video</h1>
+    <div class="rule"></div>
+
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h4>Open speech</h4><p>React asks the API for speech information.</p></div>
+      <div class="step"><div class="num">2</div><h4>Check grant</h4><p>Laravel confirms owner, active review access, or moderation authority.</p></div>
+      <div class="step"><div class="num">3</div><h4>Sign URL</h4><p>Laravel returns a short-lived storage URL for the ready video.</p></div>
+      <div class="step"><div class="num">4</div><h4>Stream</h4><p>The browser requests only the byte ranges needed for play and seek.</p></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="kid"><p>The principal checks your ticket and gives you a temporary key to one locker. The key cannot open the whole warehouse and soon stops working.</p></div>
+      <div class="tech"><p>The API returns a presigned GET URL. SeaweedFS serves HTTP Range requests directly to the browser’s <code>&lt;video&gt;</code> element.</p></div>
+    </div>
+
+    <h3>Why Range matters</h3>
+    <p>Dragging from 00:10 to 08:45 should not download the first eight minutes again. The player asks storage for the byte section around 08:45. That makes scrubbing responsive and is a major reason media bytes belong in object storage.</p>
+
+    <h3>When the temporary URL expires</h3>
+    <p>The player adapter can request a fresh authorized URL and restore playback state. A refresh is another chance for Laravel to deny access if the review was revoked.</p>
+
+    <div class="warning"><strong>Security boundary:</strong> a signed URL is a short-lived capability. Treat it like a temporary key: limit its object, method, and lifetime; never log or expose it unnecessarily.</div>
+
+    <h3>What Laravel does not do</h3>
+    <div class="grid-3">
+      <div class="card"><h4>No video proxy</h4><p>PHP is not continuously relaying the stream.</p></div>
+      <div class="card"><h4>No public bucket</h4><p>Storage objects are not simply open to everyone.</p></div>
+      <div class="card"><h4>No permission cache</h4><p>Revocation checks should use current authority.</p></div>
+    </div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Journey 3</div>
+    <h1>Timed feedback: the heart of the product</h1>
+    <div class="rule"></div>
+    <p class="lede">Each annotation has a start, duration, text, and review. The player shows it only while its time window is active.</p>
+
+    <div class="model">
+      <div class="model-node"><strong>Video time</strong>83.2 seconds</div>
+      <div class="model-arrow">+</div>
+      <div class="model-node"><strong>Annotations</strong>start and end times</div>
+      <div class="model-arrow">→</div>
+      <div class="model-node"><strong>Active Set</strong>notes visible now</div>
+    </div>
+
+    <div class="kid"><p>A teacher has sticky notes saying “show from 1:20 to 1:26.” A tiny clock helper checks the stopwatch and holds up exactly the notes whose time has arrived.</p></div>
+
+    <h3>Two timing signals, one answer</h3>
+    <div class="grid-2">
+      <div class="card"><h4>Browser TextTrack</h4><p>The native timed-text machinery reports active cues accurately when the browser behaves.</p></div>
+      <div class="card"><h4>Pure reconciler</h4><p><code>computeActive(cues, currentTime)</code> independently calculates the active IDs several times per second.</p></div>
+    </div>
+
+    <p>The overlay renders from the reconciled active set. CSS handles the fade, which lets the browser’s compositor do smooth visual work without turning animation into application state.</p>
+
+    <h3>Why the pure function matters</h3>
+    <ul class="checklist">
+      <li>It can be tested with numbers—no real video, network, or browser timing required.</li>
+      <li>Seeking backward, overlap, exact boundaries, and bad inputs become cheap test cases.</li>
+      <li>The browser integration becomes a small adapter around proven arithmetic.</li>
+    </ul>
+
+    <div class="callout"><strong>Authoring loop:</strong> a reviewer pauses at a moment, writes, autosaves a draft, previews the same overlay the speaker will see, then publishes the review as a coherent snapshot.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Journey 4</div>
+    <h1>Captions and transcript</h1>
+    <div class="rule"></div>
+    <p class="lede">Captions are automatic by default, editable by the speaker, and processed locally so speech recordings do not need to go to a transcription vendor.</p>
+
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h4>Extract</h4><p>The worker uses FFmpeg to make transcription-friendly audio.</p></div>
+      <div class="step"><div class="num">2</div><h4>Listen</h4><p>Pinned <code>whisper.cpp</code> code and pinned model weights turn audio into timed words.</p></div>
+      <div class="step"><div class="num">3</div><h4>Store</h4><p>WebVTT goes to object storage; transcript data and provenance go to PostgreSQL.</p></div>
+      <div class="step"><div class="num">4</div><h4>Use</h4><p>The player shows captions; transcript clicks seek; search finds spoken phrases.</p></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="kid"><p>A robot listens and makes a first draft. The speaker is the editor because robots mishear names and accents.</p></div>
+      <div class="tech"><p>The worker writes a VTT asset and a derived transcript projection. Manual VTT edits trigger transcript re-derivation.</p></div>
+    </div>
+
+    <h3>Why keep both VTT and transcript data?</h3>
+    <table>
+      <thead><tr><th>Representation</th><th>Best at</th><th>Lives in</th></tr></thead>
+      <tbody>
+        <tr><td><strong>WebVTT file</strong></td><td>Native player captions with time cues.</td><td>SeaweedFS</td></tr>
+        <tr><td><strong>Transcript projection</strong></td><td>Search, transcript panel, click-to-seek, later analysis.</td><td>PostgreSQL</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Why pin the engine and model?</h3>
+    <p>The same audio can produce different words after an invisible model upgrade. The system records model/engine provenance so changes are deliberate and results are explainable.</p>
+
+    <div class="callout"><strong>Owner control:</strong> the caption setting is an owner-only switch. Disabling automatic generation must not silently delete an already useful, ready caption file.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Background work</div>
+    <h1>Why queues and workers exist</h1>
+    <div class="rule"></div>
+    <p class="lede">A web request should answer in seconds. Video conversion and speech recognition can take minutes, so they become jobs.</p>
+
+    <div class="kid"><p>A restaurant cashier takes your order quickly and puts a ticket on the rail. The soup cook, pizza cook, and dessert cook each pull from the right lane. You do not stand at the cash register while the pizza bakes.</p></div>
+
+    <h3>Three lanes with different clocks</h3>
+    <table>
+      <thead><tr><th>Lane</th><th>Worker</th><th>Typical work</th><th>Why separate?</th></tr></thead>
+      <tbody>
+        <tr><td><strong>default</strong></td><td><code>queue-worker</code></td><td>Notifications and short projection work.</td><td>Fast jobs should stay fast.</td></tr>
+        <tr><td><strong>transcode</strong></td><td><code>ffmpeg-worker</code></td><td>Probe, remux/transcode, poster.</td><td>Long timeout; FFmpeg dependency.</td></tr>
+        <tr><td><strong>captions</strong></td><td><code>whisper-worker</code></td><td>Audio extraction and transcription.</td><td>CPU-heavy; model and CLI dependency.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Reliable-job vocabulary</h3>
+    <div class="grid-2">
+      <div class="card"><h4>Idempotent</h4><p>Running the same job twice should not create two primary videos or corrupt the result.</p></div>
+      <div class="card"><h4>Attempt identity</h4><p>An old caption worker must not overwrite a newer retry or manual edit.</p></div>
+      <div class="card"><h4>Visible status</h4><p>The UI can show uploading, processing, ready, or a safe failure code.</p></div>
+      <div class="card"><h4>Reconciliation</h4><p>The scheduler detects work stranded by a killed worker and repairs or fails it safely.</p></div>
+    </div>
+
+    <div class="callout"><strong>Key principle:</strong> queues do not guarantee “exactly once.” Correctness comes from database constraints, current-attempt checks, transactions, and safe repetition.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Docker</div>
+    <h1>Why so many containers?</h1>
+    <div class="rule"></div>
+    <p class="lede">A container is a repeatable lunchbox: the program plus the tools it needs. Multiple lunchboxes do not automatically mean microservices.</p>
+
+    <table>
+      <thead><tr><th>Service</th><th>Child-friendly job</th><th>Real job</th></tr></thead>
+      <tbody>
+        <tr><td><code>web</code></td><td>Front door</td><td>Nginx serves the built SPA and forwards API requests.</td></tr>
+        <tr><td><code>app</code></td><td>Principal’s office</td><td>PHP-FPM runs Laravel web requests.</td></tr>
+        <tr><td><code>postgres</code></td><td>Ledger</td><td>Relational source of truth and constraints.</td></tr>
+        <tr><td><code>seaweedfs</code></td><td>Warehouse</td><td>S3-compatible object storage.</td></tr>
+        <tr><td><code>valkey</code></td><td>Task board</td><td>Queue transport and cache infrastructure.</td></tr>
+        <tr><td><code>queue-worker</code></td><td>Quick helper</td><td>Short Laravel jobs.</td></tr>
+        <tr><td><code>ffmpeg-worker</code></td><td>Video robot</td><td>Media conversion and poster generation.</td></tr>
+        <tr><td><code>whisper-worker</code></td><td>Listening robot</td><td>Local transcription and captions.</td></tr>
+        <tr><td><code>scheduler</code></td><td>Hall monitor</td><td>Runs timed cleanup and recovery commands.</td></tr>
+        <tr><td><code>mailpit</code></td><td>Practice mailbox</td><td>Catches development email without sending it.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Image vs container</h3>
+    <div class="grid-2">
+      <div class="kid"><p>An <strong>image</strong> is a lunch recipe. A <strong>container</strong> is one packed lunch made from it. The app, quick worker, and scheduler can use the same recipe but run different commands.</p></div>
+      <div class="tech"><p>The multi-stage Dockerfile builds dependency, web, runtime, FFmpeg, and Whisper targets. Compose supplies commands, networks, volumes, dependencies, and health checks.</p></div>
+    </div>
+
+    <div class="callout"><strong>Persistent volumes:</strong> containers are replaceable; database, media, and model files live in named volumes so replacing a process does not erase its durable data.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Correctness</div>
+    <h1>How the design resists mistakes</h1>
+    <div class="rule"></div>
+
+    <div class="grid-2">
+      <div class="card"><h3>Authorization at the server</h3><p>Hiding a button is friendly UI, not security. Laravel policies must reject the request itself.</p></div>
+      <div class="card"><h3>Transactions</h3><p>Changes that belong together either commit together or roll back together.</p></div>
+      <div class="card"><h3>Database invariants</h3><p>Foreign keys, uniqueness, checks, and partial indexes guard facts under concurrency.</p></div>
+      <div class="card"><h3>Optimistic locking</h3><p>Multi-writer documents use a version number so one tab cannot silently erase newer work.</p></div>
+      <div class="card"><h3>Safe failure codes</h3><p>Users receive stable explanations; private paths and worker stderr remain internal.</p></div>
+      <div class="card"><h3>Recovery sweeps</h3><p>The scheduler finds stale processing attempts after hard crashes.</p></div>
+    </div>
+
+    <h3>Example: two tabs edit the same essay</h3>
+    <div class="flow">
+      <div class="step"><div class="num">1</div><h4>Both read v5</h4><p>Tab A and Tab B start from version 5.</p></div>
+      <div class="step"><div class="num">2</div><h4>A saves</h4><p>The database writes A’s text and advances to v6.</p></div>
+      <div class="step"><div class="num">3</div><h4>B tries v5</h4><p>The server sees B is based on an old version.</p></div>
+      <div class="step"><div class="num">4</div><h4>Conflict, not loss</h4><p>B reloads or resolves; A’s work is not silently overwritten.</p></div>
+    </div>
+
+    <div class="kid"><p>Two children copy the same worksheet. One hands in a new answer. The second must not erase it using an older copy without being warned.</p></div>
+
+    <div class="quote">The frontend makes the experience pleasant. The backend and database make the rules true.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Proof</div>
+    <h1>How the architecture is tested</h1>
+    <div class="rule"></div>
+    <p class="lede">Use the cheapest test that can honestly prove the behavior. Push logic downward; keep browser tests for real wiring.</p>
+
+    <div class="grid-3">
+      <div class="card"><span class="tag">Many + fast</span><h3>Unit tests</h3><p>Pure timing arithmetic, parsing, validation helpers, reducers, and small UI behavior.</p><p class="small">Vitest / Pest</p></div>
+      <div class="card"><span class="tag">Rules + data</span><h3>Feature tests</h3><p>Policies, API responses, transactions, lifecycle states, storage fakes, queue dispatch.</p><p class="small">Laravel + Pest</p></div>
+      <div class="card"><span class="tag">Few + real</span><h3>Browser tests</h3><p>Login, upload wiring, invitation journeys, video/caption tracks, seeking, editor integration.</p><p class="small">Playwright</p></div>
+    </div>
+
+    <h3>One example across the layers</h3>
+    <table>
+      <thead><tr><th>Question</th><th>Best proof</th></tr></thead>
+      <tbody>
+        <tr><td>Which note IDs are active at 83.2 seconds?</td><td>Unit-test <code>computeActive</code> with numbers.</td></tr>
+        <tr><td>Can an unrelated user fetch annotations?</td><td>Backend policy/feature test expects forbidden.</td></tr>
+        <tr><td>Does a real video element contain a real captions track and seek from transcript?</td><td>Playwright in a real browser.</td></tr>
+        <tr><td>Can the compiled Whisper adapter invoke the pinned binary and model?</td><td>Separate real-stack smoke test.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout"><strong>Avoid false confidence:</strong> mocking every boundary can prove that mocks agree with the code while the actual browser, object store, queue, or native binary is broken. Heavy real-smoke tests are separated so normal feedback stays quick.</div>
+
+    <div class="kid"><p>Test a ruler with measurements, a lock with the wrong keys, and the whole bicycle with a real rider. Do not make the rider test every screw.</p></div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Trade-offs</div>
+    <h1>What you deliberately did not choose</h1>
+    <div class="rule"></div>
+
+    <table>
+      <thead><tr><th>Not chosen</th><th>Reason</th><th>Chosen instead</th></tr></thead>
+      <tbody>
+        <tr><td><strong>JWT-first browser auth</strong></td><td>Immediate revocation is central to private media.</td><td>Stateful Sanctum sessions.</td></tr>
+        <tr><td><strong>Videos in the database</strong></td><td>Poor fit for seeking, memory, backups, and large opaque bytes.</td><td>SeaweedFS + metadata rows.</td></tr>
+        <tr><td><strong>Videos through PHP</strong></td><td>Would turn the API into an expensive byte pipe.</td><td>Presigned direct upload/download.</td></tr>
+        <tr><td><strong>One giant worker lane</strong></td><td>Five-minute transcription would delay two-second jobs.</td><td>Short, transcode, and caption lanes.</td></tr>
+        <tr><td><strong>Microservices / Kubernetes</strong></td><td>Operational cost without a current scaling need.</td><td>Modular monolith + Compose.</td></tr>
+        <tr><td><strong>Public speech pool</strong></td><td>Would let strangers grant themselves access.</td><td>Owner-created invitations only.</td></tr>
+        <tr><td><strong>Redux-Saga</strong></td><td>Extra programming model without needed capability.</td><td>RTK Query + listener middleware.</td></tr>
+        <tr><td><strong>HLS in v1</strong></td><td>More pipeline/storage complexity than needed for current scale.</td><td>Browser-friendly MP4 + Range.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>The honest weak point</h3>
+    <p>Self-hosted FFmpeg and Whisper are limited by one machine’s CPU. That is acceptable now. They are already isolated behind queues, so a future managed transcode/transcription service can replace a worker without rewriting the product model.</p>
+
+    <div class="quote">Scale readiness means knowing which box to replace later—not pretending every box is infinite today.</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Memory trick</div>
+    <h1>Remember A-C-S-Q-W-S</h1>
+    <div class="rule"></div>
+    <p class="lede">When explaining any feature, walk through the same six verbs.</p>
+
+    <div class="memory-grid">
+      <div class="letter">A</div><div><h3>Ask</h3><p>The React browser asks Laravel for a permitted action.</p></div>
+      <div class="letter">C</div><div><h3>Check</h3><p>Session, validation, and policy checks decide whether it is allowed.</p></div>
+      <div class="letter">S</div><div><h3>Store</h3><p>PostgreSQL stores relational facts; SeaweedFS stores large bytes.</p></div>
+      <div class="letter">Q</div><div><h3>Queue</h3><p>Anything slow becomes a job on the correct Valkey lane.</p></div>
+      <div class="letter">W</div><div><h3>Work</h3><p>A specialized worker performs the expensive task and records status.</p></div>
+      <div class="letter">S</div><div><h3>Show</h3><p>RTK Query refreshes server truth; React and Video.js present it.</p></div>
+    </div>
+
+    <div class="callout"><strong>Try it with captions:</strong> Ask to upload → Check owner → Store source → Queue captions → Whisper works → Show VTT and transcript.</div>
+
+    <h3>The second memory trick</h3>
+    <p><strong>Relationship? Ledger. Large bytes? Warehouse. Slow task? Task board. Permission? Principal.</strong></p>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Say it out loud</div>
+    <h1>Ready-made explanations</h1>
+    <div class="rule"></div>
+
+    <h3>Thirty seconds</h3>
+    <div class="script">“It is a private speech-coaching app. <strong>React</strong> runs the interface, while <strong>Laravel</strong> owns permissions and business rules. <strong>PostgreSQL</strong> stores relationships and statuses, and <strong>SeaweedFS</strong> stores the large media. The browser uploads and streams media directly using short-lived URLs. Slow jobs go through <strong>Valkey</strong> to separate FFmpeg and Whisper workers, so video can be ready before captions. The key data decision is that a Review is both an invitation/access grant and the folder for one reviewer’s notes.”</div>
+
+    <h3>For a 10-year-old</h3>
+    <div class="script">“It is a private theater. The speaker owns the show and hands tickets to chosen reviewers. The principal checks every ticket. A ledger remembers who owns what, a warehouse holds the giant videos, and robots prepare the video and type captions. Each reviewer has one folder of sticky notes that pop up at the right time.”</div>
+
+    <h3>If someone asks, “Why this architecture?”</h3>
+    <div class="script">“Each tool has one job it is good at. The database handles rules and relationships; object storage handles huge seekable files; Laravel handles trust; React handles interaction; queues protect web requests from slow work. The boundaries also give us clean places to test and replace heavy infrastructure later.”</div>
+
+    <h3>If someone asks, “Is it microservices?”</h3>
+    <div class="script">“No. It is a <strong>modular monolith</strong>: one Laravel domain and database, with multiple processes and containers. The workers are separated for timeouts, CPU, and dependencies—not because each is its own product.”</div>
+  </section>
+
+  <section class="sheet">
+    <div class="kicker">Pocket reference</div>
+    <h1>One-page cheat sheet</h1>
+    <div class="rule"></div>
+
+    <table>
+      <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+      <tbody>
+        <tr><td>What is the product?</td><td>Private, invitation-only video feedback tied to exact moments.</td></tr>
+        <tr><td>What is the frontend?</td><td>React SPA, React Router, Redux Toolkit/RTK Query, Video.js, Tailwind.</td></tr>
+        <tr><td>What is the backend?</td><td>Laravel JSON API with session auth, policies, services, jobs, and resources.</td></tr>
+        <tr><td>Where are facts?</td><td>PostgreSQL.</td></tr>
+        <tr><td>Where are big files?</td><td>SeaweedFS object storage.</td></tr>
+        <tr><td>How do uploads/playback work?</td><td>Short-lived presigned URLs; media bytes bypass PHP.</td></tr>
+        <tr><td>How does slow work happen?</td><td>Valkey queues with separate short, FFmpeg, and Whisper workers.</td></tr>
+        <tr><td>What is the central data idea?</td><td>Review = invitation + access grant + reviewer’s work folder.</td></tr>
+        <tr><td>How are notes timed?</td><td>Native TextTrack plus pure <code>computeActive</code> reconciliation; CSS fade.</td></tr>
+        <tr><td>Why sessions?</td><td>Server-side revocation matters for private media.</td></tr>
+        <tr><td>How is correctness protected?</td><td>Policies, validation, transactions, DB constraints, locks, idempotent jobs.</td></tr>
+        <tr><td>How is it tested?</td><td>Vitest/Pest for logic and rules; Playwright for real browser wiring; real-stack media smokes.</td></tr>
+        <tr><td>What is it not?</td><td>Not public, not microservices, not video-in-DB, not one giant queue.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="quote">Ask → Check → Store → Queue → Work → Show</div>
+
+    <h3>Canonical reading in the repository</h3>
+    <ul>
+      <li><code>MODERNIZATION_PLAN.md</code> — detailed architecture and decisions.</li>
+      <li><code>ARCHITECTURE-EXPLAINED.md</code> — long-form plain-language explanation.</li>
+      <li><code>STEPS.md</code> and <code>STEP-*.md</code> — build sequence and acceptance.</li>
+      <li><code>compose.yaml</code> and <code>Dockerfile</code> — current runtime topology.</li>
+      <li><code>api/routes/api.php</code> and <code>web/src/App.tsx</code> — current product surface.</li>
+    </ul>
+
+    <div class="footer-note">Scope note: this guide explains the chosen architecture and the implementation visible through the captions stage. Later roadmap areas—voice annotations, deeper privacy/erasure, admin certification, social connections, production hardening, and accessibility polish—build on these same boundaries. It is a memory aid, not an operational runbook or security audit.</div>
+  </section>
+</body>
+</html>

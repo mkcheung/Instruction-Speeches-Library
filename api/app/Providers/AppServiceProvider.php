@@ -8,6 +8,10 @@ use App\Models\User;
 use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
+use App\Services\Captions\CaptionTranscriberContract;
+use App\Services\Captions\DeterministicCaptionTranscriber;
+use App\Services\Captions\FakeCaptionTranscriber;
+use App\Services\Captions\WhisperTranscriber;
 use App\Services\Essay\EssayRenderer;
 use App\Services\Essay\NullEssayRenderer;
 use App\Services\Transcoding\FakeTranscoder;
@@ -16,6 +20,7 @@ use App\Services\Transcoding\TranscoderContract;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -39,6 +44,38 @@ class AppServiceProvider extends ServiceProvider
         // today (no real renderer exists yet in any environment — nothing
         // in this step calls EssayRenderer::render() at all).
         $this->app->bind(EssayRenderer::class, NullEssayRenderer::class);
+
+        // STEP-09-captions.md / the frozen STEP-09 backend contract §6:
+        // the exact same testing/dev-prod split as TranscoderContract
+        // above, for the exact same reason — FakeCaptionTranscriber in
+        // testing/CI so the upload/caption flow is testable without a real
+        // whisper.cpp binary or GGUF model weights present, WhisperTranscriber
+        // everywhere else.
+        //
+        // STEP-09-VERIFICATION-PLAN.md §3.1/§4.2 point 3 adds a third
+        // branch: the `caption-test-worker` compose service sets
+        // `CAPTION_TEST_WORKER=1` on itself only, so this doesn't touch
+        // `app`/`queue-worker`/`whisper-worker`'s own bindings. Checked
+        // here at register() time (process startup), not only lazily
+        // inside the closure below, so a misconfigured production
+        // container fails immediately on boot instead of waiting for its
+        // first queued caption job — an operator mis-copying `e2e`'s env
+        // into a real deploy is exactly the mistake this guards against,
+        // and it must not silently hand production traffic a fake,
+        // blockable transcriber.
+        if (config('captions.test_worker_enabled') && ! $this->app->environment('e2e', 'testing')) {
+            throw new RuntimeException('CAPTION_TEST_WORKER=1 is only valid under APP_ENV=e2e|testing.');
+        }
+
+        $this->app->bind(CaptionTranscriberContract::class, function () {
+            if (config('captions.test_worker_enabled')) {
+                return new DeterministicCaptionTranscriber;
+            }
+
+            return $this->app->environment('testing')
+                ? new FakeCaptionTranscriber
+                : new WhisperTranscriber;
+        });
     }
 
     /**
@@ -106,6 +143,17 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('essay.update', [AnnotationPolicy::class, 'essayUpdate']);
         Gate::define('essay.publish', [AnnotationPolicy::class, 'essayPublish']);
 
+        // STEP-09-captions.md / the frozen STEP-09 backend contract §1-§2:
+        // the caption read/write surface. `caption.readCaptions` is
+        // registered for the same explicit-naming reason every other
+        // dotted ability here is, but per §2 of the contract does NOT go
+        // into $mustFallThrough below — widening admin read access isn't
+        // the same failure mode as widening admin write access (same
+        // reasoning essay reads are exempt for). Only `caption.update`
+        // needs the guard.
+        Gate::define('caption.readCaptions', [SpeechPolicy::class, 'readCaptions']);
+        Gate::define('caption.update', [SpeechPolicy::class, 'updateCaptions']);
+
         // PLAN-APP-HEADER.md S4: wires up ReviewPolicy::viewDirectory, which
         // existed as dead code (P2) — ReviewerDirectoryController made no
         // authorization call at all. Registered explicitly, same as every
@@ -139,6 +187,13 @@ class AppServiceProvider extends ServiceProvider
                 // plan's explicit "An Admin cannot... write an essay"
                 // acceptance criterion (MODERNIZATION_PLAN.md:2384).
                 'essay.update', 'essay.publish',
+
+                // STEP-09: ownership-only, same bug class as essay.update/
+                // publish immediately above — without this here, the
+                // blanket admin bypass would silently grant admins
+                // caption-write, contradicting SpeechPolicy::updateCaptions'
+                // "owner ('the speaker') only" contract.
+                'caption.update',
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',

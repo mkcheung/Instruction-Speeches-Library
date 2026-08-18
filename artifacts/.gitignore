@@ -1,0 +1,6 @@
+# STEP-09 verification plan §6.2/§6.4: bind-mount target for
+# `whisper-smoke`'s bounded process diagnostics (only ever written on a
+# real-smoke-test failure) and `scripts/whisper-smoke-stack.sh`'s runtime
+# artifacts. Never committed.
+*
+!.gitignore

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
+use App\Http\Controllers\Api\CaptionController;
 use App\Http\Controllers\Api\EssayController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\NotificationController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\ReviewerDirectoryController;
 use App\Http\Controllers\Api\SpeechController;
 use App\Http\Controllers\Api\SpeechUploadController;
+use App\Http\Controllers\Api\TranscriptController;
 use App\Http\Resources\UserResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -60,6 +62,16 @@ Route::middleware('auth:sanctum')->group(function () {
     // Policy classes exist in this codebase yet (matches S1/S2's pattern).
     Route::get('/speeches', [SpeechController::class, 'index'])->name('api.speeches.index');
     Route::post('/speeches', [SpeechController::class, 'store'])->name('api.speeches.store');
+
+    // STEP-09-captions.md / the frozen STEP-09 backend contract §4:
+    // MUST be registered before `/speeches/{speech}` below, or Laravel's
+    // route matcher would swallow the literal `search` segment as the
+    // `{speech}` route parameter instead. Scoped to the caller's OWN
+    // speeches only (see TranscriptController::search's own doc comment)
+    // — not speech-scoped in the URL itself, since it queries across every
+    // speech a user owns, not one.
+    Route::get('/speeches/search', [TranscriptController::class, 'search'])->name('api.speeches.search');
+
     Route::get('/speeches/{speech}', [SpeechController::class, 'show'])->name('api.speeches.show');
 
     Route::post('/speeches/{speech}/assets/uploads', [SpeechUploadController::class, 'createUpload'])
@@ -124,6 +136,26 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.speeches.essay.update');
     Route::post('/speeches/{speech}/essay/publish', [EssayController::class, 'publish'])
         ->name('api.speeches.essay.publish');
+
+    // STEP-09-captions.md / the frozen STEP-09 backend contract §4: no
+    // optimistic-locking/409 on captions (unlike essay/annotation writes
+    // above) — the contract is explicit that single-speaker VTT editing
+    // has no concurrent-writer scenario to guard against.
+    Route::get('/speeches/{speech}/captions', [CaptionController::class, 'show'])
+        ->name('api.speeches.captions.show');
+    Route::put('/speeches/{speech}/captions', [CaptionController::class, 'update'])
+        ->name('api.speeches.captions.update');
+
+    // captions-settings gap fix (post-STEP-09 code review): the missing
+    // write surface for `speeches.captions_enabled` — STEP-09 shipped the
+    // column and every defensive read of it, but no route to flip it.
+    // Owner-only (`caption.update`, the same gate `PUT /captions` uses),
+    // registered alongside the other caption routes above.
+    Route::patch('/speeches/{speech}/caption-settings', [CaptionController::class, 'updateSettings'])
+        ->name('api.speeches.caption-settings.update');
+
+    Route::get('/speeches/{speech}/transcript', [TranscriptController::class, 'show'])
+        ->name('api.speeches.transcript.show');
 
     Route::post('/reviews/{review}/accept', [ReviewController::class, 'accept'])
         ->name('api.reviews.accept');

@@ -89,4 +89,18 @@ class SpeechAssetFactory extends Factory
             'height' => 180,
         ]);
     }
+
+    /**
+     * STEP-09-captions.md: the VTT asset a caption job produces or a
+     * speaker edits — `kind='captions'`/`format='vtt'` per the frozen
+     * contract §8, same status enum as every other asset kind.
+     */
+    public function captions(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'kind' => 'captions',
+            'format' => 'vtt',
+            'path' => 'speeches/'.Str::ulid().'/captions.vtt',
+        ]);
+    }
 }

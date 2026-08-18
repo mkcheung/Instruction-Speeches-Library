@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { POSTGRES_CONTAINER } from './fixtures.js';
 
 let email: string;
 
@@ -8,7 +9,7 @@ test.afterEach(() => {
     // Postgres container. Delete it by email so re-runs don't accumulate
     // test users. This only ever targets rows this test itself created.
     execSync(
-        `docker exec instruction-speeches-library-postgres-1 psql -U speechcoach -d speechcoach -c "delete from users where email = '${email}'"`,
+        `docker exec ${POSTGRES_CONTAINER} psql -U speechcoach -d speechcoach -c "delete from users where email = '${email}'"`,
     );
 });
 

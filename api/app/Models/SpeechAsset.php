@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * MODERNIZATION_PLAN §6.3, §9. One row per uploaded/derived file. `status`
@@ -40,6 +41,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $width
  * @property int|null $height
  * @property string|null $poster_time_seconds
+ * @property string|null $caption_attempt_id
+ * @property Carbon|null $caption_queued_at
+ * @property Carbon|null $caption_started_at
+ * @property Carbon|null $caption_heartbeat_at
+ * @property string|null $content_revision
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 #[Fillable([
     'speech_id', 'kind', 'format', 'rendition', 'disk', 'path',
@@ -47,6 +55,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'status', 'failure_code', 'failure_detail', 'is_primary',
     'upload_id', 'client_declared_bytes',
     'width', 'height', 'poster_time_seconds',
+    'caption_attempt_id', 'caption_queued_at', 'caption_started_at', 'caption_heartbeat_at',
+    'content_revision',
 ])]
 class SpeechAsset extends Model
 {
@@ -74,6 +84,9 @@ class SpeechAsset extends Model
             'width' => 'integer',
             'height' => 'integer',
             'poster_time_seconds' => 'decimal:3',
+            'caption_queued_at' => 'datetime',
+            'caption_started_at' => 'datetime',
+            'caption_heartbeat_at' => 'datetime',
         ];
     }
 }

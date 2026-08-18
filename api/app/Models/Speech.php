@@ -43,11 +43,12 @@ use Illuminate\Support\Str;
  * @property int|null $supersedes_id
  * @property string|null $change_note
  * @property string|null $poster_time_seconds
+ * @property bool $captions_enabled
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
  */
-#[Fillable(['user_id', 'title', 'description', 'delivered_on', 'supersedes_id', 'change_note', 'poster_time_seconds'])]
+#[Fillable(['user_id', 'title', 'description', 'delivered_on', 'supersedes_id', 'change_note', 'poster_time_seconds', 'captions_enabled'])]
 class Speech extends Model
 {
     /** @use HasFactory<SpeechFactory> */
@@ -113,6 +114,19 @@ class Speech extends Model
     }
 
     /**
+     * STEP-09-captions.md §6.12: the single derived-from-VTT row (at most
+     * one per speech, `uq_speech_transcripts_speech_id`). `HasOne`, not
+     * `HasMany` — App\Jobs\GenerateCaptions and the caption-edit re-derive
+     * path both upsert this one row rather than accumulating history.
+     *
+     * @return HasOne<SpeechTranscript, $this>
+     */
+    public function transcript(): HasOne
+    {
+        return $this->hasOne(SpeechTranscript::class);
+    }
+
+    /**
      * MODERNIZATION_PLAN §7.3: the two-tier access rule as one query scope.
      * A speech is visible to a user if they own it, or if they hold a
      * review on it whose `status` is access-granting (Review::ACCESS_GRANTING)
@@ -153,6 +167,7 @@ class Speech extends Model
             'is_example' => 'boolean',
             'duration_seconds' => 'decimal:3',
             'poster_time_seconds' => 'decimal:3',
+            'captions_enabled' => 'boolean',
         ];
     }
 }

@@ -1,5 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
+import { captionApi } from '@/features/caption/captionApi'
 import type {
   CompletedPart,
   CreateSpeechPayload,
@@ -112,6 +113,34 @@ export const speechApi = createApi({
       }),
       invalidatesTags: (_result, _error, arg) => [{ type: 'Speech', id: arg.speechId }],
     }),
+    /** captions-settings gap fix: `PATCH /speeches/{speech}/caption-
+     * settings`, the missing write surface for `speeches.captions_enabled`
+     * (STEP-09 shipped the column read-only). `invalidatesTags` covers this
+     * slice's own `Speech` cache; `onQueryStarted` additionally invalidates
+     * `captionApi`'s `Captions` tag once the write succeeds — same
+     * cross-slice-dispatch pattern `captionApi.ts`'s own `updateCaptions`
+     * uses to reach into `transcriptApi`, for the same reason: toggling
+     * captions off can move the caption asset itself (a `processing` row
+     * moving to `failed`/`captions_disabled`), and a stale
+     * `getCaptions` cache would keep showing the old status until an
+     * unrelated refetch happened to occur. */
+    updateCaptionSettings: builder.mutation<Speech, { speechId: number; captions_enabled: boolean }>({
+      query: ({ speechId, captions_enabled: captionsEnabled }) => ({
+        url: `/api/speeches/${speechId}/caption-settings`,
+        method: 'PATCH',
+        body: { captions_enabled: captionsEnabled },
+      }),
+      transformResponse: (response: { speech: Speech }) => response.speech,
+      invalidatesTags: (_result, _error, arg) => [{ type: 'Speech', id: arg.speechId }],
+      async onQueryStarted({ speechId }, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled
+          dispatch(captionApi.util.invalidateTags([{ type: 'Captions', id: speechId }]))
+        } catch {
+          // Write failed — leave the captions cache alone.
+        }
+      },
+    }),
   }),
 })
 
@@ -127,4 +156,5 @@ export const {
   useLazyGetPlaybackUrlQuery,
   useGetTranscodeDepthQuery,
   useSetPosterFrameMutation,
+  useUpdateCaptionSettingsMutation,
 } = speechApi

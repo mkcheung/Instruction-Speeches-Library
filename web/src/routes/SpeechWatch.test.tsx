@@ -1,11 +1,46 @@
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type Player from 'video.js/dist/types/player'
-import { PosterFramePicker } from '@/routes/SpeechWatch'
+import { PosterFramePicker, OverlayPositioner } from '@/routes/SpeechWatch'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import type { SpeechSprite } from '@/features/speech/types'
+
+/**
+ * §8.6: the overlay's actual vertical placement lives on THIS wrapper —
+ * the one element with room to place content in the upper vs lower half
+ * of the video frame — not on `OverlayStack`'s own (content-sized) inner
+ * box. A regression here (e.g. reverting to a hardcoded `justify-end`)
+ * would silently defeat `useCaptionsAnchor`'s top-anchoring whenever
+ * captions are showing, even though `OverlayStack.tsx` itself still
+ * computes the "right" anchor-dependent class for its own children.
+ */
+describe('OverlayPositioner', () => {
+  it('anchors to the top (data-anchor="top", justify-start) when captions are showing', () => {
+    render(
+      <OverlayPositioner anchor="top">
+        <div>content</div>
+      </OverlayPositioner>,
+    )
+    const positioner = screen.getByTestId('overlay-positioner')
+    expect(positioner).toHaveAttribute('data-anchor', 'top')
+    expect(positioner.className).toContain('justify-start')
+    expect(positioner.className).not.toContain('justify-end')
+  })
+
+  it('anchors to the bottom (data-anchor="default", justify-end) when captions are not showing', () => {
+    render(
+      <OverlayPositioner anchor="default">
+        <div>content</div>
+      </OverlayPositioner>,
+    )
+    const positioner = screen.getByTestId('overlay-positioner')
+    expect(positioner).toHaveAttribute('data-anchor', 'default')
+    expect(positioner.className).toContain('justify-end')
+    expect(positioner.className).not.toContain('justify-start')
+  })
+})
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })

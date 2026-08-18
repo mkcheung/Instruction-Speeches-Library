@@ -9,14 +9,43 @@ import { describe, expect, it, vi } from 'vitest'
  * player permanently unable to retry again later.
  */
 
+type FakeTrack = { kind: string; mode: TextTrackMode; label?: string; src?: string }
+
 class FakePlayer {
   listeners = new Map<string, Set<() => void>>()
   currentTimeValue = 0
   pausedValue = true
   srcCalls: unknown[] = []
   playCalled = false
+  /** Remote text tracks (e.g. captions), same shape `setCaptionsTrack`/
+   * `getCaptionsTrack` read/write in the real adapter. */
+  tracks: FakeTrack[] = []
   private _error: { code: number } | null = null
   private _poster: string | undefined = undefined
+
+  remoteTextTracks() {
+    return this.tracks
+  }
+
+  textTracks() {
+    return this.tracks
+  }
+
+  removeRemoteTextTrack(track: FakeTrack) {
+    const index = this.tracks.indexOf(track)
+    if (index >= 0) this.tracks.splice(index, 1)
+  }
+
+  addRemoteTextTrack(options: { kind: string; src: string; label?: string; default?: boolean }) {
+    const track: FakeTrack = {
+      kind: options.kind,
+      mode: options.default ? 'showing' : 'disabled',
+      label: options.label,
+      src: options.src,
+    }
+    this.tracks.push(track)
+    return { track }
+  }
 
   on(event: string, handler: () => void) {
     this.one(event, handler, false)
@@ -77,11 +106,28 @@ vi.mock('video.js', () => ({
   default: vi.fn(() => new FakePlayer()),
 }))
 
-const { createVideoJsPlayer } = await import('@/shared/media/videojs-adapter')
+const { createVideoJsPlayer, setCaptionsTrack, getCaptionsTrack } = await import('@/shared/media/videojs-adapter')
 
 function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
+
+describe('videojs-adapter player configuration', () => {
+  it('forces native HTML text tracks instead of video.js emulation', async () => {
+    const videojs = vi.mocked((await import('video.js')).default)
+    const element = document.createElement('video')
+
+    createVideoJsPlayer(element, {
+      initialUrl: 'https://example.com/video.mp4',
+      refreshUrl: vi.fn(),
+    })
+
+    expect(videojs).toHaveBeenLastCalledWith(
+      element,
+      expect.objectContaining({ html5: { nativeTextTracks: true } }),
+    )
+  })
+})
 
 describe('videojs-adapter refresh-on-error', () => {
   it('refreshes the URL and restores position + play state on MEDIA_ERR_NETWORK', async () => {
@@ -148,6 +194,61 @@ describe('videojs-adapter refresh-on-error', () => {
 
     expect(refreshUrl).toHaveBeenCalledTimes(2)
   })
+
+  /**
+   * The bug this guards: `addRemoteTextTrack`'s `manualCleanup: false`
+   * means video.js strips remote text tracks (the caption `<track>`
+   * included) on every `src` reassignment — including this adapter's own
+   * error-driven signed-URL refresh. Nothing about that refresh was
+   * visible to React before `onSourceRefreshed` existed, so
+   * `SpeechWatch.tsx`'s caption-attach effect never re-ran and the track
+   * silently stayed gone. `onSourceRefreshed` is the adapter's signal to
+   * the caller ("re-attach now") — this simulates video.js's real
+   * strip-on-`src`-change behavior (the `FakePlayer` stub doesn't do it
+   * itself, same as the real `HTMLMediaElement.src` setter isn't exercised
+   * under jsdom) and asserts the caller's `onSourceRefreshed` handler,
+   * reattaching via `setCaptionsTrack`, leaves exactly one surviving
+   * track — not zero (never reattached) and not two (accumulated).
+   */
+  it('onSourceRefreshed fires after the reloaded src settles, letting the caller reattach exactly one caption track', async () => {
+    const refreshUrl = vi.fn().mockResolvedValue('https://fresh.example/video.mp4')
+    const onSourceRefreshed = vi.fn()
+    const player = createVideoJsPlayer(document.createElement('video'), {
+      initialUrl: 'https://stale.example/video.mp4',
+      refreshUrl,
+      onSourceRefreshed,
+    }) as unknown as FakePlayer
+
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], {
+      src: 'blob:original',
+    })
+    expect(player.tracks).toHaveLength(1)
+
+    // Wire the reattach the way `SpeechWatch.tsx` does: the caller's own
+    // `onSourceRefreshed` handler is what calls `setCaptionsTrack` again.
+    onSourceRefreshed.mockImplementation(() => {
+      setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], {
+        src: 'blob:original',
+      })
+    })
+
+    player.setError(2)
+    player.emit('error')
+    await flush()
+    await flush()
+
+    // video.js's real `manualCleanup: false` behavior on `src` reassignment
+    // — `FakePlayer.src()` doesn't implement this itself, so it's simulated
+    // here, matching how `setCaptionsTrack`'s own doc comment describes it.
+    player.tracks.length = 0
+
+    expect(onSourceRefreshed).not.toHaveBeenCalled()
+    player.emit('loadedmetadata')
+
+    expect(onSourceRefreshed).toHaveBeenCalledTimes(1)
+    expect(player.tracks).toHaveLength(1)
+    expect(player.tracks[0].src).toBe('blob:original')
+  })
 })
 
 /**
@@ -209,5 +310,87 @@ describe('videojs-adapter poster-flash mitigation', () => {
     player.emit('emptied')
 
     expect(player.poster()).toBeUndefined()
+  })
+})
+
+/**
+ * STEP-09-captions.md/STEP-09-FROZEN-CONTRACT.md §5's "a real `<track
+ * kind='captions' default>`" — exercised against a fake player exposing
+ * just the three video.js text-track methods these two functions actually
+ * call (`remoteTextTracks`/`removeRemoteTextTrack`/`addRemoteTextTrack`).
+ * Plain arrays stand in for video.js's `TextTrackList` —
+ * both have `.length` and numeric indexing, the only two things
+ * `videojs-adapter.ts`'s own `toArray` helper reads off them.
+ */
+function fakeCaptionsPlayer() {
+  const tracks: FakeTrack[] = []
+  const player = {
+    remoteTextTracks: () => tracks,
+    removeRemoteTextTrack: (track: FakeTrack) => {
+      const index = tracks.indexOf(track)
+      if (index >= 0) tracks.splice(index, 1)
+    },
+    addRemoteTextTrack: (options: { kind: string; src: string; label?: string; default?: boolean }) => {
+      const track: FakeTrack = {
+        kind: options.kind,
+        mode: options.default ? 'showing' : 'disabled',
+        label: options.label,
+        src: options.src,
+      }
+      tracks.push(track)
+      return { track }
+    },
+  }
+  return { player, tracks }
+}
+
+describe('setCaptionsTrack/getCaptionsTrack', () => {
+  it('getCaptionsTrack is null before any captions track is attached', () => {
+    const { player } = fakeCaptionsPlayer()
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBeNull()
+  })
+
+  it('attaches a real kind="captions" default track, readable back via getCaptionsTrack', () => {
+    const { player } = fakeCaptionsPlayer()
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], {
+      src: 'blob:fake-vtt-url',
+      label: 'English',
+    })
+
+    const track = getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])
+    expect(track).not.toBeNull()
+    expect(track?.kind).toBe('captions')
+    expect(track?.mode).toBe('showing') // `default: true` per the adapter's own call
+  })
+
+  it('reads the synchronous remote list instead of a stale general text-track mirror', () => {
+    const removed = { kind: 'captions', mode: 'showing', src: 'blob:removed' } as FakeTrack
+    const current = { kind: 'captions', mode: 'showing', src: 'blob:current' } as FakeTrack
+    const player = {
+      remoteTextTracks: () => [current],
+      // Native video.js can still expose the removed track here until its
+      // asynchronous list mirror catches up on the next task.
+      textTracks: () => [removed],
+    }
+
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBe(current)
+  })
+
+  it('replacing the captions URL removes the old track rather than accumulating a second one', () => {
+    const { player, tracks } = fakeCaptionsPlayer()
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], { src: 'blob:one' })
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], { src: 'blob:two' })
+
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0].src).toBe('blob:two')
+  })
+
+  it('passing null removes any existing captions track', () => {
+    const { player } = fakeCaptionsPlayer()
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], { src: 'blob:one' })
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).not.toBeNull()
+
+    setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], null)
+    expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBeNull()
   })
 })

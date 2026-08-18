@@ -39,6 +39,15 @@ export default defineConfig({
      * from Chromium's point of view, and that's fine, since what these
      * tests are proving is app behavior, not certificate trust chains. */
     ignoreHTTPSErrors: true,
+
+    /* STEP-09-VERIFICATION-PLAN.md §7 item 10 / §5: 'screenshot: only-on-
+     * failure' and 'video: retain-on-failure', kept alongside the existing
+     * 'trace: on-first-retry' — CI (.github/workflows/ci.yml) uploads
+     * web/test-results/ (which is where these land) as artifacts on every
+     * run, `if: always()`, so a captions.spec.ts failure is diagnosable
+     * without reproducing it locally first. */
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
 
   /* Configure projects for major browsers */

@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use Aws\S3\S3Client;
+use App\Services\MediaS3ClientFactory;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
 
@@ -18,44 +18,56 @@ use Illuminate\Support\Facades\Config;
  * per fresh SeaweedFS volume: `docker compose exec app php artisan
  * media:configure-cors`. Not part of the app's request lifecycle, so it is
  * a console command rather than boot-time code.
+ *
+ * STEP-09 E2E verification plan §3.2 extends this rule with `HEAD` and the
+ * Range-delivery response headers (`Content-Range`, `Accept-Ranges`,
+ * `Content-Length`, `Content-Type`) alongside the existing `ETag` exposure,
+ * so a presigned GET/HEAD/byte-range request against the media proxy also
+ * clears the browser's cross-origin header allowlist. `media:initialize`
+ * (App\Console\Commands\MediaInitializeCommand) calls this same rule
+ * builder so the two commands cannot drift.
  */
 class ConfigureMediaCorsCommand extends Command
 {
     protected $signature = 'media:configure-cors';
 
-    protected $description = "Apply the bucket CORS policy the browser's direct multipart PUTs need (§9.1).";
+    protected $description = "Apply the bucket CORS policy the browser's direct multipart PUTs and media playback need (§9.1, STEP-09 §3.2).";
+
+    public function __construct(private readonly MediaS3ClientFactory $clients)
+    {
+        parent::__construct();
+    }
+
+    /**
+     * Shared with `MediaInitializeCommand` so the E2E bucket-initializer
+     * and the standalone `media:configure-cors` command can never apply
+     * two different policies to the same bucket.
+     */
+    public static function corsRule(array $origins): array
+    {
+        return [
+            'AllowedOrigins' => $origins ?: ['*'],
+            'AllowedMethods' => ['GET', 'PUT', 'POST', 'HEAD'],
+            'AllowedHeaders' => ['*'],
+            'ExposeHeaders' => ['ETag', 'Content-Range', 'Accept-Ranges', 'Content-Length', 'Content-Type'],
+            'MaxAgeSeconds' => 3000,
+        ];
+    }
 
     public function handle(): int
     {
         $config = Config::get('filesystems.disks.media');
-
-        $client = new S3Client([
-            'version' => 'latest',
-            'region' => $config['region'],
-            'endpoint' => $config['endpoint'],
-            'use_path_style_endpoint' => $config['use_path_style_endpoint'] ?? true,
-            'credentials' => [
-                'key' => $config['key'],
-                'secret' => $config['secret'],
-            ],
-        ]);
-
+        $client = $this->clients->make('media');
         $origins = Config::get('cors.allowed_origins', []);
 
         $client->putBucketCors([
             'Bucket' => $config['bucket'],
             'CORSConfiguration' => [
-                'CORSRules' => [[
-                    'AllowedOrigins' => $origins ?: ['*'],
-                    'AllowedMethods' => ['GET', 'PUT', 'POST'],
-                    'AllowedHeaders' => ['*'],
-                    'ExposeHeaders' => ['ETag'],
-                    'MaxAgeSeconds' => 3000,
-                ]],
+                'CORSRules' => [self::corsRule($origins)],
             ],
         ]);
 
-        $this->info('Bucket CORS configured, exposing ETag for '.implode(', ', $origins ?: ['*']).'.');
+        $this->info('Bucket CORS configured, exposing ETag/Range headers for '.implode(', ', $origins ?: ['*']).'.');
 
         return self::SUCCESS;
     }

@@ -64,6 +64,7 @@ services:
       dockerfile: Dockerfile
       target: runtime
     command: php artisan queue:work --queue=default --timeout=60 --sleep=1 --tries=1
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +110,7 @@ services:
       dockerfile: Dockerfile
       target: ffmpeg-worker
     command: sh -c "nice -n 19 php artisan queue:work redis-long --queue=transcode --timeout=3700 --tries=1 --sleep=1"
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,6 +130,206 @@ services:
     # at deploy time — these are dev-sane defaults, not a capacity plan.
     cpus: "1.5"
     mem_limit: "2g"
+    networks:
+      - default
+
+  # STEP-09-captions.md / the frozen STEP-09 backend contract §6: the
+  # caption/transcript pipeline's worker — its own process, own queue
+  # (`redis-long`/`captions`, config/queue.php), own compose service, so a
+  # multi-minute whisper.cpp run can NEVER sit behind (or in front of) a
+  # transcode job on `ffmpeg-worker`'s queue (R11 — the whole reason this
+  # is a separate service and not a third command on `ffmpeg-worker`).
+  #
+  # >>> Built from the `whisper-worker` Dockerfile stage, which also `apk
+  # >>> add`s ffmpeg for audio extraction — THIS IMAGE MUST NEVER BE PUSHED
+  # >>> TO A REGISTRY, same GPL-isolation reasoning as `ffmpeg-worker`
+  # >>> above. whisper.cpp's OWN code is MIT, unaffected by this — see the
+  # >>> Dockerfile stage's own comment.
+  #
+  # >>> MODEL WEIGHTS LICENSE (STEP-09.md §4's own warning): `faster-
+  # >>> whisper`/`whisper.cpp` are MIT, but the GGUF/ggml MODEL FILE mounted
+  # >>> from `whisper-models` below carries ITS OWN separate license terms
+  # >>> (OpenAI's Whisper model weights are MIT-licensed as of the models
+  # >>> this project pins — verify against whichever exact model file is
+  # >>> downloaded before any commercial use, per STEP-09.md's explicit
+  # >>> "check before any commercial use" instruction). This comment is the
+  # >>> recorded license-boundary note the frozen contract §6 requires;
+  # >>> there is no repo-root LICENSE/NOTICE file precedent to extend
+  # >>> instead (confirmed by reading the repo root).
+  #
+  # `whisper-models` is a NAMED VOLUME, read-only here, matching the
+  # `postgres-data`/`seaweedfs-data` convention — model weights are NEVER
+  # baked into the image (STEP-09.md: "mount them as a volume rather than
+  # baking them into the image", or every rebuild ships hundreds of MB).
+  # Populating it (a one-time `docker compose run --rm whisper-worker sh -c
+  # "wget -O /models/ggml-base.en.bin <pinned-digest-URL>"`-style step,
+  # pinned by the model file's published digest, not just a filename) is a
+  # manual one-time setup step, not automated by this compose file — no
+  # init-container/entrypoint download script exists yet in this repo.
+  #
+  # `cpus`/`mem_limit` are set INDEPENDENTLY from `ffmpeg-worker`'s
+  # (1.5/2g) per the frozen contract §6 ("inherit the same pattern, not the
+  # same values") — whisper.cpp's CPU-bound inference on the heaviest
+  # container in the stack (STEP-09.md) gets more headroom than a single
+  # ffmpeg encode; these are dev-sane defaults pending real hardware
+  # numbers, not a capacity plan.
+  whisper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: whisper-worker
+    command: sh -c "nice -n 19 php artisan queue:work redis-long --queue=captions --timeout=1800 --tries=1 --sleep=1"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
+    # RO on purpose (STEP-09 verification plan §6.1, item 5) — this service
+    # must never be able to write into the model volume, only read the
+    # file `whisper-model-init` (below) placed there. The model is never
+    # baked into the image itself either; see the license-boundary comment
+    # on this service above.
+    volumes:
+      - whisper-models:/models:ro
+    cpus: "2.0"
+    mem_limit: "4g"
+    networks:
+      - default
+
+  # STEP-09 verification plan §6.1, item 4: the one-shot initializer that
+  # populates `whisper-models` — the ONLY service in this compose file with
+  # an RW mount onto that volume (`whisper-worker` above stays read-only).
+  # Downloads to a temp filename inside the volume, verifies SHA-256 against
+  # docker/whisper/model.lock, then atomically renames into place; a
+  # checksum mismatch deletes the temp file and exits non-zero. A file
+  # already at the destination that hashes correctly exits 0 without
+  # re-downloading or touching its mtime (docker/whisper/init-model.sh
+  # owns this logic in full).
+  #
+  # Not started by a bare `docker compose up` — it is gated behind the
+  # `whisper-model-init` profile, so an ordinary dev-stack boot never tries
+  # to fetch ~142 MiB from Hugging Face. Run it explicitly:
+  #   docker compose --profile whisper-model-init run --rm whisper-model-init
+  # It is safe/idempotent to run repeatedly; running it again after
+  # `whisper-worker` is already up requires no restart of that service —
+  # the file it reads is already on disk via the shared named volume.
+  whisper-model-init:
+    profiles: ["whisper-model-init"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: whisper-model-init
+    environment:
+      WHISPER_MODEL_DIR: /models
+      WHISPER_MODEL_LOCK: /docker/whisper/model.lock
+    volumes:
+      - whisper-models:/models
+    networks:
+      - default
+
+  # STEP-09 verification plan §6.2: "define a Compose service that selects
+  # that target" — the `whisper-smoke` Dockerfile stage above, with real
+  # dev Composer deps + `pdo_sqlite`, exists specifically so
+  # `RealWhisperAdapterSmokeTest` can run `php artisan test` against the
+  # actual compiled `whisper-cli` binary + a real mounted model file. Not
+  # started by a bare `docker compose up` — gated behind its own profile,
+  # same pattern as `whisper-model-init` above, so an ordinary dev-stack
+  # boot never builds this dev-tooling image.
+  #
+  # Mounts `whisper-models` READ-ONLY, exactly like `whisper-worker` —
+  # this is a diagnostic for the adapter/CLI seam, never a second writer
+  # into that volume. `RUNS_WHISPER_SMOKE=1` is the gate
+  # `RealWhisperAdapterSmokeTest` checks (`->skip()`) so plain
+  # `./vendor/bin/pest` elsewhere never attempts to shell out to a real
+  # whisper.cpp binary that isn't present.
+  #
+  # `WHISPER_SMOKE_ARTIFACT_DIR` is a bind mount (not a named volume) so
+  # bounded diagnostics the test writes on failure survive after
+  # `docker compose run --rm` exits and are inspectable on the host —
+  # `scripts/whisper-smoke-stack.sh` (§6.4) is the intended caller and
+  # manages this directory's lifecycle; running this service directly
+  # creates `./artifacts/whisper-smoke` on the host if it doesn't exist.
+  whisper-smoke:
+    profiles: ["whisper-smoke"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: whisper-smoke
+    # Same env_file every other service in this file uses — DB_HOST=
+    # postgres/DB_DATABASE=speechcoach/AWS_* media credentials/REDIS_HOST=
+    # valkey, all resolved by service name over whichever compose network
+    # this file is applied under (dev, or scripts/whisper-smoke-stack.sh's
+    # own project). Required for `queued`'s plain `php artisan migrate`/
+    # `captions:whisper-smoke-*` invocations, which run OUTSIDE `php
+    # artisan test`.
+    #
+    # `DB_CONNECTION`/`DB_DATABASE` in `environment:` below deliberately
+    # override this env_file's `DB_CONNECTION=pgsql` back to sqlite —
+    # verified DIRECTLY that phpunit.xml's own `<env name="DB_CONNECTION"
+    # .../>` does NOT win this fight on its own: PHPUnit only applies an
+    # `<env>` value when that variable isn't already set in the process
+    # environment (no `force="true"` in this repo's phpunit.xml), and
+    # `docker compose`'s env_file already sets a REAL process env var
+    # before PHP ever starts. Without this override, `adapter`'s `php
+    # artisan test` run genuinely tried to connect to this project's
+    # Postgres instead of the isolated SQLite the test's own docblock
+    # promises (caught by actually running it, not by reading either
+    # config file). `queued`'s own invocations still win over this: a
+    # `docker compose run -e DB_CONNECTION=pgsql ...` flag outranks both
+    # this `environment:` block and env_file.
+    env_file:
+      - api/.env
+    environment:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      RUNS_WHISPER_SMOKE: "1"
+      WHISPER_MODEL_NAME: "${WHISPER_MODEL_NAME:-wcpp-6266a9f9-a03779c8}"
+      WHISPER_MODEL_LOCK: /docker/whisper/model.lock
+      WHISPER_SMOKE_ARTIFACT_DIR: /artifacts
+    volumes:
+      - whisper-models:/models:ro
+      - ./artifacts/whisper-smoke:/artifacts
+    networks:
+      - default
+
+  # STEP-09-VERIFICATION-PLAN.md §4.1/§7 P0 finding: "Although the command
+  # is scheduled in routes/console.php, no Compose scheduler service runs
+  # it" — `Schedule::command('media:reconcile')` was dead code without an
+  # actual process invoking `schedule:run` on a timer. `schedule:work`
+  # (Laravel 13's documented long-running dev/prod-container convention —
+  # it internally sleeps until the next due minute and calls `schedule:run`
+  # itself, so no separate cron/supervisor entry is needed) is that
+  # process. Built from the same `runtime` target as `app`/`queue-worker`
+  # (§9.2's own "same image, different command" convention) — this command
+  # needs nothing ffmpeg/whisper-specific, only the app's own artisan
+  # commands (media:reconcile today; anything else scheduled later).
+  #
+  # `restart: unless-stopped` matters here specifically because §4.1's
+  # whole recovery story ("hard worker loss is eventually recovered by an
+  # actually running scheduler") depends on this container itself staying
+  # up — an unscheduled scheduler cannot recover anything.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: php artisan schedule:work
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
     networks:
       - default
 
@@ -259,3 +461,4 @@ networks:
 volumes:
   postgres-data:
   seaweedfs-data:
+  whisper-models:

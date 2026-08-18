@@ -28,6 +28,7 @@ export function VideoPlayer({
   refreshUrl,
   poster,
   onPlayerReady,
+  onSourceRefreshed,
 }: {
   initialUrl: string
   refreshUrl: () => Promise<string>
@@ -38,6 +39,11 @@ export function VideoPlayer({
    * (e.g. so `SpeechWatch` can read `currentTime()` for "use current
    * frame") — never re-created for the same mounted player. */
   onPlayerReady?: (player: ReturnType<typeof createVideoJsPlayer>) => void
+  /** §9.3/videojs-adapter's `onSourceRefreshed`: fires once an
+   * error-driven URL refresh has actually reloaded — video.js strips
+   * remote text tracks (captions) on every `src` reassignment, so the
+   * caller needs this to know when to re-attach the caption track. */
+  onSourceRefreshed?: () => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
 
@@ -56,6 +62,11 @@ export function VideoPlayer({
     onPlayerReadyRef.current = onPlayerReady
   })
 
+  const onSourceRefreshedRef = useRef(onSourceRefreshed)
+  useEffect(() => {
+    onSourceRefreshedRef.current = onSourceRefreshed
+  })
+
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -63,13 +74,27 @@ export function VideoPlayer({
     const videoEl = document.createElement('video')
     videoEl.className = 'video-js vjs-big-play-centered'
     videoEl.setAttribute('playsinline', 'true')
+    // STEP-09-VERIFICATION-PLAN.md §5: a stable seam for Playwright to grab
+    // the real `HTMLVideoElement` (native `textTracks`, `currentTime`, etc.)
+    // without depending on video.js's own generated DOM structure.
+    videoEl.setAttribute('data-testid', 'speech-video')
     container.appendChild(videoEl)
 
     const player = createVideoJsPlayer(videoEl, {
       initialUrl,
       refreshUrl: () => refreshUrlRef.current(),
       poster,
+      onSourceRefreshed: () => onSourceRefreshedRef.current?.(),
     })
+
+    // video.js copies the original <video> tag's attributes (including the
+    // data-testid set above) onto the wrapper <div> it builds around that
+    // same element, while `videoEl` itself remains underneath as the real
+    // tech <video> — so both DOM nodes end up with data-testid="speech-video",
+    // a Playwright strict-mode violation (STEP-09-VERIFICATION-PLAN.md §5
+    // asks for it "on the real video", not this wrapper). Strip it from the
+    // wrapper only; `videoEl` keeps its own copy untouched.
+    player.el().removeAttribute('data-testid')
 
     // `player.tech()` (what `getVideoElement` reads) is not guaranteed
     // attached synchronously right after `videojs()` returns — video.js's

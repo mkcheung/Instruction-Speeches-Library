@@ -1,0 +1,8 @@
+# mkcert output for the E2E stack ONLY (scripts/e2e-stack.sh's `prepare`
+# command) — locally generated, never committed. Covers all three E2E
+# hostnames (app./api./media.speechcoach.test), unlike docker/certs/'s
+# dev-stack cert (app./api. only, media.speechcoach.test does not exist in
+# dev). Populate via:
+#
+#   ./scripts/e2e-stack.sh prepare
+*.pem

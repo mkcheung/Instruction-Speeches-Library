@@ -70,6 +70,16 @@ export interface Speech {
   delivered_on: string | null
   change_note: string | null
   created_at: string
+  /** STEP-09-FROZEN-CONTRACT.md §3: the speaker's off-switch for future
+   * caption/transcript generation runs (`speeches.captions_enabled`,
+   * `NOT NULL DEFAULT true`) — reconciled against the real
+   * `SpeechResource`, which now always includes it. Toggling this off
+   * does NOT retroactively delete an already-generated transcript, only
+   * gates future runs. Written via `PATCH /speeches/{speech}/caption-
+   * settings` (`updateCaptionSettings` in `speechApi.ts`) — the
+   * captions-settings gap fix that added the missing write surface for
+   * this field. */
+  captions_enabled: boolean
   primary_video: SpeechAsset | null
   poster?: SpeechPoster
   sprite?: SpeechSprite

@@ -4,6 +4,7 @@ import {
   API_URL,
   APP_URL,
   ESSAY_COACH_A_TEXT,
+  POSTGRES_CONTAINER,
   REVIEW_COACH_A_ID,
   REVIEW_COACH_B_ID,
   SHARED_SPEECH_ID,
@@ -228,11 +229,13 @@ async function xsrfHeader(context: BrowserContext): Promise<Record<string, strin
  * already use for cleanup, and for the same reason: there is no HTTP path
  * that can un-publish an essay or wind `essay_lock_version` back, and a
  * test that cannot restore its own preconditions is a test that passes
- * once. Container name is hardcoded exactly as those specs hardcode it.
+ * once. Container name comes from the same POSTGRES_CONTAINER constant
+ * those specs now use (STEP-09-VERIFICATION-PLAN.md §3.1's named gap: this
+ * hardcoded name only matched the dev stack, not the E2E harness project).
  */
 function resetReviewerBEssay(): void {
   execSync(
-    'docker exec instruction-speeches-library-postgres-1 psql -U speechcoach -d speechcoach -c ' +
+    `docker exec ${POSTGRES_CONTAINER} psql -U speechcoach -d speechcoach -c ` +
       `"update reviews set essay_html = null, essay_text = null, essay_published_at = null, ` +
       `essay_updated_at = null, essay_words = 0, essay_lock_version = 0 where id = ${REVIEW_COACH_B_ID}"`,
     { stdio: 'ignore' },

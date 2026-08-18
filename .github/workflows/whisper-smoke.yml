@@ -1,0 +1,150 @@
+name: Whisper smoke
+
+# STEP-09-VERIFICATION-PLAN.md §6.5 "Workflow": a separate entry point from
+# ci.yml's required browser lane, independent of browser retries.
+#
+#   - `workflow_dispatch` + a schedule: manual/nightly real-model runs.
+#   - A lightweight lock/license/schema check stays PR-required (the
+#     `lock-check` job below) — cheap enough to gate every PR without
+#     downloading the ~142 MiB model or building the real worker image.
+#   - The real queued job (the `queued-smoke` job below) runs automatically
+#     — not just on schedule/dispatch — whenever the Dockerfile, the
+#     Whisper/caption adapter or job, the compose worker service, the
+#     model lock/downloader, or the smoke fixture changes (the `paths:`
+#     filter on `pull_request` below), and must pass once before STEP-09
+#     release/sign-off.
+#
+# §6.5: "A named Docker volume does not survive GitHub runners: cache a
+# host file keyed by SHA-256, re-verify it, then atomically copy it into
+# the model volume." `actions/cache` below is that host-file cache, keyed
+# on docker/whisper/model.lock's own content hash so a lock-file bump
+# invalidates it automatically; `scripts/whisper-smoke-stack.sh model` is
+# what performs the re-verify + atomic-copy-into-volume step itself.
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, not nightly — a real whisper.cpp run is comparatively heavy
+    # (model download/verify + a full transcription) for a check whose
+    # main job is catching upstream/model drift, not per-commit signal
+    # (that's ci.yml's required browser lane).
+    - cron: '17 6 * * 1'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'docker/whisper/**'
+      - 'compose.yaml'
+      - 'api/app/Services/Captions/WhisperTranscriber.php'
+      - 'api/app/Services/Captions/CaptionTranscriberContract.php'
+      - 'api/app/Jobs/GenerateCaptions.php'
+      - 'api/config/captions.php'
+      - 'api/tests/fixtures/whisper-smoke/**'
+      - 'api/tests/Feature/Captions/RealWhisperAdapterSmokeTest.php'
+      - 'scripts/whisper-smoke-stack.sh'
+      - '.github/workflows/whisper-smoke.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'Dockerfile'
+      - 'docker/whisper/**'
+      - 'compose.yaml'
+      - 'api/app/Services/Captions/WhisperTranscriber.php'
+      - 'api/app/Jobs/GenerateCaptions.php'
+      - 'scripts/whisper-smoke-stack.sh'
+
+jobs:
+  # PR-required (branch protection): lock/license/schema syntax only — no
+  # model download, no image build. Fast enough to gate every PR.
+  lock-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      # GAP (flagged honestly, not silently worked around): this script is
+      # part of §6.1's model-lock tooling and had not landed on this branch
+      # as of this workflow being written — verified by `find . -iname
+      # 'verify-whisper-model-lock*'` returning nothing. This step is left
+      # in, not skipped, so CI visibly fails (rather than silently passing
+      # a check that never ran) until it exists.
+      - name: Verify docker/whisper/model.lock syntax/license/schema
+        run: ./scripts/verify-whisper-model-lock.sh --metadata-only
+
+  # Runs on: workflow_dispatch, the weekly schedule, push to master when the
+  # watched paths change, and PRs that touch the watched paths (§6.5: "runs
+  # automatically ... and it must pass once before STEP-09 release/sign-off").
+  queued-smoke:
+    # No job-level `if:` needed — the `paths:` filters on the
+    # `pull_request`/`push` triggers above already restrict THOSE two event
+    # types to the watched files; `workflow_dispatch` and `schedule` are
+    # unaffected by `paths:` (GitHub Actions only applies path filtering to
+    # push/pull_request), which is exactly the "runs automatically ... OR
+    # manual/scheduled" behavior §6.5 asks for.
+    runs-on: ubuntu-latest
+    # §6.5: "Set both job-level and process-level workflow timeouts" — this
+    # is the job-level one; scripts/whisper-smoke-stack.sh itself is
+    # expected to bound each of its own steps (build/model/runtime/adapter/
+    # queued) individually, which is the process-level half.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # §6.5: host-file cache keyed on the lock file's own hash, re-verified
+      # (never trusted blindly) by `whisper-smoke-stack.sh model` below —
+      # this only saves the download, not the verification.
+      - name: Cache the downloaded model file
+        uses: actions/cache@v6
+        with:
+          path: .cache/whisper-model
+          key: whisper-model-${{ hashFiles('docker/whisper/model.lock') }}
+
+      # Every compose.yaml service `whisper-smoke-stack.sh` runs through
+      # `docker compose ... run`/`down` (not just `build`) declares
+      # `env_file: api/.env` — Compose refuses to resolve the project at
+      # all without that file present, same reason ci.yml's e2e job has
+      # this exact step. `build`/raw `docker run` steps above don't need
+      # it, which is why this only bites the `adapter`/`queued`/`down`
+      # actions in scripts/whisper-smoke-stack.sh, not `prepare`/`build`/
+      # `model`/`runtime`.
+      - name: Prepare api/.env
+        working-directory: api
+        run: |
+          cp .env.example .env
+          sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" .env
+
+      # GAP (flagged honestly): scripts/whisper-smoke-stack.sh (§6.4) was
+      # being built concurrently with this workflow and had not landed on
+      # this branch as of this writing — verified by `ls scripts/`
+      # returning no such file. The steps below reference its documented
+      # command surface (§6.4, §8's "Real Whisper gate") exactly as the
+      # verification plan specifies it, so this workflow is correct and
+      # ready the moment that script lands; until then these steps fail
+      # loudly rather than being silently skipped.
+      - name: Prepare the isolated Whisper smoke stack
+        run: ./scripts/whisper-smoke-stack.sh prepare
+
+      - name: Build whisper-worker / whisper-smoke images
+        run: ./scripts/whisper-smoke-stack.sh build
+
+      - name: Provision the checksummed model (offline-idempotency checked)
+        run: ./scripts/whisper-smoke-stack.sh model --offline-idempotency
+
+      - name: Runtime check (ldd + whisper-cli --help on the final image)
+        run: ./scripts/whisper-smoke-stack.sh runtime
+
+      - name: Adapter diagnostic (RealWhisperAdapterSmokeTest)
+        run: ./scripts/whisper-smoke-stack.sh adapter
+
+      - name: Queued final-worker sign-off (one real GenerateCaptions job)
+        run: ./scripts/whisper-smoke-stack.sh queued
+
+      - name: Upload VTT / process / worker diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: whisper-smoke-artifacts
+          path: artifacts/whisper-smoke/
+          retention-days: 14
+
+      - name: Tear down the isolated Whisper smoke stack
+        if: always()
+        run: ./scripts/whisper-smoke-stack.sh down

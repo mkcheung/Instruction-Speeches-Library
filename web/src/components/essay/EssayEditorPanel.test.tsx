@@ -17,6 +17,10 @@ function urlOf(input: RequestInfo | URL): string {
   return input instanceof Request ? input.url : input.toString()
 }
 
+function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
+  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
+}
+
 function review(overrides: Partial<Review> = {}): Review {
   return {
     id: 1,
@@ -181,11 +185,10 @@ describe('EssayEditorPanel', () => {
   })
 
   it('publish is disabled until the essay has text, then calls the publish endpoint', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
       if (url.includes('/essay/publish')) {
-        expect(init?.method).toBe('POST')
         return jsonResponse({ essay: { ...essay(), essay_published_at: '2026-01-02T00:00:00Z' } })
       }
       if (url.includes('/essay')) return jsonResponse({ essay: essay({ essay_html: '<p>hello</p>' }) })
@@ -202,23 +205,33 @@ describe('EssayEditorPanel', () => {
     await user.click(publishButton)
 
     await waitFor(() => {
-      expect(fetchMock.mock.calls.some(([input]) => urlOf(input).includes('/essay/publish'))).toBe(true)
+      expect(
+        fetchMock.mock.calls.some(
+          ([input]) => urlOf(input).includes('/essay/publish') && methodOf(input) === 'POST',
+        ),
+      ).toBe(true)
     })
   })
 
   it('renders the conflict banner and wires keepMine/useTheirs/toggleShowBoth', async () => {
     const serverCurrent = essay({ essay_html: '<p>theirs</p>', essay_lock_version: 9 })
-    let essayCallCount = 0
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    let conflictIssued = false
+    let postConflictReadCount = 0
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = urlOf(input)
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
       if (url.includes('/essay/publish')) return jsonResponse({ essay: essay() })
       if (url.includes('/essay')) {
-        essayCallCount += 1
-        // First call: the initial GET. Every write after (the PUT this
-        // test's "Type" click triggers): a 409.
-        if (essayCallCount === 1) return jsonResponse({ essay: essay() })
-        return jsonResponse({ message: 'conflict', conflictSource: 'self', current: serverCurrent }, 409)
+        if (methodOf(input, init) === 'PUT') {
+          conflictIssued = true
+          return jsonResponse({ message: 'conflict', conflictSource: 'self', current: serverCurrent }, 409)
+        }
+
+        // A rejected mutation invalidates the active Essay query, so RTK
+        // Query follows the PUT with another GET. Keep that refetch
+        // realistic: reads still succeed and now return the winning row.
+        if (conflictIssued) postConflictReadCount += 1
+        return jsonResponse({ essay: conflictIssued ? serverCurrent : essay() })
       }
       throw new Error(`unexpected fetch: ${url}`)
     })
@@ -240,8 +253,24 @@ describe('EssayEditorPanel', () => {
       await vi.advanceTimersByTimeAsync(750)
     })
 
-    const banner = screen.getByTestId('essay-conflict-banner')
+    // The mutation and its invalidation refetch resolve on promises rather
+    // than the debounce timer. Return to real timers so Testing Library can
+    // condition-wait for the resulting UI instead of racing CI's scheduler.
+    vi.useRealTimers()
+    const banner = await screen.findByTestId('essay-conflict-banner')
     expect(banner).toBeInTheDocument()
+
+    // Complete the exact sequence that raced in CI: the rejected PUT's
+    // tag invalidation must refetch successfully without replacing the
+    // already-rendered conflict UI with the panel's load-error state.
+    await waitFor(() => expect(postConflictReadCount).toBeGreaterThan(0))
+    expect(screen.getByTestId('essay-conflict-banner')).toBeInTheDocument()
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => urlOf(input).includes('/essay') && methodOf(input, init) === 'PUT',
+      ),
+    ).toBe(true)
 
     fireEvent.click(screen.getByRole('button', { name: 'Use theirs' }))
     expect(screen.getByTestId('essay-fake-content')).toHaveTextContent('theirs')

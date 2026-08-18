@@ -16,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 class SpeechService
 {
     /**
-     * @param  array{title: string, description?: string|null, delivered_on?: string|null, supersedes_id?: int|null, change_note?: string|null}  $attributes
+     * @param  array{title: string, description?: string|null, delivered_on?: string|null, supersedes_id?: int|null, change_note?: string|null, captions_enabled?: bool}  $attributes
      *
      * @throws ValidationException
      */

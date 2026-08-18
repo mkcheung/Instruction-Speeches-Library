@@ -12,6 +12,7 @@ function speechWith(overrides: Partial<Speech>): Speech {
     delivered_on: null,
     change_note: null,
     created_at: '2026-01-01T00:00:00Z',
+    captions_enabled: true,
     primary_video: null,
     ...overrides,
   }
