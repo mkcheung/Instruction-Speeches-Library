@@ -85,7 +85,36 @@ log() { echo "==> $*" >&2; }
 fail() { echo "!!! $*" >&2; exit 1; }
 
 _tinker() {
-  _compose exec -T app php artisan tinker --execute="$1" | tr -d '\r'
+  # Centralized so every one of this script's ~20 call sites gets the same
+  # protection: under `set -e`, a bare `X="$(_tinker ...)"` would otherwise
+  # die on the very command substitution that failed, before any caller-side
+  # validation/`fail` message ever runs — silently swallowing the real PHP/
+  # Docker error (exactly the failure mode found and fixed in
+  # verify-caption-worker-isolation.sh's SEED_OUTPUT capture). Fail loudly
+  # HERE, with stderr merged into the captured output, instead of letting
+  # every call site die with zero diagnostic text.
+  local out rc
+  set +e
+  out="$(_compose exec -T app php artisan tinker --execute="$1" 2>&1 | tr -d '\r')"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "tinker command exited $rc:
+$out"
+  echo "$out"
+}
+
+# cleanup() below deliberately tolerates a failed removal (log + continue,
+# never abort the rest of cleanup) — _tinker()'s own fail()-and-exit
+# behavior above is wrong there, so cleanup uses this non-failing sibling
+# instead. Same stderr-merge/pipefail-safe capture, no `fail` call.
+_tinker_lenient() {
+  local out rc
+  set +e
+  out="$(_compose exec -T app php artisan tinker --execute="$1" 2>&1 | tr -d '\r')"
+  rc=$?
+  set -e
+  echo "$out"
+  return "$rc"
 }
 
 # Every speech id this script creates, tracked so the cleanup trap can
@@ -98,7 +127,7 @@ cleanup() {
   log "cleanup: removing $((${#CREATED_SPEECH_IDS[@]})) speech(es) created by this run"
   for id in "${CREATED_SPEECH_IDS[@]:-}"; do
     [ -z "$id" ] && continue
-    _tinker "
+    _tinker_lenient "
       \$s = App\Models\Speech::withTrashed()->find(${id});
       if (\$s !== null) {
         \$s->assets()->delete();

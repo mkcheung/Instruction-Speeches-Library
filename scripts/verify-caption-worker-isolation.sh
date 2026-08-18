@@ -97,6 +97,14 @@ fi
 log "caption-test-worker confirmed stopped (state: '${STATE:-absent}')"
 
 log "seeding a real source asset (committed fixture MP4) and dispatching the real transcode + caption jobs: $SMOKE_TITLE"
+# `set -e` on a failing command inside a plain `X="$(...)"` assignment kills
+# the script on THIS line, before any of the diagnostic `fail "...: $SEED_OUTPUT"`
+# calls below ever run — silently swallowing exactly the PHP/Docker error
+# a reader needs. Disable errexit for just this one capture, merge stderr
+# into the same stream (a PHP fatal/exception inside tinker otherwise never
+# reaches $SEED_OUTPUT at all), and fail loudly with the full output once
+# back under `set -e`.
+set +e
 SEED_OUTPUT="$(_compose exec -T app php artisan tinker --execute="
     \$speech = App\Models\Speech::factory()->create(['title' => '${SMOKE_TITLE}']);
 
@@ -154,7 +162,11 @@ SEED_OUTPUT="$(_compose exec -T app php artisan tinker --execute="
     }
 
     echo \$speech->id.'|'.\$video->id.'|'.\$captions->id.'|'.\$captions->caption_attempt_id.PHP_EOL;
-" | tr -d '\r')"
+" 2>&1 | tr -d '\r')"
+SEED_RC=$?
+set -e
+[ "$SEED_RC" -eq 0 ] || fail "seeding tinker command exited $SEED_RC:
+$SEED_OUTPUT"
 
 RESULT_LINE="$(echo "$SEED_OUTPUT" | tail -n1)"
 SPEECH_ID="$(echo "$RESULT_LINE" | cut -d'|' -f1)"
@@ -175,10 +187,20 @@ log "speech id: $SPEECH_ID / video asset id: $VIDEO_ASSET_ID / captions asset id
 
 query_asset_status() {
   local asset_id="$1"
-  _compose exec -T app php artisan tinker --execute="
+  # Called inside the poll loops below under `set -e` — a bare failing
+  # command substitution there would kill the whole script on one transient
+  # `docker compose exec` hiccup instead of letting the loop's own timeout
+  # govern retries. Disable errexit for just this call and fall back to
+  # 'MISSING' (never a stale prior value) on a nonzero exit.
+  set +e
+  local out
+  out="$(_compose exec -T app php artisan tinker --execute="
       \$a = App\Models\SpeechAsset::find(${asset_id});
       echo (\$a->status ?? 'MISSING').PHP_EOL;
-  " | tr -d '\r' | tail -n1
+  " 2>&1 | tr -d '\r' | tail -n1)"
+  local rc=$?
+  set -e
+  [ "$rc" -eq 0 ] && [ -n "$out" ] && echo "$out" || echo "MISSING"
 }
 
 log "polling up to ${VIDEO_READY_TIMEOUT}s for the video to reach 'ready' via the REAL ffmpeg-worker, with caption-test-worker still stopped"
