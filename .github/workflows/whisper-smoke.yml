@@ -97,6 +97,20 @@ jobs:
           path: .cache/whisper-model
           key: whisper-model-${{ hashFiles('docker/whisper/model.lock') }}
 
+      # Every compose.yaml service `whisper-smoke-stack.sh` runs through
+      # `docker compose ... run`/`down` (not just `build`) declares
+      # `env_file: api/.env` — Compose refuses to resolve the project at
+      # all without that file present, same reason ci.yml's e2e job has
+      # this exact step. `build`/raw `docker run` steps above don't need
+      # it, which is why this only bites the `adapter`/`queued`/`down`
+      # actions in scripts/whisper-smoke-stack.sh, not `prepare`/`build`/
+      # `model`/`runtime`.
+      - name: Prepare api/.env
+        working-directory: api
+        run: |
+          cp .env.example .env
+          sed -i "s|^APP_KEY=.*|APP_KEY=base64:$(openssl rand -base64 32)|" .env
+
       # GAP (flagged honestly): scripts/whisper-smoke-stack.sh (§6.4) was
       # being built concurrently with this workflow and had not landed on
       # this branch as of this writing — verified by `ls scripts/`
