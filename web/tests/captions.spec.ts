@@ -1,6 +1,7 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { API_URL, APP_URL, CAPTIONS, USERS } from './fixtures.js'
 
 /**
@@ -85,7 +86,7 @@ async function fetchTranscript(page: Page, speechId: number): Promise<Transcript
  * harness/project."
  */
 function resetCaptionFixtures(): void {
-  const repoRoot = path.resolve(__dirname, '..', '..')
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
   execFileSync(
     'docker',
     [
