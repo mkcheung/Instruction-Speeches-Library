@@ -561,8 +561,11 @@ test('Scenario E — processing and failed captions never block playback', async
   await openSpeech(page, CAPTIONS.failedSpeechId)
   const video = await waitForVideo(page)
   await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
-  await expect(page.getByRole('alert')).toContainText('Caption generation failed')
-  const retryButton = page.getByRole('button', { name: 'Retry' })
+  const transcriptPanel = page.getByRole('tabpanel', { name: 'Transcript' })
+  const failureAlert = transcriptPanel.getByRole('alert')
+  await expect(failureAlert).toBeVisible()
+  await expect(failureAlert).toContainText('Caption generation failed')
+  const retryButton = transcriptPanel.getByRole('button', { name: 'Retry', exact: true })
   await expect(retryButton).toBeVisible()
 
   // Step 3: click Retry, wait for the real POST, poll failed -> processing.
