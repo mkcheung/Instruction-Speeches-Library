@@ -29,11 +29,11 @@ PROJECT="speechcoach-e2e"
 # (E2ECaptionsSeeder's fixed 9401-9409/9501+ range) so this can never
 # collide with or be mistaken for a Playwright fixture row.
 SMOKE_TITLE="scheduler-smoke-$(date +%s)-$$"
-# Exceeds config('captions.queue_wait_seconds')'s production default
-# (900s) so the very next scheduler tick (every minute under APP_ENV=e2e)
-# reconciles it — no threshold override needed, only an already-stale
-# `caption_queued_at`.
-STALE_SECONDS=1000
+# Age the row beyond the runtime's configured queue-wait threshold so the
+# very next scheduler tick (every minute under APP_ENV=e2e) reconciles it.
+# The fixed grace keeps this proof valid if the production default changes;
+# no test-only threshold override is involved.
+STALE_GRACE_SECONDS=100
 
 _compose() {
   docker compose -p "$PROJECT" -f compose.yaml -f compose.e2e.yaml "$@"
@@ -42,22 +42,123 @@ _compose() {
 log() { echo "==> $*" >&2; }
 fail() { echo "!!! $*" >&2; exit 1; }
 
+_tinker() {
+  # A failing command inside X="$(...)" would otherwise trip this script's
+  # `set -e` before the caller can print the PHP/Docker error. Merge stderr,
+  # capture the pipeline status under `pipefail`, then fail with the complete
+  # diagnostic instead of leaving CI with only "exit code 1".
+  local out rc
+  set +e
+  out="$(_compose exec -T app php artisan tinker --execute="$1" 2>&1 | tr -d '\r')"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "tinker command exited $rc:
+$out"
+  printf '%s\n' "$out"
+}
+
+_tinker_lenient() {
+  # Cleanup must preserve the original exit status, so it reports rather
+  # than aborting when the stack itself is already unavailable.
+  local out rc
+  set +e
+  out="$(_compose exec -T app php artisan tinker --execute="$1" 2>&1 | tr -d '\r')"
+  rc=$?
+  printf '%s\n' "$out"
+  return "$rc"
+}
+
+# The scheduler must be stopped and the uniquely titled smoke speech removed
+# on every exit path, not only after a passing assertion. Re-seeding also
+# restores the browser suite's processing fixture with fresh liveness clocks
+# if a scheduler tick touched it while this proof was running.
+cleanup() {
+  local rc=$?
+  local cleanup_output state ps_rc
+  set +e
+
+  log "cleanup: stopping the scheduler service"
+  if ! _compose stop scheduler >/dev/null 2>&1; then
+    log "cleanup: failed to stop scheduler"
+    rc=1
+  fi
+
+  log "cleanup: removing only the scheduler-smoke speech"
+  cleanup_output="$(_tinker_lenient "
+      \$speeches = App\Models\Speech::withTrashed()->where('title', '${SMOKE_TITLE}')->get();
+      foreach (\$speeches as \$speech) {
+          \$speech->forceDelete();
+      }
+      echo 'cleaned '.\$speeches->count().PHP_EOL;
+  ")"
+  if [ $? -ne 0 ]; then
+    log "cleanup: failed to remove scheduler-smoke speech:
+$cleanup_output"
+    rc=1
+  fi
+
+  log "cleanup: re-seeding E2ECaptionsSeeder with fresh liveness clocks"
+  if ! _compose exec -T app php artisan db:seed --class=E2ECaptionsSeeder --force >/dev/null; then
+    log "cleanup: failed to re-seed E2ECaptionsSeeder"
+    rc=1
+  fi
+
+  log "cleanup: asserting the scheduler service is stopped"
+  state="$(_compose ps --format '{{.State}}' scheduler 2>&1)"
+  ps_rc=$?
+  if [ "$ps_rc" -ne 0 ]; then
+    log "cleanup: could not inspect scheduler state:
+$state"
+    rc=1
+  elif [ "$state" = "running" ]; then
+    log "cleanup: scheduler service is still running after 'stop'"
+    rc=1
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    log "verify-caption-recovery-scheduler: PASS"
+  else
+    log "verify-caption-recovery-scheduler: FAILED"
+  fi
+
+  trap - EXIT
+  exit "$rc"
+}
+trap cleanup EXIT
+
 log "seeding scheduler-smoke row: $SMOKE_TITLE"
-_compose exec -T app php artisan tinker --execute="
-    \$speech = App\Models\Speech::factory()->create(['title' => '${SMOKE_TITLE}']);
-    \$asset = App\Models\SpeechAsset::factory()->for(\$speech)->captions()->create([
+SEED_OUTPUT="$(_tinker "
+    // The runtime app image is built with Composer --no-dev, so Faker is
+    // intentionally absent and model factories cannot be used here. Reuse
+    // the guaranteed E2E member and provide every material asset field
+    // explicitly, matching the production-safe E2E seeders.
+    \$owner = App\Models\User::findOrFail(Database\Seeders\E2ESeeder::MEMBER_ID);
+    \$speech = App\Models\Speech::create([
+        'user_id' => \$owner->id,
+        'title' => '${SMOKE_TITLE}',
+    ]);
+    \$asset = \$speech->assets()->create([
+        'kind' => 'captions',
+        'format' => 'vtt',
+        'disk' => 'media',
+        'path' => 'speeches/'.\$speech->ulid.'/captions.vtt',
         'status' => 'processing',
+        'is_primary' => false,
         'caption_attempt_id' => (string) Illuminate\Support\Str::uuid(),
-        'caption_queued_at' => now()->subSeconds(${STALE_SECONDS}),
+        'caption_queued_at' => now()->subSeconds(((int) config('captions.queue_wait_seconds')) + ${STALE_GRACE_SECONDS}),
         'caption_started_at' => null,
         'caption_heartbeat_at' => null,
     ]);
-    echo \$asset->id.PHP_EOL;
-" | tr -d '\r' | tail -n1 > /tmp/verify-caption-recovery-scheduler.assetid
-
-ASSET_ID="$(cat /tmp/verify-caption-recovery-scheduler.assetid)"
-rm -f /tmp/verify-caption-recovery-scheduler.assetid
-[ -n "$ASSET_ID" ] && [ "$ASSET_ID" -gt 0 ] 2>/dev/null || fail "failed to seed the scheduler-smoke row (no asset id returned)"
+    echo \$speech->id.'|'.\$asset->id.PHP_EOL;
+")"
+RESULT_LINE="$(printf '%s\n' "$SEED_OUTPUT" | tail -n1)"
+SPEECH_ID="${RESULT_LINE%%|*}"
+ASSET_ID="${RESULT_LINE##*|}"
+[ -n "$SPEECH_ID" ] && [ "$SPEECH_ID" -gt 0 ] 2>/dev/null || fail "failed to seed the scheduler-smoke speech (no speech id returned):
+$SEED_OUTPUT"
+[ -n "$ASSET_ID" ] && [ "$ASSET_ID" -gt 0 ] 2>/dev/null || fail "failed to seed the scheduler-smoke asset (no asset id returned):
+$SEED_OUTPUT"
+log "smoke speech id: $SPEECH_ID"
 log "smoke asset id: $ASSET_ID"
 
 log "waiting up to 90s for the actually-running scheduler service to fail it"
@@ -65,10 +166,11 @@ DEADLINE=$((SECONDS + 90))
 STATUS=""
 FAILURE_CODE=""
 while [ "$SECONDS" -lt "$DEADLINE" ]; do
-  RESULT="$(_compose exec -T app php artisan tinker --execute="
+  QUERY_OUTPUT="$(_tinker "
       \$a = App\Models\SpeechAsset::find(${ASSET_ID});
       echo (\$a->status ?? 'MISSING').'|'.(\$a->failure_code ?? '').PHP_EOL;
-  " | tr -d '\r' | tail -n1)"
+  ")"
+  RESULT="$(printf '%s\n' "$QUERY_OUTPUT" | tail -n1)"
   STATUS="${RESULT%%|*}"
   FAILURE_CODE="${RESULT##*|}"
 
@@ -88,28 +190,3 @@ if [ "$FAILURE_CODE" != "caption_queue_timeout" ]; then
 fi
 
 log "PASS: the running scheduler service reconciled the stale row within 90s (failure_code=caption_queue_timeout)"
-
-log "stopping the scheduler service"
-_compose stop scheduler
-
-log "removing only the scheduler-smoke row"
-_compose exec -T app php artisan tinker --execute="
-    \$a = App\Models\SpeechAsset::find(${ASSET_ID});
-    if (\$a !== null) {
-        \$speechId = \$a->speech_id;
-        \$a->delete();
-        App\Models\Speech::destroy(\$speechId);
-    }
-    echo 'cleaned'.PHP_EOL;
-" >/dev/null
-
-log "re-seeding E2ECaptionsSeeder so the browser processing fixture has fresh liveness clocks"
-_compose exec -T app php artisan db:seed --class=E2ECaptionsSeeder --force
-
-log "asserting the scheduler service is stopped"
-STATE="$(_compose ps --format '{{.State}}' scheduler || true)"
-if [ "$STATE" = "running" ]; then
-  fail "scheduler service is still running after 'stop' — expected it to remain stopped"
-fi
-
-log "verify-caption-recovery-scheduler: PASS"
