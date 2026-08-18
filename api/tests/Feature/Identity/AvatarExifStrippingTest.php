@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * EXIF stripping is a hard acceptance criterion (STEP-01-identity.md): the
- * fixture at tests/Fixtures/avatar-with-gps.jpg carries a real GPS IFD
+ * fixture at tests/fixtures/avatar-with-gps.jpg carries a real GPS IFD
  * (built with Pillow+piexif and confirmed readable via exif_read_data()
  * before being committed — see the file's git history/PR for how it was
  * produced). App\Services\AvatarProcessor re-encodes through Intervention
@@ -19,7 +19,7 @@ it('re-encodes an uploaded avatar and strips its GPS EXIF block', function () {
 
     $user = User::factory()->create();
 
-    $fixturePath = __DIR__.'/../../Fixtures/avatar-with-gps.jpg';
+    $fixturePath = __DIR__.'/../../fixtures/avatar-with-gps.jpg';
     expect(file_exists($fixturePath))->toBeTrue();
 
     // Sanity check the fixture actually carries GPS EXIF before upload,
