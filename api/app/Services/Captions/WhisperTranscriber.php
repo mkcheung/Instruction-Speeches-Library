@@ -189,11 +189,19 @@ class WhisperTranscriber implements CaptionTranscriberContract
                     throw new CaptionStorageWriteException("Failed writing VTT to disk for caption asset {$fresh->id}.");
                 }
 
+                // STEP-09-VERIFICATION-PLAN.md §4.1: the SAME shared
+                // helper CaptionService/E2ECaptionsSeeder use, computed
+                // over the exact bytes just written above — a fresh
+                // whisper run and a later manual edit must never disagree
+                // about what "this VTT's revision" means.
+                $revision = CaptionRevision::compute($vttContent);
+
                 $fresh->update([
                     'status' => 'ready',
                     // The content was just written above, so its length is
                     // known without a second disk/S3 stat round trip.
                     'byte_size' => strlen($vttContent),
+                    'content_revision' => $revision,
                 ]);
 
                 SpeechTranscript::query()->updateOrCreate(
@@ -203,6 +211,7 @@ class WhisperTranscriber implements CaptionTranscriberContract
                         'language' => (string) config('captions.language'),
                         'model' => (string) config('captions.model_name'),
                         'source' => 'whisper',
+                        'caption_revision' => $revision,
                     ],
                 );
             });

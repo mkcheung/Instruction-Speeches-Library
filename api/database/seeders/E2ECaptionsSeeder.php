@@ -7,6 +7,7 @@ use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
+use App\Services\Captions\CaptionRevision;
 use App\Services\Captions\TranscriptDeriver;
 use App\Services\Captions\Vtt;
 use Carbon\Carbon;
@@ -544,6 +545,13 @@ class E2ECaptionsSeeder extends Seeder
             throw new \RuntimeException("E2ECaptionsSeeder: stored VTT content mismatch for {$path}");
         }
 
+        // STEP-09-VERIFICATION-PLAN.md §4.1: the same shared helper
+        // CaptionService/WhisperTranscriber use, over the exact bytes just
+        // verified above — a seeded fixture must carry the same
+        // `content_revision`/`caption_revision` a real whisper run or
+        // manual edit producing this identical VTT would.
+        $revision = CaptionRevision::compute($vtt);
+
         SpeechAsset::query()->updateOrCreate(
             ['id' => $assetId],
             [
@@ -561,6 +569,7 @@ class E2ECaptionsSeeder extends Seeder
                 'failure_code' => null,
                 'failure_detail' => null,
                 'is_primary' => false,
+                'content_revision' => $revision,
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
             ]
@@ -579,6 +588,7 @@ class E2ECaptionsSeeder extends Seeder
                 'language' => 'en',
                 'model' => self::MODEL_ID,
                 'source' => 'whisper',
+                'caption_revision' => $revision,
                 'created_at' => $timestamp,
                 'updated_at' => $timestamp,
             ]

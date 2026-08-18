@@ -28,6 +28,12 @@ class TranscriptResource extends JsonResource
             'model' => $this->model,
             'source' => $this->source,
             'updated_at' => $this->updated_at,
+            // STEP-09-VERIFICATION-PLAN.md §4.1 "Projection convergence
+            // token": read-only, server-computed, `null` when unavailable
+            // — the PUT UI's bounded condition-poll waits for this to
+            // equal the caption revision the save response returned,
+            // never a client-supplied precondition or optimistic lock.
+            'caption_revision' => $this->caption_revision,
         ];
     }
 }

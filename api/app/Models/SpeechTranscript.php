@@ -32,12 +32,13 @@ use Illuminate\Support\Carbon;
  * @property string $language
  * @property string $model
  * @property string $source
+ * @property string|null $caption_revision
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Fillable([
     'speech_id', 'body', 'segments', 'word_count', 'words_per_minute',
-    'language', 'model', 'source',
+    'language', 'model', 'source', 'caption_revision',
 ])]
 class SpeechTranscript extends Model
 {

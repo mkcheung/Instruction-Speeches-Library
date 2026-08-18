@@ -43,6 +43,15 @@ export interface Transcript {
    * (`TranscriptController::show`'s empty-state branch). */
   source: 'whisper' | 'edited' | null
   updated_at: string | null
+  /**
+   * STEP-09-VERIFICATION-PLAN.md §4.1 "Projection convergence token": the
+   * SHA-256 revision of the canonical VTT this transcript row was derived
+   * from, `null` when unavailable. Read-only/server-computed, matched
+   * against `Captions.revision` by `useCaptionEditor.ts`'s post-PUT poll —
+   * equality is the honest signal that `RederiveTranscript` has actually
+   * landed for THIS edit, not just that the row exists.
+   */
+  caption_revision: string | null
 }
 
 /**

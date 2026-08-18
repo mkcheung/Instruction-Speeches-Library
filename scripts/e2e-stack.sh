@@ -143,7 +143,9 @@ cmd_prepare() {
 # media, seed (E2ESeeder only — the caption fixture seeder is a separate,
 # not-yet-built task per the plan's §3.3), start the default queue worker,
 # and explicitly stop whisper-worker (plan §7 point 5: "leaves the Whisper
-# worker stopped" for the required browser lane).
+# worker stopped" for the required browser lane) and caption-test-worker
+# (plan §3.1/§4.2 point 3 — "stopped by default"; only the worker-
+# isolation/old-attempt-race scripts start/release it).
 # ---------------------------------------------------------------------------
 cmd_up() {
   local fresh=0
@@ -184,6 +186,9 @@ cmd_up() {
 
   log "stopping whisper-worker (required browser lane never touches real Whisper — plan §7)"
   _compose stop whisper-worker || true
+
+  log "stopping caption-test-worker (stopped by default — plan §3.1/§4.2 point 3: only the worker-isolation/old-attempt-race scripts start it explicitly)"
+  _compose stop caption-test-worker || true
 
   trap - EXIT
   log "E2E stack '$PROJECT' is up"

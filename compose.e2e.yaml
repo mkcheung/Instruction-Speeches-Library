@@ -8,7 +8,24 @@
 #
 # What this changes relative to plain `docker compose up`, and nothing
 # else — every other service (postgres, valkey, seaweedfs's image itself,
-# ffmpeg-worker, mailpit, whisper-worker) is intentionally left alone:
+# mailpit) is intentionally left alone:
+#
+#   caption-test-worker -> a NEW service, not present in compose.yaml at
+#                      all (plan §3.1/§4.2 point 3): built from the same
+#                      `runtime` target `app`/`queue-worker` use (it never
+#                      shells out to whisper.cpp, so it doesn't need the
+#                      `whisper-worker` target's binary/ffmpeg), draining
+#                      the SAME `redis-long`/`captions` queue `whisper-
+#                      worker` does, with `CAPTION_TEST_WORKER=1` bound
+#                      alongside `APP_ENV=e2e` so
+#                      App\Providers\AppServiceProvider hands it
+#                      App\Services\Captions\DeterministicCaptionTranscriber
+#                      instead of WhisperTranscriber — a real queued job,
+#                      held/released through Valkey keys a bash script
+#                      controls, never a model. Stopped by default for the
+#                      same reason `whisper-worker` is (see that service's
+#                      own comment below): scripts/e2e-stack.sh's `up`
+#                      action stops both explicitly after `up -d`.
 #
 #   web            -> rebuilt with VITE_API_URL baked to the ABSOLUTE
 #                      https://api.speechcoach.test origin (cross-subdomain,
@@ -84,6 +101,44 @@ services:
     environment:
       APP_ENV: e2e
       AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+
+  # STEP-09-VERIFICATION-PLAN.md §3.1/§4.2 point 3: a compose.yaml-absent
+  # service, built from the plain `runtime` target (same as `app`/`queue-
+  # worker` — never `whisper-worker`'s target, since this never shells out
+  # to whisper.cpp at all) that drains the exact same `redis-long`/
+  # `captions` queue whisper-worker does, running
+  # App\Services\Captions\DeterministicCaptionTranscriber instead
+  # (CAPTION_TEST_WORKER=1, gated to APP_ENV=e2e|testing by
+  # AppServiceProvider). Held/released through Valkey keys under the
+  # `caption-test-worker:` prefix — see that class's own docblock for the
+  # exact key names — so the worker-isolation and old-attempt-race scripts
+  # (§4.2 point 3, §4.1) can observe a real queued job without sleeping or
+  # ever invoking Whisper. Stopped by default, same reasoning and same
+  # "compose has no declarative 'start stopped' state" caveat as
+  # `whisper-worker` immediately above — scripts/e2e-stack.sh's `up` action
+  # stops this one too, right next to `whisper-worker`.
+  caption-test-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: php artisan queue:work redis-long --queue=captions --timeout=1800 --tries=1 --sleep=1
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    env_file:
+      - api/.env
+    environment:
+      APP_ENV: e2e
+      CAPTION_TEST_WORKER: "1"
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
+    networks:
+      - default
 
   # STEP-09-VERIFICATION-PLAN.md §4.1/§7: "the SAME media:reconcile schedule
   # is every minute" under APP_ENV=e2e (routes/console.php's own

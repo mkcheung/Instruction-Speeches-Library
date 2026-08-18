@@ -41,9 +41,12 @@ class FakeCaptionTranscriber implements CaptionTranscriberContract
         // to satisfy CaptionTranscriberContract's shared signature.
         Storage::disk($captionsAsset->disk)->put($captionsAsset->path, self::FAKE_VTT);
 
+        $revision = CaptionRevision::compute(self::FAKE_VTT);
+
         $captionsAsset->update([
             'status' => 'ready',
             'byte_size' => Storage::disk($captionsAsset->disk)->size($captionsAsset->path),
+            'content_revision' => $revision,
         ]);
 
         $cues = Vtt::parse(self::FAKE_VTT);
@@ -51,7 +54,7 @@ class FakeCaptionTranscriber implements CaptionTranscriberContract
 
         SpeechTranscript::query()->updateOrCreate(
             ['speech_id' => $captionsAsset->speech_id],
-            [...$derived, 'language' => 'en', 'model' => 'fake', 'source' => 'whisper'],
+            [...$derived, 'language' => 'en', 'model' => 'fake', 'source' => 'whisper', 'caption_revision' => $revision],
         );
     }
 }

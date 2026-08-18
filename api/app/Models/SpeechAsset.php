@@ -45,6 +45,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $caption_queued_at
  * @property Carbon|null $caption_started_at
  * @property Carbon|null $caption_heartbeat_at
+ * @property string|null $content_revision
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -55,6 +56,7 @@ use Illuminate\Support\Carbon;
     'upload_id', 'client_declared_bytes',
     'width', 'height', 'poster_time_seconds',
     'caption_attempt_id', 'caption_queued_at', 'caption_started_at', 'caption_heartbeat_at',
+    'content_revision',
 ])]
 class SpeechAsset extends Model
 {

@@ -7,6 +7,7 @@ use App\Models\Speech;
 use App\Models\SpeechAsset;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 /**
  * `PUT /speeches/{speech}/captions` (the frozen STEP-09 backend contract
@@ -55,13 +56,24 @@ class CaptionService
                     'status' => 'processing',
                 ]);
 
-            Storage::disk($captionsAsset->disk)->put($captionsAsset->path, $vtt);
+            // STEP-09-VERIFICATION-PLAN.md §4.1: "checks the storage
+            // write" — Storage::put()'s boolean return is the only signal
+            // a disk driver gives that the write actually landed; an
+            // unchecked call here would let this method go on to compute
+            // and persist a `content_revision` (and dispatch a re-derive
+            // job) for bytes that were never actually written.
+            if (! Storage::disk($captionsAsset->disk)->put($captionsAsset->path, $vtt)) {
+                throw new RuntimeException("Failed writing VTT to disk for caption asset {$captionsAsset->id}.");
+            }
+
+            $revision = CaptionRevision::compute($vtt);
 
             $captionsAsset->update([
                 'status' => 'ready',
                 'failure_code' => null,
                 'failure_detail' => null,
                 'byte_size' => Storage::disk($captionsAsset->disk)->size($captionsAsset->path),
+                'content_revision' => $revision,
             ]);
 
             // STEP-09-VERIFICATION-PLAN.md §4.1: "disable/manual edit
@@ -87,7 +99,7 @@ class CaptionService
             // the two derivation call sites (whisper output, edited VTT)
             // structurally identical (both go through a job that reads a
             // captions asset's stored VTT and calls TranscriptDeriver).
-            RederiveTranscript::dispatch($captionsAsset->id);
+            RederiveTranscript::dispatch($captionsAsset->id, $revision);
 
             return $captionsAsset;
         });

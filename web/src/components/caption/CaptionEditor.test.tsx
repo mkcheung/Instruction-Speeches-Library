@@ -80,10 +80,32 @@ describe('CaptionEditor', () => {
       if (url.endsWith('/captions') && methodOf(input, init) === 'PUT') {
         const body = await bodyOf(input)
         expect(body.vtt).toContain('Toastmasters')
-        return jsonResponse({ captions: { status: 'ready', vtt: body.vtt, failure_code: null, updated_at: null , asset_id: null } })
+        return jsonResponse({
+          captions: { status: 'ready', vtt: body.vtt, failure_code: null, updated_at: null, asset_id: null, revision: 'rev-toastmasters' },
+        })
       }
       if (url.endsWith('/captions')) {
-        return jsonResponse({ captions: { status: 'ready', vtt: VTT, failure_code: null, updated_at: null , asset_id: null } })
+        return jsonResponse({
+          captions: { status: 'ready', vtt: VTT, failure_code: null, updated_at: null, asset_id: null, revision: 'rev-initial' },
+        })
+      }
+      // The revision-convergence poll (STEP-09-VERIFICATION-PLAN.md §4.1)
+      // matches on its first attempt here — this test only asserts the
+      // editor's own `autosaveState`, not the separate transcript sync.
+      if (url.endsWith('/transcript')) {
+        return jsonResponse({
+          transcript: {
+            body: 'Toastmasters',
+            segments: [],
+            word_count: 1,
+            words_per_minute: null,
+            language: null,
+            model: null,
+            source: 'edited',
+            updated_at: null,
+            caption_revision: 'rev-toastmasters',
+          },
+        })
       }
       throw new Error(`unexpected fetch: ${url}`)
     })

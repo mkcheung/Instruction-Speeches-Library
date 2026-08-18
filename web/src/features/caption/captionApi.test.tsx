@@ -49,6 +49,8 @@ describe('captionApi', () => {
             vtt: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi',
             failure_code: null,
             updated_at: '2026-01-01T00:00:00Z',
+            asset_id: 7,
+            revision: 'rev-abc123',
           },
         })
       }
@@ -69,6 +71,8 @@ describe('captionApi', () => {
       vtt: 'WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHi',
       failure_code: null,
       updated_at: '2026-01-01T00:00:00Z',
+      asset_id: 7,
+      revision: 'rev-abc123',
     })
   })
 
@@ -80,7 +84,14 @@ describe('captionApi', () => {
         const body = await bodyOf(input)
         expect(body).toEqual({ vtt: 'WEBVTT\n\nfixed' })
         return jsonResponse({
-          captions: { status: 'ready', vtt: 'WEBVTT\n\nfixed', failure_code: null, updated_at: '2026-01-02T00:00:00Z' , asset_id: null },
+          captions: {
+            status: 'ready',
+            vtt: 'WEBVTT\n\nfixed',
+            failure_code: null,
+            updated_at: '2026-01-02T00:00:00Z',
+            asset_id: null,
+            revision: 'rev-fixed',
+          },
         })
       }
       throw new Error(`unexpected fetch: ${url}`)
@@ -90,21 +101,40 @@ describe('captionApi', () => {
     const { result } = renderHook(() => ({ update: useUpdateCaptionsMutation() }), { wrapper })
 
     const [updateCaptions] = result.current.update
-    let returned: { vtt: string | null } | undefined
+    let returned: { vtt: string | null; revision: string | null } | undefined
     await act(async () => {
       returned = await updateCaptions({ speechId: 1, body: { vtt: 'WEBVTT\n\nfixed' } }).unwrap()
     })
     expect(returned?.vtt).toBe('WEBVTT\n\nfixed')
+    // The new §4.1 read-only field the PUT UI's convergence poll keys off
+    // of — proves it survives `transformResponse`'s envelope unwrap intact.
+    expect(returned?.revision).toBe('rev-fixed')
   })
 
-  it("a successful updateCaptions invalidates transcriptApi's own cache for the same speech", async () => {
+  // §4.1 "Projection convergence token": `updateCaptions` deliberately does
+  // NOT invalidate `transcriptApi`'s `Transcript`/`Search` tags itself
+  // anymore — an earlier version did exactly that immediately on
+  // `queryFulfilled`, which was the premature-invalidation bug this plan
+  // section replaces. The revision-convergence poll that now gates that
+  // invalidation lives in `useCaptionEditor.ts` (see its own test file),
+  // since only the caller's component can render the "still updating"
+  // state a fire-and-forget cache-layer effect cannot.
+  it('updateCaptions alone does not invalidate transcriptApi caches — that is the caller PUT UI\'s job', async () => {
     let transcriptCallCount = 0
+    let searchCallCount = 0
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = urlOf(input)
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
       if (url.endsWith('/api/speeches/1/captions') && methodOf(input, init) === 'PUT') {
         return jsonResponse({
-          captions: { status: 'ready', vtt: 'WEBVTT\n\nedited', failure_code: null, updated_at: null , asset_id: null },
+          captions: {
+            status: 'ready',
+            vtt: 'WEBVTT\n\nedited',
+            failure_code: null,
+            updated_at: null,
+            asset_id: null,
+            revision: 'rev-edited',
+          },
         })
       }
       if (url.endsWith('/api/speeches/1/transcript')) {
@@ -119,44 +149,8 @@ describe('captionApi', () => {
             model: null,
             source: 'whisper',
             updated_at: null,
+            caption_revision: null,
           },
-        })
-      }
-      throw new Error(`unexpected fetch: ${url}`)
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    const store = createTestStore()
-    const localWrapper = ({ children }: { children: ReactNode }) => <Provider store={store}>{children}</Provider>
-
-    const { result } = renderHook(
-      () => ({ transcript: useGetTranscriptQuery({ speechId: 1 }), update: useUpdateCaptionsMutation() }),
-      { wrapper: localWrapper },
-    )
-
-    await waitFor(() => expect(result.current.transcript.data).toBeDefined())
-    expect(transcriptCallCount).toBe(1)
-
-    const [updateCaptions] = result.current.update
-    await act(async () => {
-      await updateCaptions({ speechId: 1, body: { vtt: 'WEBVTT\n\nedited' } }).unwrap()
-    })
-
-    // §6.12/§8: editing a caption line re-derives the transcript —
-    // captionApi's `onQueryStarted` dispatches transcriptApi's own
-    // invalidation, which should trigger a refetch of the still-subscribed
-    // transcript query.
-    await waitFor(() => expect(transcriptCallCount).toBe(2))
-  })
-
-  it("a successful updateCaptions also invalidates transcriptApi's Search tag, refetching a subscribed search query", async () => {
-    let searchCallCount = 0
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = urlOf(input)
-      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
-      if (url.endsWith('/api/speeches/1/captions') && methodOf(input, init) === 'PUT') {
-        return jsonResponse({
-          captions: { status: 'ready', vtt: 'WEBVTT\n\nedited', failure_code: null, updated_at: null, asset_id: null },
         })
       }
       if (url.includes('/api/speeches/search')) {
@@ -171,11 +165,17 @@ describe('captionApi', () => {
     const localWrapper = ({ children }: { children: ReactNode }) => <Provider store={store}>{children}</Provider>
 
     const { result } = renderHook(
-      () => ({ search: useSearchSpeechesQuery({ q: 'liberty' }), update: useUpdateCaptionsMutation() }),
+      () => ({
+        transcript: useGetTranscriptQuery({ speechId: 1 }),
+        search: useSearchSpeechesQuery({ q: 'liberty' }),
+        update: useUpdateCaptionsMutation(),
+      }),
       { wrapper: localWrapper },
     )
 
+    await waitFor(() => expect(result.current.transcript.data).toBeDefined())
     await waitFor(() => expect(result.current.search.data).toBeDefined())
+    expect(transcriptCallCount).toBe(1)
     expect(searchCallCount).toBe(1)
 
     const [updateCaptions] = result.current.update
@@ -183,9 +183,9 @@ describe('captionApi', () => {
       await updateCaptions({ speechId: 1, body: { vtt: 'WEBVTT\n\nedited' } }).unwrap()
     })
 
-    // A caption edit re-derives `speech_transcripts.body`, which
-    // `searchSpeeches`'s tsvector match reads — a pre-warmed Search cache
-    // must refetch, not go stale forever.
-    await waitFor(() => expect(searchCallCount).toBe(2))
+    // No poll orchestration lives at this layer, so no follow-up refetch
+    // happens on either cache purely from calling the mutation.
+    expect(transcriptCallCount).toBe(1)
+    expect(searchCallCount).toBe(1)
   })
 })

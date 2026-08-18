@@ -116,7 +116,7 @@ class CaptionController extends Controller
         if ($captionsAsset === null) {
             return [
                 'status' => 'unavailable', 'vtt' => null, 'failure_code' => null,
-                'updated_at' => null, 'asset_id' => null,
+                'updated_at' => null, 'asset_id' => null, 'revision' => null,
             ];
         }
 
@@ -130,6 +130,7 @@ class CaptionController extends Controller
             'failure_code' => $captionsAsset->failure_code,
             'updated_at' => $captionsAsset->updated_at,
             'asset_id' => $captionsAsset->id,
+            'revision' => $captionsAsset->content_revision,
         ];
     }
 

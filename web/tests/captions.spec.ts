@@ -18,16 +18,13 @@ import { API_URL, APP_URL, CAPTIONS, USERS } from './fixtures.js'
  * a fixture row; A and C are read-only but share the file's serial mode
  * anyway per that same instruction.
  *
- * ⚠️ KNOWN, DOCUMENTED SUBSTITUTION (Scenario B/D): §4.1's projection
- * convergence token (`content_revision` / `caption_revision`) is NOT built
- * in this codebase yet — `CaptionResource`/`TranscriptResource` expose no
- * such field (verified against `api/app/Http/Resources/CaptionResource.php`
- * and `TranscriptResource.php`). Per this task's explicit instruction, the
- * closest honest, real signal is used instead: poll the canonical VTT via
- * `GET /captions`, then poll the transcript BODY via `GET /transcript`
- * until it contains the corrected/new text. This proves the same real
- * end-to-end pipeline (PUT -> CaptionService -> RederiveTranscript ->
- * speech_transcripts.body) without inventing a field that doesn't exist.
+ * §4.1's projection convergence token is real: `CaptionResource.revision`
+ * (the PUT response's SHA-256 of the canonical VTT) and
+ * `TranscriptResource.caption_revision` (the same hash on the derived
+ * transcript row once `RederiveTranscript` has landed for that write).
+ * Scenarios B and D poll the public transcript endpoint for
+ * `caption_revision` to equal the PUT response's `revision` — the actual
+ * convergence boundary §4.1/§5 describe, not a body-content proxy for it.
  */
 
 test.describe.configure({ mode: 'serial', timeout: 240_000 })
@@ -50,6 +47,7 @@ interface CaptionsPayload {
   vtt: string | null
   failure_code: string | null
   asset_id: number | null
+  revision: string | null
 }
 
 interface TranscriptPayload {
@@ -57,6 +55,7 @@ interface TranscriptPayload {
   segments: Array<{ start: number; end: number; text: string }>
   source: string | null
   model: string | null
+  caption_revision: string | null
 }
 
 function speechUrl(id: number): string {
@@ -329,17 +328,21 @@ test('Scenario B — editing a cue persists, re-derives, and survives reload', a
   expect(putResponse.status(), 'the caption PUT must succeed').toBe(200)
   const putBody = (await putResponse.json()) as { captions: CaptionsPayload }
   expect(putBody.captions.vtt).toContain('Toastmasters')
+  const revision = putBody.captions.revision
+  expect(revision, '§4.1: the PUT response must carry a real revision to converge on').not.toBeNull()
 
   // Step 3: poll GET /captions until the canonical VTT has the correction,
-  // then poll GET /transcript until its body reflects it too (the honest
-  // substitute for the not-yet-built caption_revision — see file header).
+  // then poll the public transcript endpoint until its own
+  // `caption_revision` equals THIS edit's revision — §4.1's actual
+  // convergence boundary, not a proxy for it. Do not treat the editor's
+  // local corrected text as evidence of transcript derivation (§5).
   await expect
     .poll(async () => (await fetchCaptions(page, CAPTIONS.editSpeechId)).vtt, { timeout: POLL_TIMEOUT })
     .toContain('Toastmasters')
 
   await expect
-    .poll(async () => (await fetchTranscript(page, CAPTIONS.editSpeechId)).body, { timeout: POLL_TIMEOUT })
-    .toContain('Toastmasters')
+    .poll(async () => (await fetchTranscript(page, CAPTIONS.editSpeechId)).caption_revision, { timeout: POLL_TIMEOUT })
+    .toBe(revision)
 
   // Step 4: native cue text changes; still exactly one caption track.
   const video = await waitForVideo(page)
@@ -457,13 +460,19 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
   await textarea.blur()
   const putResponse = await putPromise
   expect(putResponse.status()).toBe(200)
+  const putBody = (await putResponse.json()) as { captions: CaptionsPayload }
+  const revision = putBody.captions.revision
+  expect(revision, '§4.1: the PUT response must carry a real revision to converge on').not.toBeNull()
 
-  // Step 3: wait for projection convergence (the same body-content
-  // substitute as Scenario B), then return to the already-queried phrase
-  // via client-side nav only, and require the edited speech to appear.
+  // Step 3: wait for the real projection-convergence signal (§4.1, same
+  // boundary as Scenario B) — the transcript's `caption_revision` matching
+  // THIS edit's revision — then return to the already-queried phrase via
+  // client-side nav only, and require the edited speech to appear.
   await expect
-    .poll(async () => (await fetchTranscript(page, CAPTIONS.searchEditSpeechId)).body, { timeout: POLL_TIMEOUT })
-    .toContain(futurePhrase)
+    .poll(async () => (await fetchTranscript(page, CAPTIONS.searchEditSpeechId)).caption_revision, {
+      timeout: POLL_TIMEOUT,
+    })
+    .toBe(revision)
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Search' }).click()
   await expect(page).toHaveURL(`${APP_URL}/search`)

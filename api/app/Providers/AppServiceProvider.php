@@ -9,6 +9,7 @@ use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
 use App\Services\Captions\CaptionTranscriberContract;
+use App\Services\Captions\DeterministicCaptionTranscriber;
 use App\Services\Captions\FakeCaptionTranscriber;
 use App\Services\Captions\WhisperTranscriber;
 use App\Services\Essay\EssayRenderer;
@@ -19,6 +20,7 @@ use App\Services\Transcoding\TranscoderContract;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -49,7 +51,27 @@ class AppServiceProvider extends ServiceProvider
         // testing/CI so the upload/caption flow is testable without a real
         // whisper.cpp binary or GGUF model weights present, WhisperTranscriber
         // everywhere else.
+        //
+        // STEP-09-VERIFICATION-PLAN.md §3.1/§4.2 point 3 adds a third
+        // branch: the `caption-test-worker` compose service sets
+        // `CAPTION_TEST_WORKER=1` on itself only, so this doesn't touch
+        // `app`/`queue-worker`/`whisper-worker`'s own bindings. Checked
+        // here at register() time (process startup), not only lazily
+        // inside the closure below, so a misconfigured production
+        // container fails immediately on boot instead of waiting for its
+        // first queued caption job — an operator mis-copying `e2e`'s env
+        // into a real deploy is exactly the mistake this guards against,
+        // and it must not silently hand production traffic a fake,
+        // blockable transcriber.
+        if (env('CAPTION_TEST_WORKER') === '1' && ! $this->app->environment('e2e', 'testing')) {
+            throw new RuntimeException('CAPTION_TEST_WORKER=1 is only valid under APP_ENV=e2e|testing.');
+        }
+
         $this->app->bind(CaptionTranscriberContract::class, function () {
+            if (env('CAPTION_TEST_WORKER') === '1') {
+                return new DeterministicCaptionTranscriber;
+            }
+
             return $this->app->environment('testing')
                 ? new FakeCaptionTranscriber
                 : new WhisperTranscriber;

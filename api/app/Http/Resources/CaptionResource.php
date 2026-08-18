@@ -25,7 +25,7 @@ class CaptionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        /** @var array{status: string, vtt: string|null, failure_code: string|null, updated_at: Carbon|null, asset_id: int|null} $data */
+        /** @var array{status: string, vtt: string|null, failure_code: string|null, updated_at: Carbon|null, asset_id: int|null, revision: string|null} $data */
         $data = $this->resource;
 
         return [
@@ -40,6 +40,10 @@ class CaptionResource extends JsonResource
             // handle kind='captions') rather than just refetching a
             // permanently-failed row.
             'asset_id' => $data['asset_id'],
+            // STEP-09-VERIFICATION-PLAN.md §4.1 "Projection convergence
+            // token": read-only, server-computed, `null` when unavailable
+            // — never a client-supplied precondition or optimistic lock.
+            'revision' => $data['revision'],
         ];
     }
 }

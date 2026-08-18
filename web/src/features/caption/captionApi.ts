@@ -1,6 +1,5 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
-import { transcriptApi } from '@/features/transcript/transcriptApi'
 import type { Captions, UpdateCaptionsPayload } from '@/features/caption/types'
 
 /**
@@ -42,22 +41,24 @@ export const captionApi = createApi({
     /**
      * `PUT /api/speeches/{speech}/captions`, body `{ vtt }`. §6.12/§8 of
      * the contract: editing a caption line re-derives `speech_transcripts`
-     * server-side and flips its `source` to `'edited'` — this mutation
-     * can't invalidate `transcriptApi`'s own `Transcript` tag directly
-     * (different `reducerPath`, different cache), so `onQueryStarted`
-     * dispatches `transcriptApi`'s own invalidation action once the write
-     * actually succeeds. This is the one place `captionApi.ts` reaches
-     * into another slice — deliberate, not an accident, and scoped to
-     * exactly the cross-resource rule the contract calls out.
+     * server-side and flips its `source` to `'edited'` — but that
+     * derivation is asynchronous (`RederiveTranscript`, dispatched off the
+     * write, §4.1), so this response is NOT proof the transcript/search
+     * projections are current yet.
      *
-     * `'Search'` is invalidated in the SAME dispatch, right alongside
-     * `Transcript` — a caption edit re-derives `speech_transcripts.body`,
-     * which is exactly what `searchSpeeches`'s `tsvector` match reads, so a
-     * pre-warmed Search cache goes stale the moment the write succeeds.
-     * There is no separate revision-convergence wait to line up with here:
-     * this `onQueryStarted` already invalidates `Transcript` immediately
-     * once `queryFulfilled` resolves (no polling in between), so `Search`
-     * follows that identical timing rather than waiting on anything else.
+     * This mutation therefore does NOT invalidate `transcriptApi`'s
+     * `Transcript`/`Search` tags itself. An earlier version of this file
+     * did exactly that from `onQueryStarted` right after `queryFulfilled`
+     * — a real premature-invalidation bug (found in code review) that
+     * fired those caches before the server had actually finished
+     * re-deriving anything. STEP-09-VERIFICATION-PLAN.md §4.1's
+     * "Projection convergence token" replaces it: `useCaptionEditor.ts`
+     * (the actual PUT caller) reads this response's `revision` and polls
+     * `transcriptApi`'s `getTranscript` until `caption_revision` matches
+     * it, invalidating `Transcript`/`Search` only on that match (or
+     * surfacing an honest timeout otherwise). That poll lives with the
+     * caller, not here, because only the caller's component can render the
+     * "still updating" state a fire-and-forget cache-layer effect cannot.
      */
     updateCaptions: builder.mutation<Captions, { speechId: number; body: UpdateCaptionsPayload }>({
       query: ({ speechId, body }) => ({
@@ -67,17 +68,6 @@ export const captionApi = createApi({
       }),
       transformResponse: (response: { captions: Captions }) => response.captions,
       invalidatesTags: (_result, _error, { speechId }) => [{ type: 'Captions', id: speechId }],
-      async onQueryStarted({ speechId }, { dispatch, queryFulfilled }) {
-        try {
-          await queryFulfilled
-          dispatch(
-            transcriptApi.util.invalidateTags([{ type: 'Transcript', id: speechId }, 'Search']),
-          )
-        } catch {
-          // Write failed — leave the transcript/search caches alone;
-          // nothing was re-derived server-side.
-        }
-      },
     }),
   }),
 })

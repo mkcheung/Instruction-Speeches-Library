@@ -51,6 +51,7 @@ class TranscriptController extends Controller
                     'language' => null,
                     'model' => null,
                     'source' => null,
+                    'caption_revision' => null,
                     'updated_at' => null,
                 ],
             ]);

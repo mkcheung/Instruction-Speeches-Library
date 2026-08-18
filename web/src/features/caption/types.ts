@@ -35,6 +35,17 @@ export interface Captions {
    * (no asset row exists at all).
    */
   asset_id: number | null
+  /**
+   * STEP-09-VERIFICATION-PLAN.md §4.1 "Projection convergence token":
+   * SHA-256 hex of the canonical VTT this response reflects, `null` only
+   * when unavailable. Read-only/server-computed — never sent on the PUT
+   * body (see `UpdateCaptionsPayload` below). This is the value the PUT
+   * caller compares against `Transcript.caption_revision` to know the
+   * server-side re-derivation has actually landed, rather than assuming
+   * the save response itself proves it (§4.1/§4.2: "the API save response
+   * is not proof that transcript/search is current").
+   */
+  revision: string | null
 }
 
 /**

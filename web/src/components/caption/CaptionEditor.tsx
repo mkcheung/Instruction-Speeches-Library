@@ -84,7 +84,10 @@ function CaptionEditorInner({
   vtt: string
   onSeek: (seconds: number) => void
 }) {
-  const { cues, autosaveState, editCueText, flushNow } = useCaptionEditor({ speechId, vtt })
+  const { cues, autosaveState, editCueText, flushNow, transcriptSyncState, retryTranscriptSync } = useCaptionEditor({
+    speechId,
+    vtt,
+  })
   const [editingId, setEditingId] = useState<string | null>(null)
 
   return (
@@ -106,6 +109,28 @@ function CaptionEditorInner({
           {autosaveState}
         </span>
       </div>
+
+      {/* STEP-09-VERIFICATION-PLAN.md §4.1: the caption save above is
+          already durable — this is the SEPARATE transcript/search
+          convergence poll, honest about still being in flight rather than
+          silently riding on the "saved" state above. */}
+      {transcriptSyncState === 'polling' && (
+        <p role="status" data-testid="transcript-sync-state" className="text-xs text-muted-foreground">
+          Updating transcript…
+        </p>
+      )}
+      {transcriptSyncState === 'timeout' && (
+        <div
+          role="alert"
+          data-testid="transcript-sync-state"
+          className="flex items-center justify-between gap-2 text-xs text-[var(--color-danger)]"
+        >
+          <span>Still updating transcript — this is taking longer than expected.</span>
+          <button type="button" className="underline" onClick={retryTranscriptSync}>
+            Retry
+          </button>
+        </div>
+      )}
 
       <ol aria-label="Caption editor" className="flex max-h-96 flex-col gap-1 overflow-y-auto">
         {cues.map((cue) => (
