@@ -15,6 +15,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # No job here has ever taken more than a few minutes (lint/Pest/
+    # Vitest/build) — the default 360-minute GitHub Actions timeout means
+    # a hung step (a flaky apt mirror, a network stall) would otherwise
+    # burn hours of runner time before anyone notices. Generous headroom
+    # over anything observed, not a tuned budget.
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v7
@@ -114,6 +120,11 @@ jobs:
   # setup this job used to use; the built-bundle path removes both.
   e2e:
     runs-on: ubuntu-latest
+    # See the `test` job's identical comment — this job is heavier (Docker
+    # builds, the full E2E stack, Playwright) but observed runs, including
+    # failing ones, have all finished well under 10 minutes; 45 is
+    # generous headroom, not a tuned budget.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v7
@@ -168,7 +179,27 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        # `--with-deps` shells out to `apt-get`, which occasionally stalls
+        # against GitHub's Azure-hosted Ubuntu mirror instead of failing
+        # outright (observed: 50+ minutes of repeated `Ign` lines against
+        # azure.archive.ubuntu.com with zero progress) — a known, transient
+        # GitHub Actions infrastructure flake, not something wrong in this
+        # install command. A per-attempt `timeout` bounds each try and a
+        # retry loop absorbs exactly that kind of transient stall instead
+        # of either hanging indefinitely or failing the whole job on one
+        # bad mirror response; `timeout-minutes` below remains the outer
+        # backstop in case the loop itself misbehaves.
+        timeout-minutes: 20
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 5m npx playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "Playwright browser install attempt $attempt failed or timed out; retrying..." >&2
+            sleep 10
+          done
+          echo "Playwright browser install failed after 3 attempts" >&2
+          exit 1
 
       # §3.1: certs + /etc/hosts verification for all three E2E hostnames
       # (the hosts entries themselves were added, with sudo, above —
