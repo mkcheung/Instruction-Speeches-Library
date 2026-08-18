@@ -87,6 +87,15 @@ export function VideoPlayer({
       onSourceRefreshed: () => onSourceRefreshedRef.current?.(),
     })
 
+    // video.js copies the original <video> tag's attributes (including the
+    // data-testid set above) onto the wrapper <div> it builds around that
+    // same element, while `videoEl` itself remains underneath as the real
+    // tech <video> — so both DOM nodes end up with data-testid="speech-video",
+    // a Playwright strict-mode violation (STEP-09-VERIFICATION-PLAN.md §5
+    // asks for it "on the real video", not this wrapper). Strip it from the
+    // wrapper only; `videoEl` keeps its own copy untouched.
+    player.el().removeAttribute('data-testid')
+
     // `player.tech()` (what `getVideoElement` reads) is not guaranteed
     // attached synchronously right after `videojs()` returns — video.js's
     // own documented contract is that anything tech-dependent waits for

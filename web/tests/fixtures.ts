@@ -11,6 +11,23 @@
 export const APP_URL = 'https://app.speechcoach.test'
 export const API_URL = 'https://api.speechcoach.test'
 
+/**
+ * STEP-09-VERIFICATION-PLAN.md §3.1 names this exact gap: onboarding.spec.ts,
+ * speech-create.spec.ts, and essay-editor.spec.ts each `docker exec` a raw
+ * `psql` cleanup straight against a hardcoded container name — which only
+ * ever matches the DEV stack's Compose-derived name
+ * (`instruction-speeches-library-postgres-1`, from the repo directory name
+ * under a bare `docker compose up`), not the E2E harness's dedicated
+ * `speechcoach-e2e` project (container `speechcoach-e2e-postgres-1`). The
+ * plan's own preferred fix — routing through a real application reset
+ * command via scripts/e2e-stack.sh — is a larger refactor than this line
+ * accounts for; this is the minimal fix that unblocks CI now: the CI e2e
+ * job's "Run Playwright" step sets `E2E_POSTGRES_CONTAINER` to the real
+ * `speechcoach-e2e-postgres-1` name, and a bare local run against the dev
+ * stack keeps working via the fallback below with no env var needed.
+ */
+export const POSTGRES_CONTAINER = process.env.E2E_POSTGRES_CONTAINER ?? 'instruction-speeches-library-postgres-1'
+
 /** Every seeded fixture user shares this password (E2ESeeder). */
 export const FIXTURE_PASSWORD = 'password'
 

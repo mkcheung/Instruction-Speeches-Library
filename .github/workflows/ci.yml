@@ -250,6 +250,17 @@ jobs:
         # so listing it alongside the other three (which run on every
         # browser project) is safe — non-chromium projects skip it
         # themselves.
+        #
+        # E2E_POSTGRES_CONTAINER: STEP-09-VERIFICATION-PLAN.md §3.1's named
+        # gap — speech-create/essay-editor/onboarding specs' own psql
+        # cleanup hardcodes the dev stack's Compose-derived container name
+        # (tests/fixtures.ts's POSTGRES_CONTAINER falls back to that name
+        # when this is unset, for a bare local run against the dev stack).
+        # This job runs against scripts/e2e-stack.sh's dedicated
+        # `speechcoach-e2e` project instead, whose postgres container is
+        # named accordingly.
+        env:
+          E2E_POSTGRES_CONTAINER: speechcoach-e2e-postgres-1
         run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts tests/captions.spec.ts --project=chromium
 
       # §7's scheduler paragraph: proves the actually-running `scheduler`

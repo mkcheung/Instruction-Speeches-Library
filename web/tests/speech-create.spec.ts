@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'node:child_process';
+import { POSTGRES_CONTAINER } from './fixtures';
 
 /**
  * STEP-03-upload-and-watch.md's demo script covers far more than this file
@@ -28,7 +29,7 @@ test.afterEach(() => {
     // row(s) first (their `speech_assets` cascade automatically) and only
     // then the user.
     execSync(
-        `docker exec instruction-speeches-library-postgres-1 psql -U speechcoach -d speechcoach -c "delete from speeches where user_id = (select id from users where email = '${email}'); delete from users where email = '${email}'"`,
+        `docker exec ${POSTGRES_CONTAINER} psql -U speechcoach -d speechcoach -c "delete from speeches where user_id = (select id from users where email = '${email}'); delete from users where email = '${email}'"`,
     );
 });
 
