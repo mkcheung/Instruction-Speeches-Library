@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'node:child_process';
-import { POSTGRES_CONTAINER } from './fixtures';
+import { POSTGRES_CONTAINER } from './fixtures.js';
 
 let email: string;
 

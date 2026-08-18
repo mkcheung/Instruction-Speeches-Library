@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'node:child_process';
-import { POSTGRES_CONTAINER } from './fixtures';
+import { POSTGRES_CONTAINER } from './fixtures.js';
 
 /**
  * STEP-03-upload-and-watch.md's demo script covers far more than this file
