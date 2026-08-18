@@ -70,16 +70,18 @@ cleanup() {
   _compose stop caption-test-worker >/dev/null 2>&1 || log "cleanup: 'stop caption-test-worker' itself failed; inspect 'docker compose -p $PROJECT ps' by hand"
 
   if [ -n "$SPEECH_ID" ]; then
-    log "cleanup: removing smoke speech $SPEECH_ID (cascade-deletes its assets/transcript) and its written media objects"
+    log "cleanup: removing smoke speech $SPEECH_ID (cascade-deletes its assets/transcript), its owning smoke user, and its written media objects"
     _compose exec -T app php artisan tinker --execute="
         \$speech = App\Models\Speech::find(${SPEECH_ID});
         if (\$speech !== null) {
             \$disk = Illuminate\Support\Facades\Storage::disk('media');
+            \$userId = \$speech->user_id;
             foreach (\$speech->assets as \$asset) {
                 \$disk->delete(\$asset->path);
             }
             \$disk->deleteDirectory('speeches/'.\$speech->ulid);
             \$speech->delete();
+            App\Models\User::whereKey(\$userId)->delete();
         }
         echo 'cleaned'.PHP_EOL;
     " >/dev/null 2>&1 || log "cleanup: failed to remove smoke speech $SPEECH_ID — remove it by hand"
@@ -106,7 +108,25 @@ log "seeding a real source asset (committed fixture MP4) and dispatching the rea
 # back under `set -e`.
 set +e
 SEED_OUTPUT="$(_compose exec -T app php artisan tinker --execute="
-    \$speech = App\Models\Speech::factory()->create(['title' => '${SMOKE_TITLE}']);
+    // Model factories (App\Models\Speech::factory(), etc.) call the global
+    // fake()/Faker\Generator, which lives in fakerphp/faker — a
+    // require-dev-only package. This 'app' container is built from the
+    // 'vendor' Dockerfile stage's \`composer install --no-dev\`, so
+    // fake() does not exist here ('Call to undefined function
+    // Database\Factories\fake()'). E2ECaptionsSeeder/E2ESeeder hit the
+    // same constraint and solve it the same way: build rows with plain
+    // ::create() and explicit values, never a factory, against this
+    // image.
+    \$user = App\Models\User::create([
+        'email' => 'caption-worker-isolation-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
+        'password' => Illuminate\Support\Facades\Hash::make('password'),
+        'email_verified_at' => now(),
+    ]);
+    \$speech = App\Models\Speech::create([
+        'user_id' => \$user->id,
+        'title' => '${SMOKE_TITLE}',
+        'is_example' => false,
+    ]);
 
     \$fixturePath = base_path('tests/fixtures/e2e-captions/caption-fixture.mp4');
     \$bytes = file_get_contents(\$fixturePath);

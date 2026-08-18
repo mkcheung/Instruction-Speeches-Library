@@ -130,9 +130,11 @@ cleanup() {
     _tinker_lenient "
       \$s = App\Models\Speech::withTrashed()->find(${id});
       if (\$s !== null) {
+        \$userId = \$s->user_id;
         \$s->assets()->delete();
         \App\Models\SpeechTranscript::where('speech_id', ${id})->delete();
         \$s->forceDelete();
+        App\Models\User::whereKey(\$userId)->delete();
       }
       echo 'cleaned'.PHP_EOL;
     " >/dev/null 2>&1 || log "cleanup: failed to remove speech ${id} — inspect by hand"
@@ -189,8 +191,23 @@ scenario_rederive_overlap() {
   log "seeding a ready captions asset + transcript"
   local speech_id asset_id
   speech_id="$(_tinker "
-    \$speech = App\Models\Speech::factory()->create(['title' => '${title}']);
-    \$asset = App\Models\SpeechAsset::factory()->for(\$speech)->captions()->ready()->create();
+    // No model factories against this image — fakerphp/faker is
+    // require-dev only and the 'app' container is built \`composer install
+    // --no-dev\`. Plain ::create() with explicit values, same fix as
+    // verify-caption-worker-isolation.sh and the same pattern
+    // E2ECaptionsSeeder/E2ESeeder already use for this exact reason.
+    \$user = App\Models\User::create([
+        'email' => 'concurrency-1-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
+        'password' => Illuminate\Support\Facades\Hash::make('password'),
+        'email_verified_at' => now(),
+    ]);
+    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'is_example' => false]);
+    \$asset = \$speech->assets()->create([
+        'kind' => 'captions', 'format' => 'vtt', 'disk' => 'media',
+        'path' => 'speeches/'.Illuminate\Support\Str::ulid().'/captions.vtt',
+        'original_filename' => 'speech.mp4', 'mime_type' => 'video/mp4', 'byte_size' => 5000000,
+        'status' => 'ready', 'is_primary' => true,
+    ]);
     \$vtt = base64_decode('${edit1_b64}');
     Storage::disk(\$asset->disk)->put(\$asset->path, \$vtt);
     \$cues = App\Services\Captions\Vtt::parse(\$vtt);
@@ -266,9 +283,27 @@ scenario_concurrent_enable_retry() {
   log "seeding a speech with a ready source and an existing failed captions row (valid precondition for both enable() and retryAutomatic())"
   local speech_id asset_id
   read -r speech_id asset_id <<<"$(_tinker "
-    \$speech = App\Models\Speech::factory()->create(['title' => '${title}', 'captions_enabled' => true]);
-    App\Models\SpeechAsset::factory()->for(\$speech)->ready()->create();
-    \$asset = App\Models\SpeechAsset::factory()->for(\$speech)->captions()->failed()->create();
+    // No model factories against this --no-dev image — see scenario 1's
+    // seed block for why.
+    \$user = App\Models\User::create([
+        'email' => 'concurrency-2-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
+        'password' => Illuminate\Support\Facades\Hash::make('password'),
+        'email_verified_at' => now(),
+    ]);
+    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true, 'is_example' => false]);
+    \$speech->assets()->create([
+        'kind' => 'source', 'format' => 'mp4', 'disk' => 'media',
+        'path' => 'uploads/'.Illuminate\Support\Str::uuid().'/source',
+        'original_filename' => 'speech.mp4', 'mime_type' => 'video/mp4', 'byte_size' => 5000000,
+        'status' => 'ready', 'is_primary' => true,
+    ]);
+    \$asset = \$speech->assets()->create([
+        'kind' => 'captions', 'format' => 'vtt', 'disk' => 'media',
+        'path' => 'speeches/'.Illuminate\Support\Str::ulid().'/captions.vtt',
+        'original_filename' => 'speech.mp4', 'mime_type' => 'video/mp4', 'byte_size' => 5000000,
+        'status' => 'failed', 'failure_code' => 'unsupported_format',
+        'failure_detail' => 'ffprobe: unsupported codec for remux-only pipeline', 'is_primary' => false,
+    ]);
     echo \$speech->id.' '.\$asset->id.PHP_EOL;
   " | tail -n1)"
   [ -n "$speech_id" ] && [ -n "$asset_id" ] || fail "failed to seed scenario-2 speech/asset"
@@ -366,8 +401,20 @@ scenario_attempt_disable_reenable() {
   log "seeding a speech with a ready source, captions enabled"
   local speech_id
   speech_id="$(_tinker "
-    \$speech = App\Models\Speech::factory()->create(['title' => '${title}', 'captions_enabled' => true]);
-    App\Models\SpeechAsset::factory()->for(\$speech)->ready()->create();
+    // No model factories against this --no-dev image — see scenario 1's
+    // seed block for why.
+    \$user = App\Models\User::create([
+        'email' => 'concurrency-3-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
+        'password' => Illuminate\Support\Facades\Hash::make('password'),
+        'email_verified_at' => now(),
+    ]);
+    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true, 'is_example' => false]);
+    \$speech->assets()->create([
+        'kind' => 'source', 'format' => 'mp4', 'disk' => 'media',
+        'path' => 'uploads/'.Illuminate\Support\Str::uuid().'/source',
+        'original_filename' => 'speech.mp4', 'mime_type' => 'video/mp4', 'byte_size' => 5000000,
+        'status' => 'ready', 'is_primary' => true,
+    ]);
     echo \$speech->id.PHP_EOL;
   " | tail -n1)"
   [ -n "$speech_id" ] || fail "failed to seed scenario-3 speech"
