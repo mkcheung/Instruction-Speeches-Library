@@ -55,3 +55,24 @@ if (typeof HTMLMediaElement !== 'undefined') {
     return track as unknown as TextTrack
   }
 }
+
+/**
+ * RTK Query's `autoBatchEnhancer` schedules its dispatch flush via
+ * `requestAnimationFrame`/`cancelAnimationFrame`, which `vi.useFakeTimers()`
+ * polyfills only while active — jsdom itself defines neither. A test that
+ * calls `vi.useFakeTimers()` then `vi.useRealTimers()` (this codebase's own
+ * `afterEach` convention) can leave a batch callback scheduled against the
+ * now-torn-down fake implementation; when it fires later, against a plain
+ * jsdom global that never had these, RTK's own cancel call throws
+ * `ReferenceError: cancelAnimationFrame is not defined` — observed as a
+ * Vitest "unhandled error" attributed to whichever unrelated test file
+ * happened to be running at that moment. Defined unconditionally, once,
+ * so neither function is ever missing regardless of fake/real timer state.
+ */
+if (typeof globalThis.requestAnimationFrame === 'undefined') {
+  globalThis.requestAnimationFrame = (callback: FrameRequestCallback): number =>
+    setTimeout(() => callback(Date.now()), 16) as unknown as number
+}
+if (typeof globalThis.cancelAnimationFrame === 'undefined') {
+  globalThis.cancelAnimationFrame = (handle: number): void => clearTimeout(handle)
+}
