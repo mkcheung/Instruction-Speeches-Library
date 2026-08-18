@@ -117,10 +117,16 @@ SEED_OUTPUT="$(_compose exec -T app php artisan tinker --execute="
     // same constraint and solve it the same way: build rows with plain
     // ::create() and explicit values, never a factory, against this
     // image.
+    // 'email_verified_at' deliberately omitted — it is NOT in User's
+    // #[Fillable(...)] list (app/Models/User.php), and
+    // Model::preventSilentlyDiscardingAttributes(!isProduction()) makes
+    // mass-assigning a non-fillable attribute throw
+    // MassAssignmentException outside production, which APP_ENV=e2e is.
+    // This smoke user only ever owns a Speech FK — it never authenticates
+    // — so an unverified email is irrelevant here.
     \$user = App\Models\User::create([
         'email' => 'caption-worker-isolation-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
-        'email_verified_at' => now(),
     ]);
     \$speech = App\Models\Speech::create([
         'user_id' => \$user->id,

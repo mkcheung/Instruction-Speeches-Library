@@ -196,10 +196,13 @@ scenario_rederive_overlap() {
     // --no-dev\`. Plain ::create() with explicit values, same fix as
     // verify-caption-worker-isolation.sh and the same pattern
     // E2ECaptionsSeeder/E2ESeeder already use for this exact reason.
+    // 'email_verified_at' deliberately omitted — not in User's
+    // #[Fillable(...)] list, and Model::preventSilentlyDiscardingAttributes
+    // throws MassAssignmentException for it outside production (APP_ENV=e2e
+    // included); this smoke user never authenticates, only owns a FK.
     \$user = App\Models\User::create([
         'email' => 'concurrency-1-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
-        'email_verified_at' => now(),
     ]);
     \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'is_example' => false]);
     \$asset = \$speech->assets()->create([
@@ -288,7 +291,6 @@ scenario_concurrent_enable_retry() {
     \$user = App\Models\User::create([
         'email' => 'concurrency-2-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
-        'email_verified_at' => now(),
     ]);
     \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true, 'is_example' => false]);
     \$speech->assets()->create([
@@ -406,7 +408,6 @@ scenario_attempt_disable_reenable() {
     \$user = App\Models\User::create([
         'email' => 'concurrency-3-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
-        'email_verified_at' => now(),
     ]);
     \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true, 'is_example' => false]);
     \$speech->assets()->create([
