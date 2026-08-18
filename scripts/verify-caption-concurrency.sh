@@ -204,7 +204,7 @@ scenario_rederive_overlap() {
         'email' => 'concurrency-1-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
     ]);
-    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'is_example' => false]);
+    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}']); // is_example: not fillable, NOT NULL DEFAULT FALSE handles it
     \$asset = \$speech->assets()->create([
         'kind' => 'captions', 'format' => 'vtt', 'disk' => 'media',
         'path' => 'speeches/'.Illuminate\Support\Str::ulid().'/captions.vtt',
@@ -292,7 +292,7 @@ scenario_concurrent_enable_retry() {
         'email' => 'concurrency-2-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
     ]);
-    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true, 'is_example' => false]);
+    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true]); // is_example: not fillable, NOT NULL DEFAULT FALSE handles it
     \$speech->assets()->create([
         'kind' => 'source', 'format' => 'mp4', 'disk' => 'media',
         'path' => 'uploads/'.Illuminate\Support\Str::uuid().'/source',
@@ -409,7 +409,7 @@ scenario_attempt_disable_reenable() {
         'email' => 'concurrency-3-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
     ]);
-    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true, 'is_example' => false]);
+    \$speech = App\Models\Speech::create(['user_id' => \$user->id, 'title' => '${title}', 'captions_enabled' => true]); // is_example: not fillable, NOT NULL DEFAULT FALSE handles it
     \$speech->assets()->create([
         'kind' => 'source', 'format' => 'mp4', 'disk' => 'media',
         'path' => 'uploads/'.Illuminate\Support\Str::uuid().'/source',

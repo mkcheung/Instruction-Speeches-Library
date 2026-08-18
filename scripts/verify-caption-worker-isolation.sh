@@ -128,10 +128,22 @@ SEED_OUTPUT="$(_compose exec -T app php artisan tinker --execute="
         'email' => 'caption-worker-isolation-'.Illuminate\Support\Str::uuid().'@e2e-smoke.test',
         'password' => Illuminate\Support\Facades\Hash::make('password'),
     ]);
+    // 'is_example' omitted — not in Speech's #[Fillable(...)] list either,
+    // and the column is NOT NULL DEFAULT FALSE at the DB level; nothing
+    // below ever reads \$speech->is_example, so the unhydrated in-memory
+    // attribute never matters. 'captions_enabled' is different and MUST be
+    // set explicitly, even though it also defaults true at the DB level:
+    // Eloquent's ::create() does not re-fetch server-side column defaults
+    // onto the in-memory model after INSERT, so \$speech->captions_enabled
+    // would stay null (not true) in PHP — and EnsureCaptionJob::
+    // ensureForUpload() below checks that exact in-memory attribute
+    // (`! \$speech->captions_enabled`), so a null there makes it return
+    // null immediately, which is exactly the bug this comment is warning
+    // against reintroducing.
     \$speech = App\Models\Speech::create([
         'user_id' => \$user->id,
         'title' => '${SMOKE_TITLE}',
-        'is_example' => false,
+        'captions_enabled' => true,
     ]);
 
     \$fixturePath = base_path('tests/fixtures/e2e-captions/caption-fixture.mp4');
