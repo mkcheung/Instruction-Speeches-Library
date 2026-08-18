@@ -113,6 +113,12 @@ return [
 
     'runs_whisper_smoke' => env('RUNS_WHISPER_SMOKE') === '1',
 
+    // STEP-09-VERIFICATION-PLAN.md §3.1/§4.2 point 3: true only on the
+    // `caption-test-worker` compose service itself. Read via config here
+    // (not `env()` directly) so AppServiceProvider's env-gate still works
+    // under config caching in production — see AppServiceProvider::register().
+    'test_worker_enabled' => env('CAPTION_TEST_WORKER') === '1',
+
     // Where RealWhisperAdapterSmokeTest exports bounded, sanitized process
     // diagnostics on failure (§6.2 item 6) — compose.yaml's `whisper-smoke`
     // service bind-mounts this to a host directory so the artifact

@@ -63,12 +63,12 @@ class AppServiceProvider extends ServiceProvider
         // into a real deploy is exactly the mistake this guards against,
         // and it must not silently hand production traffic a fake,
         // blockable transcriber.
-        if (env('CAPTION_TEST_WORKER') === '1' && ! $this->app->environment('e2e', 'testing')) {
+        if (config('captions.test_worker_enabled') && ! $this->app->environment('e2e', 'testing')) {
             throw new RuntimeException('CAPTION_TEST_WORKER=1 is only valid under APP_ENV=e2e|testing.');
         }
 
         $this->app->bind(CaptionTranscriberContract::class, function () {
-            if (env('CAPTION_TEST_WORKER') === '1') {
+            if (config('captions.test_worker_enabled')) {
                 return new DeterministicCaptionTranscriber;
             }
 
