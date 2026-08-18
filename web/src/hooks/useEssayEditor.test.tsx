@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
@@ -12,6 +12,10 @@ function jsonResponse(body: unknown, status = 200) {
 
 function urlOf(input: RequestInfo | URL): string {
   return input instanceof Request ? input.url : input.toString()
+}
+
+function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
+  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
 }
 
 async function bodyOf(input: RequestInfo | URL): Promise<Record<string, unknown>> {
@@ -246,7 +250,7 @@ describe('useEssayEditor', () => {
   })
 
   describe('pagehide beacon', () => {
-    it('fires a keepalive PUT when dirty on unload, and nothing when clean', () => {
+    it('fires a keepalive PUT when dirty on unload, and nothing when clean', async () => {
       const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         if (urlOf(input).includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
         void init
@@ -254,7 +258,10 @@ describe('useEssayEditor', () => {
       })
       vi.stubGlobal('fetch', fetchMock)
 
-      const { result } = renderHook(() => useEssayEditor({ speechId: 1, reviewId: 1, initial: essay() }), { wrapper })
+      const { result, unmount } = renderHook(
+        () => useEssayEditor({ speechId: 1, reviewId: 1, initial: essay() }),
+        { wrapper },
+      )
 
       act(() => result.current.setHtml('<p>typed, not yet flushed</p>'))
       expect(result.current.autosaveState).toBe('dirty')
@@ -265,6 +272,22 @@ describe('useEssayEditor', () => {
         ([input, init]) => urlOf(input).endsWith('/essay') && init?.keepalive === true,
       )
       expect(beaconCall).toBeDefined()
+
+      // `setHtml` also left the ordinary debounced save pending. Unmount
+      // explicitly while the fetch mock is still installed, then wait for
+      // that cleanup PUT; otherwise RTL's automatic cleanup can run after
+      // this suite restores native fetch and leak a real network request.
+      unmount()
+      await waitFor(() => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              urlOf(input).endsWith('/essay') &&
+              methodOf(input, init) === 'PUT' &&
+              init?.keepalive !== true,
+          ),
+        ).toBe(true)
+      })
     })
   })
 })

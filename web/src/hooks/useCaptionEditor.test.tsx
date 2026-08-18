@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
 import { useCaptionEditor } from '@/hooks/useCaptionEditor'
+import { useSearchSpeechesQuery } from '@/features/transcript/transcriptApi'
 
 const VTT = 'WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello wrold'
 
@@ -219,6 +220,68 @@ describe('useCaptionEditor', () => {
       })
       expect(transcriptCallCount).toBe(3)
       expect(result.current.transcriptSyncState).toBe('synced')
+    })
+
+    it('invalidates a pre-warmed Search cache only after the transcript revision matches', async () => {
+      let searchCallCount = 0
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = urlOf(input)
+        if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+        if (url.includes('/api/speeches/search')) {
+          searchCallCount += 1
+          return jsonResponse({ results: [] })
+        }
+        if (url.endsWith('/api/speeches/1/captions') && methodOf(input, init) === 'PUT') {
+          return jsonResponse({
+            captions: {
+              status: 'ready',
+              vtt: VTT,
+              failure_code: null,
+              updated_at: null,
+              asset_id: null,
+              revision: 'rev-search',
+            },
+          })
+        }
+        if (url.endsWith('/api/speeches/1/transcript')) {
+          return jsonResponse({
+            transcript: {
+              body: 'Edited text',
+              segments: [],
+              word_count: 2,
+              words_per_minute: null,
+              language: null,
+              model: null,
+              source: 'edited',
+              updated_at: null,
+              caption_revision: 'rev-search',
+            },
+          })
+        }
+        throw new Error(`unexpected fetch: ${url}`)
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const store = createTestStore()
+      const localWrapper = ({ children }: { children: ReactNode }) => <Provider store={store}>{children}</Provider>
+
+      const search = renderHook(() => useSearchSpeechesQuery({ q: 'edited text' }), {
+        wrapper: localWrapper,
+      })
+      await waitFor(() => expect(search.result.current.data).toBeDefined())
+      expect(searchCallCount).toBe(1)
+
+      const editor = renderHook(() => useCaptionEditor({ speechId: 1, vtt: VTT }), {
+        wrapper: localWrapper,
+      })
+      act(() => editor.result.current.editCueText('cue-0', 'Edited text'))
+      act(() => editor.result.current.flushNow())
+
+      await waitFor(() => expect(editor.result.current.transcriptSyncState).toBe('synced'))
+      await waitFor(() => expect(searchCallCount).toBe(2))
+
+      search.unmount()
+      editor.unmount()
     })
 
     it('times out after the bounded attempt budget and lets a manual retry resume polling', async () => {

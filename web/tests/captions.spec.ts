@@ -520,6 +520,13 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
     })
     .toBe(revision)
 
+  // The API projection and the browser's cache observer are separate
+  // moments. Do not navigate away while the editor still says it is
+  // updating: unmounting that observer before it sees the matching
+  // revision would prevent its Search-tag invalidation from running.
+  await expect(page.getByTestId('caption-autosave-state')).toHaveAttribute('data-state', 'saved')
+  await expect(page.getByTestId('transcript-sync-state')).toHaveCount(0, { timeout: POLL_TIMEOUT })
+
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Search' }).click()
   await expect(page).toHaveURL(`${APP_URL}/search`)
   await page.getByLabel('Phrase').fill(futurePhrase)

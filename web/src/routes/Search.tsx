@@ -26,7 +26,14 @@ export default function Search() {
     return () => clearTimeout(handle)
   }, [query])
 
-  const { data, isFetching, isError } = useSearchSpeechesQuery(debounced ? { q: debounced } : skipToken)
+  const { data, isFetching, isError } = useSearchSpeechesQuery(
+    debounced ? { q: debounced } : skipToken,
+    // Search results are a projection that can change while this route is
+    // unmounted (for example, after a caption edit re-derives a transcript).
+    // Do not let RTK Query's 60-second unused-data cache hide that change
+    // when the user returns to a phrase they already searched.
+    { refetchOnMountOrArgChange: true },
+  )
   const results = data ?? []
 
   return (
