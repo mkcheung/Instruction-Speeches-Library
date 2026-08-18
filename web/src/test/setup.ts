@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
 
 /**
  * STEP-07-write-commentary.md's acceptance list ("ten body-only keystrokes
@@ -58,21 +58,32 @@ if (typeof HTMLMediaElement !== 'undefined') {
 
 /**
  * RTK Query's `autoBatchEnhancer` schedules its dispatch flush via
- * `requestAnimationFrame`/`cancelAnimationFrame`, which `vi.useFakeTimers()`
- * polyfills only while active — jsdom itself defines neither. A test that
- * calls `vi.useFakeTimers()` then `vi.useRealTimers()` (this codebase's own
- * `afterEach` convention) can leave a batch callback scheduled against the
- * now-torn-down fake implementation; when it fires later, against a plain
- * jsdom global that never had these, RTK's own cancel call throws
- * `ReferenceError: cancelAnimationFrame is not defined` — observed as a
- * Vitest "unhandled error" attributed to whichever unrelated test file
- * happened to be running at that moment. Defined unconditionally, once,
- * so neither function is ever missing regardless of fake/real timer state.
+ * `requestAnimationFrame`/`cancelAnimationFrame` by default. jsdom DOES
+ * define both natively (confirmed directly — this is not a bare-jsdom gap),
+ * but `vi.useFakeTimers()` replaces them with fake versions while active,
+ * and this codebase's own `afterEach(() => vi.useRealTimers())` convention
+ * restores whatever was captured as "original" at install time. A batch
+ * callback scheduled by RTK while fake timers were active, but not yet
+ * fired by the time that test ends, can still be pending when a LATER,
+ * unrelated test file's real timers eventually tick it — and calling
+ * `cancelAnimationFrame` at that point has, intermittently in CI (not
+ * reliably reproducible locally — it depends on cross-file timing that
+ * differs by worker count/scheduling), thrown `ReferenceError:
+ * cancelAnimationFrame is not defined`. The exact mechanism by which the
+ * function goes missing again after being defined is not fully pinned
+ * down; what matters is that neither function may ever be ABSENT, so this
+ * guard runs both at load time and after every single test (not just once
+ * per file) to repair whatever fake-timer install/uninstall cycles leave
+ * behind, closing the observed crash regardless of root cause.
  */
-if (typeof globalThis.requestAnimationFrame === 'undefined') {
-  globalThis.requestAnimationFrame = (callback: FrameRequestCallback): number =>
-    setTimeout(() => callback(Date.now()), 16) as unknown as number
+function ensureAnimationFrameGlobals(): void {
+  if (typeof globalThis.requestAnimationFrame !== 'function') {
+    globalThis.requestAnimationFrame = (callback: FrameRequestCallback): number =>
+      setTimeout(() => callback(Date.now()), 16) as unknown as number
+  }
+  if (typeof globalThis.cancelAnimationFrame !== 'function') {
+    globalThis.cancelAnimationFrame = (handle: number): void => clearTimeout(handle)
+  }
 }
-if (typeof globalThis.cancelAnimationFrame === 'undefined') {
-  globalThis.cancelAnimationFrame = (handle: number): void => clearTimeout(handle)
-}
+ensureAnimationFrameGlobals()
+afterEach(ensureAnimationFrameGlobals)
