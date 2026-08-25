@@ -152,6 +152,44 @@ it('denies anonymous, unverified, owner, and unrelated callers without leaking a
     Queue::assertNothingPushed();
 })->with(['anonymous', 'unverified', 'owner', 'stranger']);
 
+it('never leaks whether a peer review annotation is a voice note via 403-vs-404 ordering', function (string $method) {
+    // Code-review finding: AnnotationController::update/destroy used to
+    // read $annotation->audio_asset_id (implicit-bound, no ownership
+    // scoping) for the email-verification gate BEFORE confirming the
+    // annotation belongs to the caller's own review — an unverified
+    // caller with a legitimate review of their own on the SAME speech
+    // could PATCH/DELETE a peer reviewer's annotation id and learn, via
+    // 403 vs 404, whether it was a live voice note. Ownership must be
+    // checked first regardless of email verification status.
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [$speaker, , $speech, $reviewA] = voiceReview();
+
+    $voiceAsset = SpeechAsset::factory()->for($speech)->voiceNote()->create(['status' => 'ready']);
+    $voiceAnnotation = Annotation::factory()->for($reviewA)->create([
+        'audio_asset_id' => $voiceAsset->id,
+        'transcript_status' => 'ready',
+    ])->refresh();
+
+    $coachB = User::factory()->unverified()->create();
+    $coachB->assignRole('coach');
+    Review::factory()->accepted()->create([
+        'speech_id' => $speech->id,
+        'speech_owner_id' => $speaker->id,
+        'reviewer_id' => $coachB->id,
+        'status' => 'in_progress',
+    ]);
+
+    $response = $this->actingAs($coachB)->withHeader('Accept', 'application/json')->json(
+        $method,
+        "/api/speeches/{$speech->id}/annotations/{$voiceAnnotation->id}",
+        $method === 'PATCH' ? ['lock_version' => $voiceAnnotation->lock_version, 'body' => 'x'] : [],
+    );
+
+    $response->assertNotFound();
+})->with(['PATCH', 'DELETE']);
+
 it('returns only the frozen public voice resource fields', function () {
     $this->seed(RoleSeeder::class);
     Storage::fake('media');

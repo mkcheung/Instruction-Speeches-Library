@@ -119,7 +119,14 @@ class AnnotationService
     {
         return DB::transaction(function () use ($annotation, $data) {
             /** @var Annotation $locked */
-            $locked = Annotation::query()->whereKey($annotation->id)->lockForUpdate()->firstOrFail();
+            // Eager-loaded here, before the lock_version check, not just on
+            // the success path below — AnnotationConflictException carries
+            // this exact instance into its 409 body via AnnotationResource,
+            // which renders `voice: null` for any relation that isn't
+            // loaded. Without this, a losing writer on a real voice
+            // annotation got back a 409 whose `current.voice` was null,
+            // silently mislabeling it as a text annotation.
+            $locked = Annotation::query()->whereKey($annotation->id)->lockForUpdate()->with('audioAsset')->firstOrFail();
 
             if ($locked->lock_version !== (int) $data['lock_version']) {
                 throw new AnnotationConflictException($locked);
@@ -138,7 +145,9 @@ class AnnotationService
             $locked->lock_version++;
             $locked->save();
 
-            return $locked->load('audioAsset');
+            // Already eager-loaded above, before the lock_version check —
+            // no need to load() it again here.
+            return $locked;
         });
     }
 

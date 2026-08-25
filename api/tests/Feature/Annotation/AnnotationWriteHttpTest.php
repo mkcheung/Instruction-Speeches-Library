@@ -3,6 +3,7 @@
 use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\Speech;
+use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
@@ -177,6 +178,32 @@ it('conflictSource is always the literal string "self" for annotations, never an
 
     $response->assertStatus(409);
     expect($response->json('conflictSource'))->toBe('self');
+});
+
+it('a 409 conflict on a voice annotation still reports its voice field, never null', function () {
+    // Code-review finding: AnnotationService::update() re-fetched the
+    // conflicting row without eager-loading audioAsset (only the success
+    // path did), so AnnotationResource — which keys `voice` off
+    // relationLoaded('audioAsset') — rendered `current.voice: null` for a
+    // real, live voice annotation on a lock_version conflict.
+    $this->seed(RoleSeeder::class);
+    [$speaker, $reviewer] = speakerAndCoach();
+    $review = acceptedInProgressReview($speaker, $reviewer);
+    $voiceAsset = SpeechAsset::factory()->for($review->speech)->voiceNote()->create(['status' => 'ready']);
+    $annotation = Annotation::factory()->for($review)->create([
+        'lock_version' => 0,
+        'audio_asset_id' => $voiceAsset->id,
+        'transcript_status' => 'ready',
+        'body' => 'transcribed text',
+    ])->refresh();
+
+    $response = $this->actingAs($reviewer)->patchJson(
+        "/api/speeches/{$review->speech_id}/annotations/{$annotation->id}",
+        ['lock_version' => $annotation->lock_version + 1, 'body' => 'a stale edit']
+    );
+
+    $response->assertStatus(409);
+    $response->assertJsonPath('current.voice.asset_id', $voiceAsset->id);
 });
 
 it('applies the change and increments lock_version on a matching lock_version', function () {
