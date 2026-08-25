@@ -32,18 +32,32 @@ class QuotaService
 
     public function reconcileDirect(User $user, int $reservedBytes, int $realBytes): void
     {
-        $delta = $realBytes - $reservedBytes;
-        DB::update(
-            'UPDATE users SET storage_bytes_used = CASE WHEN storage_bytes_used + ? < 0 THEN 0 ELSE storage_bytes_used + ? END WHERE id = ?',
-            [$delta, $delta, $user->id],
-        );
+        $this->clampStorageBytesUsed($user->id, $realBytes - $reservedBytes);
     }
 
     public function releaseDirect(User $user, int $bytes): void
     {
+        $this->clampStorageBytesUsed($user->id, -$bytes);
+    }
+
+    /**
+     * The clamp-to-zero shape shared by every single-column
+     * storage_bytes_used adjustment in this class (this method's two
+     * callers above, plus releaseOnSpeechDeleted below) — retyping this
+     * SQL independently at each call site is exactly how a future edit
+     * misses the clamp in one copy and reproduces the permanent-lockout
+     * bug this class's own docblock warns about. releaseOnComplete/
+     * releaseOnAbort deliberately do NOT go through this: they clamp
+     * storage_bytes_used AND uploads_in_flight together in one atomic
+     * two-column UPDATE, and splitting that into two separate statements
+     * just to reuse this helper would trade a real atomicity guarantee for
+     * a cosmetic one.
+     */
+    private function clampStorageBytesUsed(int $userId, int $delta): void
+    {
         DB::update(
-            'UPDATE users SET storage_bytes_used = CASE WHEN storage_bytes_used - ? < 0 THEN 0 ELSE storage_bytes_used - ? END WHERE id = ?',
-            [$bytes, $bytes, $user->id],
+            'UPDATE users SET storage_bytes_used = CASE WHEN storage_bytes_used + ? < 0 THEN 0 ELSE storage_bytes_used + ? END WHERE id = ?',
+            [$delta, $delta, $userId],
         );
     }
 
@@ -126,11 +140,6 @@ class QuotaService
      */
     public function releaseOnSpeechDeleted(int $userId, int $totalBytesHeld): void
     {
-        DB::update(
-            'UPDATE users
-                SET storage_bytes_used = CASE WHEN storage_bytes_used - ? < 0 THEN 0 ELSE storage_bytes_used - ? END
-              WHERE id = ?',
-            [$totalBytesHeld, $totalBytesHeld, $userId],
-        );
+        $this->clampStorageBytesUsed($userId, -$totalBytesHeld);
     }
 }

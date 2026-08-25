@@ -41,7 +41,7 @@ class PurgeDeletedVoiceAnnotation implements ShouldQueue
             $claimId = $asset->purge_claim_id ?? (string) Str::uuid();
             $asset->update(['purge_claim_id' => $claimId, 'status' => 'failed']);
 
-            return ['claim_id' => $claimId, 'asset_id' => $asset->id, 'disk' => $asset->disk, 'paths' => array_unique(array_filter([$asset->temporary_path, $asset->normalization_candidate_path, $asset->path])), 'charged' => (int) ($asset->temporary_byte_size ?? $asset->byte_size ?? 0), 'reviewer_id' => $annotation->review()->value('reviewer_id')];
+            return ['claim_id' => $claimId, 'asset_id' => $asset->id, 'disk' => $asset->disk, 'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path), 'charged' => (int) ($asset->temporary_byte_size ?? $asset->byte_size ?? 0), 'reviewer_id' => $annotation->review()->value('reviewer_id')];
         });
         if ($claim === null) {
             return;

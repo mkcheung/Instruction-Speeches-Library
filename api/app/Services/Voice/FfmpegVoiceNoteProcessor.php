@@ -24,19 +24,18 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
         $outputBase = tempnam(sys_get_temp_dir(), 'voice_out_');
         $output = $outputBase.'.m4a';
         $reserved = (int) ($asset->temporary_byte_size ?? $asset->byte_size);
-        $reviewer = $asset->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
 
         try {
             $bytes = Storage::disk($asset->disk)->get($temporaryPath);
             if ($bytes === null || file_put_contents($input, $bytes) === false) {
-                return $this->fail($asset, $temporaryPath, $reviewer, $reserved, 'voice_storage_failed');
+                return $this->fail($asset, $temporaryPath, $reserved, 'voice_storage_failed');
             }
 
             $filter = 'loudnorm=I=-16:TP=-1.5:LRA=11:dual_mono=true:print_format=json';
             $pass1 = Process::timeout(110)->run(['ffmpeg', '-nostdin', '-y', '-i', $input, '-af', $filter, '-f', 'null', '-']);
             $stats = $this->loudnormStats($pass1);
             if (! $pass1->successful() || $stats === null) {
-                return $this->fail($asset, $temporaryPath, $reviewer, $reserved, 'voice_invalid_audio');
+                return $this->fail($asset, $temporaryPath, $reserved, 'voice_invalid_audio');
             }
 
             $pass2Filter = sprintf(
@@ -45,16 +44,16 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             );
             $pass2 = Process::timeout(110)->run(['ffmpeg', '-nostdin', '-y', '-i', $input, '-map', '0:a:0', '-vn', '-af', $pass2Filter, '-ac', '1', '-c:a', 'aac', '-profile:a', 'aac_low', '-b:a', '64k', '-movflags', '+faststart', $output]);
             if (! $pass2->successful() || ! is_file($output)) {
-                return $this->fail($asset, $temporaryPath, $reviewer, $reserved, 'voice_normalization_failed');
+                return $this->fail($asset, $temporaryPath, $reserved, 'voice_normalization_failed');
             }
 
             $probe = Process::timeout(30)->run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', $output]);
             $duration = (float) trim($probe->output());
             if (! $probe->successful() || $duration <= 0) {
-                return $this->fail($asset, $temporaryPath, $reviewer, $reserved, 'voice_invalid_audio');
+                return $this->fail($asset, $temporaryPath, $reserved, 'voice_invalid_audio');
             }
             if ($duration > 90.0) {
-                return $this->fail($asset, $temporaryPath, $reviewer, $reserved, 'voice_duration_exceeded');
+                return $this->fail($asset, $temporaryPath, $reserved, 'voice_duration_exceeded');
             }
 
             $finalPath = preg_replace('/\.m4a$/', '', $asset->path).'.'.Str::uuid().'.m4a';
@@ -74,7 +73,7 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             }
             $normalized = file_get_contents($output);
             if ($normalized === false || ! Storage::disk($asset->disk)->put($finalPath, $normalized)) {
-                return $this->fail($asset, $temporaryPath, $reviewer, $reserved, 'voice_storage_failed');
+                return $this->fail($asset, $temporaryPath, $reserved, 'voice_storage_failed');
             }
 
             try {
@@ -106,11 +105,17 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             if (! Storage::disk($asset->disk)->delete($temporaryPath)) {
                 return true;
             }
-            DB::transaction(function () use ($asset, $temporaryPath, $reviewer, $reserved, $normalized): void {
+            DB::transaction(function () use ($asset, $temporaryPath, $reserved, $normalized): void {
                 $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'ready')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                 if ($fresh === null || $fresh->temporary_byte_size === null) {
                     return;
                 }
+                // Resolved under this same lock, not the pre-ffmpeg $asset
+                // snapshot from process()'s entry (up to ~220s earlier
+                // across both loudnorm passes) — see fail()'s identical
+                // comment below for why a stale reviewer silently drops
+                // the quota release/reconcile on a concurrent delete.
+                $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
                 if ($reviewer !== null) {
                     $this->quota->reconcileDirect($reviewer, $reserved, strlen($normalized));
                 }
@@ -141,10 +146,10 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
         return $data;
     }
 
-    private function fail(SpeechAsset $asset, string $temporaryPath, mixed $reviewer, int $reserved, string $code): bool
+    private function fail(SpeechAsset $asset, string $temporaryPath, int $reserved, string $code): bool
     {
         $candidatePath = null;
-        $won = DB::transaction(function () use ($asset, $temporaryPath, $reviewer, $reserved, $code, &$candidatePath): bool {
+        $won = DB::transaction(function () use ($asset, $temporaryPath, $reserved, $code, &$candidatePath): bool {
             $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->whereNull('purge_claim_id')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
             if ($fresh === null || $fresh->temporary_byte_size === null) {
                 return false;
@@ -154,9 +159,19 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
                 'status' => 'failed', 'failure_code' => $code,
                 'failure_detail' => 'We had trouble processing this voice note. Please record it again.', 'temporary_byte_size' => null, 'byte_size' => 0,
             ]);
-            $asset->voiceAnnotation()->whereIn('transcript_status', ['pending', 'processing'])->update([
+            $fresh->voiceAnnotation()->whereIn('transcript_status', ['pending', 'processing'])->update([
                 'transcript_status' => 'failed', 'transcript_failure_code' => null,
             ]);
+            // Resolved under this same lock — process()'s entry-time
+            // snapshot can be up to ~220s stale across two loudnorm
+            // passes by the time any of process()'s six call sites reach
+            // this method, and the annotation/review it points at can be
+            // concurrently hard-deleted in that window
+            // (ReviewService::clearAnnotations/revokeAndPurge). Resolving
+            // from a stale snapshot could find no reviewer even though the
+            // row was live moments earlier, silently skipping the release
+            // and leaking the reserved bytes out of the quota permanently.
+            $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
             if ($reviewer !== null) {
                 $this->quota->releaseDirect($reviewer, $reserved);
             }
@@ -166,7 +181,7 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
         if (! $won) {
             return false;
         }
-        $paths = array_unique(array_filter([$temporaryPath, $candidatePath]));
+        $paths = SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $candidatePath);
         $clean = true;
         foreach ($paths as $path) {
             $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;

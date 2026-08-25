@@ -82,36 +82,48 @@ class MediaReconcileCommand extends Command
             ]);
         }
 
-        $staleVoice = SpeechAsset::query()->with('voiceAnnotation.review.reviewer')
+        $staleVoice = SpeechAsset::query()
             ->where('kind', 'voice_note')->whereNull('purge_claim_id')->whereNotNull('temporary_path')
             ->where('updated_at', '<', now()->subHours((int) $this->option('transcode-hours')))->get();
         foreach ($staleVoice as $asset) {
             $temporaryPath = $asset->temporary_path;
             $candidatePath = $asset->normalization_candidate_path;
             $reserved = (int) ($asset->temporary_byte_size ?? 0);
-            $reviewer = $asset->voiceAnnotation?->review?->reviewer;
             if ($asset->status === 'ready') {
                 if (Storage::disk($asset->disk)->exists($temporaryPath) && ! Storage::disk($asset->disk)->delete($temporaryPath)) {
                     continue;
                 }
-                DB::transaction(function () use ($asset, $temporaryPath, $reserved, $reviewer, $quota): void {
+                DB::transaction(function () use ($asset, $temporaryPath, $reserved, $quota): void {
                     $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'ready')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                     if ($fresh === null || $fresh->temporary_byte_size === null) {
                         return;
                     }
+                    // Resolved under this same lock, not the batch-fetch
+                    // snapshot from the top of this loop — this command
+                    // can run over a long list and iterate for a while
+                    // before reaching a given asset, and the annotation/
+                    // review it belongs to can be concurrently hard-deleted
+                    // in that window (ReviewService::clearAnnotations/
+                    // revokeAndPurge). See FfmpegVoiceNoteProcessor::fail's
+                    // identical comment for why a stale reviewer silently
+                    // drops the quota release/reconcile.
+                    $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
                     if ($reviewer !== null) {
                         $quota->reconcileDirect($reviewer, $reserved, (int) $fresh->byte_size);
                     }
                     $fresh->update(['temporary_path' => null, 'temporary_byte_size' => null]);
                 });
             } elseif ($asset->status === 'processing') {
-                $won = DB::transaction(function () use ($asset, $temporaryPath, $reserved, $reviewer, $quota): bool {
+                $won = DB::transaction(function () use ($asset, $temporaryPath, $reserved, $quota): bool {
                     $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                     if ($fresh === null || $fresh->temporary_byte_size === null) {
                         return false;
                     }
                     $fresh->update(['status' => 'failed', 'failure_code' => 'voice_normalization_failed', 'failure_detail' => 'Voice normalization did not complete.', 'temporary_byte_size' => null, 'byte_size' => 0]);
                     $fresh->voiceAnnotation()->whereIn('transcript_status', ['pending', 'processing'])->update(['transcript_status' => 'failed']);
+                    // See the 'ready' branch above for why this must be
+                    // resolved under the lock, not the batch-fetch snapshot.
+                    $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
                     if ($reviewer !== null) {
                         $quota->releaseDirect($reviewer, $reserved);
                     }
@@ -120,7 +132,7 @@ class MediaReconcileCommand extends Command
                 });
                 $clean = $won;
                 if ($won) {
-                    foreach (array_unique(array_filter([$temporaryPath, $candidatePath])) as $path) {
+                    foreach (SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $candidatePath) as $path) {
                         $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;
                     }
                 }
@@ -129,7 +141,7 @@ class MediaReconcileCommand extends Command
                 }
             } elseif ($asset->status === 'failed') {
                 $clean = true;
-                foreach (array_unique(array_filter([$temporaryPath, $candidatePath])) as $path) {
+                foreach (SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $candidatePath) as $path) {
                     $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;
                 }
                 if ($clean) {
