@@ -1,6 +1,11 @@
 import { AnnotationRow } from '@/components/annotation/AnnotationRow'
+import { VoiceAnnotationRow } from '@/components/annotation/VoiceAnnotationRow'
 import { useToastManager } from '@/components/ui/toast'
-import { useCreateAnnotationMutation, useDeleteAnnotationMutation } from '@/features/annotation/annotationApi'
+import {
+  useCreateAnnotationMutation,
+  useDeleteAnnotationMutation,
+  useRestoreVoiceAnnotationMutation,
+} from '@/features/annotation/annotationApi'
 import type { Annotation } from '@/features/annotation/types'
 import { formatSpokenTimecode } from '@/lib/time'
 import { compareByStartThenId } from '@/lib/annotationOrder'
@@ -49,6 +54,7 @@ export function AnnotationList({
 }) {
   const [deleteAnnotation] = useDeleteAnnotationMutation()
   const [createAnnotation] = useCreateAnnotationMutation()
+  const [restoreVoiceAnnotation] = useRestoreVoiceAnnotationMutation()
   const toastManager = useToastManager()
 
   const sorted = [...annotations].sort(compareByStartThenId)
@@ -108,24 +114,63 @@ export function AnnotationList({
     })
   }
 
+  const handleVoiceDelete = async (annotation: Annotation) => {
+    try {
+      await deleteAnnotation({ speechId, reviewId, annotationId: annotation.id }).unwrap()
+      onLiveRemove(annotation.id)
+      let undoPending = false
+      toastManager.add({
+        title: 'Voice note deleted',
+        timeout: UNDO_TIMEOUT_MS,
+        actionProps: {
+          children: 'Undo',
+          onClick: () => {
+            if (undoPending) return
+            undoPending = true
+            void restoreVoiceAnnotation({ speechId, reviewId, annotationId: annotation.id })
+              .unwrap()
+              .catch(() => {
+                undoPending = false
+                toastManager.add({ title: 'Could not undo', description: 'Try again.', timeout: 4000 })
+              })
+          },
+        },
+      })
+    } catch {
+      toastManager.add({ title: 'Could not delete', description: 'Try again.', timeout: 4000 })
+    }
+  }
+
   return (
     <ol className="flex flex-col gap-2" aria-label="Your commentary">
-      {sorted.map((a) => (
-        <AnnotationRow
-          key={a.id}
-          annotation={a}
-          speechId={speechId}
-          reviewId={reviewId}
-          videoEl={videoEl}
-          autoPause={autoPause}
-          isCurrent={a.id === currentId}
-          onSeek={onSeek}
-          onDelete={handleDelete}
-          onLiveChange={onLiveChange}
-          onSaved={onSaved}
-          onSilentAdopt={onSilentAdopt}
-        />
-      ))}
+      {sorted.map((a) =>
+        a.voice !== null ? (
+          <VoiceAnnotationRow
+            key={a.id}
+            annotation={a}
+            speechId={speechId}
+            reviewId={reviewId}
+            isCurrent={a.id === currentId}
+            onSeek={onSeek}
+            onDelete={handleVoiceDelete}
+          />
+        ) : (
+          <AnnotationRow
+            key={a.id}
+            annotation={a}
+            speechId={speechId}
+            reviewId={reviewId}
+            videoEl={videoEl}
+            autoPause={autoPause}
+            isCurrent={a.id === currentId}
+            onSeek={onSeek}
+            onDelete={handleDelete}
+            onLiveChange={onLiveChange}
+            onSaved={onSaved}
+            onSilentAdopt={onSilentAdopt}
+          />
+        ),
+      )}
       {sorted.length === 0 && <li className="text-sm text-muted-foreground">No notes yet — start typing above.</li>}
     </ol>
   )

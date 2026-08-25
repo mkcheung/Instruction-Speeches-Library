@@ -408,6 +408,7 @@ export function useAnnotationEditor(options: UseAnnotationEditorOptions): UseAnn
       topic: fields.topic,
       lock_version: lockVersion ?? 0,
       client_uuid: clientUuid,
+      voice: null,
     })
   }, [currentId, fields, lockVersion, clientUuid])
 

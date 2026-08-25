@@ -3,9 +3,12 @@
 namespace App\Services;
 
 use App\Exceptions\SelfReviewNotPermittedException;
+use App\Jobs\PurgeDeletedVoiceAnnotation;
+use App\Jobs\PurgeVoiceAsset;
 use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\Speech;
+use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Notifications\ReviewAccepted;
 use App\Notifications\ReviewDeclined;
@@ -65,6 +68,8 @@ class ReviewService
         $freshlyInvited = false;
 
         $review = DB::transaction(function () use ($speech, $reviewer, $speaker, $message, $allowPreview, $priorCommentaryShared, $invitedBy, &$freshlyInvited) {
+            $lockedReviewer = User::query()->whereKey($reviewer->id)->lockForUpdate()->firstOrFail();
+            abort_if($lockedReviewer->erasure_started_at !== null, 409, 'This reviewer is erasing their account.');
             /** @var Review|null $existing */
             $existing = Review::query()
                 ->where('speech_id', $speech->id)
@@ -285,6 +290,14 @@ class ReviewService
     {
         DB::transaction(function () use ($review) {
             Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+            $voiceAssets = Annotation::withTrashed()->where('review_id', $review->id)->whereNotNull('audio_asset_id')->pluck('audio_asset_id');
+            SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->update([
+                'purge_reviewer_id' => $review->reviewer_id,
+            ]);
+            SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->where('status', 'processing')->update(['status' => 'failed', 'failure_code' => 'voice_storage_failed']);
+            foreach ($voiceAssets as $assetId) {
+                PurgeVoiceAsset::dispatch((int) $assetId, $review->reviewer_id)->afterCommit();
+            }
             Review::query()->whereKey($review->id)->delete();
         });
     }
@@ -419,7 +432,11 @@ class ReviewService
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
+            $voiceIds = Annotation::query()->where('review_id', $locked->id)->whereNotNull('audio_asset_id')->pluck('id');
             Annotation::query()->where('review_id', $locked->id)->delete();
+            foreach ($voiceIds as $id) {
+                PurgeDeletedVoiceAnnotation::dispatch((int) $id)->delay(now()->addSeconds(10));
+            }
 
             $locked->annotations_count = 0;
             $locked->published_annotations_count = 0;

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -37,6 +38,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $failure_detail
  * @property bool $is_primary
  * @property string|null $upload_id
+ * @property string|null $temporary_path
+ * @property int|null $temporary_byte_size
+ * @property string|null $purge_claim_id
+ * @property int|null $purge_reviewer_id
+ * @property string|null $normalization_candidate_path
  * @property int|null $client_declared_bytes
  * @property int|null $width
  * @property int|null $height
@@ -53,7 +59,7 @@ use Illuminate\Support\Carbon;
     'speech_id', 'kind', 'format', 'rendition', 'disk', 'path',
     'original_filename', 'mime_type', 'byte_size', 'duration_seconds',
     'status', 'failure_code', 'failure_detail', 'is_primary',
-    'upload_id', 'client_declared_bytes',
+    'upload_id', 'client_declared_bytes', 'temporary_path', 'temporary_byte_size', 'purge_claim_id', 'purge_reviewer_id', 'normalization_candidate_path',
     'width', 'height', 'poster_time_seconds',
     'caption_attempt_id', 'caption_queued_at', 'caption_started_at', 'caption_heartbeat_at',
     'content_revision',
@@ -69,6 +75,12 @@ class SpeechAsset extends Model
     public function speech(): BelongsTo
     {
         return $this->belongsTo(Speech::class);
+    }
+
+    /** @return HasOne<Annotation, $this> */
+    public function voiceAnnotation(): HasOne
+    {
+        return $this->hasOne(Annotation::class, 'audio_asset_id');
     }
 
     /**
@@ -87,6 +99,8 @@ class SpeechAsset extends Model
             'caption_queued_at' => 'datetime',
             'caption_started_at' => 'datetime',
             'caption_heartbeat_at' => 'datetime',
+            'temporary_byte_size' => 'integer',
+            'purge_reviewer_id' => 'integer',
         ];
     }
 }

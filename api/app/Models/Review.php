@@ -36,6 +36,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $responded_at
  * @property Carbon|null $first_published_at
  * @property Carbon|null $last_published_at
+ * @property Carbon|null $voice_erasure_started_at
  * @property Carbon $last_transition_at
  * @property Carbon|null $revoked_at
  * @property int|null $revoked_by_id
@@ -55,7 +56,7 @@ use Illuminate\Support\Carbon;
     'speech_id', 'reviewer_id', 'speech_owner_id', 'invited_by_id',
     'invitation_message', 'allow_preview', 'prior_commentary_shared',
     'status', 'invited_at', 'responded_at', 'first_published_at',
-    'last_published_at', 'last_transition_at', 'revoked_at', 'revoked_by_id',
+    'last_published_at', 'last_transition_at', 'revoked_at', 'revoked_by_id', 'voice_erasure_started_at',
     'revocation_reason', 'annotations_count', 'published_annotations_count',
     // STEP-08: the essay columns. `essay_lock_version` is intentionally
     // mass-assignable, same as `lock_version` on Annotation — EssayService
@@ -135,6 +136,7 @@ class Review extends Model
             'responded_at' => 'datetime',
             'first_published_at' => 'datetime',
             'last_published_at' => 'datetime',
+            'voice_erasure_started_at' => 'datetime',
             'last_transition_at' => 'datetime',
             'revoked_at' => 'datetime',
             'annotations_count' => 'integer',

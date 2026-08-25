@@ -7,6 +7,8 @@ import type { Annotation } from '@/features/annotation/types'
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
 import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
 import { useIosFullscreenSubtitles } from '@/hooks/useIosFullscreenSubtitles'
+import { useVoiceCommentaryPreference } from '@/hooks/useVoiceCommentaryPreference'
+import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
 
 export const NO_COMMENTARY = 'none' as const
 export type CommentarySelection = number | typeof NO_COMMENTARY
@@ -55,6 +57,7 @@ export function useCommentaryTrack(
    * other viewer so this hook's queries stay skipped rather than firing a
    * reviews-list request nobody uses. */
   enabled = true,
+  userId?: string,
 ) {
   const { data: reviews, isLoading: reviewsLoading } = useListSpeechReviewsQuery(speechId, {
     skip: !enabled,
@@ -69,6 +72,7 @@ export function useCommentaryTrack(
     refetch,
   } = useGetAnnotationsQuery(
     !enabled || selected === NO_COMMENTARY ? skipToken : { speechId, reviewId: selected },
+    { pollingInterval: 3000, skipPollingIfUnfocused: true },
   )
 
   // §5.4/§8.5's cross-fade: `displayed` is what's actually fed to the
@@ -129,15 +133,36 @@ export function useCommentaryTrack(
 
   const crossfading = !fadeDone || !dataReady
   const cues = crossfading ? EMPTY_ANNOTATIONS : displayed
-  const activeIds = useTimedAnnotations(videoEl, cues)
+  const voicePreference = useVoiceCommentaryPreference(userId, speechId)
+  const voiceNotes = cues.filter((annotation) => annotation.voice !== null)
+  const visibleAnnotations =
+    voicePreference.mode === 'none' ? cues.filter((annotation) => annotation.voice === null) : cues
+  const timedAnnotations =
+    voicePreference.mode === 'play'
+      ? visibleAnnotations.filter((annotation) => annotation.voice === null)
+      : visibleAnnotations
+  const timedActiveIds = useTimedAnnotations(videoEl, timedAnnotations)
+  const voicePlayback = useVoiceInterjections({
+    speechId,
+    videoEl,
+    notes: voiceNotes,
+    mode: voicePreference.mode,
+    onExperienced: voicePreference.markExperienced,
+    resetKey: selected,
+  })
+  const activeIds = new Set(timedActiveIds)
+  if (voicePlayback.current) activeIds.add(voicePlayback.current.id)
   const currentTime = useVideoCurrentTime(videoEl)
-  useIosFullscreenSubtitles(videoEl, cues)
+  // Native fullscreen receives only the text projection for the selected
+  // mode. In Play mode, voice notes are audio interjections—not long-lived
+  // subtitle cues using their recording duration.
+  useIosFullscreenSubtitles(videoEl, timedAnnotations)
 
   const options: CommentaryTrackOption[] = [
     { key: NO_COMMENTARY, label: 'No commentary', review: null },
     ...(reviews ?? []).map((review) => ({
       key: review.id,
-      label: review.reviewer?.name ?? 'Reviewer',
+      label: review.reviewer?.name ?? 'Former reviewer',
       review,
     })),
   ]
@@ -166,9 +191,12 @@ export function useCommentaryTrack(
     // presentations of the SAME set (§8.5/§8.6), so the transcript must not
     // keep listing the outgoing reviewer's rows while the overlays are
     // suppressed — least of all under the new reviewer's name after an error.
-    annotations: cues,
+    annotations: visibleAnnotations,
     activeIds,
     currentTime,
     seek,
+    voiceMode: voicePreference.mode,
+    selectVoiceMode: voicePreference.select,
+    voicePlayback,
   }
 }

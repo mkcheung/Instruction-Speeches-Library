@@ -19,6 +19,7 @@ function annotation(overrides: Partial<Annotation> = {}): Annotation {
     body: 'a marker to drag',
     lock_version: 1,
     client_uuid: 'client-uuid-5',
+    voice: null,
     ...overrides,
   }
 }
@@ -57,6 +58,28 @@ function stubContainerRect() {
 }
 
 describe('TimelineStrip — drag interruption', () => {
+  it('renders a voice note as a point glyph without duration resize handles', () => {
+    render(
+      <Provider store={createTestStore()}>
+        <TimelineStrip
+          annotations={[
+            annotation({
+              id: 'voice',
+              voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
+            }),
+          ]}
+          speechId={1}
+          reviewId={9}
+          videoEl={null}
+          durationSeconds={100}
+          onSeek={() => {}}
+          onLiveRetime={() => {}}
+        />
+      </Provider>,
+    )
+    expect(screen.getByRole('button', { name: /voice note at/i })).toBeVisible()
+    expect(screen.queryByTestId('marker-voice-duration-handle')).not.toBeInTheDocument()
+  })
   beforeEach(() => clearCookies())
   afterEach(() => vi.unstubAllGlobals())
 

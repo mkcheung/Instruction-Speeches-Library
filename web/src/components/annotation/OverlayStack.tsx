@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { Annotation } from '@/features/annotation/types'
+import { annotationDisplayBody, type Annotation } from '@/features/annotation/types'
 import { useDeferredRemoval } from '@/hooks/useDeferredRemoval'
 import { normalize } from '@/lib/engine'
 import { compareByStartThenId } from '@/lib/annotationOrder'
@@ -101,7 +101,7 @@ export function OverlayStack({
           data-draft={draftIds?.has(a.id) ? 'true' : undefined}
           className="annotation-overlay rounded-md border border-border px-3 py-2 text-sm"
         >
-          {a.body}
+          {annotationDisplayBody(a)}
         </div>
       ))}
     </div>

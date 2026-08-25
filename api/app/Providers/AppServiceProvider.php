@@ -17,6 +17,12 @@ use App\Services\Essay\NullEssayRenderer;
 use App\Services\Transcoding\FakeTranscoder;
 use App\Services\Transcoding\FfmpegTranscoder;
 use App\Services\Transcoding\TranscoderContract;
+use App\Services\Voice\FakeVoiceNoteProcessor;
+use App\Services\Voice\FakeVoiceNoteTranscriber;
+use App\Services\Voice\FfmpegVoiceNoteProcessor;
+use App\Services\Voice\VoiceNoteProcessorContract;
+use App\Services\Voice\VoiceNoteTranscriberContract;
+use App\Services\Voice\WhisperVoiceNoteTranscriber;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -76,6 +82,13 @@ class AppServiceProvider extends ServiceProvider
                 ? new FakeCaptionTranscriber
                 : new WhisperTranscriber;
         });
+
+        $this->app->bind(VoiceNoteProcessorContract::class, fn () => ($this->app->environment('testing') || config('captions.test_worker_enabled'))
+            ? $this->app->make(FakeVoiceNoteProcessor::class)
+            : $this->app->make(FfmpegVoiceNoteProcessor::class));
+        $this->app->bind(VoiceNoteTranscriberContract::class, fn () => ($this->app->environment('testing') || config('captions.test_worker_enabled'))
+            ? $this->app->make(FakeVoiceNoteTranscriber::class)
+            : $this->app->make(WhisperVoiceNoteTranscriber::class));
     }
 
     /**
@@ -132,6 +145,11 @@ class AppServiceProvider extends ServiceProvider
         // below by whoever built S05/S06 — this is where they finally get
         // a Gate::define and a policy method behind them.
         Gate::define('annotation.create', [AnnotationPolicy::class, 'create']);
+        Gate::define('voice.create', [AnnotationPolicy::class, 'createVoice']);
+        Gate::define('voice.retryTranscript', [AnnotationPolicy::class, 'retryVoiceTranscript']);
+        Gate::define('voice.updateTranscript', [AnnotationPolicy::class, 'updateVoiceTranscript']);
+        Gate::define('voice.restore', [AnnotationPolicy::class, 'restoreVoice']);
+        Gate::define('voice.delete', [AnnotationPolicy::class, 'deleteVoice']);
         Gate::define('annotation.update', [AnnotationPolicy::class, 'update']);
         Gate::define('annotation.delete', [AnnotationPolicy::class, 'delete']);
         Gate::define('review.publish', [ReviewPolicy::class, 'publish']);
@@ -176,7 +194,7 @@ class AppServiceProvider extends ServiceProvider
                 'review.accept', 'review.decline', 'review.publish',   // coaching is an act
                 'review.withdraw', 'review.abandon',                   // ditto — reviewer-only acts
                 'speech.invite',                                       // ownership, not an admin power
-                'annotation.create', 'annotation.update', 'annotation.delete',
+                'annotation.create', 'voice.create', 'voice.retryTranscript', 'voice.updateTranscript', 'voice.restore', 'voice.delete', 'annotation.update', 'annotation.delete',
                 'review.clearAnnotations',                             // STEP-07: never an admin power either
                 'readAnnotations',                                     // AnnotationPolicy's own admin branch runs the dual-role assert
 

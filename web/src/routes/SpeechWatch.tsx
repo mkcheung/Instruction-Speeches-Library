@@ -9,6 +9,7 @@ import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
+import { VoiceNoteMarkers } from '@/components/annotation/VoiceNoteMarkers'
 import { useCaptionsAnchor } from '@/components/annotation/captionsAnchor'
 import { EssayEditorPanel } from '@/components/essay/EssayEditorPanel'
 import { EssayReadOnlyPanel } from '@/components/essay/EssayReadOnlyPanel'
@@ -18,6 +19,7 @@ import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
 import { CaptionSettingsToggle } from '@/components/caption/CaptionSettingsToggle'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
+import { canRecordVoiceForRoles } from '@/lib/voiceRoles'
 import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
 import { useCaptionsJob, useCaptionsBlobUrl } from '@/hooks/useCaptionsJob'
 import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutation } from '@/features/speech/speechApi'
@@ -190,10 +192,12 @@ export default function SpeechWatch() {
 
   const isOwner =
     !!me?.user && !!speech && speech.user_id !== undefined && Number(me.user.id) === speech.user_id
+  const roles = me?.user.roles ?? []
+  const canRecordVoice = canRecordVoiceForRoles(roles)
 
   // Called unconditionally (Rules of Hooks) even before `speech` has
   // loaded — `enabled: isOwner` keeps its queries skipped until then.
-  const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner)
+  const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner, me?.user.id)
 
   // STEP-07: a non-owner who is themselves an access-granting reviewer of
   // this speech gets the authoring composer instead of the owner's
@@ -262,14 +266,20 @@ export default function SpeechWatch() {
                 onSourceRefreshed={() => setSourceRefreshToken((token) => token + 1)}
               />
               {isOwner && (
-                <OverlayPositioner anchor={captionsAnchor}>
-                  <OverlayStack
+                <>
+                  <OverlayPositioner anchor={captionsAnchor}>
+                    <OverlayStack
+                      annotations={commentary.annotations}
+                      activeIds={commentary.activeIds}
+                      currentTime={commentary.currentTime}
+                      anchor={captionsAnchor}
+                    />
+                  </OverlayPositioner>
+                  <VoiceNoteMarkers
                     annotations={commentary.annotations}
-                    activeIds={commentary.activeIds}
-                    currentTime={commentary.currentTime}
-                    anchor={captionsAnchor}
+                    durationSeconds={asset.duration_seconds === null ? (videoEl?.duration ?? 0) : Number(asset.duration_seconds)}
                   />
-                </OverlayPositioner>
+                </>
               )}
             </div>
           ) : (
@@ -351,6 +361,9 @@ export default function SpeechWatch() {
               activeIds={commentary.activeIds}
               currentTime={commentary.currentTime}
               onSeek={commentary.seek}
+              voiceMode={commentary.voiceMode}
+              onVoiceModeChange={commentary.selectVoiceMode}
+              voicePlayback={commentary.voicePlayback}
             />
           </TabsPanel>
           <TabsPanel value="essay">
@@ -402,6 +415,7 @@ export default function SpeechWatch() {
                 asset.duration_seconds !== null ? Number(asset.duration_seconds) : (videoEl?.duration ?? 0)
               }
               userId={me?.user.id}
+              canRecordVoice={canRecordVoice}
               onSeek={(seconds) => {
                 if (videoEl) seekVideo(videoEl, seconds)
               }}

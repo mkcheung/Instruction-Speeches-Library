@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { TimelineStrip } from '@/components/annotation/TimelineStrip'
 import { Composer } from '@/components/annotation/Composer'
+import { VoiceRecorder } from '@/components/annotation/VoiceRecorder'
 import { AnnotationList } from '@/components/annotation/AnnotationList'
 import { ClearAnnotationsDialog } from '@/components/annotation/ClearAnnotationsDialog'
 import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
@@ -39,6 +40,7 @@ export function AnnotationComposerPanel({
   videoEl,
   durationSeconds,
   userId,
+  canRecordVoice,
   onSeek,
 }: {
   speechId: number
@@ -46,6 +48,7 @@ export function AnnotationComposerPanel({
   videoEl: HTMLVideoElement | null
   durationSeconds: number
   userId: string | undefined
+  canRecordVoice: boolean
   onSeek: (seconds: number) => void
 }) {
   return (
@@ -56,6 +59,7 @@ export function AnnotationComposerPanel({
         videoEl={videoEl}
         durationSeconds={durationSeconds}
         userId={userId}
+        canRecordVoice={canRecordVoice}
         onSeek={onSeek}
       />
       <Toaster />
@@ -69,6 +73,7 @@ function AnnotationComposerPanelInner({
   videoEl,
   durationSeconds,
   userId,
+  canRecordVoice,
   onSeek,
 }: {
   speechId: number
@@ -76,10 +81,14 @@ function AnnotationComposerPanelInner({
   videoEl: HTMLVideoElement | null
   durationSeconds: number
   userId: string | undefined
+  canRecordVoice: boolean
   onSeek: (seconds: number) => void
 }) {
   const reviewId = review.id
-  const { data } = useGetAnnotationsQuery({ speechId, reviewId })
+  const { data } = useGetAnnotationsQuery(
+    { speechId, reviewId },
+    { pollingInterval: 3000, skipPollingIfUnfocused: true },
+  )
   const serverRows = useMemo(() => data?.annotations ?? [], [data])
 
   const [liveOverrides, setLiveOverrides] = useState<Record<string, Annotation>>({})
@@ -124,6 +133,11 @@ function AnnotationComposerPanelInner({
   const activeIds = useTimedAnnotations(videoEl, merged)
   const currentTime = useVideoCurrentTime(videoEl)
   const [autoPause, setAutoPause] = useAutoPausePreference(userId)
+  const voiceRows = useMemo(() => serverRows.filter((row) => row.voice !== null), [serverRows])
+  const voiceDuration = useMemo(
+    () => voiceRows.reduce((total, row) => total + row.duration_seconds, 0),
+    [voiceRows],
+  )
 
   const [clearAnnotations, { isLoading: isClearing }] = useClearAnnotationsMutation()
   const [publishReview, { isLoading: isPublishing }] = usePublishReviewMutation()
@@ -206,6 +220,16 @@ function AnnotationComposerPanelInner({
           onLiveChange={handleLiveChange}
           onLiveRemove={handleLiveRemove}
         />
+
+        {canRecordVoice && (
+          <VoiceRecorder speechId={speechId} reviewId={reviewId} videoEl={videoEl} />
+        )}
+
+        {voiceRows.length > 6 && (
+          <p role="status" className="text-sm text-muted-foreground">
+            This review has {voiceRows.length} voice notes adding about {Math.ceil(voiceDuration)} seconds of interruptions.
+          </p>
+        )}
 
         <AnnotationList
           annotations={serverRows}

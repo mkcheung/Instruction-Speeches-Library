@@ -28,7 +28,7 @@ trait GrantsReviewWriteAccess
 {
     private function reviewerOwnsActiveReview(User $user, Review $review): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->hasAnyRole(['admin', 'super_admin'])) {
             return false;
         }
 

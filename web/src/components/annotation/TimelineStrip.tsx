@@ -6,6 +6,7 @@ import type { Annotation } from '@/features/annotation/types'
 import { isTmpAnnotationId } from '@/lib/uuid'
 import { compareByStartThenId } from '@/lib/annotationOrder'
 import { cn } from '@/lib/utils'
+import { Volume2 } from 'lucide-react'
 
 const MAX_ROWS = 2
 /** Two markers within this many seconds of each other are treated as
@@ -33,7 +34,7 @@ function layoutRows(annotations: readonly Annotation[]): LaidOutMarker[] {
       // rather than growing past MAX_ROWS.
       row = rowEnds.indexOf(Math.min(...rowEnds))
     }
-    rowEnds[row] = a.start_seconds + a.duration_seconds
+    rowEnds[row] = a.start_seconds + (a.voice ? 0.001 : a.duration_seconds)
     laid.push({ annotation: a, row })
   }
   return laid
@@ -153,6 +154,21 @@ export function TimelineStrip({
       {laid.map(({ annotation, row }) => {
         const leftPercent = durationSeconds > 0 ? (annotation.start_seconds / durationSeconds) * 100 : 0
         const widthPercent = durationSeconds > 0 ? (annotation.duration_seconds / durationSeconds) * 100 : 0
+        if (annotation.voice !== null) {
+          return (
+            <button
+              key={annotation.id}
+              type="button"
+              onClick={() => onSeek(annotation.start_seconds)}
+              aria-label={`Voice note at ${formatSpokenTimecode(annotation.start_seconds)}`}
+              className="absolute flex size-6 -translate-x-1/2 items-center justify-center rounded-full border border-primary bg-background text-primary"
+              style={{ top: `${row * 1.5}rem`, left: `${leftPercent}%` }}
+              data-testid={`voice-marker-${annotation.id}`}
+            >
+              <Volume2 className="size-3.5" aria-hidden="true" />
+            </button>
+          )
+        }
         return (
           <div
             key={annotation.id}

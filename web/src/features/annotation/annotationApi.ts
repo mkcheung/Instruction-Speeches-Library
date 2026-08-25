@@ -4,7 +4,11 @@ import type {
   Annotation,
   AnnotationsResponse,
   CreateAnnotationPayload,
+  CreateVoiceAnnotationPayload,
   UpdateAnnotationPayload,
+  VoiceAudioUrlResponse,
+  VoiceCommentaryMode,
+  VoiceCommentaryPreferenceResponse,
 } from '@/features/annotation/types'
 
 /**
@@ -26,7 +30,7 @@ import type {
 export const annotationApi = createApi({
   reducerPath: 'annotationApi',
   baseQuery: baseQueryWithCsrfRetry,
-  tagTypes: ['Annotations'],
+  tagTypes: ['Annotations', 'VoicePreference'],
   endpoints: (builder) => ({
     getAnnotations: builder.query<AnnotationsResponse, { speechId: number; reviewId: number }>({
       query: ({ speechId, reviewId }) =>
@@ -60,6 +64,74 @@ export const annotationApi = createApi({
       }),
       transformResponse: (response: { annotation: Annotation }) => response.annotation,
       invalidatesTags: (_result, _error, { reviewId }) => [{ type: 'Annotations', id: reviewId }],
+    }),
+
+    /** STEP-10: small voice recordings go through Laravel directly rather
+     * than the multipart object-storage upload protocol. Do not set a
+     * Content-Type header: fetch supplies the FormData boundary. */
+    createVoiceAnnotation: builder.mutation<
+      Annotation,
+      { speechId: number; reviewId: number; body: CreateVoiceAnnotationPayload }
+    >({
+      query: ({ speechId, body }) => {
+        const form = new FormData()
+        form.append('audio', body.audio, `voice-note.${extensionForMime(body.audio.type)}`)
+        form.append('client_uuid', body.client_uuid)
+        form.append('start_seconds', String(body.start_seconds))
+        if (body.kind) form.append('kind', body.kind)
+        if (body.topic !== undefined && body.topic !== null) form.append('topic', body.topic)
+        return { url: `/api/speeches/${speechId}/voice-notes`, method: 'POST', body: form }
+      },
+      transformResponse: (response: { annotation: Annotation }) => response.annotation,
+      invalidatesTags: (_result, _error, { reviewId }) => [{ type: 'Annotations', id: reviewId }],
+    }),
+
+    getVoiceAudioUrl: builder.query<
+      VoiceAudioUrlResponse,
+      { speechId: number; annotationId: string }
+    >({
+      query: ({ speechId, annotationId }) =>
+        `/api/speeches/${speechId}/annotations/${annotationId}/voice-playback-url`,
+    }),
+
+    retryVoiceTranscript: builder.mutation<
+      Annotation,
+      { speechId: number; reviewId: number; annotationId: string }
+    >({
+      query: ({ speechId, annotationId }) => ({
+        url: `/api/speeches/${speechId}/annotations/${annotationId}/voice-transcript/retry`,
+        method: 'POST',
+      }),
+      transformResponse: (response: { annotation: Annotation }) => response.annotation,
+      invalidatesTags: (_result, _error, { reviewId }) => [{ type: 'Annotations', id: reviewId }],
+    }),
+
+    restoreVoiceAnnotation: builder.mutation<
+      Annotation,
+      { speechId: number; reviewId: number; annotationId: string }
+    >({
+      query: ({ speechId, annotationId }) => ({
+        url: `/api/speeches/${speechId}/annotations/${annotationId}/restore`,
+        method: 'POST',
+      }),
+      transformResponse: (response: { annotation: Annotation }) => response.annotation,
+      invalidatesTags: (_result, _error, { reviewId }) => [{ type: 'Annotations', id: reviewId }],
+    }),
+
+    updateVoiceCommentaryPreference: builder.mutation<
+      VoiceCommentaryPreferenceResponse,
+      { speechId: number; mode: VoiceCommentaryMode; experienced: boolean }
+    >({
+      query: ({ speechId, mode, experienced }) => ({
+        url: `/api/me/preferences/voice-commentary/${speechId}`,
+        method: 'PATCH',
+        body: { mode, experienced },
+      }),
+      invalidatesTags: (_result, _error, { speechId }) => [{ type: 'VoicePreference', id: speechId }],
+    }),
+    getVoiceCommentaryPreference: builder.query<VoiceCommentaryPreferenceResponse, { speechId: number }>({
+      query: ({ speechId }) => `/api/me/preferences/voice-commentary/${speechId}`,
+      providesTags: (_result, _error, { speechId }) => [{ type: 'VoicePreference', id: speechId }],
     }),
 
     /**
@@ -128,10 +200,22 @@ export const {
   useGetAnnotationsQuery,
   useLazyGetAnnotationsQuery,
   useCreateAnnotationMutation,
+  useCreateVoiceAnnotationMutation,
+  useLazyGetVoiceAudioUrlQuery,
+  useRetryVoiceTranscriptMutation,
+  useRestoreVoiceAnnotationMutation,
+  useUpdateVoiceCommentaryPreferenceMutation,
+  useGetVoiceCommentaryPreferenceQuery,
   useUpdateAnnotationMutation,
   useDeleteAnnotationMutation,
   useClearAnnotationsMutation,
 } = annotationApi
+
+function extensionForMime(mime: string): string {
+  if (mime.includes('mp4')) return 'm4a'
+  if (mime.includes('ogg')) return 'ogg'
+  return 'webm'
+}
 
 /** Hover-prefetch on a radiogroup option, per STEP-06's contract ("prefetch
  * on hover of a radiogroup option"). RTK Query's built-in `usePrefetch`

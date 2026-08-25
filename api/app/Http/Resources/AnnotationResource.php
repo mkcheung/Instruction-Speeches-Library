@@ -29,6 +29,8 @@ class AnnotationResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $audio = $this->relationLoaded('audioAsset') ? $this->audioAsset : null;
+
         return [
             'id' => (string) $this->id,
             'start_seconds' => (float) $this->start_seconds,
@@ -38,6 +40,12 @@ class AnnotationResource extends JsonResource
             'body' => $this->body,
             'lock_version' => (int) $this->lock_version,
             'client_uuid' => $this->client_uuid,
+            'voice' => $audio === null ? null : [
+                'asset_id' => $audio->id,
+                'audio_status' => $audio->status,
+                'transcript_status' => $this->transcript_status,
+                'failure_code' => $audio->failure_code ?? $this->transcript_failure_code,
+            ],
         ];
     }
 }

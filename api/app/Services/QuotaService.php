@@ -17,6 +17,36 @@ use Illuminate\Validation\ValidationException;
  */
 class QuotaService
 {
+    /** Reserve known server-received bytes without consuming a multipart slot. */
+    public function reserveDirect(User $user, int $bytes): void
+    {
+        $affected = DB::update(
+            'UPDATE users SET storage_bytes_used = storage_bytes_used + ? WHERE id = ? AND storage_bytes_used + ? <= quota_bytes',
+            [$bytes, $user->id, $bytes],
+        );
+
+        if ($affected === 0) {
+            throw ValidationException::withMessages(['audio' => ['This voice note would exceed your storage quota.']]);
+        }
+    }
+
+    public function reconcileDirect(User $user, int $reservedBytes, int $realBytes): void
+    {
+        $delta = $realBytes - $reservedBytes;
+        DB::update(
+            'UPDATE users SET storage_bytes_used = CASE WHEN storage_bytes_used + ? < 0 THEN 0 ELSE storage_bytes_used + ? END WHERE id = ?',
+            [$delta, $delta, $user->id],
+        );
+    }
+
+    public function releaseDirect(User $user, int $bytes): void
+    {
+        DB::update(
+            'UPDATE users SET storage_bytes_used = CASE WHEN storage_bytes_used - ? < 0 THEN 0 ELSE storage_bytes_used - ? END WHERE id = ?',
+            [$bytes, $bytes, $user->id],
+        );
+    }
+
     /**
      * Reserve `$declaredBytes` and one upload slot for `$user`, atomically.
      *

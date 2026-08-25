@@ -14,6 +14,7 @@ function annotation(id: string, start_seconds: number): Annotation {
     body: `body-${id}`,
     lock_version: 0,
     client_uuid: `uuid-${id}`,
+    voice: null,
   }
 }
 
@@ -26,6 +27,23 @@ function rowFor(bodyText: string | RegExp): HTMLElement {
 }
 
 describe('Transcript', () => {
+  it('renders the mandatory pending voice transcript state instead of an empty row', () => {
+    render(
+      <Transcript
+        annotations={[
+          {
+            ...annotation('voice', 3),
+            body: '',
+            voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'pending', failure_code: null },
+          },
+        ]}
+        activeIds={new Set()}
+        currentTime={0}
+        onSeek={() => {}}
+      />,
+    )
+    expect(screen.getByText('Transcribing…')).toBeVisible()
+  })
   it('renders rows in an <ol>, timecoded', () => {
     render(
       <Transcript
