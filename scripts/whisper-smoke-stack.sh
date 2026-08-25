@@ -79,8 +79,8 @@ cmd_prepare() {
 # call, not two separate `docker build`s.
 # ---------------------------------------------------------------------------
 cmd_build() {
-  log "building whisper-worker + whisper-smoke images"
-  _compose build whisper-worker whisper-smoke whisper-model-init
+  log "building ffmpeg-worker + whisper-worker + whisper-smoke images"
+  _compose build ffmpeg-worker whisper-worker whisper-smoke whisper-model-init
 }
 
 # ---------------------------------------------------------------------------
@@ -234,6 +234,56 @@ cmd_queued() {
   log "queued sign-off PASSED"
 }
 
+# STEP-10 voice-note worker sign-off. This deliberately traverses both final
+# production worker images: redis-long/transcode in ffmpeg-worker followed by
+# redis-long/captions in whisper-worker. Verification rejects accidental use
+# of the speech-caption pipeline by requiring no speech_transcripts/VTT rows.
+cmd_voice_queued() {
+  local model_id
+  model_id="$(jq -r '.model_id' "$ROOT_DIR/docker/whisper/model.lock")"
+
+  log "starting disposable postgres/seaweedfs/valkey for queued voice smoke"
+  _compose up -d postgres seaweedfs valkey
+  _compose up -d --wait postgres seaweedfs valkey
+
+  log "running migrations + media initialization"
+  _compose --profile whisper-smoke run --rm \
+    -e APP_ENV=production -e DB_CONNECTION=pgsql -e DB_DATABASE=speechcoach -e QUEUE_CONNECTION=redis \
+    whisper-smoke sh -c "php artisan migrate --force && php artisan media:initialize"
+
+  log "seeding voice fixture and dispatching NormalizeVoiceNote"
+  local seed_output annotation_id
+  seed_output="$(_compose --profile whisper-smoke run --rm \
+    -e APP_ENV=production -e DB_CONNECTION=pgsql -e DB_DATABASE=speechcoach -e QUEUE_CONNECTION=redis \
+    -e RUNS_WHISPER_SMOKE=1 -e WHISPER_MODEL_NAME="$model_id" \
+    whisper-smoke php artisan voice:whisper-smoke-seed)"
+  echo "$seed_output" >&2
+  annotation_id="$(echo "$seed_output" | grep -o 'annotation_id=[0-9]*' | cut -d= -f2)"
+  [ -n "$annotation_id" ] || fail "voice seed did not print annotation_id=<id>"
+
+  log "running normalization through the ACTUAL ffmpeg-worker image"
+  _compose run --rm \
+    -e DB_CONNECTION=pgsql -e DB_DATABASE=speechcoach -e QUEUE_CONNECTION=redis \
+    ffmpeg-worker \
+    sh -c "php artisan queue:work redis-long --queue=transcode --timeout=3700 --tries=1 --sleep=1 --once"
+
+  log "running transcription through the ACTUAL whisper-worker image"
+  _compose run --rm \
+    -e DB_CONNECTION=pgsql -e DB_DATABASE=speechcoach -e QUEUE_CONNECTION=redis -e WHISPER_MODEL_NAME="$model_id" \
+    whisper-worker \
+    sh -c "php artisan queue:work redis-long --queue=captions --timeout=1800 --tries=1 --sleep=1 --once"
+
+  log "asserting normalized voice object + annotation-only transcript"
+  _compose --profile whisper-smoke run --rm \
+    -e APP_ENV=production -e DB_CONNECTION=pgsql -e DB_DATABASE=speechcoach -e QUEUE_CONNECTION=redis \
+    -e RUNS_WHISPER_SMOKE=1 -e WHISPER_MODEL_NAME="$model_id" \
+    whisper-smoke php artisan voice:whisper-smoke-verify "$annotation_id"
+
+  _compose config ffmpeg-worker | tee "$ARTIFACT_DIR/ffmpeg-worker-resolved-config.yaml" >&2
+  _compose config whisper-worker | tee "$ARTIFACT_DIR/whisper-worker-voice-resolved-config.yaml" >&2
+  log "queued voice sign-off PASSED"
+}
+
 # ---------------------------------------------------------------------------
 # down — scoped teardown of ONLY this project's containers/volumes/network.
 # Host artifacts under artifacts/whisper-smoke are NEVER removed by this
@@ -256,6 +306,8 @@ Usage: $(basename "$0") <command>
   adapter                        run RealWhisperAdapterSmokeTest inside whisper-smoke
   queued                         full queued sign-off against disposable Postgres/
                                   SeaweedFS/Valkey through the real whisper-worker image
+  voice-queued                   STEP-10 queued voice sign-off through the final
+                                  ffmpeg-worker and whisper-worker images
   down                            scoped 'docker compose down -v' for this project only
 EOF
   exit 1
@@ -271,6 +323,7 @@ case "${1:-}" in
   runtime) cmd_runtime ;;
   adapter) cmd_adapter ;;
   queued) cmd_queued ;;
+  voice-queued) cmd_voice_queued ;;
   down) trap - EXIT; cmd_down ;;
   *) trap - EXIT; usage ;;
 esac

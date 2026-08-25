@@ -13,6 +13,7 @@ function annotation(overrides: Partial<Annotation> = {}): Annotation {
     body: 'hello',
     lock_version: 2,
     client_uuid: 'uuid-1',
+    voice: null,
     ...overrides,
   }
 }

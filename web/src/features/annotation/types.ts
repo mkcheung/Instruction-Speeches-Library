@@ -8,6 +8,14 @@
  */
 
 export type AnnotationKind = 'praise' | 'correction' | 'observation'
+export type VoiceTranscriptStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface AnnotationVoice {
+  asset_id: number
+  audio_status: 'processing' | 'ready' | 'failed'
+  transcript_status: VoiceTranscriptStatus
+  failure_code: string | null
+}
 
 /** One row of `annotations` in the response body. `id` is a **string** —
  * the contract is explicit that the engine (`web/src/lib/engine.ts`) uses
@@ -32,6 +40,18 @@ export interface Annotation {
   body: string
   lock_version: number
   client_uuid: string
+  voice: AnnotationVoice | null
+}
+
+export function isVoiceAnnotation(annotation: Annotation): boolean {
+  return annotation.voice !== null
+}
+
+export function annotationDisplayBody(annotation: Annotation): string {
+  if (!isVoiceAnnotation(annotation)) return annotation.body
+  if (annotation.voice?.transcript_status === 'ready') return annotation.body || 'Transcript unavailable.'
+  if (annotation.voice?.transcript_status === 'failed') return 'Transcript unavailable.'
+  return 'Transcribing…'
 }
 
 /** `POST /speeches/{speech}/annotations` body. Idempotent on `client_uuid`
@@ -45,6 +65,24 @@ export interface CreateAnnotationPayload {
   duration_seconds?: number
   kind?: AnnotationKind
   topic?: string | null
+}
+
+export interface CreateVoiceAnnotationPayload {
+  client_uuid: string
+  audio: Blob
+  start_seconds: number
+  kind?: AnnotationKind
+  topic?: string | null
+}
+
+export interface VoiceAudioUrlResponse {
+  audio: { url: string; expires_at: string }
+}
+
+export type VoiceCommentaryMode = 'play' | 'text' | 'none'
+
+export interface VoiceCommentaryPreferenceResponse {
+  voice_commentary: { speech_id: number; mode: VoiceCommentaryMode; experienced: boolean }
 }
 
 /** `PATCH /speeches/{speech}/annotations/{annotation}` body — must include

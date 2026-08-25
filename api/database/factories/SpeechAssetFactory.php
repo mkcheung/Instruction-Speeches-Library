@@ -103,4 +103,15 @@ class SpeechAssetFactory extends Factory
             'path' => 'speeches/'.Str::ulid().'/captions.vtt',
         ]);
     }
+
+    public function voiceNote(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'kind' => 'voice_note',
+            'format' => 'm4a',
+            'path' => 'speeches/'.Str::ulid().'/voice/'.Str::uuid().'.m4a',
+            'mime_type' => 'audio/mp4',
+            'is_primary' => false,
+        ]);
+    }
 }

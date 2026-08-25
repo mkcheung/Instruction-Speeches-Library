@@ -97,6 +97,7 @@ RUN apk add --no-cache postgresql-dev libzip-dev libzip zip icu-dev icu-libs \
 WORKDIR /var/www/html
 COPY --from=vendor /app /var/www/html
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/zz-opcache.ini
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/zz-uploads.ini
 # Overrides the stock pool's pm.max_children=5 — see the file's own comment
 # for why five is too few even for one user on the watch page.
 COPY docker/php/www-pool.conf /usr/local/etc/php-fpm.d/zz-www-pool.conf

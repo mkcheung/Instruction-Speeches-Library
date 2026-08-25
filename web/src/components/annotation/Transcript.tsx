@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import type { Annotation } from '@/features/annotation/types'
+import { annotationDisplayBody, type Annotation } from '@/features/annotation/types'
 import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
@@ -139,7 +139,7 @@ export function Transcript({
               {formatTimecode(a.start_seconds)}
             </span>
             <span className="sr-only">Annotation at {formatSpokenTimecode(a.start_seconds)}</span>
-            <span>{a.body}</span>
+            <span>{annotationDisplayBody(a)}</span>
           </button>
         </li>
       ))}

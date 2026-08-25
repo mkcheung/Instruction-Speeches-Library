@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\CaptionController;
+use App\Http\Controllers\Api\EraseSelfController;
 use App\Http\Controllers\Api\EssayController;
 use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\NotificationController;
@@ -15,6 +16,8 @@ use App\Http\Controllers\Api\ReviewerDirectoryController;
 use App\Http\Controllers\Api\SpeechController;
 use App\Http\Controllers\Api\SpeechUploadController;
 use App\Http\Controllers\Api\TranscriptController;
+use App\Http\Controllers\Api\VoiceAnnotationController;
+use App\Http\Controllers\Api\VoicePreferenceController;
 use App\Http\Resources\UserResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -47,6 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', fn (Request $request): JsonResponse => new JsonResponse([
         'user' => new UserResource($request->user()->load('profile')),
     ]))->name('api.me');
+    Route::delete('/me', EraseSelfController::class)->middleware('verified.api')->name('api.me.erase');
 
     Route::get('/onboarding', [OnboardingController::class, 'show'])->name('api.onboarding.show');
     Route::post('/onboarding/step-1', [OnboardingController::class, 'stepOne'])->name('api.onboarding.step1');
@@ -56,6 +60,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'updateSelf'])->name('api.profile.update');
     Route::patch('/profile/username', [ProfileController::class, 'updateUsername'])->name('api.profile.username');
     Route::post('/avatar', [AvatarController::class, 'update'])->name('api.avatar.update');
+    Route::get('/me/preferences/voice-commentary/{speech}', [VoicePreferenceController::class, 'show'])
+        ->middleware('verified.api')
+        ->name('api.me.preferences.voice-commentary.show');
+    Route::patch('/me/preferences/voice-commentary/{speech}', [VoicePreferenceController::class, 'update'])
+        ->middleware('verified.api')
+        ->name('api.me.preferences.voice-commentary.update');
 
     // STEP-03-upload-and-watch.md (§9, §6.11): upload and watch. Ownership
     // is checked inline in each controller method, not via a Policy — no
@@ -120,6 +130,18 @@ Route::middleware('auth:sanctum')->group(function () {
     // targeting a peer's review.
     Route::post('/speeches/{speech}/annotations', [AnnotationController::class, 'store'])
         ->name('api.speeches.annotations.store');
+    Route::post('/speeches/{speech}/voice-notes', [VoiceAnnotationController::class, 'store'])
+        ->middleware('verified.api')
+        ->name('api.speeches.voice-notes.store');
+    Route::get('/speeches/{speech}/annotations/{annotation}/voice-playback-url', [VoiceAnnotationController::class, 'audioUrl'])
+        ->middleware('verified.api')
+        ->name('api.speeches.annotations.voice-playback-url');
+    Route::post('/speeches/{speech}/annotations/{annotation}/voice-transcript/retry', [VoiceAnnotationController::class, 'retryTranscript'])
+        ->middleware('verified.api')
+        ->name('api.speeches.annotations.voice-transcript.retry');
+    Route::post('/speeches/{speech}/annotations/{annotation}/restore', [VoiceAnnotationController::class, 'restore'])
+        ->middleware('verified.api')
+        ->name('api.speeches.annotations.restore');
     Route::patch('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'update'])
         ->name('api.speeches.annotations.update');
     Route::delete('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'destroy'])

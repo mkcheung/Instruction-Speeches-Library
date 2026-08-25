@@ -189,10 +189,10 @@ jobs:
         # of either hanging indefinitely or failing the whole job on one
         # bad mirror response; `timeout-minutes` below remains the outer
         # backstop in case the loop itself misbehaves.
-        timeout-minutes: 20
+        timeout-minutes: 25
         run: |
           for attempt in 1 2 3; do
-            if timeout 5m npx playwright install --with-deps chromium; then
+            if timeout 7m npx playwright install --with-deps chromium firefox webkit; then
               exit 0
             fi
             echo "Playwright browser install attempt $attempt failed or timed out; retrying..." >&2
@@ -230,6 +230,12 @@ jobs:
       - name: Seed E2E caption fixtures
         run: docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml exec -T app php artisan db:seed --class=E2ECaptionsSeeder --force
 
+      # STEP-10 keeps its real MP4/M4A objects and mutable review rows in a
+      # narrow, independently resettable seeder. It deliberately runs after
+      # E2ESeeder (users/auth) and does not invoke Whisper.
+      - name: Seed E2E voice annotation fixtures
+        run: docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml exec -T app php artisan db:seed --class=E2EVoiceAnnotationSeeder --force
+
       - name: e2e-stack nginx-test
         run: ./scripts/e2e-stack.sh nginx-test
 
@@ -242,6 +248,9 @@ jobs:
       # against a real Postgres catalog.
       - name: Verify Postgres caption/transcript search schema
         run: ./scripts/verify-postgres-caption-schema.sh
+
+      - name: Verify Postgres voice annotation schema
+        run: ./scripts/verify-postgres-voice-schema.sh
 
       # §7 item 6 / §4.2 item 3: "the temporal acceptance proof" — video
       # must reach `ready` while captions stay queued/`processing` with
@@ -268,7 +277,7 @@ jobs:
       - name: Verify caption concurrency invariants
         run: ./scripts/verify-caption-concurrency.sh
 
-      - name: Run Playwright (speech-create, app-shell, essay-editor, captions)
+      - name: Run Playwright (speech-create, app-shell, essay-editor, captions, voice)
         working-directory: web
         # R3 (PLAN-APP-HEADER.md): a new spec only runs in CI if it's
         # listed here — `testDir` alone isn't enough, this command names
@@ -292,7 +301,16 @@ jobs:
         # named accordingly.
         env:
           E2E_POSTGRES_CONTAINER: speechcoach-e2e-postgres-1
-        run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts tests/captions.spec.ts --project=chromium
+        run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts tests/captions.spec.ts tests/voice-annotations.spec.ts --project=chromium
+
+      # Deterministic MediaRecorder regression only: first supported MIME
+      # constructs then throws from start(), the second emits committed M4A
+      # bytes, and rerecord remains local. WebKit/mobile-WebKit are useful
+      # automated coverage, never a substitute for physical Safari/iPhone
+      # microphone evidence in STEP-10's manual completion ledger.
+      - name: Run voice recording fallback across Firefox and WebKit
+        working-directory: web
+        run: npx playwright test tests/voice-annotations.cross-browser.spec.ts --project=firefox --project=webkit --project=mobile-webkit
 
       # §7's scheduler paragraph: proves the actually-running `scheduler`
       # compose service (not a direct `artisan media:reconcile` call) is
@@ -304,6 +322,18 @@ jobs:
       - name: Verify caption recovery scheduler
         run: ./scripts/verify-caption-recovery-scheduler.sh
 
+      # §7 item 10: "app/worker logs" — every service in the E2E project,
+      # not just app, so a caption-pipeline failure (queue-worker,
+      # ffmpeg-worker, whisper-worker, scheduler) is diagnosable from the
+      # same artifact set as the Playwright report above.
+      - name: Capture E2E stack diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p web/test-results/stack-diagnostics
+          docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml logs --no-color --tail=500 > web/test-results/stack-diagnostics/containers.log 2>&1 || true
+          docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml exec -T app php artisan queue:failed > web/test-results/stack-diagnostics/failed-jobs.log 2>&1 || true
+          docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml ps -a > web/test-results/stack-diagnostics/compose-ps.log 2>&1 || true
+
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -313,14 +343,6 @@ jobs:
             web/playwright-report/
             web/test-results/
           retention-days: 7
-
-      # §7 item 10: "app/worker logs" — every service in the E2E project,
-      # not just app, so a caption-pipeline failure (queue-worker,
-      # ffmpeg-worker, whisper-worker, scheduler) is diagnosable from the
-      # same artifact set as the Playwright report above.
-      - name: Dump E2E stack container logs on failure
-        if: failure()
-        run: docker compose -p speechcoach-e2e -f compose.yaml -f compose.e2e.yaml logs --tail=200
 
       - name: Tear down the E2E stack
         if: always()

@@ -38,6 +38,11 @@ export function createTestStore() {
         captionApi.middleware,
         transcriptApi.middleware,
       ),
+    // Unit tests do not need frame-batched Redux notifications. Disabling
+    // the enhancer also prevents an RTK-owned animation-frame callback from
+    // surviving a fake-timer test and firing after jsdom has torn its window
+    // globals down (a false-red unhandled cancelAnimationFrame error).
+    enhancers: (getDefaultEnhancers) => getDefaultEnhancers({ autoBatch: false }),
   })
 }
 

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\AnnotationCapExceededException;
 use App\Exceptions\AnnotationConflictException;
+use App\Jobs\PurgeDeletedVoiceAnnotation;
 use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\User;
@@ -39,6 +40,7 @@ class AnnotationService
     public function forReview(Review $review, User $user): Collection
     {
         return Annotation::query()
+            ->with('audioAsset')
             ->where('review_id', $review->id)
             ->visibleTo($user, $review)
             ->orderBy('start_seconds')
@@ -123,13 +125,20 @@ class AnnotationService
                 throw new AnnotationConflictException($locked);
             }
 
+            if ($locked->audio_asset_id !== null && array_intersect(['start_seconds', 'duration_seconds', 'kind', 'topic'], array_keys($data)) !== []) {
+                abort(422, 'Voice-note timing and metadata are immutable.');
+            }
+
             $locked->fill(array_intersect_key($data, array_flip([
                 'body', 'start_seconds', 'duration_seconds', 'kind', 'topic',
             ])));
+            if ($locked->audio_asset_id !== null && array_key_exists('body', $data)) {
+                abort_unless($locked->transcript_status === 'ready', 409, 'The transcript is not ready to edit.');
+            }
             $locked->lock_version++;
             $locked->save();
 
-            return $locked;
+            return $locked->load('audioAsset');
         });
     }
 
@@ -147,6 +156,9 @@ class AnnotationService
     {
         DB::transaction(function () use ($annotation) {
             $annotation->delete();
+            if ($annotation->audio_asset_id !== null) {
+                PurgeDeletedVoiceAnnotation::dispatch($annotation->id)->delay(now()->addSeconds(10));
+            }
         });
     }
 }

@@ -15,6 +15,7 @@ use App\Services\AnnotationService;
 use App\Services\ReviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -94,6 +95,10 @@ class AnnotationController extends Controller
      */
     public function update(UpdateAnnotationRequest $request, string $speech, Annotation $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
+        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
+            abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
+        }
+
         $speechModel = $this->resolveSpeech($speech);
         $review = $reviews->findOwnReview($speechModel, $request->user());
 
@@ -106,9 +111,17 @@ class AnnotationController extends Controller
         // doesn't issue a second, redundant SELECT for the same row.
         $annotation->setRelation('review', $review);
 
-        $this->authorize('annotation.update', $annotation);
+        $data = $request->validated();
+        if ($annotation->audio_asset_id !== null) {
+            $forbidden = array_intersect(['start_seconds', 'duration_seconds', 'kind', 'topic'], array_keys($data));
+            if ($forbidden !== []) {
+                throw ValidationException::withMessages(array_fill_keys($forbidden, ['Voice-note timing and metadata are immutable.']));
+            }
+        }
 
-        $updated = $annotations->update($annotation, $request->validated());
+        $this->authorize($annotation->audio_asset_id === null ? 'annotation.update' : 'voice.updateTranscript', $annotation);
+
+        $updated = $annotations->update($annotation, $data);
 
         return new JsonResponse([
             'annotation' => new AnnotationResource($updated),
@@ -117,12 +130,17 @@ class AnnotationController extends Controller
 
     /**
      * `DELETE /speeches/{speech}/annotations/{annotation}` — immediate
-     * single-row soft-delete. The 6-second Undo is frontend-only (a
-     * re-`POST` to `store()` above with the same `client_uuid`); there is
-     * no server-side undo endpoint.
+     * single-row soft-delete. Text annotation Undo re-`POST`s the original
+     * payload and `client_uuid`; voice Undo restores this same tombstoned
+     * row through VoiceAnnotationController::restore() before delayed
+     * object purge claims its asset.
      */
     public function destroy(Request $request, string $speech, Annotation $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
+        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
+            abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
+        }
+
         $speechModel = $this->resolveSpeech($speech);
         $review = $reviews->findOwnReview($speechModel, $request->user());
 
@@ -134,7 +152,7 @@ class AnnotationController extends Controller
         // row inside AnnotationPolicy::delete.
         $annotation->setRelation('review', $review);
 
-        $this->authorize('annotation.delete', $annotation);
+        $this->authorize($annotation->audio_asset_id === null ? 'annotation.delete' : 'voice.delete', $annotation);
 
         $annotations->delete($annotation);
 

@@ -13,15 +13,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'first_name', 'last_name', 'email', 'password'])]
+/**
+ * @property array<string,mixed> $preferences
+ * @property Carbon|null $erasure_started_at
+ */
+#[Fillable(['name', 'first_name', 'last_name', 'email', 'password', 'preferences', 'erasure_started_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
+
+    /** @var array<string, mixed> */
+    protected $attributes = ['preferences' => '{}'];
 
     /**
      * @return HasOne<Profile, $this>
@@ -107,6 +115,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'email_verified_at' => 'datetime',
             'username_changed_at' => 'datetime',
             'password' => 'hashed',
+            'preferences' => 'array',
+            'erasure_started_at' => 'datetime',
         ];
     }
 }

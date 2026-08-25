@@ -112,3 +112,26 @@ export const CAPTIONS = {
   /** Real media duration (seconds) of tests/fixtures/e2e-captions/caption-fixture.mp4. */
   mediaDurationSeconds: 6,
 } as const
+
+/**
+ * STEP-10-VERIFICATION-PLAN.md §4. Seeded separately by
+ * Database\\Seeders\\E2EVoiceAnnotationSeeder so the baseline auth fixtures
+ * stay lightweight. Keep these literals in lockstep with that seeder; drift
+ * is expected to fail loudly in the browser suite.
+ */
+export const VOICE = {
+  coachSpeechId: 9601,
+  memberReviewSpeechId: 9602,
+  erasureSpeechId: 9603,
+  coachReviewId: 9611,
+  memberReviewId: 9612,
+  erasureReviewId: 9613,
+  peerDraftReviewId: 9614,
+  firstVoiceAnnotationId: 9801,
+  erasureVoiceAnnotationId: 9821,
+  peerDraftVoiceAnnotationId: 9822,
+  uploadClientUuid: '0e2e0000-0000-4000-8000-000000019601',
+  pendingTranscript: 'Transcribing…',
+  ordinaryText: 'Ordinary text remains visible.',
+  fixturePathFromRepoRoot: 'api/tests/fixtures/whisper-smoke/spoken-fixture.m4a',
+} as const

@@ -118,7 +118,13 @@ cmd_prepare() {
   local missing=()
   local host
   for host in "${HOSTS[@]}"; do
-    if ! getent hosts "$host" >/dev/null 2>&1 && ! dscacheutil -q host -a name "$host" >/dev/null 2>&1 && ! grep -qE "^[^#]*\s${host}(\s|\$)" /etc/hosts 2>/dev/null; then
+    # macOS's dscacheutil exits zero even when it prints no matching host.
+    # Checking only its status therefore used to claim success for a
+    # missing media.speechcoach.test entry and defer the failure to an
+    # opaque browser MEDIA_ERR_SRC_NOT_SUPPORTED. Require an actual address.
+    if ! getent hosts "$host" >/dev/null 2>&1 \
+      && ! dscacheutil -q host -a name "$host" 2>/dev/null | grep -q '^ip_address:' \
+      && ! grep -qE "^[^#]*\s${host}(\s|\$)" /etc/hosts 2>/dev/null; then
       missing+=("$host")
     fi
   done
@@ -189,6 +195,16 @@ cmd_up() {
 
   log "stopping caption-test-worker (stopped by default — plan §3.1/§4.2 point 3: only the worker-isolation/old-attempt-race scripts start it explicitly)"
   _compose stop caption-test-worker || true
+
+  # `up -d --wait queue-worker` may recreate a dependency after nginx has
+  # already resolved the `app` service name. nginx resolves a literal
+  # FastCGI hostname when it loads its config, so it can otherwise retain
+  # the old container IP and return 502 for every login even though both
+  # containers are healthy. Restart it only after the final service
+  # topology is settled, then prove the restarted proxy is healthy.
+  log "refreshing nginx's app upstream after the final service topology settles"
+  _compose restart web
+  _compose up -d --wait web
 
   trap - EXIT
   log "E2E stack '$PROJECT' is up"

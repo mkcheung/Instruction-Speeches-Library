@@ -34,6 +34,7 @@ function annotation(overrides: Partial<Annotation> = {}): Annotation {
     body: 'existing body',
     lock_version: 1,
     client_uuid: 'existing-uuid',
+    voice: null,
     ...overrides,
   }
 }

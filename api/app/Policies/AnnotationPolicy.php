@@ -89,6 +89,11 @@ class AnnotationPolicy
         return $this->reviewerOwnsActiveReview($user, $review);
     }
 
+    public function createVoice(User $user, Review $review): bool
+    {
+        return $user->hasRole('coach') && $this->reviewerOwnsActiveReview($user, $review);
+    }
+
     /**
      * `$annotation->review` is usually already eager-loaded by the
      * controller (`setRelation`, after it confirms the annotation belongs
@@ -104,6 +109,26 @@ class AnnotationPolicy
     public function delete(User $user, Annotation $annotation): bool
     {
         return $this->reviewerOwnsActiveReview($user, $annotation->review);
+    }
+
+    public function retryVoiceTranscript(User $user, Annotation $annotation): bool
+    {
+        return $user->hasRole('coach') && $this->reviewerOwnsActiveReview($user, $annotation->review);
+    }
+
+    public function updateVoiceTranscript(User $user, Annotation $annotation): bool
+    {
+        return $user->hasRole('coach') && $this->reviewerOwnsActiveReview($user, $annotation->review);
+    }
+
+    public function restoreVoice(User $user, Annotation $annotation): bool
+    {
+        return $user->hasRole('coach') && $this->reviewerOwnsActiveReview($user, $annotation->review);
+    }
+
+    public function deleteVoice(User $user, Annotation $annotation): bool
+    {
+        return $user->hasRole('coach') && $this->reviewerOwnsActiveReview($user, $annotation->review);
     }
 
     /**

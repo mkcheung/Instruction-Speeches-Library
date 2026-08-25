@@ -66,7 +66,17 @@ export default defineConfig({
 
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // The dedicated stack is always bound on loopback. Keep Chromium's
+        // media element on that deterministic route even on macOS hosts
+        // where the system DNS cache can lag a newly-added /etc/hosts row.
+        // This changes name resolution only; HTTPS, SigV4, Range, codecs,
+        // API authorization, SeaweedFS, and the bytes themselves stay real.
+        launchOptions: {
+          args: ['--host-resolver-rules=MAP app.speechcoach.test 127.0.0.1, MAP api.speechcoach.test 127.0.0.1, MAP media.speechcoach.test 127.0.0.1'],
+        },
+      },
       dependencies: ['setup'],
     },
 
@@ -79,6 +89,15 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      dependencies: ['setup'],
+    },
+
+    {
+      // Regression coverage only. This emulated viewport/Playwright WebKit
+      // project is intentionally never described as physical iPhone Safari
+      // evidence; STEP-10's manual device ledger remains separate.
+      name: 'mobile-webkit',
+      use: { ...devices['iPhone 13'] },
       dependencies: ['setup'],
     },
 

@@ -27,6 +27,10 @@ use Illuminate\Support\Carbon;
  * @property int $review_id
  * @property string $client_uuid
  * @property string $body
+ * @property int|null $audio_asset_id
+ * @property string $transcript_status
+ * @property string|null $transcript_failure_code
+ * @property string|null $transcript_attempt_id
  * @property string $start_seconds
  * @property string $duration_seconds
  * @property string $kind
@@ -39,7 +43,8 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'review_id', 'client_uuid', 'body', 'start_seconds', 'duration_seconds',
-    'kind', 'topic', 'published_at', 'lock_version',
+    'kind', 'topic', 'published_at', 'lock_version', 'audio_asset_id',
+    'transcript_status', 'transcript_failure_code', 'transcript_attempt_id',
 ])]
 class Annotation extends Model
 {
@@ -52,6 +57,12 @@ class Annotation extends Model
     public function review(): BelongsTo
     {
         return $this->belongsTo(Review::class);
+    }
+
+    /** @return BelongsTo<SpeechAsset, $this> */
+    public function audioAsset(): BelongsTo
+    {
+        return $this->belongsTo(SpeechAsset::class, 'audio_asset_id');
     }
 
     /**

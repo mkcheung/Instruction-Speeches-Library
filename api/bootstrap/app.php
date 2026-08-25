@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureApiEmailIsVerified;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // (config/sanctum.php) authenticates via the session cookie rather
         // than falling through to bearer-token auth.
         $middleware->statefulApi();
+        $middleware->alias(['verified.api' => EnsureApiEmailIsVerified::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Deliberately `wantsJson()` alone, NOT a blanket `is('api/*')`.

@@ -13,6 +13,7 @@ function annotation(id: string, start_seconds: number, body = `body-${id}`): Ann
     body,
     lock_version: 0,
     client_uuid: `uuid-${id}`,
+    voice: null,
   }
 }
 

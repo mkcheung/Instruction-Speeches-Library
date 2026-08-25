@@ -34,6 +34,7 @@ function annotation(overrides: Partial<Annotation> = {}): Annotation {
     body: 'a note worth keeping',
     lock_version: 1,
     client_uuid: 'client-uuid-7',
+    voice: null,
     ...overrides,
   }
 }
@@ -145,5 +146,30 @@ describe('AnnotationList — delete then Undo', () => {
     // The SAME toast's Undo button is still clickable and succeeds.
     await user.click(undoButton)
     await waitFor(() => expect(createAttempts).toBe(2))
+  })
+
+  it('restores the same tombstoned voice row during the Undo window', async () => {
+    const calls: Array<{ url: string; method: string }> = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = urlOf(input)
+      const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      calls.push({ url, method })
+      if (url.endsWith('/annotations/7') && method === 'DELETE') return new Response(null, { status: 204 })
+      if (url.endsWith('/annotations/7/restore') && method === 'POST') {
+        return jsonResponse({ annotation: annotation({ voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }) })
+      }
+      throw new Error(`unexpected fetch: ${url} ${method}`)
+    }))
+
+    const user = userEvent.setup()
+    renderList([annotation({ voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'ready', failure_code: null } })])
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(await screen.findByRole('button', { name: 'Undo' }))
+
+    await waitFor(() => expect(calls).toEqual([
+      expect.objectContaining({ method: 'DELETE' }),
+      expect.objectContaining({ method: 'POST', url: expect.stringMatching(/\/annotations\/7\/restore$/) }),
+    ]))
   })
 })

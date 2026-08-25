@@ -3,6 +3,8 @@ import { Transcript } from '@/components/annotation/Transcript'
 import { NO_COMMENTARY, type CommentarySelection, type CommentaryTrackOption } from '@/hooks/useCommentaryTrack'
 import type { Annotation } from '@/features/annotation/types'
 import { cn } from '@/lib/utils'
+import type { VoiceCommentaryMode } from '@/features/annotation/types'
+import type { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
 
 /**
  * STEP-06-watch-commentary.md's speaker-facing track selector, completing
@@ -35,6 +37,9 @@ export function TrackSelector({
   activeIds,
   currentTime,
   onSeek,
+  voiceMode,
+  onVoiceModeChange,
+  voicePlayback,
 }: {
   options: CommentaryTrackOption[]
   optionsLoading: boolean
@@ -48,6 +53,9 @@ export function TrackSelector({
   activeIds: ReadonlySet<string>
   currentTime: number
   onSeek: (seconds: number) => void
+  voiceMode: VoiceCommentaryMode
+  onVoiceModeChange: (mode: VoiceCommentaryMode) => void
+  voicePlayback: ReturnType<typeof useVoiceInterjections>
 }) {
   if (optionsLoading) return null
 
@@ -82,6 +90,56 @@ export function TrackSelector({
             )
           })}
         </div>
+
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Voice commentary</p>
+          <div role="radiogroup" aria-label="Voice commentary" className="flex flex-wrap gap-2">
+            {([
+              ['play', 'Play commentary'],
+              ['text', 'Text only'],
+              ['none', 'None'],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={voiceMode === mode}
+                onClick={() => onVoiceModeChange(mode)}
+                className={cn(
+                  'min-h-11 rounded-full border px-3 py-1 text-sm transition-colors',
+                  voiceMode === mode
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background hover:bg-muted',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {voicePlayback.hint && !voicePlayback.current && voiceMode === 'play' && (
+          <p role="status" className="text-sm text-muted-foreground">🔊 Commentary ahead</p>
+        )}
+        {voicePlayback.current && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2" role="status">
+            <span className="text-sm">
+              {voicePlayback.state === 'loading' ? 'Loading voice commentary…' : 'Playing voice commentary'}
+            </span>
+            {voicePlayback.state === 'paused' ? (
+              <button type="button" className="min-h-11 rounded-md border px-3 text-sm" onClick={() => void voicePlayback.resumeCommentary()}>
+                Resume commentary
+              </button>
+            ) : (
+              <button type="button" className="min-h-11 rounded-md border px-3 text-sm" onClick={voicePlayback.pauseCommentary}>
+                Pause commentary
+              </button>
+            )}
+            <button type="button" className="min-h-11 rounded-md border px-3 text-sm" onClick={voicePlayback.skip}>
+              Skip <span aria-hidden="true">▸</span>
+            </button>
+          </div>
+        )}
 
         {/* Reject-don't-silently-fall-back-to-"No commentary": a 403/404/422
             from the annotations endpoint is a real error state, matching

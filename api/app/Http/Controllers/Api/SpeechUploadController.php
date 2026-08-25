@@ -232,7 +232,7 @@ class SpeechUploadController extends Controller
     public function playbackUrl(Request $request, Speech $speech, SpeechAsset $asset, MediaUrlSigner $signer): JsonResponse
     {
         $this->authorizeGrantingAccess($request, $speech);
-        abort_unless($asset->speech_id === $speech->id && $asset->status === 'ready', Response::HTTP_NOT_FOUND);
+        abort_unless($asset->speech_id === $speech->id && $asset->kind === 'video' && $asset->status === 'ready', Response::HTTP_NOT_FOUND);
 
         return new JsonResponse(['url' => $signer->presign($asset->path)]);
     }
