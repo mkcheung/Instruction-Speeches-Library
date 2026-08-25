@@ -84,6 +84,25 @@ class SpeechAsset extends Model
     }
 
     /**
+     * A voice asset can have up to three candidate storage paths at once
+     * (scratch upload, ffmpeg's normalized output claimed mid-pipeline,
+     * and the final path once ready) — this collects whichever of those
+     * currently exist so a cleanup pass can delete them all. Was
+     * hand-retyped as `array_unique(array_filter([...]))` independently
+     * across six call sites (NormalizeVoiceNote, PurgeVoiceAsset,
+     * PurgeDeletedVoiceAnnotation, EraseReviewerVoiceNotes,
+     * FfmpegVoiceNoteProcessor, MediaReconcileCommand); a future added
+     * candidate path (e.g. a waveform cache) only had to be added here
+     * once instead of at each site by hand.
+     *
+     * @return list<string>
+     */
+    public static function voiceAssetCandidatePaths(?string $temporaryPath, ?string $normalizationCandidatePath = null, ?string $path = null): array
+    {
+        return array_values(array_unique(array_filter([$temporaryPath, $normalizationCandidatePath, $path])));
+    }
+
+    /**
      * @return array<string, string>
      */
     protected function casts(): array

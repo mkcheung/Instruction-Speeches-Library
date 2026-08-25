@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VoiceAnnotationRow } from '@/components/annotation/VoiceAnnotationRow'
 import type { Annotation } from '@/features/annotation/types'
@@ -127,5 +127,31 @@ describe('VoiceAnnotationRow', () => {
 
     expect(api.updateAnnotation).toHaveBeenNthCalledWith(1, expect.objectContaining({ body: { lock_version: 7, body: 'First edit' } }))
     expect(api.updateAnnotation).toHaveBeenNthCalledWith(2, expect.objectContaining({ body: { lock_version: 5, body: 'Second edit' } }))
+  })
+
+  it('recovers from an expired presigned preview URL by re-fetching on the next click', async () => {
+    // Code-review finding: the fetched audio URL is presigned with a fixed
+    // TTL (MediaUrlSigner::DEFAULT_TTL_SECONDS, 600s). preview() no-ops
+    // once audioUrl is set (`if (audioUrl) return`), so without clearing
+    // it on playback error, a session left open past the TTL got a
+    // silent, permanently unrecoverable "Preview audio" button.
+    const user = userEvent.setup()
+    api.loadAudio
+      .mockReturnValueOnce({ unwrap: () => Promise.resolve({ audio: { url: 'blob:voice-expired', expires_at: '' } }) })
+      .mockReturnValueOnce({ unwrap: () => Promise.resolve({ audio: { url: 'blob:voice-fresh', expires_at: '' } }) })
+    renderRow(voice())
+
+    await user.click(screen.getByRole('button', { name: 'Preview audio' }))
+    const audio = await screen.findByLabelText('Voice note audio')
+    expect(audio).toHaveAttribute('src', 'blob:voice-expired')
+
+    act(() => {
+      audio.dispatchEvent(new Event('error'))
+    })
+    expect(screen.queryByLabelText('Voice note audio')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Preview audio' }))
+    expect(api.loadAudio).toHaveBeenCalledTimes(2)
+    expect(await screen.findByLabelText('Voice note audio')).toHaveAttribute('src', 'blob:voice-fresh')
   })
 })

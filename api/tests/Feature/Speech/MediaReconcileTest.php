@@ -1,9 +1,13 @@
 <?php
 
+use App\Models\Annotation;
+use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
+use Database\Seeders\RoleSeeder;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * STEP-03 acceptance: "Two abandoned uploads do not permanently lock a user
@@ -71,4 +75,67 @@ it('does not touch a transcode still within its reconcile window', function () {
     $this->artisan('media:reconcile')->assertSuccessful();
 
     expect($video->fresh()->status)->toBe('processing');
+});
+
+/**
+ * Code-review finding: the voice-note reconcile branches resolved
+ * "$asset->voiceAnnotation?->review?->reviewer" from the top-of-loop
+ * batch-fetch snapshot instead of the row locked moments later inside each
+ * transaction — a stale reviewer that silently skips releasing/reconciling
+ * the reserved quota (matches the reviewer-resolution races fixed the same
+ * way in NormalizeVoiceNote/FfmpegVoiceNoteProcessor). This test proves the
+ * fixed code path's normal-case arithmetic; the race itself needs real
+ * concurrent deletion mid-transaction to reproduce, which a synchronous
+ * test cannot force — reverting the fix does not fail this test.
+ */
+it('releases quota for a hung voice-note normalization, resolving the reviewer under the lock', function () {
+    Storage::fake('media');
+    $this->seed(RoleSeeder::class);
+    $reviewer = User::factory()->create(['storage_bytes_used' => 5_000_000, 'quota_bytes' => 100_000_000]);
+    $reviewer->assignRole('coach');
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = Review::factory()->accepted()->create(['speech_id' => $speech->id, 'speech_owner_id' => $speaker->id, 'reviewer_id' => $reviewer->id, 'status' => 'in_progress']);
+
+    $asset = SpeechAsset::factory()->for($speech)->voiceNote()->create([
+        'status' => 'processing',
+        'temporary_path' => 'voice-notes/tmp/stale.m4a',
+        'temporary_byte_size' => 2_000_000,
+    ]);
+    Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'transcript_status' => 'pending']);
+    $asset->forceFill(['updated_at' => now()->subHours(3)])->save();
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect($asset->fresh()->status)->toBe('failed');
+    expect($asset->fresh()->failure_code)->toBe('voice_normalization_failed');
+    expect($reviewer->fresh()->storage_bytes_used)->toBe(3_000_000);
+});
+
+it('reconciles quota for a ready voice note whose temporary reservation was never cleared, resolving the reviewer under the lock', function () {
+    Storage::fake('media');
+    $this->seed(RoleSeeder::class);
+    $reviewer = User::factory()->create(['storage_bytes_used' => 5_000_000, 'quota_bytes' => 100_000_000]);
+    $reviewer->assignRole('coach');
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = Review::factory()->accepted()->create(['speech_id' => $speech->id, 'speech_owner_id' => $speaker->id, 'reviewer_id' => $reviewer->id, 'status' => 'in_progress']);
+
+    $asset = SpeechAsset::factory()->for($speech)->voiceNote()->create([
+        'status' => 'ready',
+        'byte_size' => 1_500_000,
+        'temporary_path' => 'voice-notes/tmp/leftover.m4a',
+        'temporary_byte_size' => 2_000_000,
+    ]);
+    Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'transcript_status' => 'ready']);
+    $asset->forceFill(['updated_at' => now()->subHours(3)])->save();
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect($asset->fresh()->temporary_path)->toBeNull();
+    expect($asset->fresh()->temporary_byte_size)->toBeNull();
+    // reconcileDirect(reserved=2_000_000, real=1_500_000): delta -500_000.
+    expect($reviewer->fresh()->storage_bytes_used)->toBe(4_500_000);
 });

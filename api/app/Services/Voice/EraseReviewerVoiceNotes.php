@@ -38,7 +38,7 @@ class EraseReviewerVoiceNotes
                 }
                 $asset->update(['purge_claim_id' => $claimId]);
 
-                return ['claim_id' => $claimId, 'asset_id' => $asset->id, 'disk' => $asset->disk, 'paths' => array_unique(array_filter([$asset->temporary_path, $asset->normalization_candidate_path, $asset->path]))];
+                return ['claim_id' => $claimId, 'asset_id' => $asset->id, 'disk' => $asset->disk, 'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path)];
             });
             if ($claimed === null) {
                 continue;

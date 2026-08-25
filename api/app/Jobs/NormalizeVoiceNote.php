@@ -73,14 +73,24 @@ class NormalizeVoiceNote implements ShouldQueue
         if ($asset === null || $asset->status !== 'processing' || $asset->temporary_path !== $this->temporaryPath) {
             return;
         }
-        $reviewer = $asset->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
         $reserved = (int) ($asset->temporary_byte_size ?? $asset->byte_size);
         $candidatePath = null;
-        $won = DB::transaction(function () use ($asset, $reviewer, $reserved, &$candidatePath): bool {
+        $won = DB::transaction(function () use ($asset, $reserved, &$candidatePath): bool {
             $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->whereNull('purge_claim_id')->where('temporary_path', $this->temporaryPath)->lockForUpdate()->first();
             if ($fresh === null || $fresh->temporary_byte_size === null) {
                 return false;
             }
+            // Resolved under this same lock, not from the pre-transaction
+            // $asset snapshot: the annotation/review this reservation
+            // belongs to can be concurrently hard-deleted (ReviewService::
+            // clearAnnotations/revokeAndPurge) between this method's entry
+            // and the lock being acquired above. Reading the reviewer off
+            // a stale outer snapshot could resolve null even though the
+            // row was still live moments ago, silently skipping the
+            // release and leaking the reserved bytes out of the user's
+            // quota permanently — the exact class of bug QuotaService's
+            // own docblock warns against elsewhere in this codebase.
+            $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
             $candidatePath = $fresh->normalization_candidate_path;
             $fresh->update(['status' => 'failed', 'failure_code' => 'voice_normalization_failed', 'failure_detail' => 'We had trouble processing this voice note. Please record it again.', 'temporary_byte_size' => null, 'byte_size' => 0]);
             $fresh->voiceAnnotation()->whereIn('transcript_status', ['pending', 'processing'])->update(['transcript_status' => 'failed']);
@@ -94,7 +104,7 @@ class NormalizeVoiceNote implements ShouldQueue
             return;
         }
         $clean = true;
-        foreach (array_unique(array_filter([$this->temporaryPath, $candidatePath])) as $path) {
+        foreach (SpeechAsset::voiceAssetCandidatePaths($this->temporaryPath, $candidatePath) as $path) {
             $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;
         }
         if ($clean) {

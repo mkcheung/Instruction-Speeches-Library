@@ -30,7 +30,7 @@ class PurgeVoiceAsset implements ShouldQueue
         if ($asset === null || $asset->kind !== 'voice_note') {
             return;
         }
-        foreach (array_unique(array_filter([$asset->temporary_path, $asset->normalization_candidate_path, $asset->path])) as $path) {
+        foreach (SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path) as $path) {
             if (Storage::disk($asset->disk)->exists($path) && ! Storage::disk($asset->disk)->delete($path)) {
                 throw new \RuntimeException('Voice asset purge failed.');
             }

@@ -113,7 +113,23 @@ export function VoiceAnnotationRow({
           </Button>
         </div>
       </div>
-      {audioUrl && <audio controls preload="metadata" className="w-full" src={audioUrl} aria-label="Voice note audio" />}
+      {audioUrl && (
+        <audio
+          controls
+          preload="metadata"
+          className="w-full"
+          src={audioUrl}
+          aria-label="Voice note audio"
+          // The fetched URL is a presigned link with a fixed TTL
+          // (MediaUrlSigner::DEFAULT_TTL_SECONDS, 600s) — preview()
+          // otherwise no-ops forever once audioUrl is set
+          // (`if (audioUrl) return`), so a session left open past that
+          // TTL got a silent, unrecoverable playback failure with no way
+          // to retry. Clearing audioUrl on error lets a re-click of
+          // "Preview audio" fetch a fresh signed URL instead.
+          onError={() => setAudioUrl(null)}
+        />
+      )}
       {annotation.voice?.audio_status === 'processing' && <p role="status">Preparing audio…</p>}
       {annotation.voice?.audio_status === 'failed' && <p role="alert">Voice audio unavailable.</p>}
       {editingTranscript ? (
