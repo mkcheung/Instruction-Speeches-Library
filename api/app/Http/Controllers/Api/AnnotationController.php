@@ -95,15 +95,22 @@ class AnnotationController extends Controller
      */
     public function update(UpdateAnnotationRequest $request, string $speech, Annotation $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
-        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
-            abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
-        }
-
         $speechModel = $this->resolveSpeech($speech);
         $review = $reviews->findOwnReview($speechModel, $request->user());
 
         if ($annotation->review_id !== $review->id) {
             abort(Response::HTTP_NOT_FOUND, 'No such annotation.');
+        }
+
+        // Ownership is confirmed above BEFORE this check — `$annotation` is
+        // implicit-bound with no ownership scoping of its own, so reading
+        // `audio_asset_id` off it first (as an earlier version of this
+        // method did) leaks, via 403-vs-404, whether an arbitrary
+        // annotation id belongs to a live voice note on a peer's review —
+        // exactly the oracle this method's own docblock promises never to
+        // expose.
+        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
+            abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
         }
 
         // Already have this review loaded from the ownership check above —
@@ -137,15 +144,18 @@ class AnnotationController extends Controller
      */
     public function destroy(Request $request, string $speech, Annotation $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
-        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
-            abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
-        }
-
         $speechModel = $this->resolveSpeech($speech);
         $review = $reviews->findOwnReview($speechModel, $request->user());
 
         if ($annotation->review_id !== $review->id) {
             abort(Response::HTTP_NOT_FOUND, 'No such annotation.');
+        }
+
+        // See update() above: ownership must be confirmed before this
+        // check, or 403-vs-404 leaks whether an arbitrary annotation id
+        // belongs to a live voice note on a peer's review.
+        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
+            abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
         }
 
         // See update() above: avoids a redundant SELECT of the same review
