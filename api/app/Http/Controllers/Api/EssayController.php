@@ -61,7 +61,11 @@ class EssayController extends Controller
 
         $user = $request->user();
         $isAuthor = $review->reviewer_id === $user->id;
-        $isAdmin = $user->hasRole('admin');
+        // Same owner exclusion as Annotation::scopeVisibleTo: an admin who
+        // is also the speaker must be held to the speaker's rules, or they
+        // read their own coach's UNPUBLISHED essay. Admin moderation of
+        // someone else's speech is unaffected.
+        $isAdmin = $user->hasRole('admin') && $review->speech_owner_id !== $user->id;
         $canSeeContent = $isAuthor || $isAdmin || $review->essay_published_at !== null;
 
         if (! $canSeeContent) {

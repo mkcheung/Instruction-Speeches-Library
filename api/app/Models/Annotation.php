@@ -93,7 +93,20 @@ class Annotation extends Model
      */
     public function scopeVisibleTo(Builder $q, User $user, Review $review): Builder
     {
-        if ($review->reviewer_id === $user->id || $user->hasRole('admin')) {
+        if ($review->reviewer_id === $user->id) {
+            return $q;
+        }
+
+        // Admin moderation widens this to every row INCLUDING drafts — but
+        // never when the admin is also the SPEAKER. §8.5's "the speaker
+        // must never see a coach's drafts" is a property of standing in the
+        // speaker's shoes, not of lacking a role; the old `|| hasRole
+        // ('admin')` made an admin who owned the speech read their coach's
+        // unpublished drafts verbatim, while an identical member-owned
+        // speech correctly returned none. `speech_owner_id` is denormalized
+        // onto `reviews` (NOT NULL), so this costs no extra query and no
+        // lazy load.
+        if ($user->hasRole('admin') && $review->speech_owner_id !== $user->id) {
             return $q;
         }
 

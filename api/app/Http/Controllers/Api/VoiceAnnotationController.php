@@ -16,6 +16,7 @@ use App\Services\Voice\VoiceNoteService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -34,7 +35,15 @@ class VoiceAnnotationController extends Controller
     {
         $review = $annotation->review()->with('speech')->firstOrFail();
         abort_unless($review->speech_id === $speech->id, Response::HTTP_NOT_FOUND);
-        $this->authorize('readAnnotations', $review);
+        // 404, not `authorize()`'s 403: `$annotation` is implicit-bound with
+        // no ownership scoping, and a PEER reviewer's annotation on this
+        // same speech passes the speech_id check above — so a 403 here made
+        // the authorization outcome itself an oracle. Walking ids against
+        // this endpoint returned 403 for a peer's live voice note and 404
+        // for a nonexistent id, revealing that the peer exists and how much
+        // they recorded. Matches AnnotationController::update/destroy,
+        // which resolve entitlement before any status-bearing branch.
+        abort_unless(Gate::forUser($request->user())->allows('readAnnotations', $review), Response::HTTP_NOT_FOUND);
 
         $visible = Annotation::query()->whereKey($annotation->id)->visibleTo($request->user(), $review)->exists();
         abort_unless($visible, Response::HTTP_NOT_FOUND);
@@ -51,10 +60,16 @@ class VoiceAnnotationController extends Controller
         return new JsonResponse(['audio' => ['url' => $signer->presign($asset->path), 'expires_at' => now()->addSeconds(MediaUrlSigner::DEFAULT_TTL_SECONDS)->toIso8601String()]]);
     }
 
-    public function retryTranscript(Request $request, Speech $speech, Annotation $annotation): JsonResponse
+    public function retryTranscript(Request $request, Speech $speech, Annotation $annotation, ReviewService $reviews): JsonResponse
     {
-        $review = $annotation->review()->firstOrFail();
-        abort_unless($review->speech_id === $speech->id, Response::HTTP_NOT_FOUND);
+        // Entitlement resolved from the CALLER's own review, never from the
+        // implicit-bound annotation: resolving the review off `$annotation`
+        // and only checking `speech_id` let a peer reviewer's annotation
+        // through to `authorize()`, whose 403 (vs 404 for a nonexistent id)
+        // confirmed the peer's voice note exists. Same shape as
+        // AnnotationController::update/destroy.
+        $review = $reviews->findOwnReview($speech, $request->user());
+        abort_unless($annotation->review_id === $review->id, Response::HTTP_NOT_FOUND);
         $annotation->setRelation('review', $review);
         $this->authorize('voice.retryTranscript', $annotation);
 
@@ -86,13 +101,19 @@ class VoiceAnnotationController extends Controller
     {
         $snapshot = Annotation::withTrashed()->whereKey($annotation)->firstOrFail(['id', 'review_id', 'audio_asset_id']);
         abort_unless($snapshot->audio_asset_id !== null, Response::HTTP_NOT_FOUND);
-        $restored = DB::transaction(function () use ($speech, $annotation, $snapshot): Annotation {
+        $reviewerId = $request->user()->id;
+        $restored = DB::transaction(function () use ($speech, $annotation, $snapshot, $reviewerId): Annotation {
             // Match revokeAndPurge's review -> asset -> annotation order so
             // Undo cannot deadlock a concurrent hard purge on PostgreSQL.
             $review = Review::query()->whereKey($snapshot->review_id)->lockForUpdate()->firstOrFail();
             $asset = SpeechAsset::query()->whereKey($snapshot->audio_asset_id)->lockForUpdate()->firstOrFail();
             $locked = Annotation::withTrashed()->whereKey($annotation)->lockForUpdate()->firstOrFail();
-            abort_unless($review->speech_id === $speech->id && $locked->review_id === $review->id && $locked->audio_asset_id === $asset->id, Response::HTTP_NOT_FOUND);
+            // `$review->reviewer_id === $reviewerId` is part of the 404
+            // predicate, not left to `authorize()` below: without it a peer
+            // reviewer's tombstoned voice note on this same speech reached
+            // the gate and came back 403, while a nonexistent id came back
+            // 404 — confirming the peer's note exists.
+            abort_unless($review->reviewer_id === $reviewerId && $review->speech_id === $speech->id && $locked->review_id === $review->id && $locked->audio_asset_id === $asset->id, Response::HTTP_NOT_FOUND);
             $locked->setRelation('review', $review);
             $this->authorize('voice.restore', $locked);
             abort_unless($locked->trashed(), Response::HTTP_CONFLICT, 'Voice note is not deleted.');

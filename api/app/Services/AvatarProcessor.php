@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Intervention\Image\Drivers\Gd\Driver;
 use Intervention\Image\Encoders\JpegEncoder;
 use Intervention\Image\ImageManager;
+use RuntimeException;
 
 /**
  * EXIF stripping is a hard acceptance criterion (STEP-01-identity.md), and
@@ -43,7 +44,17 @@ class AvatarProcessor
 
         $path = sprintf('avatars/%d/%s.jpg', $userId, (string) Str::ulid());
 
-        Storage::disk('media')->put($path, $encoded->toString());
+        // The `media` disk is configured `throw => false`
+        // (config/filesystems.php), so a failed PUT returns false rather
+        // than raising. Discarding it let both callers persist
+        // `profile.avatar_path` and answer 200 for an object that was never
+        // written — a permanently broken avatar with no error, no log and
+        // no retry affordance. Every other media write in the codebase
+        // (CaptionService, WhisperTranscriber, VoiceNoteService,
+        // FfmpegVoiceNoteProcessor) already checks its result.
+        if (Storage::disk('media')->put($path, $encoded->toString()) === false) {
+            throw new RuntimeException("Failed to store avatar at {$path}.");
+        }
 
         return $path;
     }
