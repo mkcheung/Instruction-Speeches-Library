@@ -116,3 +116,69 @@ it('round-trips render() back through parse()', function () {
 
     expect($reparsed)->toBe($cues);
 });
+
+/**
+ * Post-STEP-10 code review: NOTE/STYLE/REGION blocks are standard WebVTT
+ * and were being parsed as cues, so valid files were rejected with 422.
+ */
+it('skips NOTE comment blocks instead of rejecting the file', function () {
+    $cues = Vtt::parse(<<<'VTT'
+        WEBVTT
+
+        NOTE This transcript was exported by Subtitle Edit.
+
+        00:00:00.000 --> 00:00:02.000
+        Hello.
+        VTT);
+
+    expect($cues)->toHaveCount(1);
+    expect($cues[0]['text'])->toBe('Hello.');
+});
+
+it('skips a multi-line NOTE block appearing between cues', function () {
+    $cues = Vtt::parse(<<<'VTT'
+        WEBVTT
+
+        00:00:00.000 --> 00:00:02.000
+        First.
+
+        NOTE
+        A reviewer's aside,
+        spanning two lines.
+
+        00:00:02.000 --> 00:00:04.000
+        Second.
+        VTT);
+
+    expect($cues)->toHaveCount(2);
+    expect($cues[1]['text'])->toBe('Second.');
+});
+
+it('skips STYLE and REGION blocks', function () {
+    $cues = Vtt::parse(<<<'VTT'
+        WEBVTT
+
+        STYLE
+        ::cue { color: yellow; }
+
+        REGION
+        id:speaker
+
+        00:00:00.000 --> 00:00:02.000
+        Hello.
+        VTT);
+
+    expect($cues)->toHaveCount(1);
+});
+
+it('does not mistake cue text beginning with NOTE for a comment block', function () {
+    $cues = Vtt::parse(<<<'VTT'
+        WEBVTT
+
+        00:00:00.000 --> 00:00:02.000
+        NOTE the pause before the punchline.
+        VTT);
+
+    expect($cues)->toHaveCount(1);
+    expect($cues[0]['text'])->toBe('NOTE the pause before the punchline.');
+});

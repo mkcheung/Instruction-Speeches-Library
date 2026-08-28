@@ -49,3 +49,26 @@ it('returns 404 (not the new owner) for a released username', function () {
 
     $response->assertStatus(404);
 });
+
+/**
+ * Post-STEP-10 code review: UsernameService re-checked history but not
+ * current occupancy, so a name held by a LIVE user reached save() and hit
+ * the unique index as an uncaught QueryException.
+ */
+it('refuses a username currently held by another live user with a validation error', function () {
+    User::factory()->create(['username' => 'ada']);
+    $other = User::factory()->create(['username' => 'grace']);
+
+    // App\Rules\UsernameIsAvailable has this check; the service — which its
+    // own docblock calls "the one place a username is ever written", whose
+    // invariant "must hold even for a caller that reaches set() directly" —
+    // did not.
+    expect(fn () => app(UsernameService::class)->set($other, 'ada'))
+        ->toThrow(ValidationException::class);
+});
+
+it('still lets a user re-set their own current username', function () {
+    $user = User::factory()->create(['username' => 'ada']);
+
+    expect(app(UsernameService::class)->set($user, 'ada')->username)->toBe('ada');
+});

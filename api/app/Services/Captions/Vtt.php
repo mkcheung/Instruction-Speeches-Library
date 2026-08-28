@@ -72,7 +72,18 @@ class Vtt
         foreach ($lines as $line) {
             if (trim($line) === '') {
                 if ($block !== []) {
-                    $cues[] = self::parseBlock($block, $timingPattern);
+                    // NOTE/STYLE/REGION blocks are standard WebVTT and are
+                    // not cues. Handing them to parseBlock() threw
+                    // InvalidVttException, so UpdateCaptionsRequest returned
+                    // 422 "This is not valid WebVTT" for files that are in
+                    // fact valid — anything exported by Subtitle Edit,
+                    // Aegisub, or most YouTube-adjacent tools. This product
+                    // reads none of the three back, so they are skipped
+                    // rather than retained.
+                    if (! self::isNonCueBlock($block)) {
+                        $cues[] = self::parseBlock($block, $timingPattern);
+                    }
+
                     $block = [];
                 }
 
@@ -83,6 +94,26 @@ class Vtt
         }
 
         return $cues;
+    }
+
+    /**
+     * A comment, style or region block rather than a cue. Each is
+     * introduced by its keyword alone on the block's first line, optionally
+     * followed by same-line content for NOTE.
+     *
+     * @param  array<int, string>  $block
+     */
+    private static function isNonCueBlock(array $block): bool
+    {
+        $first = trim($block[0]);
+
+        foreach (['NOTE', 'STYLE', 'REGION'] as $keyword) {
+            if ($first === $keyword || str_starts_with($first, $keyword.' ') || str_starts_with($first, $keyword."\t")) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

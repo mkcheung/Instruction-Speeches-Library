@@ -51,7 +51,18 @@ class TranscriptDeriver
             return 0;
         }
 
-        return count(array_filter(preg_split('/\s+/u', $body) ?: []));
+        // Explicit `!== ''` rather than a bare `array_filter`: the callback-
+        // less form drops every FALSY element, so the literal spoken word
+        // "0" was deleted from the count ("we scored 0 goals" counted 3).
+        // `$body` is already whitespace-collapsed and trimmed above, so
+        // preg_split cannot yield an empty token anyway — deleting "0" was
+        // the filter's only observable effect. Both `word_count` and the
+        // `words_per_minute` derived from it were wrong, which matters
+        // because pace comparison across speeches is the point of this table.
+        return count(array_filter(
+            preg_split('/\s+/u', $body) ?: [],
+            fn (string $word): bool => $word !== '',
+        ));
     }
 
     /**

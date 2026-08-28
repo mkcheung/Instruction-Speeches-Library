@@ -312,6 +312,20 @@ class ReviewService
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
+            // Re-check the status under the lock, as accept/decline/withdraw/
+            // revoke all do. ReviewPolicy::abandon runs against the stale
+            // route-model-bound instance, so a publish and an abandon issued
+            // near-simultaneously (double-click, two tabs) both passed the
+            // policy at `in_progress`; whichever landed second won. Abandon
+            // landing second overwrote `published` — dropping the speech out
+            // of `Speech::scopeVisibleTo` and 403-ing the speaker on
+            // commentary that had already been published to them, with no
+            // reviewer-side recovery (ReviewPolicy::publish requires an
+            // ACCESS_GRANTING status, which excludes `abandoned`).
+            if (! in_array($locked->status, ['accepted', 'in_progress'], true)) {
+                return $locked;
+            }
+
             $locked->status = 'abandoned';
             $locked->last_transition_at = now();
             $locked->save();

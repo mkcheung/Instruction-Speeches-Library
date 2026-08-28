@@ -230,3 +230,44 @@ it('does not notify the speaker when an accept transaction rolls back', function
     expect(Review::query()->whereKey($review->id)->value('status'))->toBe('invited');
     Notification::assertNothingSentTo($speaker);
 });
+
+/**
+ * Post-STEP-10 code review: `abandon()` was the only transition verb that
+ * wrote `status` without re-checking it under its own lock.
+ */
+it('refuses to abandon a review that was published first', function () {
+    $speaker = User::factory()->create();
+    $coach = User::factory()->create();
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = Review::factory()->create([
+        'speech_id' => $speech->id,
+        'speech_owner_id' => $speaker->id,
+        'reviewer_id' => $coach->id,
+        'status' => 'published',
+    ]);
+
+    // ReviewPolicy::abandon runs against the stale route-model-bound
+    // instance, so a publish and an abandon issued near-simultaneously both
+    // passed the policy at `in_progress` and whichever landed second won.
+    $result = app(ReviewService::class)->abandon($review);
+
+    // Abandon landing second used to overwrite `published`, dropping the
+    // speech out of Speech::scopeVisibleTo and 403-ing the speaker on
+    // commentary already delivered to them — with no reviewer-side recovery.
+    expect($result->status)->toBe('published');
+    expect($review->fresh()->status)->toBe('published');
+});
+
+it('still abandons a review that is genuinely in progress', function () {
+    $speaker = User::factory()->create();
+    $coach = User::factory()->create();
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = Review::factory()->create([
+        'speech_id' => $speech->id,
+        'speech_owner_id' => $speaker->id,
+        'reviewer_id' => $coach->id,
+        'status' => 'in_progress',
+    ]);
+
+    expect(app(ReviewService::class)->abandon($review)->status)->toBe('abandoned');
+});

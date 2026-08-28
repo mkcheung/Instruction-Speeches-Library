@@ -94,8 +94,19 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
                 throw $exception;
             }
             if (! $written) {
+                // `$finalPath` carries a uuid unique to THIS normalization
+                // attempt, so if the row no longer points at it — including
+                // because a purge hard-deleted the row entirely — nobody
+                // else can own that object and it is unambiguously garbage.
+                // Previously this only cleaned up when the row still
+                // existed AND still pointed at us, so a purge that landed
+                // mid-`put()` left a fully normalized copy of the
+                // reviewer's voice audio in storage permanently: every
+                // `media:reconcile` sweep is row-driven, and the row is
+                // gone.
                 $stillOurs = SpeechAsset::query()->whereKey($asset->id)->where('normalization_candidate_path', $finalPath)->exists();
-                if ($stillOurs) {
+                $rowGone = ! SpeechAsset::query()->whereKey($asset->id)->exists();
+                if ($stillOurs || $rowGone) {
                     Storage::disk($asset->disk)->delete($finalPath);
                 }
 

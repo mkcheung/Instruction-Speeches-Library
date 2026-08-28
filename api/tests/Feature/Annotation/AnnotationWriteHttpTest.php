@@ -524,3 +524,64 @@ it('a revoked reviewer can no longer write annotations even though status still 
         'start_seconds' => 1.0,
     ])->assertForbidden();
 });
+
+/**
+ * Post-STEP-10 code review: `ck_annotations_timing` bounds start_seconds
+ * only from below and the request had no `max`, so an out-of-domain value
+ * passed both and overflowed NUMERIC(10,3) on the Postgres INSERT. The
+ * suite runs on SQLite, whose NUMERIC affinity accepts it — so this class
+ * of defect is structurally invisible here without an explicit bound.
+ */
+it('rejects a start_seconds beyond the column domain with 422, not a database error', function () {
+    $this->seed(RoleSeeder::class);
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $review = acceptedInProgressReview($speaker, $reviewer);
+
+    $this->actingAs($reviewer)
+        ->postJson("/api/speeches/{$review->speech_id}/annotations", [
+            'client_uuid' => (string) Str::uuid(),
+            'start_seconds' => 1e12,
+            'duration_seconds' => 5,
+            'kind' => 'observation',
+            'body' => 'Way out of range.',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('start_seconds');
+});
+
+it('returns the voice payload, not a text-shaped one, on an idempotent re-post of a voice annotation', function () {
+    $this->seed(RoleSeeder::class);
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = acceptedInProgressReview($speaker, $reviewer, $speech);
+
+    $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create(['status' => 'ready']);
+    $clientUuid = (string) Str::uuid();
+    Annotation::factory()->for($review)->create([
+        'client_uuid' => $clientUuid,
+        'audio_asset_id' => $asset->id,
+        'body' => 'Spoken note',
+        'transcript_status' => 'ready',
+    ]);
+
+    $response = $this->actingAs($reviewer)
+        ->postJson("/api/speeches/{$speech->id}/annotations", [
+            'client_uuid' => $clientUuid,
+            'start_seconds' => 4,
+            'duration_seconds' => 5,
+            'kind' => 'observation',
+            'body' => 'Spoken note',
+        ])
+        ->assertSuccessful();
+
+    // The idempotent-hit branch did not eager-load `audioAsset`, and
+    // AnnotationResource emits `voice: null` when the relation is unloaded
+    // — so an existing voice note came back labelled as a plain text one,
+    // with no transcript status and no audio affordance.
+    expect($response->json('annotation.voice'))->not->toBeNull();
+    expect($response->json('annotation.voice.asset_id'))->toBe($asset->id);
+});
