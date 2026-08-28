@@ -352,4 +352,72 @@ describe('useCaptionEditor', () => {
       expect(transcriptCallCount).toBe(callsAtTimeout + 1)
     })
   })
+
+  it('does not lose or revert text typed while a save is already in flight', async () => {
+    // Regression: flush() flipped to 'saved' unconditionally after the PUT,
+    // clobbering the 'dirty' a mid-flight keystroke set. The pending
+    // debounce then no-opped against flush's own guard (so the newer text
+    // was never sent), and the refetch-driven resync effect — seeing
+    // 'saved', not 'dirty' — replaced the user's newer text with the
+    // server's older copy.
+    vi.useFakeTimers()
+    const putBodies: string[] = []
+    let releasePut: (() => void) | null = null
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.endsWith('/api/speeches/1/captions') && methodOf(input, init) === 'PUT') {
+        const body = await bodyOf(input)
+        const vtt = String(body.vtt)
+        putBodies.push(vtt)
+        // Hold the FIRST PUT open so a keystroke can land mid-flight.
+        if (putBodies.length === 1) {
+          await new Promise<void>((resolve) => {
+            releasePut = resolve
+          })
+        }
+        return jsonResponse({
+          captions: { status: 'ready', vtt, failure_code: null, updated_at: null, asset_id: null, revision: 'rev-1' },
+        })
+      }
+      if (url.endsWith('/api/speeches/1/transcript')) {
+        return jsonResponse({
+          transcript: {
+            body: '', segments: [], word_count: 0, words_per_minute: null,
+            language: null, model: null, source: 'edited', updated_at: null,
+            caption_revision: 'rev-1',
+          },
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useCaptionEditor({ speechId: 1, vtt: VTT }), { wrapper })
+
+    act(() => result.current.editCueText('cue-0', 'Hello wor'))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800)
+    })
+    expect(putBodies).toHaveLength(1)
+    expect(putBodies[0]).toContain('Hello wor')
+
+    // Keystroke lands while that first PUT is still open.
+    act(() => result.current.editCueText('cue-0', 'Hello world'))
+    await act(async () => {
+      releasePut?.()
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    // Must not claim saved while newer text is still unsent.
+    expect(result.current.autosaveState).not.toBe('saved')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800)
+    })
+
+    expect(putBodies.some((b) => b.includes('Hello world'))).toBe(true)
+    expect(result.current.cues[0].text).toBe('Hello world')
+  })
 })

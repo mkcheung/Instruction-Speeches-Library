@@ -333,4 +333,45 @@ describe('useVoiceInterjections', () => {
     hook.rerender()
     expect(hook.result.current.current).toBeNull()
   })
+
+  it('still fires a note when a re-render lands between two ticks', async () => {
+    // Regression: the listener effect re-seeded prevTimeRef to the LIVE
+    // currentTime on every run, and it runs on every render (its `notes`
+    // dep is a fresh filter() array from useCommentaryTrack). That narrowed
+    // the [prevTime, now] window crossedNotes inspects, so a note inside
+    // the swallowed gap never played — permanently, since prevTime only
+    // moves forward.
+    const video = playableVideo()
+    const hook = renderHook(() =>
+      useVoiceInterjections({
+        speechId: 1,
+        videoEl: video,
+        // Fresh array identity each render, exactly like the real caller.
+        notes: [voice('1', 10.1)],
+        mode: 'play',
+        onExperienced: vi.fn(),
+        resetKey: 1,
+      }),
+    )
+
+    act(() => {
+      video.dispatchEvent(new Event('play'))
+      video.currentTime = 10.0
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+
+    // A render between ticks — the poll/isFetching churn that happens for
+    // reasons unrelated to the video clock.
+    act(() => {
+      video.currentTime = 10.2
+      hook.rerender()
+    })
+
+    act(() => {
+      video.currentTime = 10.25
+      video.dispatchEvent(new Event('timeupdate'))
+    })
+
+    await waitFor(() => expect(FakeAudio.instances).toHaveLength(1))
+  })
 })

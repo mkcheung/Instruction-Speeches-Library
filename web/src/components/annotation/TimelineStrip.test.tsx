@@ -124,4 +124,41 @@ describe('TimelineStrip — drag interruption', () => {
     const patchCalls = fetchMock.mock.calls.filter(([input]) => urlOf(input).includes('/annotations/5'))
     expect(patchCalls).toHaveLength(0)
   })
+
+  describe('strip height', () => {
+    // Regression: `Math.max(1, Math.min(MAX_ROWS, ...rows))` spread the row
+    // indices into Math.MIN, so it picked the FEWEST rows in use. Two
+    // staggered markers reserved 1.5rem while the row-1 marker sits at
+    // `top: 1.5rem` — outside its own bordered box, spilling onto the
+    // composer (no `overflow: hidden`). The empty case inverted the other
+    // way: `Math.min(MAX_ROWS)` over no rows returned 2, double height.
+    function renderWith(annotations: Annotation[]) {
+      const { container } = render(
+        <Provider store={createTestStore()}>
+          <TimelineStrip
+            annotations={annotations}
+            speechId={1}
+            reviewId={9}
+            videoEl={null}
+            durationSeconds={100}
+            onSeek={() => {}}
+            onLiveRetime={() => {}}
+          />
+        </Provider>,
+      )
+      return container.querySelector('.annotation-timeline') as HTMLElement
+    }
+
+    it('reserves a row for every occupied row when markers overlap', () => {
+      const strip = renderWith([
+        annotation({ id: '1', client_uuid: 'u1', start_seconds: 10, duration_seconds: 6 }),
+        annotation({ id: '2', client_uuid: 'u2', start_seconds: 12, duration_seconds: 6 }),
+      ])
+      expect(strip.style.height).toBe('3rem')
+    })
+
+    it('reserves exactly one row when there are no annotations', () => {
+      expect(renderWith([]).style.height).toBe('1.5rem')
+    })
+  })
 })

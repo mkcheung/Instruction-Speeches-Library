@@ -76,6 +76,14 @@ class AnnotationService
 
             /** @var Annotation|null $existing */
             $existing = Annotation::query()
+                // `AnnotationResource` reads `relationLoaded('audioAsset')`
+                // and serializes `voice: null` when it isn't, so an
+                // idempotent hit on a real voice annotation came back
+                // labelled as a plain text one — no transcript status, no
+                // audio affordance. Same defect update() documents having
+                // fixed for its 409 body; VoiceNoteService's parallel lookup
+                // already eager-loads it.
+                ->with('audioAsset')
                 ->where('review_id', $locked->id)
                 ->where('client_uuid', $data['client_uuid'])
                 ->first();

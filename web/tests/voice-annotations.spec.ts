@@ -138,7 +138,17 @@ test('Scenario A — Coach sees recording while a Member is denied by the real d
     `${API_URL}/api/speeches/${VOICE.coachSpeechId}/annotations/${VOICE.peerDraftVoiceAnnotationId}/voice-playback-url`,
     { headers: JSON_HEADERS },
   )
-  expect(peerDraft.status(), 'peer reviewer must not read another reviewer\'s voice row').toBe(403)
+  // 404, not 403: a peer reviewer's annotation on this same speech clears
+  // the endpoint's speech_id check, so a 403 here would have made the
+  // authorization outcome an id oracle (403 = the peer's voice note exists,
+  // 404 = nothing there). The peer probe and a nonexistent id must be
+  // indistinguishable — see VoiceAnnotationController::audioUrl.
+  expect(peerDraft.status(), 'peer reviewer must not read another reviewer\'s voice row').toBe(404)
+  const peerMissing = await coachPage.request.get(
+    `${API_URL}/api/speeches/${VOICE.coachSpeechId}/annotations/99999999/voice-playback-url`,
+    { headers: JSON_HEADERS },
+  )
+  expect(peerDraft.status(), 'a peer voice row must be indistinguishable from a nonexistent one').toBe(peerMissing.status())
 
   const authorContext = await browser.newContext({ storageState: USERS.reviewerB.storageState })
   const authorDraft = await authorContext.request.get(

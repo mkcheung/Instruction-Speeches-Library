@@ -27,6 +27,8 @@ export function useVoiceInterjections({
   const queueRef = useRef<Annotation[]>([])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const prevTimeRef = useRef(0)
+  /** Which element `prevTimeRef` was seeded for — see the listener effect. */
+  const trackedVideoRef = useRef<HTMLVideoElement | null>(null)
   const startedRef = useRef(false)
   const resumeSuppressedRef = useRef(false)
   const videoWasPlayingRef = useRef(false)
@@ -148,7 +150,20 @@ export function useVoiceInterjections({
 
   useEffect(() => {
     if (!videoEl) return
-    prevTimeRef.current = videoEl.currentTime
+    // Seed the crossing window ONLY when we start tracking a new element.
+    // This effect re-runs on every render — its `notes` dep is a fresh
+    // `filter()` array from useCommentaryTrack and there is no React
+    // Compiler in this build — and re-seeding `prevTimeRef` to the LIVE
+    // currentTime on each of those runs narrowed the [prevTime, now] window
+    // `crossedNotes` inspects. A note whose start fell inside the swallowed
+    // gap was then skipped permanently, since prevTime only moves forward:
+    // the video simply never paused and the coach's audio never played,
+    // with nothing surfaced to the viewer. The play/seeking/timeupdate
+    // handlers below own this ref from here on.
+    if (trackedVideoRef.current !== videoEl) {
+      trackedVideoRef.current = videoEl
+      prevTimeRef.current = videoEl.currentTime
+    }
 
     const onPlay = () => {
       // Native/video.js controls remain operable while commentary owns the

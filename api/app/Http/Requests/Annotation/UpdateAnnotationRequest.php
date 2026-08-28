@@ -27,7 +27,10 @@ class UpdateAnnotationRequest extends FormRequest
         return [
             'lock_version' => ['required', 'integer', 'min:0'],
             'body' => ['sometimes', 'string'],
-            'start_seconds' => ['sometimes', 'numeric', 'min:0'],
+            // See CreateAnnotationRequest: the column is NUMERIC(10,3) and
+            // `ck_annotations_timing` bounds start_seconds only from below,
+            // so an out-of-domain value was a Postgres-only 500.
+            'start_seconds' => ['sometimes', 'numeric', 'min:0', 'max:9999999.999'],
             'duration_seconds' => ['sometimes', 'numeric', 'gt:0', 'max:120'],
             'kind' => ['sometimes', Rule::in(['praise', 'correction', 'observation'])],
             'topic' => ['sometimes', 'nullable', 'string', 'max:32'],

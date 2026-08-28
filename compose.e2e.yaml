@@ -149,6 +149,13 @@ services:
   scheduler:
     environment:
       APP_ENV: e2e
+      # Same override every other service in this file gets. Latent today
+      # (media:reconcile only deletes through the internal `media` disk and
+      # never presigns), but the first scheduled command that signs a public
+      # URL — a digest mail with a playback link, say — would otherwise emit
+      # `http://localhost:8333` under an HTTPS app: precisely the mixed-
+      # content failure this file's header says the override exists to kill.
+      AWS_ENDPOINT_PUBLIC: "https://media.speechcoach.test"
 
   # STEP-09 plan §6: version-pinned specifically for the E2E lane's
   # determinism requirement (§3: "Deterministic E2E stack and fixtures") —

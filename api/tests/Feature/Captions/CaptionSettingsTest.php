@@ -411,3 +411,35 @@ it('an upload completing concurrently with an enable never creates two captions 
     expect($viaUpload->id)->toBe($viaEnable->id);
     Queue::assertPushed(GenerateCaptions::class, 1);
 });
+
+/**
+ * Post-STEP-10 code review: `::create()` never hydrates DB-level column
+ * defaults, so the create response contradicted the row it had just written.
+ */
+it('reports the real captions_enabled on the create response, not the unhydrated default', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->postJson('/api/speeches', ['title' => 'Attempt 1']);
+
+    $response->assertCreated();
+    $speech = Speech::query()->latest('id')->firstOrFail();
+
+    // The column default is `true` and CreateSpeechRequest deliberately
+    // marks the field `sometimes` so the DB default applies. Reading it
+    // straight off the model `create()` returned yielded null, which
+    // SpeechResource cast to `false` — so every speech created through the
+    // UI (the frontend payload has no captions_enabled field) reported
+    // captions OFF while GenerateCaptions was in fact running.
+    expect($speech->captions_enabled)->toBeTrue();
+    expect($response->json('speech.captions_enabled'))->toBeTrue();
+});
+
+it('still honours an explicit captions_enabled=false on the create response', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->postJson('/api/speeches', ['title' => 'Quiet', 'captions_enabled' => false]);
+
+    $response->assertCreated();
+    expect($response->json('speech.captions_enabled'))->toBeFalse();
+    expect(Speech::query()->latest('id')->firstOrFail()->captions_enabled)->toBeFalse();
+});

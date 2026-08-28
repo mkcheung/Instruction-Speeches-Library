@@ -66,6 +66,7 @@ export function useCaptionEditor({ speechId, vtt }: { speechId: number; vtt: str
   // become a no-op rather than racing the new one's state updates.
   const pollTokenRef = useRef(0)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scheduleSaveRef = useRef<(delayMs: number) => void>(() => {})
   const lastRevisionRef = useRef<string | null>(null)
 
   const invalidateTranscriptAndSearch = useCallback(() => {
@@ -188,8 +189,25 @@ export function useCaptionEditor({ speechId, vtt }: { speechId: number; vtt: str
   const flush = useCallback(async () => {
     if (autosaveStateRef.current !== 'dirty') return
     setAutosaveState('saving')
+    const sent = serializeVtt(cuesRef.current)
     try {
-      const result = await updateCaptions({ speechId, body: { vtt: serializeVtt(cuesRef.current) } }).unwrap()
+      const result = await updateCaptions({ speechId, body: { vtt: sent } }).unwrap()
+
+      // Keystrokes that landed WHILE this PUT was in flight moved
+      // `cuesRef` on. Flipping straight to `'saved'` clobbered the
+      // `'dirty'` that keystroke set; the pending debounce then fired into
+      // this method's own `!== 'dirty'` guard and no-opped, so the newer
+      // text was never sent — and the refetch-driven resync effect above,
+      // seeing `'saved'` rather than `'dirty'`, overwrote the user's newer
+      // text with the server's older copy. Stay dirty and reschedule, the
+      // same in-flight rule `useAnnotationEditor`/`useEssayEditor` follow.
+      if (serializeVtt(cuesRef.current) !== sent) {
+        setAutosaveState('dirty')
+        scheduleSaveRef.current(SAVE_DEBOUNCE_MS)
+
+        return
+      }
+
       // §4.1: the editor's own saved state is real the instant the PUT
       // succeeds — only the SEPARATE transcript/search convergence (below)
       // is asynchronous. Do not treat local corrected text or this
@@ -211,6 +229,13 @@ export function useCaptionEditor({ speechId, vtt }: { speechId: number; vtt: str
     },
     [flush],
   )
+
+  // `flush` reschedules itself when a keystroke lands mid-PUT, but it is
+  // defined above `scheduleSave` (which closes over `flush`) — the same ref
+  // indirection `pollTranscriptRevisionRef` above uses to break that cycle.
+  useEffect(() => {
+    scheduleSaveRef.current = scheduleSave
+  })
 
   // Flush-on-unmount (borrowing `useAnnotationEditor.ts`'s convention,
   // simplified — no `pagehide`/`keepalive` beacon here since a caption

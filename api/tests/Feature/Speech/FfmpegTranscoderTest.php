@@ -17,6 +17,15 @@ use Illuminate\Support\Facades\Storage;
  * binaries are not assumed present in this test environment); Storage::fake()
  * stands in for the `media` disk.
  *
+ * The source fixtures below pass an explicit `byte_size` matching the
+ * length of the bytes actually written to the fake disk. In production
+ * `speech_assets.byte_size` for a source is the S3 `HeadObject`
+ * ContentLength written at upload-complete, so it is authoritative — and
+ * `downloadToLocalTemp()` now rejects a short read against it rather than
+ * transcoding a truncated prefix and publishing it as `ready`. The factory
+ * default is a random 1–40 MB figure, which no real upload could pair with
+ * a 12-byte object.
+ *
  * fakeFfmpeg() below is a single generic Process::fake() callback shared by
  * every test in this file: it recognizes ffprobe/ffmpeg invocations by the
  * tempnam() prefix FfmpegTranscoder uses for each stage's scratch file
@@ -73,7 +82,7 @@ it('remuxes a compliant h264/aac source, marks the video asset ready, and genera
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     fakeFfmpeg(compliantProbe());
@@ -110,7 +119,7 @@ it('swaps width/height for a 90-degree rotated source, so a portrait phone clip 
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     // W4's trap: an iPhone clip stored 1920x1080 (coded, landscape) with a
@@ -142,7 +151,7 @@ it('does not swap width/height for an unrotated or 180-degree-rotated source', f
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     fakeFfmpeg([
@@ -170,7 +179,7 @@ it('fully transcodes an HEVC source instead of failing, via the full re-encode p
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     fakeFfmpeg([
@@ -197,7 +206,7 @@ it('downscales a >1080p source and tonemaps a 10-bit HDR source in the same ffmp
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     fakeFfmpeg([
@@ -233,7 +242,7 @@ it('fails visibly with a user-safe code when ffprobe cannot read a video stream 
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     Process::fake(function (PendingProcess $process) {
@@ -261,7 +270,7 @@ it('fails the video with insufficient_disk_space and never runs ffmpeg when belo
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     // No real filesystem reliably has PHP_INT_MAX bytes free, so this
@@ -282,7 +291,7 @@ it('regenerates the poster set with an explicit chosen time, replacing the old p
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     fakeFfmpeg(compliantProbe());
@@ -316,7 +325,7 @@ it('clamps an explicit poster time to [0, duration] without the automatic [2, 30
     Storage::fake('media');
     $speech = Speech::factory()->create();
     Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
-    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source']);
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
     $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
 
     fakeFfmpeg(compliantProbe());
@@ -332,4 +341,117 @@ it('clamps an explicit poster time to [0, duration] without the automatic [2, 30
         ->where('speech_id', $speech->id)->where('kind', 'poster')->where('is_primary', true)->first();
 
     expect((float) $primary->poster_time_seconds)->toBe(0.5);
+});
+
+/**
+ * Post-STEP-10 code review: the scratch-file and storage-failure gaps that
+ * FfmpegTranscoder still had after WhisperTranscriber had already been
+ * fixed for the identical ones.
+ */
+function scratchFiles(): array
+{
+    $found = [];
+
+    foreach (['source_', 'transcode_', 'poster_master_', 'poster_v_', 'sprite_', 'poster_src_'] as $prefix) {
+        $found = [...$found, ...(glob(sys_get_temp_dir().'/'.$prefix.'*') ?: [])];
+    }
+
+    sort($found);
+
+    return $found;
+}
+
+it('leaves no scratch files behind, including the extensionless tempnam placeholders', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+
+    fakeFfmpeg(compliantProbe());
+
+    $before = scratchFiles();
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    expect($video->fresh()->status)->toBe('ready');
+    // Every `tempnam(...).'.ext'` site created TWO real files and only ever
+    // cleaned up the suffixed one: 1 transcode_ + 1 poster_master_ + 6
+    // poster_v_ + 1 sprite_ = 9 leaked inodes per run, which the byte-based
+    // free-space watermark never notices.
+    expect(scratchFiles())->toBe($before);
+});
+
+it('fails with storage_read_failed, not probe_failed, when the source object cannot be read', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    // Row exists, object does not — a transient object-store outage.
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => 12]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+
+    fakeFfmpeg(compliantProbe());
+
+    $before = scratchFiles();
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    // Previously `get()` returned null, `file_put_contents` wrote a 0-byte
+    // file without complaint, and ffprobe's failure was recorded as
+    // `probe_failed` — blaming the speaker's upload for a storage fault.
+    expect($video->fresh()->status)->toBe('failed');
+    expect($video->fresh()->failure_code)->toBe('storage_read_failed');
+    expect(scratchFiles())->toBe($before);
+});
+
+it('fails with storage_read_failed when the source copy is truncated', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    // byte_size is the S3 HeadObject ContentLength written at
+    // upload-complete, so a copy shorter than it is a truncated read.
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes') + 5_000]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+
+    fakeFfmpeg(compliantProbe());
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    // A truncated faststart-muxed MP4 usually still decodes, so without the
+    // length check this published the opening slice of the speech as a
+    // complete `ready` rendition.
+    expect($video->fresh()->status)->toBe('failed');
+    expect($video->fresh()->failure_code)->toBe('storage_read_failed');
+});
+
+it('leaves no scratch files behind when ffmpeg times out mid-transcode', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+
+    Process::fake(function (PendingProcess $process) {
+        $command = $process->command;
+        $bin = is_array($command) ? $command[0] : '';
+
+        if ($bin === 'ffprobe') {
+            return Process::result(output: json_encode(compliantProbe()));
+        }
+
+        // Stands in for `ProcessTimedOutException`, which
+        // `Process::timeout()->run()` THROWS rather than returning as an
+        // unsuccessful result. The exact type is immaterial — what the
+        // missing try/finally leaked on was *any* throw between the
+        // download and the unlinks, and a real timeout is the likeliest.
+        throw new RuntimeException('ffmpeg exceeded its timeout');
+    });
+
+    $before = scratchFiles();
+
+    expect(fn () => (new FfmpegTranscoder)->transcode($video))->toThrow(RuntimeException::class);
+
+    // Without the finally, this run stranded the full-size source copy and
+    // the partial rendition permanently; two of those and
+    // hasEnoughFreeSpace() wedges every later transcode on the host.
+    expect(scratchFiles())->toBe($before);
 });

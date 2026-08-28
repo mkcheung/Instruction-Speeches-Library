@@ -2,8 +2,10 @@
 
 use App\Models\Speech;
 use App\Models\User;
+use App\Services\SpeechService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * §6.11. The `< id` CHECK is the entire cycle defense; cross-owner linking
@@ -76,4 +78,36 @@ it('allows at most one successor per attempt', function () {
 
     expect(fn () => Speech::factory()->for($user)->create(['supersedes_id' => $earlier->id]))
         ->toThrow(QueryException::class);
+});
+
+/**
+ * Post-STEP-10 code review: the at-most-one-successor half of the invariant
+ * was left entirely to the DB index, so the service produced a 500 where
+ * its sibling failure produces a clean 422.
+ */
+it('rejects a second successor with a validation error rather than a QueryException', function () {
+    $user = User::factory()->create();
+    $earlier = Speech::factory()->for($user)->create();
+    Speech::factory()->for($user)->create(['supersedes_id' => $earlier->id]);
+
+    expect(fn () => app(SpeechService::class)->create($user, [
+        'title' => 'Attempt 3',
+        'supersedes_id' => $earlier->id,
+    ]))->toThrow(ValidationException::class);
+});
+
+it('counts a soft-deleted successor as still occupying the slot', function () {
+    $user = User::factory()->create();
+    $earlier = Speech::factory()->for($user)->create();
+    $successor = Speech::factory()->for($user)->create(['supersedes_id' => $earlier->id]);
+    $successor->delete();
+
+    // `uq_speeches_successor` has no `WHERE deleted_at IS NULL` clause (the
+    // annotations index does), so the tombstone still holds the slot even
+    // though `supersededBy()` reports null. Without withTrashed() here the
+    // service waved this through into a unique-index violation.
+    expect(fn () => app(SpeechService::class)->create($user, [
+        'title' => 'Attempt 3',
+        'supersedes_id' => $earlier->id,
+    ]))->toThrow(ValidationException::class);
 });

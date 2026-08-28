@@ -52,3 +52,26 @@ it('returns null words_per_minute when total cue duration is zero', function () 
     expect($derived['word_count'])->toBe(1);
     expect($derived['words_per_minute'])->toBeNull();
 });
+
+/**
+ * Post-STEP-10 code review: a callback-less `array_filter` dropped every
+ * falsy token, so the literal spoken word "0" vanished from the count.
+ */
+it('counts a bare spoken zero as a word', function () {
+    $derived = (new TranscriptDeriver)->derive([
+        ['start' => 0.0, 'end' => 60.0, 'text' => 'we scored 0 goals'],
+    ]);
+
+    expect($derived['word_count'])->toBe(4);
+    // words_per_minute is computed from that count, so both columns were
+    // wrong — and pace comparison across speeches is the point of them.
+    expect($derived['words_per_minute'])->toBe(4.0);
+});
+
+it('counts a cue that is only a zero', function () {
+    $derived = (new TranscriptDeriver)->derive([
+        ['start' => 0.0, 'end' => 60.0, 'text' => '0'],
+    ]);
+
+    expect($derived['word_count'])->toBe(1);
+});

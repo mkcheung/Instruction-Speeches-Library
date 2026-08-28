@@ -194,8 +194,18 @@ export function setCaptionsTrack(
   captions: { src: string; label?: string; srclang?: string } | null,
 ): void {
   const existing = toArray<TextTrack>(player.remoteTextTracks())
+  // Remember whether the viewer had captions showing before we replace the
+  // track. `default: true` re-adds it in the showing state, and
+  // SpeechWatch re-runs its attach effect on every signed-URL refresh
+  // (~600s, MediaUrlSigner::DEFAULT_TTL_SECONDS) — so a viewer who turned
+  // captions OFF had them silently turn themselves back on mid-watch, with
+  // the CC button flipping back to "Captions on" unprompted. Only the
+  // FIRST attach should default to showing.
+  let wasDisabled = false
   for (const track of existing) {
-    if (track.kind === 'captions') player.removeRemoteTextTrack(track)
+    if (track.kind !== 'captions') continue
+    if (track.mode !== 'showing') wasDisabled = true
+    player.removeRemoteTextTrack(track)
   }
 
   if (!captions) return
@@ -206,10 +216,15 @@ export function setCaptionsTrack(
       src: captions.src,
       srclang: captions.srclang ?? 'en',
       label: captions.label ?? 'English',
-      default: true,
+      default: !wasDisabled,
     },
     false,
   )
+
+  if (wasDisabled) {
+    const added = getCaptionsTrack(player)
+    if (added) added.mode = 'disabled'
+  }
 }
 
 /** The current `kind: 'captions'` `TextTrack`, if one has been added via

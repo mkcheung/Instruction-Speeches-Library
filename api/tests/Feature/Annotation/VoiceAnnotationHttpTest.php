@@ -190,6 +190,51 @@ it('never leaks whether a peer review annotation is a voice note via 403-vs-404 
     $response->assertNotFound();
 })->with(['PATCH', 'DELETE']);
 
+it('never distinguishes a peer reviewer\'s voice annotation from a nonexistent one', function (string $method, string $suffix) {
+    // Code-review finding: audioUrl/retryTranscript/restore resolved the
+    // review from the implicit-bound $annotation and checked only
+    // `speech_id`, so a PEER reviewer's annotation on the same speech
+    // reached authorize() and came back 403 while a nonexistent id came
+    // back 404. Walking ids therefore revealed which of them were peers'
+    // live voice notes. AnnotationController::update/destroy already
+    // resolve entitlement first; these three now match.
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [$speaker, $coachB, $speech, $reviewB] = voiceReview();
+
+    $asset = SpeechAsset::factory()->for($speech)->voiceNote()->create(['status' => 'ready']);
+    $peerAnnotation = Annotation::factory()->for($reviewB)->create([
+        'audio_asset_id' => $asset->id,
+        'transcript_status' => 'failed',
+    ]);
+    if ($method === 'POST' && $suffix === '/restore') {
+        $peerAnnotation->delete();
+    }
+
+    // Coach A holds their own legitimate review on the SAME speech.
+    $coachA = User::factory()->create();
+    $coachA->assignRole('coach');
+    Review::factory()->accepted()->create([
+        'speech_id' => $speech->id,
+        'speech_owner_id' => $speaker->id,
+        'reviewer_id' => $coachA->id,
+        'status' => 'in_progress',
+    ]);
+
+    $probe = $this->actingAs($coachA)->withHeader('Accept', 'application/json')
+        ->json($method, "/api/speeches/{$speech->id}/annotations/{$peerAnnotation->id}{$suffix}");
+    $missing = $this->actingAs($coachA)->withHeader('Accept', 'application/json')
+        ->json($method, "/api/speeches/{$speech->id}/annotations/99999999{$suffix}");
+
+    expect($probe->status())->toBe(404);
+    expect($probe->status())->toBe($missing->status());
+})->with([
+    'audio url' => ['GET', '/voice-playback-url'],
+    'retry transcript' => ['POST', '/voice-transcript/retry'],
+    'restore' => ['POST', '/restore'],
+]);
+
 it('returns only the frozen public voice resource fields', function () {
     $this->seed(RoleSeeder::class);
     Storage::fake('media');

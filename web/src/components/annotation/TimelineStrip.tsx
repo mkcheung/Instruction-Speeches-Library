@@ -82,7 +82,13 @@ export function TimelineStrip({
   const [updateAnnotation] = useUpdateAnnotationMutation()
 
   const laid = useMemo(() => layoutRows(annotations), [annotations])
-  const rowCount = Math.max(1, Math.min(MAX_ROWS, ...laid.map((m) => m.row + 1)))
+  // min/max order matters: spreading the row indices into `Math.min` picks
+  // the FEWEST rows in use, not the most — two markers on rows 0 and 1 gave
+  // a 1.5rem strip while the row-1 marker sits at `top: 1.5rem`, i.e.
+  // outside its own bordered box (there is no `overflow: hidden`, so it
+  // spilled onto the composer below). The empty case also inverted:
+  // `Math.min(MAX_ROWS)` over no rows returned 2, reserving double height.
+  const rowCount = Math.min(MAX_ROWS, Math.max(1, ...laid.map((m) => m.row + 1)))
 
   const startDrag = (kind: DragKind, annotation: Annotation, startClientX: number) => {
     const container = containerRef.current

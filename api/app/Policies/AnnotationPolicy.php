@@ -38,7 +38,13 @@ class AnnotationPolicy
         // reviewer here" is now unreachable. The assert() below is a
         // DEFENSIVE assertion, not a live mechanism: if a review ever
         // appears under an admin, isolation still wins.
-        if ($user->hasRole('admin')) {
+        // Excludes the admin who is also the SPEAKER: they fall through to
+        // the speaker branch below and are held to the speaker's own rules
+        // (access-granting statuses only), rather than this unconditional
+        // `true`. Pairs with the same owner exclusion in
+        // Annotation::scopeVisibleTo — see its comment for the draft leak
+        // this closes.
+        if ($user->hasRole('admin') && $review->speech_owner_id !== $user->id) {
             assert(! Review::where('speech_id', $review->speech_id)
                 ->where('reviewer_id', $user->id)->exists(),
                 'Admins must not hold reviews — see ReviewPolicy::accept.');

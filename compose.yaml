@@ -189,6 +189,22 @@ services:
         condition: service_healthy
     env_file:
       - api/.env
+    # WHISPER_MODEL_NAME is what WhisperTranscriber writes verbatim into
+    # every `speech_transcripts.model` (config/captions.php's `model_name`).
+    # Without it set here the column fell back to the literal
+    # `whisper.cpp-base.en`, which encodes NEITHER the pinned whisper.cpp
+    # commit nor the weights digest — so bumping either left every
+    # transcript claiming an identical model, exactly the silent-drift
+    # docker/whisper/model.lock exists to prevent. Kept equal to that
+    # file's `model_id` (engine short-commit + weight short-digest);
+    # scripts/verify-whisper-model-lock.sh pins the lock against the
+    # Dockerfile commit, and this line is what carries it into the running
+    # worker. WHISPER_MODEL_LOCK matches the path the Dockerfile copies the
+    # lock file to in this image (`/docker/whisper/model.lock`), since the
+    # config default resolves relative to `api/` and does not exist here.
+    environment:
+      WHISPER_MODEL_NAME: "${WHISPER_MODEL_NAME:-wcpp-6266a9f9-a03779c8}"
+      WHISPER_MODEL_LOCK: /docker/whisper/model.lock
     # RO on purpose (STEP-09 verification plan §6.1, item 5) — this service
     # must never be able to write into the model volume, only read the
     # file `whisper-model-init` (below) placed there. The model is never

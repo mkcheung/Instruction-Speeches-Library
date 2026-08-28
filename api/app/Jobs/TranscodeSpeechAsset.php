@@ -10,6 +10,8 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * §9.2's non-negotiable #1: `after_commit => true`. Without it, this job
@@ -67,11 +69,39 @@ class TranscodeSpeechAsset implements ShouldQueue
     }
 
     /**
+     * A collision must be able to RETRY. `WithoutOverlapping` releases the
+     * job back onto the queue, and a release increments the attempt count —
+     * so with no `$tries` here the worker's `--tries=1` (compose.yaml)
+     * applied, and the very next pop failed the job outright with
+     * `MaxAttemptsExceededException`. One lock collision was therefore a
+     * permanent failure, and with no `failed()` below the asset was left at
+     * `processing` forever behind a Retry button that reproduced it.
+     *
+     * `$failOnTimeout` still holds §9.2's "a job that merely exceeds
+     * $timeout must be marked failed, not silently retried" — that path
+     * fails the job regardless of how many tries remain.
+     */
+    public int $tries = 3;
+
+    /**
      * Keyed on asset id (§9.2) so a release/retry that races a still-running
      * attempt for the *same* asset can't let two workers transcode it at
      * once; a different asset id is a different lock and proceeds
-     * unaffected. `releaseAfter(0)`: if a second attempt does collide, retry
-     * immediately rather than making that asset wait out a cooldown.
+     * unaffected.
+     *
+     * `shared()` is load-bearing: without it Laravel prefixes the lock key
+     * with the JOB CLASS (`WithoutOverlapping::getLockKey` falls through to
+     * `get_class($job)`), so this job and GeneratePoster took two DIFFERENT
+     * locks on the same asset id and GeneratePoster's docblock claim that
+     * "the two must never run at once" was not true. A single-replica
+     * `ffmpeg-worker` masks that by serializing the queue, which is exactly
+     * why the middleware is the only protection that matters here — it
+     * exists solely for the scaled case.
+     *
+     * `releaseAfter(5)` rather than 0: an immediate re-release against a
+     * lock held for the full `expireAfter` window just burns attempts, and
+     * a lock leaked by a SIGKILL/OOM (the `finally` that releases it never
+     * runs) is held for the full 3900s.
      *
      * @return array<int, WithoutOverlapping>
      */
@@ -79,9 +109,32 @@ class TranscodeSpeechAsset implements ShouldQueue
     {
         return [
             (new WithoutOverlapping((string) $this->speechAssetId))
+                ->shared()
                 ->expireAfter(3900)
-                ->releaseAfter(0),
+                ->releaseAfter(5),
         ];
+    }
+
+    /**
+     * §9.2's visible-failure backstop, modeled on GenerateCaptions::failed().
+     * Only moves a row that is still `processing`, so it is a safe no-op if
+     * the asset already resolved or a newer attempt took it over.
+     */
+    public function failed(Throwable $exception): void
+    {
+        Log::error('TranscodeSpeechAsset: job failed with an unhandled exception.', [
+            'speech_asset_id' => $this->speechAssetId,
+            'exception' => $exception->getMessage(),
+        ]);
+
+        SpeechAsset::query()
+            ->whereKey($this->speechAssetId)
+            ->where('status', 'processing')
+            ->update([
+                'status' => 'failed',
+                'failure_code' => 'job_failed',
+                'failure_detail' => 'We had trouble processing this video. Please try again.',
+            ]);
     }
 
     public function handle(TranscoderContract $transcoder): void

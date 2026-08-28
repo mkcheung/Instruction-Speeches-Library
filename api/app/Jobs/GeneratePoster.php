@@ -54,10 +54,25 @@ class GeneratePoster implements ShouldQueue
     }
 
     /**
+     * A release increments the attempt count, so without `$tries` the
+     * worker's `--tries=1` made a single lock collision a permanent
+     * failure on the very next pop. Posters have no visible failed state
+     * (§9.5), so that surfaced as nothing at all — the speaker's chosen
+     * frame silently never applied. See TranscodeSpeechAsset::$tries.
+     */
+    public int $tries = 3;
+
+    /**
      * Deliberately keyed on the SAME id space TranscodeSpeechAsset uses
      * (the video asset id) — a poster regeneration reads the rendition a
      * concurrent full transcode of that same asset would be rewriting, so
      * the two must never run at once.
+     *
+     * `shared()` is what actually makes that true. Laravel prefixes the
+     * lock key with the job class unless it is set
+     * (`WithoutOverlapping::getLockKey`), so this middleware and
+     * TranscodeSpeechAsset's took two different locks on the same id and
+     * the mutual exclusion this comment describes never existed.
      *
      * @return array<int, WithoutOverlapping>
      */
@@ -65,8 +80,9 @@ class GeneratePoster implements ShouldQueue
     {
         return [
             (new WithoutOverlapping((string) $this->videoAssetId))
+                ->shared()
                 ->expireAfter(3900)
-                ->releaseAfter(0),
+                ->releaseAfter(5),
         ];
     }
 

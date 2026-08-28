@@ -33,6 +33,24 @@ class UsernameService
         // username is ever written, so the invariant must hold even for a
         // caller that reaches `set()` directly without going through the
         // HTTP validation layer.
+        // The invariant above was only half-implemented: history was
+        // re-checked here but current occupancy was not, so a name held by
+        // a LIVE user reached `save()` and hit the unique index as an
+        // uncaught QueryException. App\Rules\UsernameIsAvailable has both
+        // checks; this one had only the second. That also made the HTTP
+        // path a TOCTOU — two users validating the same name concurrently
+        // both passed the rule and the loser got a 500 rather than a 422.
+        $takenByAnotherUser = User::query()
+            ->where('username', $normalized)
+            ->whereKeyNot($user->id)
+            ->exists();
+
+        if ($takenByAnotherUser) {
+            throw ValidationException::withMessages([
+                'username' => ['That username is already taken.'],
+            ]);
+        }
+
         $previouslyOwnedBySomeoneElse = UsernameHistory::query()
             ->where('username', $normalized)
             ->where('user_id', '!=', $user->id)

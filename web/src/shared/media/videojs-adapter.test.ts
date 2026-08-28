@@ -393,4 +393,32 @@ describe('setCaptionsTrack/getCaptionsTrack', () => {
     setCaptionsTrack(player as unknown as Parameters<typeof setCaptionsTrack>[0], null)
     expect(getCaptionsTrack(player as unknown as Parameters<typeof getCaptionsTrack>[0])).toBeNull()
   })
+
+  it('re-attaching preserves captions the viewer turned off', () => {
+    // Regression: `default: true` was unconditional, and SpeechWatch
+    // re-attaches on every signed-URL refresh (~600s), so a viewer who
+    // turned captions off had them silently switch back on mid-watch.
+    const { player } = fakeCaptionsPlayer()
+    const p = player as unknown as Parameters<typeof setCaptionsTrack>[0]
+    setCaptionsTrack(p, { src: 'blob:one' })
+
+    const track = getCaptionsTrack(p as unknown as Parameters<typeof getCaptionsTrack>[0])!
+    track.mode = 'disabled'
+
+    setCaptionsTrack(p, { src: 'blob:refreshed' })
+
+    const reattached = getCaptionsTrack(p as unknown as Parameters<typeof getCaptionsTrack>[0])!
+    // `.src` is on the fake track, not the DOM TextTrack type
+    // getCaptionsTrack is declared to return.
+    expect((reattached as unknown as { src?: string }).src).toBe('blob:refreshed')
+    expect(reattached.mode).toBe('disabled')
+  })
+
+  it('still defaults to showing on the FIRST attach', () => {
+    const { player } = fakeCaptionsPlayer()
+    const p = player as unknown as Parameters<typeof setCaptionsTrack>[0]
+    setCaptionsTrack(p, { src: 'blob:one' })
+
+    expect(getCaptionsTrack(p as unknown as Parameters<typeof getCaptionsTrack>[0])!.mode).toBe('showing')
+  })
 })

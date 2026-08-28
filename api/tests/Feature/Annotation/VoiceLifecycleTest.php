@@ -16,6 +16,7 @@ use App\Services\Voice\VoiceNoteTranscriberContract;
 use App\Services\Voice\VoiceTranscriptionException;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -203,4 +204,47 @@ it('does not allow an invitation to reintroduce reviewer identity after erasure 
     $coach->update(['erasure_started_at' => now()]);
     expect(fn () => app(ReviewService::class)->invite($speaker, $speech, $coach, null, false, false))->toThrow(HttpException::class);
     expect(Review::where('speech_id', $speech->id)->where('reviewer_id', $coach->id)->exists())->toBeFalse();
+});
+
+/**
+ * Post-STEP-10 code review: PurgeVoiceAsset was the one purge path that
+ * never wrote `purge_claim_id`, defeating the interlock every other
+ * participant in the voice pipeline reads.
+ */
+it('claims the voice asset before deleting any object, so a concurrent normalization cannot republish it', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [$coach, $speech, $review] = makeVoiceLifecycleFixture();
+    [$asset] = makeProcessingVoice($coach, $speech, $review);
+
+    // Force the object deletion to fail so the job throws part-way through
+    // and the row survives for inspection.
+    $disk = Mockery::mock(Filesystem::class);
+    $disk->shouldReceive('exists')->andReturnTrue();
+    $disk->shouldReceive('delete')->andReturnFalse();
+    Storage::shouldReceive('disk')->with('media')->andReturn($disk);
+
+    expect(fn () => (new PurgeVoiceAsset($asset->id, $coach->id))->handle(app(QuotaService::class)))
+        ->toThrow(RuntimeException::class);
+
+    // FfmpegVoiceNoteProcessor gates BOTH its candidate CAS and its publish
+    // CAS on `purge_claim_id` being null. Without the claim persisted here,
+    // a normalization already in flight could land a fully normalized copy
+    // of the reviewer's audio in storage after the hard purge, where no
+    // row-driven sweep could ever find it.
+    expect($asset->fresh()->purge_claim_id)->not->toBeNull();
+});
+
+it('reuses an existing purge claim rather than minting a second one on retry', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [$coach, $speech, $review] = makeVoiceLifecycleFixture();
+    [$asset] = makeProcessingVoice($coach, $speech, $review);
+    $asset->update(['purge_claim_id' => 'pre-existing-claim']);
+
+    (new PurgeVoiceAsset($asset->id, $coach->id))->handle(app(QuotaService::class));
+
+    // The finalize CAS matches on the claim it took, so minting a fresh id
+    // on a retry would strand the row it had already claimed.
+    expect(SpeechAsset::find($asset->id))->toBeNull();
 });
