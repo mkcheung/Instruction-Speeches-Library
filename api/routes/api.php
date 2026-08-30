@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\CaptionController;
@@ -9,8 +10,10 @@ use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PresignController;
+use App\Http\Controllers\Api\PrivacyExportController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\QueueStatusController;
+use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
 use App\Http\Controllers\Api\ReviewerDirectoryController;
 use App\Http\Controllers\Api\SpeechController;
@@ -207,6 +210,32 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.notifications.index');
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])
         ->name('api.notifications.read');
+
+    // STEP-11-FROZEN-CONTRACT.md §1: reports land in a table; the admin
+    // queue UI arrives in STEP-12 (`php artisan reports:list` prints them
+    // until then). Authorization is inline in the controller
+    // (`Gate::allows('view', $reportable)`, reusing SpeechPolicy::view —
+    // no new Gate ability, per §1).
+    Route::post('/reports', [ReportController::class, 'store'])
+        ->name('api.reports.store');
+
+    // STEP-11-FROZEN-CONTRACT.md §7: async export, signed-URL delivery.
+    // Self-scoped throughout — always $request->user(), no Policy needed
+    // (§8).
+    Route::post('/privacy/exports', [PrivacyExportController::class, 'store'])
+        ->name('api.privacy.exports.store');
+    Route::get('/privacy/exports', [PrivacyExportController::class, 'index'])
+        ->name('api.privacy.exports.index');
+    Route::get('/privacy/exports/{export}/download', [PrivacyExportController::class, 'download'])
+        ->name('api.privacy.exports.download');
+
+    // STEP-11-FROZEN-CONTRACT.md §8: self-scoped account erasure — always
+    // $request->user(), no admin path this step (that's STEP-12's
+    // `user.erase`, deliberately left reserved-but-undefined in
+    // AppServiceProvider's $mustFallThrough).
+    Route::delete('/account', [AccountController::class, 'destroy'])
+        ->middleware('verified.api')
+        ->name('api.account.destroy');
 });
 
 // Public identity view — no auth (§7.1: viewing another user's public profile

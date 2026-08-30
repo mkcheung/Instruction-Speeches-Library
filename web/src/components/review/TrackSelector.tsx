@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Transcript } from '@/components/annotation/Transcript'
+import { ReportDialog } from '@/components/report/ReportDialog'
 import { NO_COMMENTARY, type CommentarySelection, type CommentaryTrackOption } from '@/hooks/useCommentaryTrack'
 import type { Annotation } from '@/features/annotation/types'
 import { cn } from '@/lib/utils'
@@ -61,9 +62,16 @@ export function TrackSelector({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Commentary track</CardTitle>
-        <CardDescription>Choose whose commentary to watch alongside the video.</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle>Commentary track</CardTitle>
+          <CardDescription>Choose whose commentary to watch alongside the video.</CardDescription>
+        </div>
+        {/* STEP-11-FROZEN-CONTRACT.md §10: review-level report ("annotation
+            sets" in STEP-11.md's own wording — a review IS the annotation
+            set). Only rendered once a real review is selected: `NO_COMMENTARY`
+            has no `reportable_id` to attach to. */}
+        {typeof selected === 'number' && <ReportDialog reportableType="review" reportableId={selected} />}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <div role="radiogroup" aria-label="Choose commentary track" className="flex flex-wrap gap-2">

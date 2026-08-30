@@ -57,10 +57,21 @@ class AnnotationController extends Controller
 
         return new JsonResponse([
             'review_id' => $review->id,
-            'reviewer' => $review->reviewer === null ? null : [
-                'id' => $review->reviewer->id,
-                'name' => trim("{$review->reviewer->first_name} {$review->reviewer->last_name}"),
-            ],
+            // STEP-11-FROZEN-CONTRACT.md §9: same "Former reviewer" rule as
+            // ReviewResource — a null `reviewer_id` means an erased
+            // account, rendered as a literal label, never a stored
+            // snapshot.
+            // See ReviewResource's identical check for why `anonymized_at`
+            // is checked alongside null — defense-in-depth against the
+            // erasure race window AccountErasureService's start-of-job gate
+            // stamp closes in the ordinary path.
+            'reviewer' => ($review->reviewer === null || $review->reviewer->anonymized_at !== null)
+                ? ['display_name' => 'Former reviewer']
+                : [
+                    'id' => $review->reviewer->id,
+                    'username' => $review->reviewer->username,
+                    'name' => trim("{$review->reviewer->first_name} {$review->reviewer->last_name}"),
+                ],
             'annotations' => AnnotationResource::collection($rows),
         ]);
     }

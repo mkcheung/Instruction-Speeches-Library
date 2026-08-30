@@ -1,4 +1,4 @@
-import { FileText, Home, Search, Upload, User, type LucideIcon } from 'lucide-react'
+import { FileText, Home, Search, Shield, Upload, User, type LucideIcon } from 'lucide-react'
 import type { CurrentUser } from '@/features/auth/types'
 
 /**
@@ -48,6 +48,10 @@ const BASELINE_NAV_ITEMS: NavItem[] = [
   // reviewers" has).
   { label: 'Search', to: '/search', icon: Search },
   { label: 'Edit profile', to: '/profile', icon: User },
+  // STEP-11-FROZEN-CONTRACT.md §10: export/deletion is an unconditional
+  // destination — every authenticated user owns their own data regardless
+  // of role, same reasoning as `/profile`.
+  { label: 'Account & privacy', to: '/account', icon: Shield },
 ]
 
 /**

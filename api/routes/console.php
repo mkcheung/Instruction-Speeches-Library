@@ -22,3 +22,12 @@ if (app()->environment('e2e')) {
 } else {
     Schedule::command('media:reconcile')->daily();
 }
+
+// STEP-11-privacy-erasure.md's retention-lifecycle bullet — see
+// PurgeExpiredExportsCommand's docblock. Same e2e-fast/production-slow
+// split as media:reconcile, for the same reason.
+if (app()->environment('e2e')) {
+    Schedule::command('privacy:purge-expired-exports')->everyMinute();
+} else {
+    Schedule::command('privacy:purge-expired-exports')->daily();
+}

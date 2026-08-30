@@ -34,10 +34,14 @@ export interface Review {
     title: string
     owner_name: string | null
   }
+  /** STEP-11-FROZEN-CONTRACT.md §9: `display_name` replaces `id`/
+   * `username`/`name` when the reviewer's account has been erased — resolve
+   * via `reviewerLabel()` (`@/lib/reviewerLabel`), never `.name` directly. */
   reviewer?: {
-    id: number
-    username: string
-    name: string
+    id?: number
+    username?: string
+    name?: string
+    display_name?: string
   } | null
 }
 

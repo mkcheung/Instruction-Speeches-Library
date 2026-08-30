@@ -11,6 +11,7 @@ import ResetPassword from '@/routes/ResetPassword'
 import VerifyEmail from '@/routes/VerifyEmail'
 import Onboarding from '@/routes/Onboarding'
 import ProfileEdit from '@/routes/ProfileEdit'
+import Account from '@/routes/Account'
 import PublicProfile from '@/routes/PublicProfile'
 import MySpeeches from '@/routes/MySpeeches'
 import SpeechCreate from '@/routes/SpeechCreate'
@@ -110,6 +111,10 @@ const router = createBrowserRouter(
         <Route path="/speeches/:id" element={<SpeechWatch />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/profile" element={<ProfileEdit />} />
+        {/* STEP-11-FROZEN-CONTRACT.md §10: own screen, not nested under
+            `/profile` — same guard group as every other authenticated
+            route here (do not touch the guard structure otherwise). */}
+        <Route path="/account" element={<Account />} />
         <Route path="/reviewers" element={<ReviewerDirectory />} />
         {/* STEP-09-FROZEN-CONTRACT.md §5: top-level, not nested under a
             speech — it queries across all of a user's own speeches. */}
