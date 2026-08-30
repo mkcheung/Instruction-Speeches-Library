@@ -42,11 +42,35 @@ class ReviewResource extends JsonResource
                     ? trim("{$this->speech->user->first_name} {$this->speech->user->last_name}")
                     : null,
             ]),
-            'reviewer' => $this->whenLoaded('reviewer', fn () => $this->reviewer === null ? null : [
-                'id' => $this->reviewer->id,
-                'username' => $this->reviewer->username,
-                'name' => trim("{$this->reviewer->first_name} {$this->reviewer->last_name}"),
-            ]),
+            // STEP-11-FROZEN-CONTRACT.md §9: a null `reviewer_id` means the
+            // reviewer's account was erased (App\Services\Privacy\
+            // AccountErasureService step 5 nulls it, never the row itself).
+            // The label is a literal string, never derived from a stored
+            // snapshot — snapshotting the name at publish time would defeat
+            // the erasure it is meant to survive. "Positionally
+            // disambiguated" (two erased reviewers on one speech) comes for
+            // free from this list's stable `ORDER BY reviews.id ASC`
+            // ordering, not from numbering the label itself.
+            //
+            // Deliberately `when()`, not `whenLoaded()`: whenLoaded()'s own
+            // implementation short-circuits to `null` (never calling the
+            // value closure at all) whenever the loaded relation's value
+            // IS null — exactly the "Former reviewer" case this resource
+            // exists to handle. `when()` has no such special case.
+            // `anonymized_at !== null` is defense-in-depth against the
+            // narrow race window step 5's null-authorship UPDATE closes in
+            // the ordinary path: if a `reviews` row for this reviewer is
+            // ever created/updated between AccountErasureService's gate
+            // stamp and that UPDATE, `reviewer_id` could still point at an
+            // anonymized-but-not-null user row. Render it the same as a
+            // genuinely null one rather than leaking blank/empty fields.
+            'reviewer' => $this->when($this->relationLoaded('reviewer'), fn () => ($this->reviewer === null || $this->reviewer->anonymized_at !== null)
+                ? ['display_name' => 'Former reviewer']
+                : [
+                    'id' => $this->reviewer->id,
+                    'username' => $this->reviewer->username,
+                    'name' => trim("{$this->reviewer->first_name} {$this->reviewer->last_name}"),
+                ]),
         ];
     }
 }

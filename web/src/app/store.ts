@@ -8,6 +8,8 @@ import { annotationApi } from '@/features/annotation/annotationApi'
 import { essayApi } from '@/features/essay/essayApi'
 import { captionApi } from '@/features/caption/captionApi'
 import { transcriptApi } from '@/features/transcript/transcriptApi'
+import { reportApi } from '@/features/report/reportApi'
+import { privacyApi } from '@/features/privacy/privacyApi'
 
 export const store = configureStore({
   reducer: {
@@ -20,6 +22,8 @@ export const store = configureStore({
     [essayApi.reducerPath]: essayApi.reducer,
     [captionApi.reducerPath]: captionApi.reducer,
     [transcriptApi.reducerPath]: transcriptApi.reducer,
+    [reportApi.reducerPath]: reportApi.reducer,
+    [privacyApi.reducerPath]: privacyApi.reducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
@@ -32,6 +36,8 @@ export const store = configureStore({
       essayApi.middleware,
       captionApi.middleware,
       transcriptApi.middleware,
+      reportApi.middleware,
+      privacyApi.middleware,
     ),
 })
 

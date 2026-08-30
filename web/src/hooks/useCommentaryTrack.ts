@@ -9,6 +9,7 @@ import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
 import { useIosFullscreenSubtitles } from '@/hooks/useIosFullscreenSubtitles'
 import { useVoiceCommentaryPreference } from '@/hooks/useVoiceCommentaryPreference'
 import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
+import { reviewerLabel } from '@/lib/reviewerLabel'
 
 export const NO_COMMENTARY = 'none' as const
 export type CommentarySelection = number | typeof NO_COMMENTARY
@@ -162,7 +163,7 @@ export function useCommentaryTrack(
     { key: NO_COMMENTARY, label: 'No commentary', review: null },
     ...(reviews ?? []).map((review) => ({
       key: review.id,
-      label: review.reviewer?.name ?? 'Former reviewer',
+      label: reviewerLabel(review.reviewer) ?? 'Former reviewer',
       review,
     })),
   ]
@@ -186,7 +187,7 @@ export function useCommentaryTrack(
     // Only name the reviewer once their data is the data on screen —
     // otherwise `TrackSelector`'s "…hasn't left commentary yet" empty state
     // fires against the deliberately-emptied cross-fade array.
-    fetchedReviewerName: crossfading ? undefined : fetched?.reviewer?.name,
+    fetchedReviewerName: crossfading ? undefined : reviewerLabel(fetched?.reviewer),
     // `cues`, not `displayed`: the overlay and the transcript are two
     // presentations of the SAME set (§8.5/§8.6), so the transcript must not
     // keep listing the outgoing reviewer's rows while the overlays are

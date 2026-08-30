@@ -17,6 +17,7 @@ import { CaptionEditor } from '@/components/caption/CaptionEditor'
 import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
 import { CaptionSettingsToggle } from '@/components/caption/CaptionSettingsToggle'
+import { ReportDialog } from '@/components/report/ReportDialog'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { canRecordVoiceForRoles } from '@/lib/voiceRoles'
@@ -226,6 +227,11 @@ export default function SpeechWatch() {
               Invite a reviewer
             </Button>
           )}
+          {/* STEP-11-FROZEN-CONTRACT.md §10: speech-level report, visible to
+              non-owners — an owner reporting their own speech isn't a case
+              this step's UI needs to support, and `isOwner`/`!isOwner` is
+              already how this header decides what to show. */}
+          {!isOwner && <ReportDialog reportableType="speech" reportableId={speechId} />}
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           {asset?.status === 'ready' && initialUrl ? (

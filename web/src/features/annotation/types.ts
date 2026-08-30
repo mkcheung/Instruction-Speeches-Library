@@ -123,9 +123,15 @@ export function isAnnotationConflict(data: unknown): data is AnnotationConflictR
   return hasConflictShape(data)
 }
 
+/** STEP-11-FROZEN-CONTRACT.md §9: `display_name` is present instead of
+ * `id`/`username`/`name` when the reviewer's account has been erased —
+ * resolve the label via `reviewerLabel()` (`@/lib/reviewerLabel`), never
+ * `.name` directly. */
 export interface AnnotationsReviewer {
-  id: number
-  name: string
+  id?: number
+  username?: string
+  name?: string
+  display_name?: string
 }
 
 /** `GET /api/speeches/{speech}/annotations?review_id=...` response body.

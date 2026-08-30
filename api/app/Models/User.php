@@ -20,8 +20,9 @@ use Spatie\Permission\Traits\HasRoles;
 /**
  * @property array<string,mixed> $preferences
  * @property Carbon|null $erasure_started_at
+ * @property Carbon|null $anonymized_at
  */
-#[Fillable(['name', 'first_name', 'last_name', 'email', 'password', 'preferences', 'erasure_started_at'])]
+#[Fillable(['name', 'first_name', 'last_name', 'email', 'password', 'preferences', 'erasure_started_at', 'anonymized_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmailContract
 {
@@ -117,6 +118,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
             'password' => 'hashed',
             'preferences' => 'array',
             'erasure_started_at' => 'datetime',
+            // STEP-11-FROZEN-CONTRACT.md §3/§6 step 7: set once, by
+            // App\Services\Privacy\AccountErasureService, when the full
+            // account-erasure job anonymizes this row. Distinct from
+            // `erasure_started_at` above, which only ever gates the
+            // narrower reviewer-voice-note erasure slice
+            // (App\Jobs\EraseSelfAccount, pre-existing).
+            'anonymized_at' => 'datetime',
         ];
     }
 }
