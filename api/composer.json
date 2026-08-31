@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.3",
         "aws/aws-sdk-php": "^3.390",
+        "filament/filament": "^4.0",
         "intervention/image": "^4.2",
         "laravel/fortify": "^1.37",
         "laravel/framework": "^13.8",

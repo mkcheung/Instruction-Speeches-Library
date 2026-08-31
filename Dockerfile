@@ -337,6 +337,34 @@ COPY docker/whisper/model.lock /docker/whisper/model.lock
 RUN chmod +x /usr/local/bin/init-model.sh
 ENTRYPOINT ["/usr/local/bin/init-model.sh"]
 
+# ---- clamav: the `clamav` compose service ONLY. -------------------------
+# STEP-12-admin-portal.md / STEP-12-FROZEN-CONTRACT.md §7: `clamd` (the
+# long-running daemon), not one-shot `clamscan` — App\Services\Scanning\
+# ClamdScanner talks to a warm, already-signature-loaded socket repeatedly
+# from the queued `App\Jobs\ScanApplicationDocument` job, rather than
+# paying signature-load cost per document. Built from a distro (apk)
+# package like ffmpeg/whisper.cpp above, but ClamAV is GPL-2.0 licensed
+# top-to-bottom (not just a build flag like ffmpeg's `--enable-gpl`) — same
+# isolation reasoning applies: own image, never pushed to a registry (see
+# the ffmpeg-worker stage's own note; nothing in this repo's CI pushes
+# images at all today).
+#
+# `freshclam` runs once at image build time to seed a signature database
+# baked into the image (so the container has SOMETHING to scan against
+# immediately on first boot), and again at container start via the
+# `clamav-entrypoint.sh` wrapper before `clamd` itself starts — freshclam's
+# database load is exactly the "genuinely slow startup" this step's own
+# healthcheck (compose.yaml) exists to wait out.
+FROM alpine:3.20 AS clamav
+RUN apk add --no-cache clamav clamav-daemon
+COPY docker/clamav/clamd.conf /etc/clamav/clamd.conf
+COPY docker/clamav/entrypoint.sh /usr/local/bin/clamav-entrypoint.sh
+RUN chmod +x /usr/local/bin/clamav-entrypoint.sh \
+    && mkdir -p /var/lib/clamav \
+    && freshclam --config-file=/etc/clamav/freshclam.conf || true
+EXPOSE 3310
+ENTRYPOINT ["/usr/local/bin/clamav-entrypoint.sh"]
+
 # ---- nginx: the `web` service. Serves the built SPA and proxies /api to app:9000 ----
 FROM nginx:1.27-alpine AS nginx
 COPY --from=webbuild /web/dist /usr/share/nginx/html

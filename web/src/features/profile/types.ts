@@ -42,7 +42,16 @@ export interface ProfileEditPayload {
 }
 
 /** `App\Http\Resources\PublicProfileResource` — the `/api/u/{username}`
- * payload. Identity only (§12 S1's deliberate stub). */
+ * payload. Identity only (§12 S1's deliberate stub).
+ *
+ * `credential` is STEP-12-FROZEN-CONTRACT.md §9's addition — confirmed by
+ * that review that `PublicProfileResource` carries no role/credential
+ * field today, same `getRoleNames()->first()` shape
+ * `ReviewerDirectoryEntry.credential` already uses (`features/review/
+ * types.ts`), so the profile page and the directory can never disagree
+ * about what "Coach" means. Optional here (not every backend build has
+ * landed the field yet) — `PublicProfile.tsx` treats a missing value the
+ * same as `'member'`, i.e. no badge. */
 export interface PublicProfile {
   username: string
   display_name: string | null
@@ -50,6 +59,7 @@ export interface PublicProfile {
   bio: string | null
   location: string | null
   avatar_url: string | null
+  credential?: string
 }
 
 export interface UsernameAvailability {

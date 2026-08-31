@@ -5,15 +5,20 @@ namespace App\Providers;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
+use App\Policies\AccountPolicy;
 use App\Policies\AnnotationPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
+use App\Policies\UserPolicy;
 use App\Services\Captions\CaptionTranscriberContract;
 use App\Services\Captions\DeterministicCaptionTranscriber;
 use App\Services\Captions\FakeCaptionTranscriber;
 use App\Services\Captions\WhisperTranscriber;
 use App\Services\Essay\EssayRenderer;
 use App\Services\Essay\NullEssayRenderer;
+use App\Services\Scanning\ClamdScanner;
+use App\Services\Scanning\ClamScannerContract;
+use App\Services\Scanning\FakeClamScanner;
 use App\Services\Transcoding\FakeTranscoder;
 use App\Services\Transcoding\FfmpegTranscoder;
 use App\Services\Transcoding\TranscoderContract;
@@ -89,6 +94,18 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(VoiceNoteTranscriberContract::class, fn () => ($this->app->environment('testing') || config('captions.test_worker_enabled'))
             ? $this->app->make(FakeVoiceNoteTranscriber::class)
             : $this->app->make(WhisperVoiceNoteTranscriber::class));
+
+        // STEP-12-FROZEN-CONTRACT.md §5: the exact same testing/dev-prod
+        // conditional-bind shape as TranscoderContract above —
+        // FakeClamScanner in testing/CI (always clean, so the upload/
+        // scan-job wiring is testable without a real `clamd` socket),
+        // ClamdScanner (talks to the `clamav` compose service) everywhere
+        // else.
+        $this->app->bind(ClamScannerContract::class, function () {
+            return $this->app->environment('testing')
+                ? new FakeClamScanner
+                : new ClamdScanner;
+        });
     }
 
     /**
@@ -116,6 +133,10 @@ class AppServiceProvider extends ServiceProvider
         // this file alone which model maps to which policy.
         Gate::policy(Speech::class, SpeechPolicy::class);
         Gate::policy(Review::class, ReviewPolicy::class);
+
+        // STEP-12: UserPolicy/AccountPolicy are new classes (nothing
+        // existed to extend — see each class's own docblock).
+        Gate::policy(User::class, UserPolicy::class);
 
         // Dotted ability names, registered explicitly so the string a
         // controller passes to authorize()/can() is the exact same string
@@ -172,6 +193,20 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('caption.readCaptions', [SpeechPolicy::class, 'readCaptions']);
         Gate::define('caption.update', [SpeechPolicy::class, 'updateCaptions']);
 
+        // STEP-12-FROZEN-CONTRACT.md §2/§3/§4: the admin-moderation
+        // surface. `role.assign`/`role.revoke` are the GENERIC abilities
+        // (distinct from the existing `role.grantSuperAdmin`/
+        // `revokeSuperAdmin` pair below) that gate
+        // App\Services\RoleAssignmentService's two entry points —
+        // `user.delete`/`user.suspend` gate App\Services\
+        // UserDeletionService's. `account.eraseSelf` extends STEP-11's
+        // self-erasure with the "unless last admin" clause.
+        Gate::define('role.assign', [UserPolicy::class, 'assign']);
+        Gate::define('role.revoke', [UserPolicy::class, 'revoke']);
+        Gate::define('user.delete', [UserPolicy::class, 'delete']);
+        Gate::define('user.suspend', [UserPolicy::class, 'suspend']);
+        Gate::define('account.eraseSelf', [AccountPolicy::class, 'eraseSelf']);
+
         // PLAN-APP-HEADER.md S4: wires up ReviewPolicy::viewDirectory, which
         // existed as dead code (P2) — ReviewerDirectoryController made no
         // authorization call at all. Registered explicitly, same as every
@@ -215,6 +250,19 @@ class AppServiceProvider extends ServiceProvider
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',
+
+                // STEP-12-FROZEN-CONTRACT.md §2: confirmed missing prior
+                // to this step, added in the SAME commit as
+                // RoleAssignmentService/UserDeletionService and the
+                // Gate::define calls above — the single highest-risk item
+                // in this step per both readiness review agents. Without
+                // these here, Gate::before's blanket admin bypass would
+                // let ANY admin assign/revoke ANY role (including
+                // super_admin) or suspend ANY user (including another
+                // admin, or themselves) with zero policy check at all —
+                // the exact bug class the plan's own history names (rev 2
+                // omitted `user.delete`).
+                'role.assign', 'role.revoke', 'user.suspend',
 
                 // S4: §7.1's matrix denies Admin the reviewer directory —
                 // without this, Gate::before's blanket admin bypass would

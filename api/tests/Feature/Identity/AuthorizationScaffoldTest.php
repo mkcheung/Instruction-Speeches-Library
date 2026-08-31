@@ -35,14 +35,16 @@ it('does not grant an admin a free pass on abilities that must fall through to a
     // denied" — proving the exclusion actually excludes, not that these
     // specific operations are already safe (they aren't built yet).
     //
-    // 'review.accept' was dropped from this list in STEP-05: it now has a
-    // real, model-bound ReviewPolicy::accept registered via Gate::define,
-    // so calling Gate::allows('review.accept') with no model argument is a
-    // usage error (missing the Review), not a meaningful assertion about
-    // the fall-through list. The fall-through behavior for review.accept
-    // is covered for real, model-bound calls in the ReviewPolicy/
-    // ReviewController tests instead.
-    foreach (['user.delete', 'user.erase', 'user.demote'] as $ability) {
+    // 'review.accept' was dropped from this list in STEP-05, and
+    // 'user.delete' is dropped here in STEP-12 for the identical reason:
+    // both now have a real, model-bound policy method registered via
+    // Gate::define (App\Policies\UserPolicy::delete), so calling
+    // Gate::allows('user.delete') with no target-User argument is a usage
+    // error (missing the target), not a meaningful assertion about the
+    // fall-through list. The fall-through behavior for user.delete is
+    // covered for real, model-bound calls in
+    // tests/Feature/Admin/AdminAbilityDenialTest.php instead.
+    foreach (['user.erase', 'user.demote'] as $ability) {
         expect(Gate::forUser($admin)->allows($ability))->toBeFalse();
     }
 });

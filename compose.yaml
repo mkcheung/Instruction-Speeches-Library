@@ -35,6 +35,8 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
     env_file:
       - api/.env
     healthcheck:
@@ -71,6 +73,13 @@ services:
       seaweedfs:
         condition: service_healthy
       valkey:
+        condition: service_healthy
+      # STEP-12-admin-portal.md: App\Jobs\ScanApplicationDocument runs on
+      # this service's `default` queue and needs a live `clamd` socket —
+      # see the `clamav` service's own comment for why its healthcheck is
+      # genuinely load-bearing here (freshclam's signature-DB load), not a
+      # decorative dependency.
+      clamav:
         condition: service_healthy
     env_file:
       - api/.env
@@ -451,6 +460,51 @@ services:
     networks:
       - default
 
+  # STEP-12-admin-portal.md / STEP-12-FROZEN-CONTRACT.md §7: the ClamAV
+  # scanner — `clamd` (long-running daemon), not one-shot `clamscan`, so
+  # App\Services\Scanning\ClamdScanner hits a warm, already-signature-
+  # loaded socket repeatedly rather than reloading signatures per file.
+  # "Only place the system accepts arbitrary binaries from unverified
+  # users and hands them to an administrator" (STEP-12.md) is why the
+  # scanner arrives here and not earlier.
+  #
+  # The FIRST service in this compose file whose OWN healthcheck is
+  # actually load-bearing for a genuinely slow startup (freshclam's
+  # signature-database load can take minutes on a cold volume) rather than
+  # a fast liveness probe that basically always passes immediately —
+  # every other `condition: service_healthy` in this file (18 prior uses,
+  # confirmed by direct count) waits out a healthcheck that's essentially
+  # instantaneous once the process is up. `clamav-signatures` is a NAMED
+  # volume (not baked into the image, not a bind mount) so the signature
+  # database survives container recreation without a full re-download —
+  # same `postgres-data`/`seaweedfs-data` convention.
+  clamav:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: clamav
+    volumes:
+      - clamav-signatures:/var/lib/clamav
+    healthcheck:
+      # `clamdcheck.sh` does NOT exist on Alpine's `clamav-daemon` package
+      # (that script ships only with Debian/Ubuntu's build — confirmed by
+      # directly building this image and searching it: `find / -iname
+      # clamdcheck*` finds nothing). `clamdscan --ping 1` is the real
+      # equivalent available here, confirmed to return `PONG`/exit 0 once
+      # clamd has finished loading its signature database, matching how
+      # ClamdScanner itself reaches the daemon over TCPSocket 3310
+      # (docker/clamav/clamd.conf). A long start_period/retries budget is
+      # the point of this service: freshclam's signature load, not a bug,
+      # is why this is generous where every other healthcheck in this
+      # file is not.
+      test: ["CMD", "clamdscan", "--ping", "1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
+    networks:
+      - default
+
   # S1's "container that exists purely to intercept something"
   # (STEP-01-identity.md): captures every outgoing mail instead of sending
   # it anywhere real, so the verification email can be read from the web UI
@@ -478,3 +532,4 @@ volumes:
   postgres-data:
   seaweedfs-data:
   whisper-models:
+  clamav-signatures:

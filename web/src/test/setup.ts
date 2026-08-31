@@ -87,3 +87,22 @@ function ensureAnimationFrameGlobals(): void {
 }
 ensureAnimationFrameGlobals()
 afterEach(ensureAnimationFrameGlobals)
+
+/**
+ * STEP-12-FROZEN-CONTRACT.md §9's document-upload component mounts
+ * `@uppy/dashboard`'s real `<Dashboard>` (same `@uppy/core`/`@uppy/react`
+ * wiring `UploadDashboard.tsx` already uses, previously untested at the
+ * unit level — nothing before this exercised it). jsdom implements no
+ * `ResizeObserver` at all, and the plugin's own `uninstall()` calls
+ * `this.resizeObserver.disconnect()` unconditionally on unmount, which
+ * throws `TypeError: Cannot read properties of undefined` without this —
+ * not specific to any one test, so stubbed globally once here rather than
+ * per test file, same rationale as the `VTTCue`/`addTextTrack` stubs above.
+ */
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class FakeResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}

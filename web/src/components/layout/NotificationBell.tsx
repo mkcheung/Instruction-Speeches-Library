@@ -33,6 +33,15 @@ function describe(notification: Notification): string {
       return actor ? `${actor} accepted your invitation on "${speech}"` : `Your invitation on "${speech}" was accepted`
     case 'review.declined':
       return actor ? `${actor} declined your invitation on "${speech}"` : `Your invitation on "${speech}" was declined`
+    // STEP-12-FROZEN-CONTRACT.md §9: `coach_application.approved`/
+    // `.rejected` — this `switch` is deliberately enumerated, not
+    // generic-fallback-safe (the `default` below exists for genuinely
+    // unrecognized types, not as a place to skip adding a case), so each
+    // new notification type from the backend needs its own case here.
+    case 'coach_application.approved':
+      return 'Your coach application was approved — your profile now shows a Coach badge.'
+    case 'coach_application.rejected':
+      return 'Your coach application was not approved.'
     default:
       return speech
   }

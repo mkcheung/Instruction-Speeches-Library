@@ -23,9 +23,16 @@ use Illuminate\Http\Request;
  */
 class AccountController extends Controller
 {
+    /**
+     * STEP-12-FROZEN-CONTRACT.md §4: `account.eraseSelf` extends this
+     * previously-unconditional erasure with the "unless last admin"
+     * clause — an admin who is the last one standing 403s here instead of
+     * erasing themselves out of the system.
+     */
     public function destroy(Request $request, AccountErasureService $service): JsonResponse
     {
         $user = $request->user();
+        $this->authorize('account.eraseSelf');
         $service->execute($user);
 
         return new JsonResponse(['message' => 'Your account has been erased.'], 200);
