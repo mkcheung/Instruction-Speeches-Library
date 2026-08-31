@@ -6,7 +6,13 @@
  * flat set of fields, no pre-rendered `message` string; the bell composes
  * its own copy from `type`/`actor_name`/`speech_title` client-side.
  */
-export type NotificationType = 'review.invited' | 'review.accepted' | 'review.declined'
+export type NotificationType =
+  | 'review.invited'
+  | 'review.accepted'
+  | 'review.declined'
+  // STEP-12-FROZEN-CONTRACT.md §9's pinned notification `type` strings.
+  | 'coach_application.approved'
+  | 'coach_application.rejected'
 
 export interface Notification {
   id: string

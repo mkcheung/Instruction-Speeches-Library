@@ -113,3 +113,17 @@ export const inviteReviewerSchema = z.object({
 })
 
 export type InviteReviewerFormValues = z.infer<typeof inviteReviewerSchema>
+
+/** STEP-12-FROZEN-CONTRACT.md §9 / STEP-12.md's demo script ("Write a
+ * statement"). 2000 is `coach_applications.statement`'s varchar cap
+ * (STEP-12.md's backend section) — duplicated here for immediate
+ * client-side feedback only, same "Zod owns shape, the server owns the
+ * database rule" split every other schema in this file follows. */
+export const coachApplicationSchema = z.object({
+  statement: z
+    .string()
+    .min(1, 'Tell us why you want to coach.')
+    .max(2000, 'Statement must be at most 2000 characters.'),
+})
+
+export type CoachApplicationFormValues = z.infer<typeof coachApplicationSchema>

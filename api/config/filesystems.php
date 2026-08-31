@@ -99,6 +99,26 @@ return [
             'report' => false,
         ],
 
+        // STEP-12-FROZEN-CONTRACT.md §5: certification PDFs live on their
+        // OWN disk, never `media`/`media_public` — both of those are
+        // S3-compatible buckets on the same browser-reachable origin
+        // family the admin panel could run behind, and this step's whole
+        // point is that a certification PDF must NEVER be servable that
+        // way. Local (private) storage inside the `app`/`queue-worker`
+        // containers: nothing here is ever exposed via `Storage::url()`
+        // or a bucket-level presigned GET — the ONLY way out is
+        // App\Services\ApplicationDocumentUrlSigner's signed Laravel
+        // route, which forces `Content-Disposition: attachment` and
+        // `X-Content-Type-Options: nosniff` on every response (the first
+        // place in this codebase setting either header — see that
+        // controller).
+        'application_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/application_documents'),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

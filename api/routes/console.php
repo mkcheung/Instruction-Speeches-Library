@@ -31,3 +31,13 @@ if (app()->environment('e2e')) {
 } else {
     Schedule::command('privacy:purge-expired-exports')->daily();
 }
+
+// STEP-12-FROZEN-CONTRACT.md §5 / STEP-12.md "Retention" — certification
+// documents purged 90 days after a coach-application decision. Same
+// e2e-fast/production-slow split as the two commands above, for the same
+// reason.
+if (app()->environment('e2e')) {
+    Schedule::command('coach:purge-expired-documents')->everyMinute();
+} else {
+    Schedule::command('coach:purge-expired-documents')->daily();
+}

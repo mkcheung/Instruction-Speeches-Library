@@ -1,4 +1,4 @@
-import { FileText, Home, Search, Shield, Upload, User, type LucideIcon } from 'lucide-react'
+import { FileText, GraduationCap, Home, Search, Shield, Upload, User, type LucideIcon } from 'lucide-react'
 import type { CurrentUser } from '@/features/auth/types'
 
 /**
@@ -62,14 +62,27 @@ const BASELINE_NAV_ITEMS: NavItem[] = [
  */
 const REVIEWER_DIRECTORY_ITEM: NavItem = { label: 'Find reviewers', to: '/reviewers', icon: Search }
 
+/**
+ * STEP-12-FROZEN-CONTRACT.md §9 — reachable CTA for a Member who isn't
+ * already a coach. Hidden for existing coaches (nothing left to apply
+ * for) and admins (they moderate applications in Filament, they don't
+ * submit them), mirroring `REVIEWER_DIRECTORY_ITEM`'s own admin-hiding
+ * precedent one item below.
+ */
+const BECOME_A_COACH_ITEM: NavItem = { label: 'Become a Coach', to: '/become-a-coach', icon: GraduationCap }
+
 /** The nav-item list for a given user — baseline items always present,
- * `Find reviewers` added unless the user is an admin (S4). Safe to call
- * with `roles: []`; it still returns the complete baseline list (S3's own
- * acceptance criterion). */
+ * `Find reviewers` added unless the user is an admin (S4), `Become a
+ * Coach` added unless the user is already a coach or an admin. Safe to
+ * call with `roles: []`; it still returns the complete baseline list (S3's
+ * own acceptance criterion). */
 export function navItemsFor(user: Pick<CurrentUser, 'roles'> | undefined | null): NavItem[] {
   const items = [...BASELINE_NAV_ITEMS]
   if (!hasRole(user, 'admin')) {
     items.splice(2, 0, REVIEWER_DIRECTORY_ITEM)
+  }
+  if (!hasRole(user, 'admin') && !hasRole(user, 'coach')) {
+    items.push(BECOME_A_COACH_ITEM)
   }
   return items
 }

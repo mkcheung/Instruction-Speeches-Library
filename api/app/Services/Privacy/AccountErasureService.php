@@ -2,6 +2,7 @@
 
 namespace App\Services\Privacy;
 
+use App\Exceptions\LastAdministratorException;
 use App\Models\Annotation;
 use App\Models\AuditLog;
 use App\Models\Profile;
@@ -10,6 +11,7 @@ use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Models\UsernameHistory;
+use App\Services\RoleAssignmentService;
 use App\Services\Voice\EraseReviewerVoiceNotes;
 use App\Support\AuditAction;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +42,10 @@ use Illuminate\Support\Str;
  */
 class AccountErasureService
 {
-    public function __construct(private readonly EraseReviewerVoiceNotes $eraseReviewerVoiceNotes) {}
+    public function __construct(
+        private readonly EraseReviewerVoiceNotes $eraseReviewerVoiceNotes,
+        private readonly RoleAssignmentService $roles,
+    ) {}
 
     public function plan(User $user): ErasurePlan
     {
@@ -106,6 +111,22 @@ class AccountErasureService
 
     public function execute(User $user): ErasurePlan
     {
+        // §7.4's own rule: "every rule above must ALSO exist as an
+        // invariant in the service — policies are advisory." Until now
+        // `AccountPolicy::eraseSelf`'s "unless last admin" clause was
+        // enforced ONLY at the policy layer (`AccountController::destroy`'s
+        // `$this->authorize(...)` call) — any future caller of this
+        // service that skips that one controller (an artisan command, a
+        // queued scheduled-erasure job, an admin-triggered erasure path)
+        // would silently bypass last-admin protection entirely. Found by
+        // `/code-review`'s altitude angle; fixed by pushing the same
+        // `RoleAssignmentService` check down here, matching how
+        // `UserDeletionService::guardedRemoval` already enforces it for
+        // suspend/soft-delete rather than trusting `UserPolicy` alone.
+        if ($this->roles->wouldOrphanAdminRoster($user)) {
+            throw new LastAdministratorException;
+        }
+
         // Gate, before any of the 8 steps: `erasure_started_at` /
         // `voice_erasure_started_at` are the same hard gates
         // `EraseSelfAccount` stamps before its narrower voice-only slice —

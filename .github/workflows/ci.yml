@@ -252,6 +252,14 @@ jobs:
       - name: Verify Postgres voice annotation schema
         run: ./scripts/verify-postgres-voice-schema.sh
 
+      # STEP-12-FROZEN-CONTRACT.md §8: pg_advisory_xact_lock has no sqlite
+      # equivalent, and two genuinely concurrent processes racing the same
+      # advisory lock cannot be exercised by the Pest suite at all — this
+      # is the only place the last-admin lock's real concurrency guarantee
+      # is ever proven.
+      - name: Verify Postgres last-admin lock
+        run: ./scripts/verify-postgres-last-admin-lock.sh
+
       # §7 item 6 / §4.2 item 3: "the temporal acceptance proof" — video
       # must reach `ready` while captions stay queued/`processing` with
       # only the transcode worker consuming its queue and the deterministic

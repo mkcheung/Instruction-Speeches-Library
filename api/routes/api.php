@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AccountController;
 use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\CaptionController;
+use App\Http\Controllers\Api\CoachApplicationController;
 use App\Http\Controllers\Api\EraseSelfController;
 use App\Http\Controllers\Api\EssayController;
 use App\Http\Controllers\Api\HealthController;
@@ -236,6 +237,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/account', [AccountController::class, 'destroy'])
         ->middleware('verified.api')
         ->name('api.account.destroy');
+
+    // STEP-12-FROZEN-CONTRACT.md §9: the applicant's side of the coach-
+    // application loop. Self-scoped throughout, no Policy needed — same
+    // shape as the privacy/export routes above.
+    Route::post('/coach-applications', [CoachApplicationController::class, 'store'])
+        ->name('api.coach-applications.store');
+    Route::get('/coach-applications/me', [CoachApplicationController::class, 'me'])
+        ->name('api.coach-applications.me');
+    Route::post('/coach-applications/{coachApplication}/documents', [CoachApplicationController::class, 'uploadDocuments'])
+        ->name('api.coach-applications.documents.store');
 });
 
 // Public identity view — no auth (§7.1: viewing another user's public profile

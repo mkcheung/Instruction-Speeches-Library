@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ApplicationDocumentDownloadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -18,3 +19,12 @@ Route::get('/', function () {
 Route::get('/login', function () {
     return redirect(rtrim((string) config('app.frontend_url'), '/').'/login');
 })->name('login');
+
+// STEP-12-FROZEN-CONTRACT.md §5: the ONE route that ever serves an
+// `application_documents` file — reached only via a short-lived signed URL
+// (App\Services\ApplicationDocumentUrlSigner), generated only from an
+// authorized admin action. `signed` middleware validates the URL itself;
+// see the controller for why nothing else guards this route.
+Route::get('/application-documents/{document}', [ApplicationDocumentDownloadController::class, 'show'])
+    ->middleware('signed')
+    ->name('admin.application-documents.show');

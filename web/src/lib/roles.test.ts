@@ -51,4 +51,18 @@ describe('navItemsFor', () => {
     expect(navItemsFor({ roles: ['member'] }).map((item) => item.label)).toContain('Find reviewers')
     expect(navItemsFor({ roles: ['coach'] }).map((item) => item.label)).toContain('Find reviewers')
   })
+
+  it('shows Become a Coach to a plain member', () => {
+    expect(navItemsFor({ roles: [] }).map((item) => item.label)).toContain('Become a Coach')
+    expect(navItemsFor({ roles: ['member'] }).map((item) => item.label)).toContain('Become a Coach')
+  })
+
+  it('hides Become a Coach from an existing coach', () => {
+    expect(navItemsFor({ roles: ['coach'] }).map((item) => item.label)).not.toContain('Become a Coach')
+  })
+
+  it('hides Become a Coach from an admin or super_admin', () => {
+    expect(navItemsFor({ roles: ['admin'] }).map((item) => item.label)).not.toContain('Become a Coach')
+    expect(navItemsFor({ roles: ['super_admin'] }).map((item) => item.label)).not.toContain('Become a Coach')
+  })
 })

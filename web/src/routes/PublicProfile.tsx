@@ -1,4 +1,5 @@
 import { useParams } from 'react-router-dom'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { useGetPublicProfileQuery } from '@/features/profile/profileApi'
 import NotFound from '@/routes/NotFound'
@@ -38,9 +39,17 @@ export default function PublicProfile() {
           ) : (
             <div className="size-28 rounded-full bg-muted" aria-hidden="true" />
           )}
-          <div>
+          <div className="flex flex-col items-center gap-1.5">
             <h1 className="text-lg font-medium">{profile.display_name || `@${profile.username}`}</h1>
             <p className="text-sm text-muted-foreground">@{profile.username}</p>
+            {/* STEP-12-FROZEN-CONTRACT.md §9: same `<Badge>` + credential-
+                string convention `ReviewerDirectory.tsx`/
+                `InviteReviewerDialog.tsx` already use — "an administrator
+                has reviewed submitted credentials," never "verified
+                coach" (STEP-12-admin-portal.md's "Watch for"). Members
+                get no badge at all, matching those two callers only
+                rendering one for `credential === 'coach'`. */}
+            {profile.credential === 'coach' && <Badge variant="default">Coach</Badge>}
           </div>
           {profile.bio && <p className="text-sm">{profile.bio}</p>}
         </CardContent>

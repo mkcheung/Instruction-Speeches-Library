@@ -21,7 +21,17 @@
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+# `--ignore-platform-req=ext-intl`: the official `composer:2` image is a bare
+# installer with no PHP extensions beyond the core set — it doesn't bundle
+# `intl`, which `filament/support` (STEP-12) requires. This stage only
+# resolves/installs *files*, it never executes application code, so the
+# extension doesn't need to be physically present here — only where the
+# code actually runs. The `runtime` stage below installs `intl` for real
+# (`docker-php-ext-install ... intl ...`), so every image built FROM it
+# (ffmpeg-worker/whisper-worker/whisper-smoke included) genuinely has it at
+# execution time. Confirmed by reproducing this exact failure with a local
+# `composer install` against the `composer:2` image before adding the flag.
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl
 COPY api/ .
 RUN composer dump-autoload --optimize --no-dev
 
@@ -269,7 +279,11 @@ USER www-data
 FROM composer:2 AS vendor-dev
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
-RUN composer install --no-scripts --no-autoloader --prefer-dist
+# See the `vendor` stage's own comment above for why `--ignore-platform-req=
+# ext-intl` is correct here too: `composer:2` never executes app code, and
+# every image built FROM `runtime` (which this stage's output ultimately
+# layers onto, via `whisper-smoke`) has `intl` installed for real.
+RUN composer install --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl
 COPY api/ .
 RUN composer dump-autoload --optimize
 
@@ -336,6 +350,34 @@ COPY docker/whisper/init-model.sh /usr/local/bin/init-model.sh
 COPY docker/whisper/model.lock /docker/whisper/model.lock
 RUN chmod +x /usr/local/bin/init-model.sh
 ENTRYPOINT ["/usr/local/bin/init-model.sh"]
+
+# ---- clamav: the `clamav` compose service ONLY. -------------------------
+# STEP-12-admin-portal.md / STEP-12-FROZEN-CONTRACT.md §7: `clamd` (the
+# long-running daemon), not one-shot `clamscan` — App\Services\Scanning\
+# ClamdScanner talks to a warm, already-signature-loaded socket repeatedly
+# from the queued `App\Jobs\ScanApplicationDocument` job, rather than
+# paying signature-load cost per document. Built from a distro (apk)
+# package like ffmpeg/whisper.cpp above, but ClamAV is GPL-2.0 licensed
+# top-to-bottom (not just a build flag like ffmpeg's `--enable-gpl`) — same
+# isolation reasoning applies: own image, never pushed to a registry (see
+# the ffmpeg-worker stage's own note; nothing in this repo's CI pushes
+# images at all today).
+#
+# `freshclam` runs once at image build time to seed a signature database
+# baked into the image (so the container has SOMETHING to scan against
+# immediately on first boot), and again at container start via the
+# `clamav-entrypoint.sh` wrapper before `clamd` itself starts — freshclam's
+# database load is exactly the "genuinely slow startup" this step's own
+# healthcheck (compose.yaml) exists to wait out.
+FROM alpine:3.20 AS clamav
+RUN apk add --no-cache clamav clamav-daemon
+COPY docker/clamav/clamd.conf /etc/clamav/clamd.conf
+COPY docker/clamav/entrypoint.sh /usr/local/bin/clamav-entrypoint.sh
+RUN chmod +x /usr/local/bin/clamav-entrypoint.sh \
+    && mkdir -p /var/lib/clamav \
+    && freshclam --config-file=/etc/clamav/freshclam.conf || true
+EXPOSE 3310
+ENTRYPOINT ["/usr/local/bin/clamav-entrypoint.sh"]
 
 # ---- nginx: the `web` service. Serves the built SPA and proxies /api to app:9000 ----
 FROM nginx:1.27-alpine AS nginx
