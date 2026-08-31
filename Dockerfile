@@ -21,7 +21,17 @@
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+# `--ignore-platform-req=ext-intl`: the official `composer:2` image is a bare
+# installer with no PHP extensions beyond the core set — it doesn't bundle
+# `intl`, which `filament/support` (STEP-12) requires. This stage only
+# resolves/installs *files*, it never executes application code, so the
+# extension doesn't need to be physically present here — only where the
+# code actually runs. The `runtime` stage below installs `intl` for real
+# (`docker-php-ext-install ... intl ...`), so every image built FROM it
+# (ffmpeg-worker/whisper-worker/whisper-smoke included) genuinely has it at
+# execution time. Confirmed by reproducing this exact failure with a local
+# `composer install` against the `composer:2` image before adding the flag.
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl
 COPY api/ .
 RUN composer dump-autoload --optimize --no-dev
 
@@ -269,7 +279,11 @@ USER www-data
 FROM composer:2 AS vendor-dev
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
-RUN composer install --no-scripts --no-autoloader --prefer-dist
+# See the `vendor` stage's own comment above for why `--ignore-platform-req=
+# ext-intl` is correct here too: `composer:2` never executes app code, and
+# every image built FROM `runtime` (which this stage's output ultimately
+# layers onto, via `whisper-smoke`) has `intl` installed for real.
+RUN composer install --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl
 COPY api/ .
 RUN composer dump-autoload --optimize
 
