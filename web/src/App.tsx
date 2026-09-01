@@ -13,6 +13,9 @@ import Onboarding from '@/routes/Onboarding'
 import ProfileEdit from '@/routes/ProfileEdit'
 import Account from '@/routes/Account'
 import PublicProfile from '@/routes/PublicProfile'
+import ProfileAbout from '@/routes/ProfileAbout'
+import ProfileReviewsLeft from '@/routes/ProfileReviewsLeft'
+import ProfileReviewsReceived from '@/routes/ProfileReviewsReceived'
 import MySpeeches from '@/routes/MySpeeches'
 import SpeechCreate from '@/routes/SpeechCreate'
 import SpeechWatch from '@/routes/SpeechWatch'
@@ -90,7 +93,18 @@ const router = createBrowserRouter(
           </RequireAuth>
         }
       />
-      <Route path="/u/:username" element={<PublicProfile />} />
+      {/* STEP-13-FROZEN-CONTRACT.md §9: the first nested-tab-route pattern
+          in this app — three sibling routes under `PublicProfile`'s own
+          `<Outlet>`, same `<Route>`/`<Outlet>` nesting mechanics as
+          `AppLayout`/`RootLayout` below, just not previously used for
+          same-page tabs. Real routes, not a `role="tablist"` widget — the
+          plan's explicit instruction, since these are URLs people share
+          and go back to. */}
+      <Route path="/u/:username" element={<PublicProfile />}>
+        <Route index element={<ProfileAbout />} />
+        <Route path="reviews-left" element={<ProfileReviewsLeft />} />
+        <Route path="reviews-received" element={<ProfileReviewsReceived />} />
+      </Route>
 
       {/* D1 — one layout route renders the header/sidebar once for
           all five authenticated routes, instead of a header import

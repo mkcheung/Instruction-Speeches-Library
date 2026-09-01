@@ -53,6 +53,10 @@ export interface ProfileEditPayload {
  * landed the field yet) — `PublicProfile.tsx` treats a missing value the
  * same as `'member'`, i.e. no badge. */
 export interface PublicProfile {
+  /** STEP-13: added so `POST /api/connections` has a target id to send —
+   * confirmed missing (and the Connect button unreachable without it) by
+   * the STEP-13 reconciliation audit. */
+  id: number
   username: string
   display_name: string | null
   pronouns: string | null

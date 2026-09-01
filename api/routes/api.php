@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\CaptionController;
 use App\Http\Controllers\Api\CoachApplicationController;
+use App\Http\Controllers\Api\ConnectionController;
 use App\Http\Controllers\Api\EraseSelfController;
 use App\Http\Controllers\Api\EssayController;
 use App\Http\Controllers\Api\HealthController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Api\OnboardingController;
 use App\Http\Controllers\Api\PresignController;
 use App\Http\Controllers\Api\PrivacyExportController;
 use App\Http\Controllers\Api\ProfileController;
+use App\Http\Controllers\Api\ProfileTimelineController;
 use App\Http\Controllers\Api\QueueStatusController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ReviewController;
@@ -247,6 +249,35 @@ Route::middleware('auth:sanctum')->group(function () {
         ->name('api.coach-applications.me');
     Route::post('/coach-applications/{coachApplication}/documents', [CoachApplicationController::class, 'uploadDocuments'])
         ->name('api.coach-applications.documents.store');
+
+    // STEP-13-FROZEN-CONTRACT.md §5/§9: the social layer. `POST /connections`
+    // is idempotent-upsert shaped (new request / re-request after decline /
+    // crossed-request resolves to accepted, all the same call — see
+    // ConnectionService::request's own docblock), rate-limited per (requester,
+    // target) pair (R17, §8). `{connection}` ids are always resolved to the
+    // caller's OWN mirrored row inside the controller before any service
+    // call.
+    Route::post('/connections', [ConnectionController::class, 'store'])
+        ->middleware('throttle:connection-request')
+        ->name('api.connections.store');
+    Route::post('/connections/{connection}/accept', [ConnectionController::class, 'accept'])
+        ->name('api.connections.accept');
+    Route::post('/connections/{connection}/decline', [ConnectionController::class, 'decline'])
+        ->name('api.connections.decline');
+    Route::post('/connections/{connection}/block', [ConnectionController::class, 'block'])
+        ->name('api.connections.block');
+    Route::post('/connections/{connection}/unblock', [ConnectionController::class, 'unblock'])
+        ->name('api.connections.unblock');
+    Route::get('/connections', [ConnectionController::class, 'index'])
+        ->name('api.connections.index');
+
+    // §6.7.3: the profile timeline, driven entirely off `reviews` — see
+    // ProfileTimelineController's own docblock for why `connections` never
+    // appears in this query. Auth-required (unlike `GET /u/{username}`
+    // below, which is public identity-only): the timeline is inherently
+    // viewer-scoped, "U's speeches on which V holds a grant".
+    Route::get('/u/{username}/timeline', [ProfileTimelineController::class, 'show'])
+        ->name('api.profiles.timeline');
 });
 
 // Public identity view — no auth (§7.1: viewing another user's public profile

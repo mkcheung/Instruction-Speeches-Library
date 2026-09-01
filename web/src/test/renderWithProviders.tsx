@@ -15,6 +15,7 @@ import { transcriptApi } from '@/features/transcript/transcriptApi'
 import { reportApi } from '@/features/report/reportApi'
 import { privacyApi } from '@/features/privacy/privacyApi'
 import { coachApplicationApi } from '@/features/coachApplication/coachApplicationApi'
+import { connectionApi } from '@/features/connection/connectionApi'
 
 export function createTestStore() {
   return configureStore({
@@ -31,6 +32,7 @@ export function createTestStore() {
       [reportApi.reducerPath]: reportApi.reducer,
       [privacyApi.reducerPath]: privacyApi.reducer,
       [coachApplicationApi.reducerPath]: coachApplicationApi.reducer,
+      [connectionApi.reducerPath]: connectionApi.reducer,
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware().concat(
@@ -46,6 +48,7 @@ export function createTestStore() {
         reportApi.middleware,
         privacyApi.middleware,
         coachApplicationApi.middleware,
+        connectionApi.middleware,
       ),
     // Unit tests do not need frame-batched Redux notifications. Disabling
     // the enhancer also prevents an RTK-owned animation-frame callback from

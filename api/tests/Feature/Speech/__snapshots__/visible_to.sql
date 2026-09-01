@@ -1,0 +1,1 @@
+select * from "speeches" where ("speeches"."user_id" = 1 or exists (select 1 from "reviews" where "reviews"."speech_id" = "speeches"."id" and "reviews"."reviewer_id" = 1 and "reviews"."status" in ('accepted', 'in_progress', 'published') and "reviews"."revoked_at" is null)) and "speeches"."deleted_at" is null

@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { ConnectionRequestsBell } from '@/components/layout/ConnectionRequestsBell'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { UserMenu } from '@/components/layout/UserMenu'
 
@@ -17,6 +18,7 @@ export function AppHeader() {
         Instruction Speeches Library
       </Link>
       <div className="flex shrink-0 items-center gap-2">
+        <ConnectionRequestsBell />
         <NotificationBell />
         <UserMenu />
       </div>
