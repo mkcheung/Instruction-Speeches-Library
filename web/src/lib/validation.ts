@@ -127,3 +127,18 @@ export const coachApplicationSchema = z.object({
 })
 
 export type CoachApplicationFormValues = z.infer<typeof coachApplicationSchema>
+
+/** STEP-13-social-layer.md's "send connection request" composer — the
+ * target is already known (the profile page you're on), so unlike
+ * `inviteReviewerSchema` there's no id to validate, only the optional
+ * note. 280 matches `connections.note`'s real column cap
+ * (`CreateConnectionRequest`'s `note` rule, `api/database/migrations/
+ * 2026_08_30_100001_create_connections_table.php`'s `VARCHAR(280)`) —
+ * duplicated here for immediate client-side feedback only, same "Zod owns
+ * shape, the server owns the database rule" split every other schema in
+ * this file follows. */
+export const sendConnectionRequestSchema = z.object({
+  message: z.string().max(280, 'Note must be at most 280 characters.').optional(),
+})
+
+export type SendConnectionRequestFormValues = z.infer<typeof sendConnectionRequestSchema>

@@ -2,11 +2,13 @@
 
 namespace App\Providers;
 
+use App\Models\Connection;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
 use App\Policies\AccountPolicy;
 use App\Policies\AnnotationPolicy;
+use App\Policies\ConnectionPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
 use App\Policies\UserPolicy;
@@ -28,8 +30,11 @@ use App\Services\Voice\FfmpegVoiceNoteProcessor;
 use App\Services\Voice\VoiceNoteProcessorContract;
 use App\Services\Voice\VoiceNoteTranscriberContract;
 use App\Services\Voice\WhisperVoiceNoteTranscriber;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
 
@@ -138,6 +143,9 @@ class AppServiceProvider extends ServiceProvider
         // existed to extend — see each class's own docblock).
         Gate::policy(User::class, UserPolicy::class);
 
+        // STEP-13-FROZEN-CONTRACT.md §11.
+        Gate::policy(Connection::class, ConnectionPolicy::class);
+
         // Dotted ability names, registered explicitly so the string a
         // controller passes to authorize()/can() is the exact same string
         // Gate::before's $mustFallThrough checks below — the whole point
@@ -213,6 +221,14 @@ class AppServiceProvider extends ServiceProvider
         // other dotted ability above.
         Gate::define('viewDirectory', [ReviewPolicy::class, 'viewDirectory']);
 
+        // STEP-13-FROZEN-CONTRACT.md §11: `request`/`accept`/`decline`/
+        // `unblock` are self-scoped like `account.eraseSelf` (no ownership
+        // ambiguity — the service resolves "my own row" server-side) and
+        // deliberately get no Gate ability. `block` is the one ability that
+        // needs one, and per §11 it MUST be added to $mustFallThrough below
+        // in this same commit.
+        Gate::define('connection.block', [ConnectionPolicy::class, 'block']);
+
         // Admin's override is a SCOPED Gate::before, not a blanket one
         // (§7.2) — a blanket hook would bypass the very policies Admin must
         // NOT have, e.g. reviewing. Written now, before any concrete
@@ -269,9 +285,31 @@ class AppServiceProvider extends ServiceProvider
                 // short-circuit ReviewPolicy::viewDirectory to `true` and
                 // invert the intended admin-403/member-200 behaviour.
                 'viewDirectory',
+
+                // STEP-13-FROZEN-CONTRACT.md §11: an Admin never becomes a
+                // party to a connection, same categorical reasoning as
+                // 'speech.invite' and 'review.*' above — without this here,
+                // Gate::before's blanket admin bypass would let ANY admin
+                // block ANY pair of users through ConnectionPolicy::block,
+                // contradicting that method's own admin-denial branch.
+                'connection.block',
             ];
 
             return in_array($ability, $mustFallThrough, true) ? null : true;
+        });
+
+        // STEP-13-FROZEN-CONTRACT.md §8 (R17): per-pair invite rate limit,
+        // matching FortifyServiceProvider's RateLimiter::for('login', ...)
+        // convention — the only existing precedent for a named limiter in
+        // this codebase. Keyed on (requester, target) so it's per-PAIR, not
+        // per-requester globally: 5 connection requests to the SAME target
+        // per 24h, not 5 requests total. Deliberately does NOT gate
+        // ReviewService::invite — see that class and §8 of the frozen
+        // contract, a deliberate scope decision, not an oversight.
+        RateLimiter::for('connection-request', function (Request $request) {
+            $targetId = $request->input('user_id');
+
+            return Limit::perDay(5)->by($request->user()?->id.'|'.$targetId);
         });
     }
 }

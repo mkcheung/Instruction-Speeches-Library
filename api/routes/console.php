@@ -41,3 +41,12 @@ if (app()->environment('e2e')) {
 } else {
     Schedule::command('coach:purge-expired-documents')->daily();
 }
+
+// STEP-13-FROZEN-CONTRACT.md §7 / MODERNIZATION_PLAN §6.7.2: the nightly
+// `connections` asymmetry reconciler. Same e2e-fast/production-slow split
+// as the three commands above, for the same reason.
+if (app()->environment('e2e')) {
+    Schedule::command('connections:reconcile-asymmetry')->everyMinute();
+} else {
+    Schedule::command('connections:reconcile-asymmetry')->daily();
+}

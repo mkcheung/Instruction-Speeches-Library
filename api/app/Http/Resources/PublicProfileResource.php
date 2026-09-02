@@ -25,6 +25,16 @@ class PublicProfileResource extends JsonResource
         $profile = $this->profile;
 
         return [
+            // STEP-13: `POST /api/connections` needs a numeric target id,
+            // and this is the only endpoint that resolves a username to
+            // one for a viewer who hasn't connected yet — confirmed by
+            // the STEP-13 reconciliation audit that the frontend's
+            // "Connect" button was unreachable without it. Exposing a
+            // bigint PK is fine here specifically: it identifies no more
+            // than the already-public `username` already does, and every
+            // other public-identity field on this resource is likewise
+            // "public by definition" per this class's own docblock.
+            'id' => $this->id,
             'username' => $this->username,
             'display_name' => $profile?->display_name ?: trim("{$this->first_name} {$this->last_name}"),
             'pronouns' => $profile?->pronouns,
