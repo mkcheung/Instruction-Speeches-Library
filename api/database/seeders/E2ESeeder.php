@@ -50,12 +50,34 @@ class E2ESeeder extends Seeder
      */
     public const COACH_B_ID = 9005;
 
+    /**
+     * A third coach whose review of the shared speech has been REVOKED.
+     * Added by PLAN-ACCESS-DENIED-STATES.md §5.3: the new 403 branch in
+     * SpeechController::show is unreachable in a browser without a revoked
+     * row, and the database had none.
+     *
+     * Deliberately a NEW coach rather than reusing coach A or B:
+     * `uq_reviews_speech_reviewer` permits only one review row per
+     * (speech, reviewer), so revoking either existing coach would have
+     * meant mutating a fixture that E2ESeederSharedSpeechTest asserts is
+     * `accepted` and that the reviewer-isolation specs depend on.
+     */
+    public const COACH_C_ID = 9006;
+
     /** The one speech both coaches review, so isolation has a subject. */
     public const SHARED_SPEECH_ID = 9101;
 
     public const REVIEW_COACH_A_ID = 9201;
 
     public const REVIEW_COACH_B_ID = 9202;
+
+    /**
+     * Coach C's revoked review of the shared speech. Invisible to the
+     * speaker's roster (`ReviewController::forSpeech` filters both
+     * ACCESS_GRANTING and `revoked_at IS NULL`), so it does not disturb
+     * E2ESeederSharedSpeechTest's exact two-reviewer assertion.
+     */
+    public const REVIEW_COACH_C_REVOKED_ID = 9203;
 
     /**
      * The `ready` primary video on the shared speech, added for CP-08
@@ -97,6 +119,7 @@ class E2ESeeder extends Seeder
         'admin' => 'admin',
         'coach' => 'coach',
         'coach_b' => 'coach',
+        'coach_c' => 'coach',
         'member' => 'member',
     ];
 
@@ -122,6 +145,7 @@ class E2ESeeder extends Seeder
             'admin' => ['id' => self::ADMIN_ID, 'email' => 'admin@e2e.test', 'first_name' => 'Adam', 'last_name' => 'Admin', 'username' => 'e2e-admin'],
             'coach' => ['id' => self::COACH_ID, 'email' => 'coach@e2e.test', 'first_name' => 'Cora', 'last_name' => 'Coach', 'username' => 'e2e-coach'],
             'coach_b' => ['id' => self::COACH_B_ID, 'email' => 'coach-b@e2e.test', 'first_name' => 'Bram', 'last_name' => 'Bystander', 'username' => 'e2e-coach-b'],
+            'coach_c' => ['id' => self::COACH_C_ID, 'email' => 'coach-c@e2e.test', 'first_name' => 'Cyrus', 'last_name' => 'Cutoff', 'username' => 'e2e-coach-c'],
             'member' => ['id' => self::MEMBER_ID, 'email' => 'member@e2e.test', 'first_name' => 'Milo', 'last_name' => 'Member', 'username' => 'e2e-member'],
         ];
 
@@ -229,6 +253,7 @@ class E2ESeeder extends Seeder
         $reviews = [
             self::REVIEW_COACH_A_ID => $users['coach'],
             self::REVIEW_COACH_B_ID => $users['coach_b'],
+            self::REVIEW_COACH_C_REVOKED_ID => $users['coach_c'],
         ];
 
         foreach ($reviews as $reviewId => $reviewer) {
@@ -265,9 +290,52 @@ class E2ESeeder extends Seeder
                     // button on `essay_published_at`, so a publish spec
                     // would pass exactly once and then fail forever.
                     ...$this->essayColumnsFor($reviewId, $timestamp),
+                    // PLAN-ACCESS-DENIED-STATES.md §5.3. Written for every
+                    // review, not only the revoked one, for the same reason
+                    // the essay columns are: `updateOrCreate` writes what you
+                    // list and nothing else, so omitting these for A and B
+                    // would let a revoke performed by a spec survive every
+                    // future re-seed and silently turn an `accepted` fixture
+                    // into a revoked one.
+                    ...$this->revocationColumnsFor($reviewId, $timestamp),
                 ]
             );
         }
+    }
+
+    /**
+     * Revocation state per review. Only coach C's row carries a tombstone;
+     * A and B are explicitly reset to null so a spec that revokes one of
+     * them cannot leave the fixture permanently revoked.
+     *
+     * Note `status` is deliberately left as `'accepted'` even on the revoked
+     * row: `revoked_at` is orthogonal to `status` in this schema (there is no
+     * `revoked` value in `ck_reviews_status`), and ReviewService::revoke
+     * tombstones in place without touching status — so a fixture that
+     * rewrote status here would not resemble a real revocation.
+     *
+     * @return array<string, string|Carbon|int|null>
+     */
+    private function revocationColumnsFor(int $reviewId, Carbon $timestamp): array
+    {
+        if ($reviewId === self::REVIEW_COACH_C_REVOKED_ID) {
+            return [
+                'revoked_at' => $timestamp,
+                'revoked_by_id' => self::MEMBER_ID,
+                // Free text the speaker wrote. The 403 response must never
+                // echo this, and ReviewInvitationHttpTest asserts as much —
+                // but the reviewer's own dashboard DOES still show it
+                // (§1 Option A), which is why a realistic value belongs here
+                // rather than a blank.
+                'revocation_reason' => 'Reassigning this speech to a different coach.',
+            ];
+        }
+
+        return [
+            'revoked_at' => null,
+            'revoked_by_id' => null,
+            'revocation_reason' => null,
+        ];
     }
 
     /**

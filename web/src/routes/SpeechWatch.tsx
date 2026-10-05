@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import type Player from 'video.js/dist/types/player'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -18,6 +18,7 @@ import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
 import { CaptionSettingsToggle } from '@/components/caption/CaptionSettingsToggle'
 import { ReportDialog } from '@/components/report/ReportDialog'
+import { getErrorStatus } from '@/lib/errorStatus'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { canRecordVoiceForRoles } from '@/lib/voiceRoles'
@@ -77,7 +78,7 @@ export function OverlayPositioner({
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
-  const { data: speech, isLoading } = useGetSpeechQuery(speechId, { skip: !speechId })
+  const { data: speech, isLoading, error } = useGetSpeechQuery(speechId, { skip: !speechId })
   const { data: me } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
   const [initialUrl, setInitialUrl] = useState<string | null>(null)
@@ -205,6 +206,70 @@ export default function SpeechWatch() {
   // read-only TrackSelector — `enabled: !isOwner` keeps this skipped for
   // the owner and for a still-loading `speech`.
   const { review: myReview } = useMyReviewForSpeech(speechId, !isOwner && !!speech)
+
+  // PLAN-ACCESS-DENIED-STATES.md §0.1/§3.2. This used to be a single
+  // `isLoading || !speech` guard, which conflated "still fetching" with
+  // "the fetch failed": RTK Query settles a failed request to
+  // `isLoading: false, data: undefined`, so `!speech` still held and the
+  // page rendered `Loading…` forever — silently, with no redirect and no
+  // console error, for every 403/404/500/network failure. The branches
+  // below are ordered, and the last one is a catch-all specifically so
+  // that hang cannot come back: any state where `speech` is absent and we
+  // are not loading now renders something.
+  //
+  // `!speechId` is its own branch, not folded into the error case: a
+  // non-numeric or zero `:id` (`/speeches/abc`, `/speeches/0`) makes
+  // `Number(id)` falsy, which `skip: !speechId` turns into a query that
+  // never runs — so there is no error to read, and the old guard hung
+  // there too.
+  //
+  // Copy convention is `ReviewerDirectory.tsx`'s (whose own comment puts
+  // it best — "'the request failed' and 'nobody matched' are different
+  // facts"): a permission or absence state is muted and carries no
+  // `role="alert"`; only a genuine failure is `destructive` and announced.
+  // Deliberately NOT `<NotFound />` — that renders its own `<main>` with
+  // `min-h-svh`, and this route is inside `AppLayout`, which already
+  // provides `<main id="content">`.
+  if (!speechId || (!isLoading && !speech)) {
+    const status = speechId ? getErrorStatus(error) : 404
+    // 403 covers revoked/declined/abandoned as one undifferentiated case —
+    // see the plan's §2.1: splitting them would make the status code itself
+    // reveal which one applies.
+    const denied = status === 403
+    const missing = status === 404
+    const failed = !denied && !missing
+
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-10">
+        <Card>
+          <CardContent
+            className={
+              failed
+                ? 'flex flex-col items-start gap-3 py-6 text-sm text-destructive'
+                : 'flex flex-col items-start gap-3 py-6 text-sm text-muted-foreground'
+            }
+            {...(failed ? { role: 'alert' } : {})}
+          >
+            <p>
+              {denied
+                ? "Access denied. This speech isn't available to your account."
+                : missing
+                  ? 'No such speech.'
+                  : "Couldn't load this speech — try again."}
+            </p>
+            {/* `render={<Link/>}` is the repo's only button-as-link idiom.
+                Base UI emits a dev warning about non-<button> renders here
+                (as it does at the four older call sites); `nativeButton=
+                {false}` silences it but stamps `role="button"` on the
+                anchor, which is the wrong accessible role for navigation. */}
+            <Button size="sm" variant="outline" render={<Link to="/dashboard" />}>
+              Back to my reviews
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   if (isLoading || !speech) {
     return (

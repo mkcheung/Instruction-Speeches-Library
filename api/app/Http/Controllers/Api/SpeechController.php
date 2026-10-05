@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\SpeechAccessDeniedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Speech\CreateSpeechRequest;
 use App\Http\Resources\SpeechResource;
@@ -16,14 +17,17 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * "My speeches" and single-speech read/create. `show` is a two-tier read
- * as of STEP-05 (§7.3): non-existence and "not visible to you at all" both
- * 404 (don't confirm existence to a stranger), an invited-but-not-yet-
- * accepted reviewer gets a reduced metadata payload (no signed playback
- * URL — that still lives behind SpeechUploadController::playbackUrl,
- * gated separately by an access-granting review), and the owner or an
- * access-granting reviewer gets the full payload this endpoint always
- * returned pre-S5.
+ * "My speeches" and single-speech read/create. `show` is a four-tier read:
+ * non-existence and "never had a review here" both 404 (don't confirm
+ * existence to a stranger); a caller whose review no longer reaches the
+ * speech — revoked, declined or abandoned — gets 403 (they were invited, so
+ * existence is not news to them; see SpeechAccessDeniedException, added by
+ * PLAN-ACCESS-DENIED-STATES.md, which also explains why those three are not
+ * told apart); an invited-but-not-yet-accepted reviewer gets a reduced
+ * metadata payload (no signed playback URL — that still lives behind
+ * SpeechUploadController::playbackUrl, gated separately by an
+ * access-granting review); and the owner or an access-granting reviewer gets
+ * the full payload this endpoint always returned pre-S5.
  */
 class SpeechController extends Controller
 {
@@ -61,19 +65,39 @@ class SpeechController extends Controller
         // §7.3's own review row (if any) drives both tiers below — one
         // query, reused, rather than a visibility EXISTS check plus a
         // second separate query for the row's own status.
+        //
+        // PLAN-ACCESS-DENIED-STATES.md §2.2: deliberately NO
+        // `whereNull('revoked_at')` here any more. `uq_reviews_speech_reviewer`
+        // (a real unique index, see the reviews migration) guarantees at most
+        // one row per (speech, reviewer), and ReviewService::invite clears the
+        // tombstone IN PLACE on re-invite rather than inserting a second row —
+        // so dropping the filter cannot shadow a live grant, and there is
+        // nothing to order by. Keeping the revoked row visible is precisely
+        // what lets the denied tier below tell the truth instead of handing a
+        // former reviewer the stranger's 404.
         $review = $isOwner ? null : Review::query()
             ->where('speech_id', $speech->id)
             ->where('reviewer_id', $user->id)
-            ->whereNull('revoked_at')
             ->first();
 
-        $isGranting = $review !== null && in_array($review->status, Review::ACCESS_GRANTING, true);
+        $isLive = $review !== null && $review->revoked_at === null;
+        $isGranting = $isLive && in_array($review->status, Review::ACCESS_GRANTING, true);
 
-        // Not the owner, and either no live (non-revoked) review row at
-        // all, or one that's neither granting nor still `invited`
-        // (declined/abandoned) — don't confirm existence to a stranger.
-        if (! $isOwner && ! $isGranting && ($review === null || $review->status !== 'invited')) {
+        // Never held a review here at all — or held one that was
+        // revoke-and-purged, which hard-deletes the row and so correctly
+        // returns this caller to stranger status. Don't confirm existence.
+        // Unchanged from STEP-05 §7.3, and pinned by name in
+        // ReviewInvitationHttpTest's "refuses a stranger with 404, not 403".
+        if (! $isOwner && $review === null) {
             return new JsonResponse(['message' => 'No such speech.'], Response::HTTP_NOT_FOUND);
+        }
+
+        // Holds a row that no longer reaches the speech: revoked, declined or
+        // abandoned. 403, not 404 — see SpeechAccessDeniedException for why,
+        // including why all three collapse to one undifferentiated refusal
+        // rather than being told apart.
+        if (! $isOwner && ! $isGranting && ! ($isLive && $review->status === 'invited')) {
+            throw new SpeechAccessDeniedException;
         }
 
         if ($isOwner || $isGranting) {

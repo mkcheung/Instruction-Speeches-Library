@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -127,6 +128,37 @@ function ReviewCard({
         )}
         {readOnly && review.revocation_reason && (
           <p className="text-sm text-muted-foreground">Reason: {review.revocation_reason}</p>
+        )}
+        {/* PLAN-ACCESS-DENIED-STATES.md §4. The speech id was always in this
+            payload (ReviewController eager-loads `speech.user` for all four
+            sections) but was never rendered as a link, so the dashboard was a
+            dead end: a coach could accept an invitation and then have no way
+            to reach the speech except typing the URL by hand.
+
+            `speech` is optional on the type (`whenLoaded` on ReviewResource),
+            hence the `?.id` guard — same shape as the title fallback above.
+            `render={<Link/>}` is this codebase's only button-as-link idiom.
+            Deliberately NOT `nativeButton={false}`: that silences Base UI's
+            dev warning but makes it stamp `role="button"` on the anchor,
+            which is the wrong accessible role for navigation. The warning is
+            the lesser evil, and is already emitted by the four older
+            `render={<Link/>}` call sites.
+
+            Revoked cards get a line instead of a link, so the coach learns
+            without having to click into a refusal. Copy says nothing about
+            why — see the plan's §1 Option A. */}
+        {!readOnly && review.speech?.id && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="self-start"
+            render={<Link to={`/speeches/${review.speech.id}`} />}
+          >
+            Watch
+          </Button>
+        )}
+        {readOnly && (
+          <p className="text-sm text-muted-foreground">This speech isn&rsquo;t available to open.</p>
         )}
       </CardContent>
     </Card>

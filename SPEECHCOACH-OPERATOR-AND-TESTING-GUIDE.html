@@ -1,0 +1,1729 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpeechCoach — Operator &amp; Functional Testing Guide</title>
+<style>
+/* Print-first stylesheet for the SpeechCoach Operator & Testing Guide.
+   Target renderer is Chrome headless --print-to-pdf, so this deliberately
+   avoids CSS paged-media margin boxes (@bottom-left / counter(pages)),
+   which Chrome does not implement. Page furniture is baked into content. */
+
+@page {
+  size: A4;
+  margin: 15mm 14mm 14mm;
+}
+
+@page :first {
+  margin: 0;
+}
+
+:root {
+  --ink: #16293a;
+  --body: #2c3e4e;
+  --muted: #64768a;
+  --rule: #d2dce4;
+  --paper: #ffffff;
+  --wash: #f4f7fa;
+
+  --navy: #1b3a5c;
+  --teal: #0f6f6a;
+  --teal-wash: #e2f2f0;
+  --amber: #a8700d;
+  --amber-wash: #fdf3dd;
+  --red: #a5342a;
+  --red-wash: #fbe9e6;
+  --green: #246b45;
+  --green-wash: #e4f3ea;
+  --violet: #5a4a8a;
+  --violet-wash: #eeebf7;
+
+  --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: "Inter", "Avenir Next", Avenir, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 9.9pt;
+  line-height: 1.5;
+  color: var(--body);
+  background: var(--paper);
+}
+
+/* ---------- cover ---------- */
+
+.cover {
+  height: 297mm;
+  padding: 30mm 22mm 20mm;
+  background: linear-gradient(158deg, #16314f 0%, #1b3a5c 42%, #0f5f62 100%);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  break-after: page;
+}
+
+.cover-kicker {
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: .22em;
+  text-transform: uppercase;
+  color: #8fd4cd;
+  margin-bottom: 14mm;
+}
+
+.cover h1 {
+  font-size: 33pt;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -.015em;
+  margin: 0 0 7mm;
+  color: #fff;
+  max-width: 150mm;
+}
+
+.cover-sub {
+  font-size: 12.5pt;
+  line-height: 1.45;
+  color: #cfe2ee;
+  font-weight: 400;
+  max-width: 132mm;
+  margin: 0 0 auto;
+}
+
+.cover-meta {
+  margin-top: auto;
+  border-top: 1.5px solid rgba(255,255,255,.26);
+  padding-top: 6mm;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7mm;
+}
+
+.cover-meta div { font-size: 8.5pt; line-height: 1.45; }
+
+.cover-meta dt {
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #7fc9c2;
+  font-size: 7.4pt;
+  margin-bottom: 1.6mm;
+}
+
+.cover-meta dd { margin: 0; color: #e6f1f7; }
+
+.cover-alert {
+  margin-top: 9mm;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.3);
+  border-left: 3.5px solid #f0b429;
+  border-radius: 3px;
+  padding: 5mm 6mm;
+}
+
+.cover-alert strong { color: #ffd979; display: block; margin-bottom: 1.5mm; font-size: 9.5pt; }
+.cover-alert p { margin: 0; color: #e8f1f6; font-size: 9pt; line-height: 1.5; }
+
+/* ---------- structure ---------- */
+
+h2 {
+  font-size: 17pt;
+  font-weight: 800;
+  letter-spacing: -.012em;
+  color: var(--navy);
+  margin: 0 0 1.5mm;
+  padding-bottom: 2.5mm;
+  border-bottom: 2.5px solid var(--teal);
+  break-after: avoid;
+}
+
+h2 .num {
+  display: inline-block;
+  min-width: 11mm;
+  color: var(--teal);
+}
+
+.sec-intro {
+  color: var(--muted);
+  font-size: 9.6pt;
+  margin: 2.5mm 0 5mm;
+  max-width: 165mm;
+}
+
+h3 {
+  font-size: 11.6pt;
+  font-weight: 750;
+  color: var(--ink);
+  margin: 7mm 0 2.5mm;
+  break-after: avoid;
+}
+
+h4 {
+  font-size: 10pt;
+  font-weight: 700;
+  color: var(--navy);
+  margin: 5mm 0 2mm;
+  break-after: avoid;
+}
+
+p { margin: 0 0 2.8mm; }
+
+ul, ol { margin: 0 0 3mm; padding-left: 5.5mm; }
+li { margin-bottom: 1.4mm; }
+
+a { color: var(--teal); text-decoration: none; }
+
+code {
+  font-family: var(--mono);
+  font-size: 8.5pt;
+  background: var(--wash);
+  border: 1px solid var(--rule);
+  border-radius: 2.5px;
+  padding: .4mm 1.1mm;
+  color: var(--navy);
+  word-break: break-word;
+}
+
+.page-break { break-before: page; }
+
+/* ---------- tables ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.5pt;
+  margin: 0 0 4mm;
+  break-inside: auto;
+}
+
+thead { display: table-header-group; }
+
+th {
+  background: var(--navy);
+  color: #fff;
+  text-align: left;
+  font-weight: 700;
+  font-size: 7.6pt;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  padding: 2.1mm 2.3mm;
+  border: 1px solid var(--navy);
+}
+
+td {
+  padding: 1.9mm 2.3mm;
+  border: 1px solid var(--rule);
+  vertical-align: top;
+  line-height: 1.42;
+}
+
+tbody tr:nth-child(even) td { background: #fafcfd; }
+
+tr { break-inside: avoid; }
+
+td code { font-size: 7.9pt; background: #eef3f7; }
+
+table.compact td, table.compact th { padding: 1.5mm 2mm; font-size: 8.1pt; }
+
+/* ---------- callouts ---------- */
+
+.box {
+  border-radius: 3px;
+  padding: 4mm 5mm;
+  margin: 0 0 4.5mm;
+  break-inside: avoid;
+  border: 1px solid var(--rule);
+  border-left: 3.5px solid var(--muted);
+  background: var(--wash);
+}
+
+.box p:last-child, .box ul:last-child, .box ol:last-child { margin-bottom: 0; }
+
+.box .box-title {
+  font-weight: 750;
+  font-size: 9.4pt;
+  margin-bottom: 1.8mm;
+  letter-spacing: .005em;
+}
+
+.box.stop     { border-left-color: var(--red);   background: var(--red-wash);   border-color: #eecac4; }
+.box.stop .box-title { color: var(--red); }
+.box.warn     { border-left-color: var(--amber); background: var(--amber-wash); border-color: #ecdcb4; }
+.box.warn .box-title { color: var(--amber); }
+.box.ok       { border-left-color: var(--green); background: var(--green-wash); border-color: #c3e0cf; }
+.box.ok .box-title { color: var(--green); }
+.box.info     { border-left-color: var(--teal);  background: var(--teal-wash);  border-color: #bfe0dc; }
+.box.info .box-title { color: var(--teal); }
+.box.note     { border-left-color: var(--violet);background: var(--violet-wash);border-color: #d2cbe9; }
+.box.note .box-title { color: var(--violet); }
+
+/* ---------- code blocks ---------- */
+
+pre {
+  font-family: var(--mono);
+  font-size: 8.2pt;
+  line-height: 1.52;
+  background: #14222e;
+  color: #dce8f0;
+  border-radius: 3px;
+  padding: 3.5mm 4.5mm;
+  margin: 0 0 4mm;
+  white-space: pre-wrap;
+  word-break: break-word;
+  break-inside: avoid;
+}
+
+pre .c { color: #7d99ab; }   /* comment */
+pre .p { color: #7fd1c6; }   /* prompt / command name */
+pre .s { color: #f0c479; }   /* string / emphasis */
+
+pre.long { break-inside: auto; }
+
+/* ---------- step list ---------- */
+
+.steps { counter-reset: step; list-style: none; padding: 0; margin: 0 0 4mm; }
+
+.steps > li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 9.5mm;
+  margin-bottom: 4mm;
+  break-inside: avoid;
+}
+
+.steps > li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -0.3mm;
+  width: 6.4mm;
+  height: 6.4mm;
+  background: var(--teal);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 8.2pt;
+  font-weight: 750;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.steps > li .s-title { font-weight: 700; color: var(--ink); display: block; margin-bottom: 1.2mm; }
+
+.steps.alt > li::before { background: var(--violet); }
+
+/* ---------- misc ---------- */
+
+.pill {
+  display: inline-block;
+  font-size: 7.1pt;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: .5mm 1.6mm;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.pill.req  { background: var(--red-wash);   color: var(--red);   border: 1px solid #e3b5ae; }
+.pill.opt  { background: var(--wash);       color: var(--muted); border: 1px solid var(--rule); }
+.pill.yes  { background: var(--green-wash); color: var(--green); border: 1px solid #b4d8c3; }
+.pill.no   { background: #f0f3f6;           color: #8a9aa8;      border: 1px solid var(--rule); }
+.pill.warn { background: var(--amber-wash); color: var(--amber); border: 1px solid #e3cfa0; }
+
+.lede {
+  font-size: 10.6pt;
+  line-height: 1.55;
+  color: var(--ink);
+  border-left: 3px solid var(--teal);
+  padding-left: 4.5mm;
+  margin: 0 0 5mm;
+}
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+
+.card {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 3.5mm 4mm;
+  background: #fcfdfe;
+  break-inside: avoid;
+}
+
+.card h4 { margin-top: 0; }
+.card p:last-child { margin-bottom: 0; }
+
+.footer-note {
+  margin-top: 6mm;
+  padding-top: 3mm;
+  border-top: 1px solid var(--rule);
+  font-size: 8pt;
+  color: var(--muted);
+}
+
+dl.kv { margin: 0 0 4mm; }
+dl.kv dt { font-weight: 700; color: var(--navy); font-size: 9pt; margin-top: 2.5mm; }
+dl.kv dd { margin: 0 0 0 0; }
+
+.toc { margin: 0; padding: 0; list-style: none; column-count: 2; column-gap: 9mm; }
+.toc li {
+  margin-bottom: 2.2mm;
+  font-size: 9.3pt;
+  break-inside: avoid;
+}
+.toc .t-num { color: var(--teal); font-weight: 750; display: inline-block; min-width: 8mm; }
+.toc .t-sub { color: var(--muted); font-size: 8.3pt; display: block; padding-left: 8mm; }
+
+</style>
+</head>
+<body>
+<section class="cover">
+  <div class="cover-kicker">SpeechCoach &middot; Operator &amp; Functional Testing Guide</div>
+  <h1>Running the app, and proving it works</h1>
+  <p class="cover-sub">
+    How to bring the stack up after a month away, who to log in as, what every
+    route does, and three scripted walkthroughs that exercise the coach &rarr;
+    client commentary loop end to end.
+  </p>
+
+  <div class="cover-alert">
+    <strong>Your database was 9 migrations behind the code — this has been fixed.</strong>
+    <p>
+      The core &ldquo;client reads the coach&rsquo;s commentary&rdquo; request was
+      returning <em>HTTP 500</em> because the app ran STEP&#8209;13 code against a
+      STEP&#8209;10 schema. All 9 pending migrations have been applied and the
+      loop is now verified working. Details in &sect;1.2.
+    </p>
+  </div>
+
+  <dl class="cover-meta">
+    <div>
+      <dt>Open this URL</dt>
+      <dd>https://app.speechcoach.test<br>(never localhost:5173)</dd>
+    </div>
+    <div>
+      <dt>Every password</dt>
+      <dd><code style="background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#fff">password</code><br>5 seeded accounts</dd>
+    </div>
+    <div>
+      <dt>Verified</dt>
+      <dd>30 September 2026<br>against the running stack</dd>
+    </div>
+  </dl>
+</section>
+
+<!-- ============================ CONTENTS ============================ -->
+<section>
+  <h2><span class="num">0</span>What you are holding</h2>
+  <p class="sec-intro">
+    Every factual claim in this guide was checked against the running application
+    on 30 September 2026 — not against the planning documents, which describe
+    intent and in several places no longer match what was built.
+  </p>
+
+  <p class="lede">
+    The headline: the product works. Upload &rarr; invite &rarr; accept &rarr;
+    annotate &rarr; publish &rarr; read back is implemented and was driven
+    end&#8209;to&#8209;end during this review. Captions and voice transcription are
+    the two features that will not work today, for one concrete reason each.
+  </p>
+
+  <ul class="toc">
+    <li><span class="t-num">1</span>Start here
+      <span class="t-sub">State of the project, the migration fix, the one URL that works</span></li>
+    <li><span class="t-num">2</span>Containers
+      <span class="t-sub">What each service does, which are required, cold-start sequence</span></li>
+    <li><span class="t-num">3</span>Accounts &amp; passwords
+      <span class="t-sub">Five seeded logins, all verified; plus your own role-less accounts</span></li>
+    <li><span class="t-num">4</span>How the product works
+      <span class="t-sub">The access model, the invitation loop, the draft/publish rule</span></li>
+    <li><span class="t-num">5</span>Test script A — the coach
+      <span class="t-sub">Review a speech and leave commentary</span></li>
+    <li><span class="t-num">6</span>Test script B — the client
+      <span class="t-sub">Upload a speech and invite a reviewer</span></li>
+    <li><span class="t-num">7</span>Test script C — the read-back
+      <span class="t-sub">Log in later and see what the coach said</span></li>
+    <li><span class="t-num">8</span>Route reference
+      <span class="t-sub">104 API routes and 22 SPA routes, grouped</span></li>
+    <li><span class="t-num">9</span>Roles &amp; capabilities
+      <span class="t-sub">Runtime-verified matrix of who can do what</span></li>
+    <li><span class="t-num">10</span>Known broken edges
+      <span class="t-sub">What will visibly fail, and why</span></li>
+    <li><span class="t-num">11</span>Troubleshooting
+      <span class="t-sub">The traps that cost hours, with their fixes</span></li>
+  </ul>
+
+  <h3>How claims here were verified</h3>
+  <table class="compact">
+    <thead><tr><th style="width:27%">Claim type</th><th>Method</th></tr></thead>
+    <tbody>
+      <tr><td>Credentials</td><td>Real <code>POST /login</code> through nginx for all five accounts, then an authenticated <code>GET /api/me</code> to prove the session is genuine</td></tr>
+      <tr><td>Routes</td><td><code>php artisan route:list --json</code> inside the running container, diffed against <code>api/routes/*.php</code> on disk — 104 routes, set-identical</td></tr>
+      <tr><td>Permissions</td><td><code>Gate::forUser()-&gt;allows()</code> executed per role against real fixture rows, not inferred from reading policies</td></tr>
+      <tr><td>The core loop</td><td>Driven over HTTP: coach created a draft, speaker saw 0 notes, coach published, speaker saw 1 note, then cleanup</td></tr>
+      <tr><td>Video playback</td><td>Presigned URL requested as the speaker, then a range request to SeaweedFS returning <code>206 Partial Content</code>, <code>video/mp4</code></td></tr>
+      <tr><td>Database state</td><td>Direct SQL against the live Postgres volume</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 1 START HERE ============================ -->
+<section class="page-break">
+  <h2><span class="num">1</span>Start here</h2>
+  <p class="sec-intro">
+    Three things changed while you were away, and one of them was breaking the
+    product&rsquo;s central feature.
+  </p>
+
+  <h3>1.1 Where the project stands</h3>
+  <p>
+    Steps 00 through 13 are built and committed. Step 14 (deploy hardening) and
+    Step 15 (accessibility) are not started. The last commit is
+    <code>4f7dd12</code>, the STEP&#8209;13 retrospective, on branch
+    <code>development</code>.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:12%">Step</th><th style="width:40%">Capability</th><th>Status today</th></tr></thead>
+    <tbody>
+      <tr><td>00&ndash;04</td><td>Upload, transcode, play a video</td><td><span class="pill yes">Working</span> verified: real 65.7s video streams</td></tr>
+      <tr><td>05</td><td>Invite a reviewer; nobody else can watch</td><td><span class="pill yes">Working</span> access model verified</td></tr>
+      <tr><td>06&ndash;07</td><td>Write and publish timed commentary</td><td><span class="pill yes">Working</span> full loop driven over HTTP</td></tr>
+      <tr><td>08</td><td>The long-form essay review</td><td><span class="pill yes">Working</span> separate publish action</td></tr>
+      <tr><td>09</td><td>Captions from Whisper</td><td><span class="pill warn">Blocked</span> model file absent &mdash; &sect;10</td></tr>
+      <tr><td>10</td><td>Voice annotation</td><td><span class="pill warn">Partial</span> records &amp; plays; transcript needs Whisper</td></tr>
+      <tr><td>11</td><td>Report, export, delete account</td><td><span class="pill yes">Working</span> after the migration fix</td></tr>
+      <tr><td>12</td><td>Admin portal, coach applications</td><td><span class="pill yes">Working</span> after the migration fix</td></tr>
+      <tr><td>13</td><td>Connections / social timeline</td><td><span class="pill yes">Working</span> after the migration fix</td></tr>
+      <tr><td>14&ndash;15</td><td>Deploy hardening, accessibility</td><td><span class="pill no">Not built</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>1.2 The migration gap — found, and fixed</h3>
+
+  <div class="box stop">
+    <div class="box-title">This was breaking the product&rsquo;s central feature</div>
+    <p>
+      The <code>app</code> container was running current code against a database
+      whose newest migration was dated <strong>18 August</strong>. 39 migration
+      files existed on disk; only <strong>30</strong> had been applied.
+    </p>
+    <p style="margin-top:2.5mm">
+      The symptom was not subtle. <code>AnnotationController</code> reads
+      <code>$review-&gt;reviewer-&gt;anonymized_at</code> — a column added by one
+      of the unapplied migrations. So <em>every</em> request by a speaker to read
+      their coach&rsquo;s commentary returned <strong>HTTP 500</strong>:
+    </p>
+    <pre style="margin-top:3mm">MissingAttributeException: The attribute [anonymized_at] either does not
+exist or was not retrieved for model [App\Models\User].
+  at app/Http/Controllers/Api/AnnotationController.php:68</pre>
+  </div>
+
+  <p>These nine migrations were pending and have now been applied:</p>
+
+  <table class="compact">
+    <thead><tr><th style="width:52%">Migration</th><th style="width:14%">Step</th><th>What it unblocks</th></tr></thead>
+    <tbody>
+      <tr><td><code>create_reports_table</code></td><td>11</td><td>Report a speech</td></tr>
+      <tr><td><code>create_audit_log_table</code></td><td>11</td><td>Admin audit trail</td></tr>
+      <tr><td><code>create_data_exports_table</code></td><td>11</td><td>Export your data</td></tr>
+      <tr><td><code>add_anonymized_at_to_users_table</code></td><td>11</td><td><strong>Reading any commentary</strong></td></tr>
+      <tr><td><code>create_coach_applications_table</code></td><td>12</td><td>Apply to be a coach</td></tr>
+      <tr><td><code>create_application_documents_table</code></td><td>12</td><td>Upload certification PDFs</td></tr>
+      <tr><td><code>add_suspended_at_to_users_table</code></td><td>12</td><td>Admin suspend a user</td></tr>
+      <tr><td><code>create_connections_table</code></td><td>13</td><td>Connections &amp; social timeline</td></tr>
+      <tr><td><code>add_timeline_indexes_to_reviews_table</code></td><td>13</td><td>Profile timeline performance</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <div class="box-title">Verified fixed</div>
+    <p>
+      All nine applied cleanly (pure <code>CREATE TABLE</code> /
+      <code>ADD COLUMN</code> / <code>CREATE INDEX</code> — additive, no data
+      loss). The failing request was then re-run and returned
+      <strong>HTTP 200</strong> with the coach&rsquo;s three published notes.
+      A database dump was taken beforehand and is preserved in this
+      session&rsquo;s scratchpad.
+    </p>
+  </div>
+
+  <h3>1.3 The one URL that works</h3>
+  <p>
+    This stack exposes three origins. Only one of them can log you in, and the
+    other two fail in ways that look like application bugs.
+  </p>
+
+  <table>
+    <thead><tr><th style="width:30%">URL</th><th style="width:14%">Verdict</th><th>What actually happens</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>https://app.speechcoach.test</code></td>
+        <td><span class="pill yes">Use this</span></td>
+        <td>nginx reverse-proxies to your <strong>host</strong> Vite dev server on :5173. Serves live source from <code>web/src</code> — no rebuild needed to see frontend changes. Cookies, CORS and Sanctum are all configured for this hostname and only this hostname.</td>
+      </tr>
+      <tr>
+        <td><code>http://localhost:5173</code></td>
+        <td><span class="pill req">Login fails</span></td>
+        <td>Vite serves the page fine (HTTP 200), so it looks like it works — until you log in. This origin is not in <code>CORS_ALLOWED_ORIGINS</code>, so the browser blocks the call to the API and the form shows a generic <em>&ldquo;Something went wrong&rdquo;</em> banner. <strong>This is the error you hit.</strong></td>
+      </tr>
+      <tr>
+        <td><code>http://localhost:8080</code></td>
+        <td><span class="pill req">Login fails</span></td>
+        <td>Serves the <em>baked production build</em> from the <code>web</code> image, which is ~22 commits stale. Worse, session cookies come back <code>domain=.speechcoach.test; secure</code>, which a browser on plain-HTTP localhost will not store. Public pages load; auth cannot.</td>
+      </tr>
+      <tr>
+        <td><code>https://api.speechcoach.test</code></td>
+        <td><span class="pill opt">Backend</span></td>
+        <td>The API origin the SPA calls. Also the <strong>only</strong> working address for the admin portal: <code>/control-panel</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box warn">
+    <div class="box-title">Why your login failed</div>
+    <p>
+      You were on <code>http://localhost:5173</code>. The backend is pinned to a
+      single origin — <code>CORS_ALLOWED_ORIGINS=https://app.speechcoach.test</code>,
+      <code>SANCTUM_STATEFUL_DOMAINS=app.speechcoach.test</code>,
+      <code>SESSION_DOMAIN=.speechcoach.test</code>. A request from
+      <code>localhost:5173</code> comes back stamped with the
+      <code>app.speechcoach.test</code> allow-origin header, the browser sees a
+      mismatch and blocks it, and the fetch rejects with no parseable body. The
+      SPA&rsquo;s error helper falls through to its generic message because there
+      is no <code>{message, errors}</code> payload to read. Nothing is wrong with
+      your credentials.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ 2 CONTAINERS ============================ -->
+<section class="page-break">
+  <h2><span class="num">2</span>Containers</h2>
+  <p class="sec-intro">
+    Eleven services start by default; two more are profile-gated. The frontend is
+    deliberately <em>not</em> containerized — you run Vite yourself on the host.
+  </p>
+
+  <h3>2.1 What each service is for</h3>
+  <table>
+    <thead>
+      <tr><th style="width:17%">Service</th><th style="width:13%">Core flow</th><th style="width:13%">Port</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>postgres</code></td><td><span class="pill req">Required</span></td><td>5433&rarr;5432</td><td>Postgres 17. All application data, plus sessions and cache.</td></tr>
+      <tr><td><code>valkey</code></td><td><span class="pill req">Required</span></td><td>internal</td><td>Redis-compatible queue broker. Every background job flows through it.</td></tr>
+      <tr><td><code>seaweedfs</code></td><td><span class="pill req">Required</span></td><td>8333</td><td>S3-compatible object store for video, audio and posters. Currently holds 147&nbsp;MB.</td></tr>
+      <tr><td><code>app</code></td><td><span class="pill req">Required</span></td><td>internal 9000</td><td>php-fpm running Laravel. <strong>Code is baked into the image</strong> — see &sect;11.</td></tr>
+      <tr><td><code>web</code></td><td><span class="pill req">Required</span></td><td>443, 8080&rarr;80</td><td>nginx. Terminates TLS for both hostnames, speaks fastcgi to <code>app</code>, and proxies <code>app.speechcoach.test</code> to your host Vite server.</td></tr>
+      <tr><td><code>mailpit</code></td><td><span class="pill req">Required</span></td><td>8025</td><td>SMTP sink. Where verification and invitation emails land. <code>app</code> will not boot without it.</td></tr>
+      <tr><td><code>clamav</code></td><td><span class="pill req">Required</span></td><td>internal 3310</td><td>Only scans coach-application PDFs — it touches <em>nothing</em> in the speech path. But <code>app</code> and <code>queue-worker</code> both hard-gate on its health, so the stack will not start without it. Costs ~956&nbsp;MB RAM, the heaviest container.</td></tr>
+      <tr><td><code>queue-worker</code></td><td><span class="pill req">Required</span></td><td>&mdash;</td><td><code>default</code> queue: mail, notifications, document scans.</td></tr>
+      <tr><td><code>ffmpeg-worker</code></td><td><span class="pill req">Required</span></td><td>&mdash;</td><td><code>transcode</code> queue: video transcode, poster frames, voice-note normalization. Needed for any new upload.</td></tr>
+      <tr><td><code>scheduler</code></td><td><span class="pill opt">Optional</span></td><td>&mdash;</td><td>Four nightly maintenance commands. Safe to skip for functional testing.</td></tr>
+      <tr><td><code>whisper-worker</code></td><td><span class="pill opt">Optional</span></td><td>&mdash;</td><td><code>captions</code> queue. <strong>Non-functional</strong> — the model volume is empty. Reserves 2 CPUs / 4&nbsp;GB when it does run.</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:4mm">
+    Two further services are profile-gated and do not start normally:
+    <code>whisper-model-init</code> (downloads the ~142&nbsp;MiB speech model) and
+    <code>whisper-smoke</code> (a test harness). The separate
+    <code>compose.e2e.yaml</code> and <code>compose.whisper-smoke.yaml</code> files
+    are override files driven by scripts in <code>scripts/</code> — you need
+    neither to run the app, and you must never run the e2e stack at the same time
+    as the dev stack because they contend for ports 443, 5433 and 8333.
+  </p>
+
+  <h3>2.2 Cold start, in order</h3>
+  <p>
+    Idle memory for the full ten-container stack is about <strong>1.4&nbsp;GB</strong>.
+  </p>
+
+  <pre class="long"><span class="c"># 0. From the repo root</span>
+cd /Users/marscheung/SideProjects/Instruction-Speeches-Library
+
+<span class="c"># 1. Rebuild. api/ is BAKED into the image — there is no bind mount,</span>
+<span class="c">#    so code on disk is invisible to the container until you do this.</span>
+<span class="p">docker compose build</span> app queue-worker scheduler web
+
+<span class="c"># 2. Infrastructure first. clamav is slow on a cold signature volume</span>
+<span class="c">#    (start_period is 180s) and everything else waits on it.</span>
+<span class="p">docker compose up -d</span> postgres valkey seaweedfs mailpit clamav
+
+<span class="c"># 3. Then the application tier</span>
+<span class="p">docker compose up -d</span> app web queue-worker scheduler ffmpeg-worker
+
+<span class="c"># 4. Confirm health before going further</span>
+<span class="p">docker compose ps</span>
+
+<span class="c"># 5. Migrate. Already done for you, but harmless to re-run.</span>
+<span class="p">docker compose exec</span> app php artisan migrate --force
+
+<span class="c"># 6. Seed roles and reserved usernames (idempotent)</span>
+<span class="p">docker compose exec</span> app php artisan db:seed --force
+
+<span class="c">#    Demo accounts — only needed if you ever wipe the database</span>
+<span class="c"># docker compose exec app php artisan db:seed --class=E2ESeeder --force</span>
+
+<span class="c"># 7. Storage bucket + CORS rules (idempotent; worth re-running —</span>
+<span class="c">#    your bucket policy predates the Content-Range header additions)</span>
+<span class="p">docker compose exec</span> app php artisan media:initialize
+
+<span class="c"># 8. THE FRONTEND — separate terminal, leave it running.</span>
+<span class="c">#    Vite is deliberately never containerized.</span>
+cd web &amp;&amp; <span class="p">npm run dev</span>
+
+<span class="c"># 9. Open this, and nothing else:</span>
+<span class="c">#    https://app.speechcoach.test</span></pre>
+
+  <div class="box info">
+    <div class="box-title">Picking this up later? Start with these three checks</div>
+    <p>
+      The stack was left running and fully working on <strong>30 September
+      2026</strong> — 10 of 11 services healthy, all migrations applied, Vite on
+      :5173. But containers stop when Docker Desktop restarts, and Vite dies when
+      you close its terminal or reboot. So before assuming anything is broken:
+    </p>
+    <pre style="margin:3mm 0 0"><span class="c"># 1. Are the containers up? If not, run steps 2-3 above.</span>
+<span class="p">docker compose ps</span>
+
+<span class="c"># 2. Is Vite up? If not: cd web &amp;&amp; npm run dev</span>
+lsof -i :5173
+
+<span class="c"># 3. Any migrations pending? Should print nothing.</span>
+<span class="p">docker compose exec</span> app php artisan migrate:status | grep -i pending</pre>
+    <p style="margin-top:3mm">
+      If all three pass, go straight to &sect;3 and log in. The only container not
+      doing useful work is <code>whisper-worker</code>, and nothing in the core
+      flow needs it.
+    </p>
+  </div>
+
+  <h3>2.3 Host prerequisites &mdash; all currently passing</h3>
+  <table class="compact">
+    <thead><tr><th style="width:26%">Requirement</th><th style="width:40%">Check</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Hosts entries</td><td><code>grep speechcoach /etc/hosts</code></td><td><span class="pill yes">Pass</span> both hostnames &rarr; 127.0.0.1</td></tr>
+      <tr><td>TLS certificates</td><td><code>ls docker/certs/</code></td><td><span class="pill yes">Pass</span> valid until Nov 2028</td></tr>
+      <tr><td>mkcert CA trusted</td><td><code>security find-certificate -c mkcert</code></td><td><span class="pill yes">Pass</span> in System keychain</td></tr>
+      <tr><td>Frontend env</td><td><code>cat web/.env</code></td><td><span class="pill yes">Pass</span> <code>VITE_API_URL=https://api.speechcoach.test</code></td></tr>
+      <tr><td>Node + deps</td><td><code>node -v</code>; <code>ls web/node_modules</code></td><td><span class="pill yes">Pass</span> v22.18.0, 469 packages</td></tr>
+      <tr><td>Vite running</td><td><code>lsof -i :5173</code></td><td><span class="pill yes">Pass</span> already listening</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 3 ACCOUNTS ============================ -->
+<section class="page-break">
+  <h2><span class="num">3</span>Accounts &amp; passwords</h2>
+  <p class="sec-intro">
+    Five seeded accounts. Every one was logged in through the real browser auth
+    path during this review, and every one succeeded.
+  </p>
+
+  <div class="box ok">
+    <div class="box-title">The password is <code>password</code></div>
+    <p>
+      All five fixture accounts share it. All five are pre-verified, so no email
+      confirmation step is needed, and all five have completed onboarding.
+    </p>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th style="width:21%">Email</th><th style="width:11%">Password</th><th style="width:13%">Role</th><th style="width:9%">ID</th><th>Use them for</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>member@e2e.test</code></td><td><code>password</code></td>
+        <td><span class="pill yes">member</span></td><td>9004</td>
+        <td><strong>The client / student.</strong> Milo Member. Owns the two speeches worth testing, including the one with real published commentary.</td>
+      </tr>
+      <tr>
+        <td><code>coach@e2e.test</code></td><td><code>password</code></td>
+        <td><span class="pill yes">coach</span></td><td>9003</td>
+        <td><strong>The coach.</strong> Cora Coach. Holds the published review on speech 17 and an accepted review on speech 9101.</td>
+      </tr>
+      <tr>
+        <td><code>coach-b@e2e.test</code></td><td><code>password</code></td>
+        <td><span class="pill yes">coach</span></td><td>9005</td>
+        <td>A <em>second</em> coach. Use this one to prove isolation — that one reviewer cannot read another&rsquo;s commentary.</td>
+      </tr>
+      <tr>
+        <td><code>admin@e2e.test</code></td><td><code>password</code></td>
+        <td><span class="pill warn">admin</span></td><td>9002</td>
+        <td>Moderation. Can revoke reviews, suspend users, assign roles, read any commentary. Cannot accept invitations or write commentary.</td>
+      </tr>
+      <tr>
+        <td><code>super-admin@e2e.test</code></td><td><code>password</code></td>
+        <td><span class="pill warn">super_admin</span></td><td>9001</td>
+        <td>Admin-portal access. Note: in the API this role is almost entirely inert — see &sect;9.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.1 Your own accounts have no role</h3>
+  <div class="box warn">
+    <div class="box-title">Do not test with these</div>
+    <p>
+      Six real accounts exist from earlier manual testing — ids 1, 2, 3, 29, 41
+      and 44, including <code>mars.kwong.cheung@gmail.com</code>. <strong>None of
+      them has any role assigned.</strong>
+    </p>
+    <p style="margin-top:2.5mm">
+      That is by design, not corruption: registration deliberately assigns no
+      role, and the frontend comments say outright that <code>roles: []</code> is
+      the normal case for every real user. But it has one consequence that will
+      confuse you — the reviewer directory only lists users holding
+      <code>member</code> or <code>coach</code>, so <strong>a role-less account is
+      invisible there and nobody can invite it to review anything.</strong>
+    </p>
+  </div>
+
+  <p>If you want one of your own accounts to behave like a coach:</p>
+  <pre><span class="c"># Grant a role directly. Accepts an id or an email.</span>
+<span class="c"># Roles: super_admin | admin | coach | member</span>
+<span class="p">docker compose exec</span> app php artisan user:grant-role mars.kwong.cheung@gmail.com coach</pre>
+  <p style="font-size:9pt;color:var(--muted)">
+    Note this command <em>replaces</em> the user&rsquo;s role set rather than adding
+    to it, and refuses to proceed if it would leave the system without an
+    administrator.
+  </p>
+
+  <h3>3.2 The admin portal</h3>
+  <p>
+    The admin portal is a separate Filament application — it is not part of the
+    React SPA and is not linked from its navigation.
+  </p>
+  <dl class="kv">
+    <dt>URL</dt>
+    <dd><code>https://api.speechcoach.test/control-panel</code> &mdash; note the hostname is the <em>API</em> one, and the path is <code>/control-panel</code>, not <code>/admin</code>. It is unreachable on <code>localhost:8080</code>.</dd>
+    <dt>Who may enter</dt>
+    <dd>Only <code>admin</code> or <code>super_admin</code>. Everyone else gets 403.</dd>
+    <dt>Extra gate</dt>
+    <dd><strong>TOTP two-factor is mandatory.</strong> On first visit you will be redirected to an authenticator-enrolment screen. Budget time for this; you cannot skip it.</dd>
+    <dt>What is there</dt>
+    <dd>Users, Speeches, Reports, Coach applications, Connections.</dd>
+  </dl>
+</section>
+
+<!-- ============================ 4 PRODUCT MODEL ============================ -->
+<section class="page-break">
+  <h2><span class="num">4</span>How the product works</h2>
+  <p class="sec-intro">
+    The design you originally set out, confirmed against the code that was
+    actually built.
+  </p>
+
+  <p class="lede">
+    A speech is private by default. The <em>only</em> thing that grants anyone
+    else access to it is an invitation — and an invitation is not a separate
+    object, it is a row in the <code>reviews</code> table.
+  </p>
+
+  <h3>4.1 The access model</h3>
+  <p>
+    There is no visibility flag on a speech. There are no shares, no links, no
+    public pool. A reviewer can reach a speech if and only if a
+    <code>reviews</code> row exists naming them, it has not been revoked, and its
+    status is one of three <em>access-granting</em> values:
+  </p>
+
+  <pre>ACCESS_GRANTING = [ 'accepted', 'in_progress', 'published' ]</pre>
+
+  <p>That single rule produces three tiers of what a person sees:</p>
+  <table class="compact">
+    <thead><tr><th style="width:22%">Who</th><th>What they get back</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Owner</strong></td><td>Everything — the full payload and a signed playback URL.</td></tr>
+      <tr><td><strong>Invited, not yet accepted</strong></td><td>Title, duration and the speaker&rsquo;s name only. <em>No playback URL</em> — they cannot watch until they accept.</td></tr>
+      <tr><td><strong>Everyone else</strong></td><td><strong>404, never 403.</strong> The system refuses to confirm the speech exists.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box note">
+    <div class="box-title">Two deliberate absences worth knowing</div>
+    <p>
+      There is <strong>no endpoint that lists speeches available to review</strong>.
+      This is intentional — with no open pool, the reviewer directory is the only
+      discovery mechanism, which is why it was built as a real searchable feature
+      rather than a list. And <strong>an administrator cannot accept an
+      invitation</strong>; that is refused categorically, not merely unauthorized.
+    </p>
+  </div>
+
+  <h3>4.2 The invitation loop</h3>
+  <ol class="steps">
+    <li><span class="s-title">The speaker invites by name</span>
+      They open their speech, search the reviewer directory, pick a person, write
+      them a message, and send. A <code>reviews</code> row is created with status
+      <code>invited</code>. Re-inviting someone who declined reuses the same row
+      rather than failing; inviting yourself is refused outright.</li>
+    <li><span class="s-title">The reviewer accepts</span>
+      The invitation appears in their dashboard. Accepting moves the row to
+      <code>accepted</code> — and only now does the playback URL become available
+      to them.</li>
+    <li><span class="s-title">The reviewer writes</span>
+      The first annotation flips the row to <code>in_progress</code> automatically.</li>
+    <li><span class="s-title">The reviewer publishes</span>
+      Status becomes <code>published</code> and the drafts become visible to the
+      speaker — all at once.</li>
+  </ol>
+  <p style="font-size:9pt;color:var(--muted)">
+    The reviewer may also decline or abandon; the speaker may withdraw, revoke, or
+    revoke-and-purge.
+  </p>
+
+  <h3>4.3 The draft / publish rule &mdash; verified</h3>
+  <div class="box ok">
+    <div class="box-title">Drafts are never visible to the client. This was proven, not assumed.</div>
+    <p>
+      During this review the loop was driven over HTTP against the live app:
+    </p>
+    <table class="compact" style="margin-top:3mm;margin-bottom:0">
+      <thead><tr><th style="width:62%">Action</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Coach creates a note at t=5s</td><td><code>201 Created</code></td></tr>
+        <tr><td>Speaker reads the coach&rsquo;s track <em>while it is a draft</em></td><td><code>200</code> &mdash; <strong>0 notes</strong></td></tr>
+        <tr><td>Coach presses Publish</td><td><code>200</code></td></tr>
+        <tr><td>Speaker reads the same track again</td><td><code>200</code> &mdash; <strong>1 note</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>4.4 The four kinds of commentary</h3>
+  <table>
+    <thead><tr><th style="width:21%">Kind</th><th style="width:27%">Publish rule</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Timed text note</strong></td>
+        <td>Draft until the review is published; all drafts publish together</td>
+        <td>The core feature. Timestamp stamps itself on your first keystroke — there is no button. Capped at 200 per review, each up to 120&nbsp;s long.</td>
+      </tr>
+      <tr>
+        <td><strong>Voice note</strong></td>
+        <td>Same rows, same publish action</td>
+        <td>Recorded in the browser. <strong>Requires the <code>coach</code> role</strong> — this is the only thing the coach role actually gates — plus a verified email. Audio up to 16&nbsp;MB.</td>
+      </tr>
+      <tr>
+        <td><strong>Essay</strong></td>
+        <td><strong>Its own separate Publish</strong></td>
+        <td>Long-form rich text under the player. Publishing is one-way — the button disables afterwards. Before publication the speaker sees an honest empty state, not an error.</td>
+      </tr>
+      <tr>
+        <td><strong>Captions / transcript</strong></td>
+        <td>No draft lifecycle at all</td>
+        <td>Not reviewer commentary — these belong to the speech. Only the owner may edit them. Currently non-functional (&sect;10).</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>4.5 Coach vs. member &mdash; a correction worth noting</h3>
+  <div class="box note">
+    <div class="box-title">&ldquo;Coach&rdquo; gates far less than you might expect</div>
+    <p>
+      A plain <code>member</code> can be invited to review, can accept, can write
+      timed notes, can write the essay, and can publish. The <code>coach</code>
+      role gates <strong>voice annotations only</strong>.
+    </p>
+    <p style="margin-top:2.5mm">
+      This is deliberate — the original design called for the peer-review path
+      (member reviewing member) to be a first-class case, precisely so that a
+      stray role check would not silently break it. Worth remembering when you
+      test: if you want to prove peer review works, invite
+      <code>member@e2e.test</code> as a reviewer of someone else&rsquo;s speech.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ TEST SCRIPTS INTRO ============================ -->
+<section class="page-break">
+  <h2><span class="num">5</span>Test script A &mdash; the coach</h2>
+  <p class="sec-intro">
+    Review a client&rsquo;s speech and leave commentary on it. Roughly 10 minutes.
+  </p>
+
+  <div class="box info">
+    <div class="box-title">Before you start any script</div>
+    <p>
+      Confirm the stack is up (<code>docker compose ps</code>), Vite is running
+      (<code>cd web &amp;&amp; npm run dev</code>), and open
+      <strong><code>https://app.speechcoach.test</code></strong>. Log out between
+      scripts, or use a private window per persona — the session cookie is shared
+      across the whole <code>.speechcoach.test</code> domain.
+    </p>
+  </div>
+
+  <h3>What already exists, so you don&rsquo;t have to build it</h3>
+  <p>
+    The database is already seeded with a complete, working example. Script A uses
+    it, which is why it needs no setup.
+  </p>
+  <table class="compact">
+    <thead><tr><th style="width:17%">Fixture</th><th style="width:25%">Who</th><th>State</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Speech 17</strong></td><td>Owned by <code>member@e2e.test</code></td><td>Real 65.7&nbsp;s video, fully transcoded, <strong>plays</strong>. Reviewed by <code>coach@e2e.test</code>, who has published 3 timed notes at 14&nbsp;s, 62&nbsp;s and 64&nbsp;s.</td></tr>
+      <tr><td>Speech 9101</td><td>Owned by <code>member@e2e.test</code></td><td>Two coaches hold accepted reviews. Useful for access-control testing, but <strong>the video will not play</strong> — the file is a deliberate 1&nbsp;KB placeholder.</td></tr>
+      <tr><td>Speech 15</td><td>Owned by a role-less account</td><td><code>coach-b</code> is invited but has not accepted. Good for testing the pre-acceptance tier.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The walkthrough</h3>
+  <ol class="steps">
+    <li>
+      <span class="s-title">Log in as the coach</span>
+      Go to <code>https://app.speechcoach.test/login</code> and sign in as
+      <code>coach@e2e.test</code> / <code>password</code>.
+      <em>Behind it:</em> <code>GET /sanctum/csrf-cookie</code> then
+      <code>POST /login</code>.
+    </li>
+    <li>
+      <span class="s-title">Open your review dashboard</span>
+      Navigate to <code>/dashboard</code>. You should see your reviews in four
+      sections, oldest invitations first.
+      <em>Behind it:</em> <code>GET /api/reviews</code>.
+    </li>
+    <li>
+      <span class="s-title">Go to the speech &mdash; by typing the URL</span>
+      Enter <code>https://app.speechcoach.test/speeches/17</code> directly.
+      <div class="box warn" style="margin:2.5mm 0 0">
+        <div class="box-title">Known gap &mdash; the dashboard is a dead end</div>
+        <p>
+          The dashboard renders no link to the speech. There is no anchor, no
+          button, no row click — the speech id is present in the API payload but
+          never rendered as a link. <strong>You must type the URL by hand.</strong>
+          This is a real missing feature, not a configuration problem.
+        </p>
+      </div>
+    </li>
+    <li>
+      <span class="s-title">Watch the video</span>
+      Press play. The video should stream and scrub normally.
+      <em>Behind it:</em> <code>GET /api/speeches/17</code>, then
+      <code>GET /api/speeches/17/assets/19/playback-url</code> which returns a
+      presigned SeaweedFS URL. <em>Verified:</em> this returns
+      <code>206 Partial Content</code>, <code>video/mp4</code>, 19,356,216 bytes.
+    </li>
+    <li>
+      <span class="s-title">Type a note at a timestamp</span>
+      Pause somewhere and start typing in the notes panel.
+      <strong>The timestamp stamps itself on your first keystroke</strong> —
+      there is no &ldquo;add note&rdquo; button to press first. Nudge the time
+      backward and forward in half-second steps using the arrow controls beside
+      the timestamp, and set how long the note should stay on screen.
+      <em>Behind it:</em> <code>POST /api/speeches/17/annotations</code>.
+    </li>
+    <li>
+      <span class="s-title">Watch the live preview</span>
+      Your draft appears over the video with a dashed border marking it
+      provisional — the same overlay component the speaker will eventually see.
+    </li>
+    <li>
+      <span class="s-title">Add two more, then delete one</span>
+      Deleting raises a six-second Undo toast. Press it; the note returns.
+    </li>
+    <li>
+      <span class="s-title">Write the essay</span>
+      Switch to the Essay tab and write a few paragraphs. It autosaves as you
+      type.
+      <em>Behind it:</em> <code>PUT /api/speeches/17/essay</code>.
+      <strong>Note the essay has its own separate Publish button</strong> —
+      publishing your notes does not publish the essay.
+    </li>
+    <li>
+      <span class="s-title">Publish</span>
+      Press Publish in the notes panel. It reports a count.
+      <em>Behind it:</em> <code>POST /api/reviews/2/publish</code>.
+      <em>Verified:</em> a coach can keep adding and re-publishing notes after an
+      initial publish — the review stays writable.
+    </li>
+  </ol>
+
+  <h3>Optional &mdash; prove reviewer isolation</h3>
+  <p>
+    Log in as <code>coach-b@e2e.test</code> and try to reach the other
+    coach&rsquo;s work on speech 17. <em>Verified:</em> the API returns
+    <strong>403</strong>, and nothing anywhere reveals that the other review
+    exists.
+  </p>
+
+  <div class="box stop">
+    <div class="box-title">What will not work in this script</div>
+    <p>
+      <strong>Voice notes</strong> will record and upload, but the transcript will
+      fail — the Whisper model file is absent (&sect;10). The audio itself still
+      plays back. <strong>Captions</strong> will not generate for the same reason.
+    </p>
+  </div>
+</section>
+
+<!-- ============================ SCRIPT B ============================ -->
+<section class="page-break">
+  <h2><span class="num">6</span>Test script B &mdash; the client</h2>
+  <p class="sec-intro">
+    Upload a speech and get someone to comment on it. Roughly 15 minutes, most of
+    it waiting for the transcode.
+  </p>
+
+  <div class="box info">
+    <div class="box-title">Have a video file ready</div>
+    <p>
+      Any <code>.mp4</code> or <code>.mov</code>. Keep it short — 30&ndash;60
+      seconds — because transcoding is software-only on macOS (Docker cannot pass
+      through hardware encoding) and runs at roughly real time. The quota is
+      5&nbsp;GB per user, with a maximum of two uploads in flight at once.
+    </p>
+  </div>
+
+  <ol class="steps">
+    <li>
+      <span class="s-title">Log in as the client</span>
+      <code>member@e2e.test</code> / <code>password</code>. This is Milo Member,
+      your student/client persona.
+    </li>
+    <li>
+      <span class="s-title">Start a new speech</span>
+      Go to <code>/speeches/new</code>. Give it a title; description and delivery
+      date are optional. Submit.
+      <em>Behind it:</em> <code>POST /api/speeches</code> creates the record
+      <em>before</em> any file is attached.
+      <p style="margin:2mm 0 0;font-size:9pt;color:var(--muted)">
+        If you already own a speech you will also see a &ldquo;this replaces an
+        earlier attempt&rdquo; picker — choosing one requires a change note.
+      </p>
+    </li>
+    <li>
+      <span class="s-title">Drop the video in</span>
+      Drag your file onto the upload panel. It uploads in parts directly to
+      object storage, not through the API.
+      <em>Behind it:</em> three calls — open a multipart upload, sign each part,
+      then complete. The browser PUTs the bytes straight to SeaweedFS on
+      :8333. Killing your network mid-upload and restoring it will resume;
+      <strong>reloading the page will not</strong>.
+    </li>
+    <li>
+      <span class="s-title">Watch it process</span>
+      Go to <code>/speeches</code>. The card polls every three seconds and moves
+      through <em>Uploading &rarr; Processing &rarr; Ready</em>. You may see an
+      &ldquo;N videos ahead of yours&rdquo; hint.
+      <div class="box warn" style="margin:2.5mm 0 0">
+        <div class="box-title">Expect no thumbnail</div>
+        <p>
+          Poster-frame generation has a history of failing in this environment and
+          zero posters exist in the database. Every card shows a placeholder. The
+          video itself is unaffected — posters are explicitly best-effort and
+          never fail a transcode.
+        </p>
+      </div>
+    </li>
+    <li>
+      <span class="s-title">Invite a reviewer</span>
+      Open the finished speech and click <strong>Invite a reviewer</strong> (only
+      the owner sees this). Search the directory and pick
+      <strong>Cora Coach</strong>. Write a message and send.
+      <em>Behind it:</em> <code>GET /api/reviewers</code> then
+      <code>POST /api/speeches/{id}/reviews</code>.
+      <p style="margin:2mm 0 0;font-size:9pt;color:var(--muted)">
+        The directory lists only accounts holding <code>member</code> or
+        <code>coach</code>. Administrators are excluded by design, and so are your
+        own role-less accounts.
+      </p>
+    </li>
+    <li>
+      <span class="s-title">Confirm the invitation was delivered</span>
+      Open Mailpit at <strong><code>http://localhost:8025</code></strong> to read
+      the invitation email. The in-app notification bell is a separate,
+      database-backed path and is more reliable than the mail.
+    </li>
+    <li>
+      <span class="s-title">Accept as the coach</span>
+      Log in as <code>coach@e2e.test</code>, go to <code>/dashboard</code>, find
+      the invitation and accept it.
+      <em>Behind it:</em> <code>POST /api/reviews/{id}/accept</code>.
+      <strong>Only now</strong> does the coach get a playback URL — before
+      accepting they could see only the title, duration and your name.
+    </li>
+    <li>
+      <span class="s-title">Leave commentary and publish</span>
+      Follow steps 4&ndash;9 of Script A against your new speech.
+    </li>
+  </ol>
+
+  <h3>Prove the privacy claim</h3>
+  <p>
+    While logged in as <code>coach-b@e2e.test</code> — who was never invited —
+    type your new speech&rsquo;s URL directly. You should get a
+    <strong>404, not a 403</strong>: the system declines to confirm the speech
+    even exists.
+  </p>
+</section>
+
+<!-- ============================ SCRIPT C ============================ -->
+<section class="page-break">
+  <h2><span class="num">7</span>Test script C &mdash; the read-back</h2>
+  <p class="sec-intro">
+    The client returns later and reads what the coach wrote. Two minutes, and it
+    needs no setup at all.
+  </p>
+
+  <div class="box ok">
+    <div class="box-title">This is the path that was broken, and is now fixed</div>
+    <p>
+      This exact request was returning HTTP 500 before the migration fix in
+      &sect;1.2. It now returns 200 with the coach&rsquo;s three notes — verified
+      directly against the running app.
+    </p>
+  </div>
+
+  <ol class="steps alt">
+    <li>
+      <span class="s-title">Log in as the client</span>
+      <code>member@e2e.test</code> / <code>password</code>.
+    </li>
+    <li>
+      <span class="s-title">Open the reviewed speech</span>
+      Go to <code>https://app.speechcoach.test/speeches/17</code>.
+      <em>Behind it:</em> <code>GET /api/speeches/17</code>.
+    </li>
+    <li>
+      <span class="s-title">Choose whose commentary to see</span>
+      In the Notes tab you get a radio group — one option per reviewer who holds
+      an access-granting review, plus <strong>&ldquo;No commentary&rdquo;</strong>
+      as a real, selectable option. Pick <strong>Cora Coach</strong>.
+      <em>Behind it:</em> <code>GET /api/speeches/17/reviews</code>, then
+      <code>GET /api/speeches/17/annotations?review_id=2</code>.
+    </li>
+    <li>
+      <span class="s-title">Play the video and watch the notes arrive</span>
+      Three notes should fade in and out on time, at <strong>14&nbsp;s</strong>,
+      <strong>62&nbsp;s</strong> and <strong>64&nbsp;s</strong>. They are tagged by
+      kind — <em>praise</em>, <em>observation</em>, <em>correction</em>.
+      <p style="margin:2mm 0 0;font-size:9pt;color:var(--muted)">
+        The two at 62&nbsp;s and 64&nbsp;s overlap deliberately — that is the
+        overlay stacking behaviour being exercised.
+      </p>
+    </li>
+    <li>
+      <span class="s-title">Check the Essay tab</span>
+      For speech 17 the coach has not published an essay, so you should see an
+      honest empty state rather than an error. That is correct behaviour.
+    </li>
+  </ol>
+
+  <h3>The assertion that matters most</h3>
+  <div class="box ok">
+    <div class="box-title">The client sees published work only &mdash; never drafts</div>
+    <p>
+      To prove it yourself rather than taking it on faith: as
+      <code>coach@e2e.test</code>, add a fourth note to speech 17 but
+      <strong>do not publish</strong>. Then log back in as
+      <code>member@e2e.test</code> and reload. You will still see exactly three
+      notes. Publish as the coach, reload as the client, and the fourth appears.
+    </p>
+    <p style="margin-top:2.5mm">
+      This was run during the review and behaved exactly so: 0 notes visible while
+      a draft, 1 after publishing.
+    </p>
+  </div>
+
+  <h3>What the client can see at each stage</h3>
+  <table class="compact">
+    <thead><tr><th style="width:30%">Review status</th><th>What the speaker gets</th></tr></thead>
+    <tbody>
+      <tr><td><code>invited</code></td><td>Reviewer is not offered in the track selector at all.</td></tr>
+      <tr><td><code>accepted</code> / <code>in_progress</code></td><td>Reviewer <em>is</em> offered — with an honest &ldquo;hasn&rsquo;t left commentary yet&rdquo; empty state. Published notes, if any, are shown; drafts never are.</td></tr>
+      <tr><td><code>published</code></td><td>All published notes, plus the essay if it was separately published.</td></tr>
+      <tr><td>revoked</td><td>Revocation withdraws the <em>coach&rsquo;s</em> access. The speaker keeps whatever was already delivered to them.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 8 ROUTES ============================ -->
+<section class="page-break">
+  <h2><span class="num">8</span>Route reference</h2>
+  <p class="sec-intro">
+    104 backend routes and 22 SPA routes, taken from
+    <code>route:list</code> inside the running container and from the router
+    source — and confirmed identical to the code on disk.
+  </p>
+
+  <h3>8.1 Authentication &mdash; root-mounted, not under <code>/api</code></h3>
+  <p style="font-size:9.2pt;color:var(--muted);margin-bottom:3mm">
+    These are Fortify&rsquo;s own routes and sit at the root deliberately. Note
+    that <code>/login</code>, <code>/register</code> and
+    <code>/forgot-password</code> are <em>both</em> SPA pages and API endpoints —
+    nginx disambiguates by HTTP method, so a GET serves the page and a POST
+    reaches Laravel.
+  </p>
+  <table class="compact">
+    <thead><tr><th style="width:10%">Method</th><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/sanctum/csrf-cookie</code></td><td>CSRF bootstrap. Must be called before any state-changing request.</td></tr>
+      <tr><td>POST</td><td><code>/register</code></td><td>Create an account. <strong>Assigns no role.</strong></td></tr>
+      <tr><td>POST</td><td><code>/login</code></td><td>Sign in. Throttled to 5 attempts.</td></tr>
+      <tr><td>POST</td><td><code>/logout</code></td><td>Sign out.</td></tr>
+      <tr><td>POST</td><td><code>/forgot-password</code></td><td>Send a reset link (read it in Mailpit).</td></tr>
+      <tr><td>POST</td><td><code>/reset-password</code></td><td>Complete the reset.</td></tr>
+      <tr><td>GET</td><td><code>/email/verify/{id}/{hash}</code></td><td>The emailed verification link. Signed.</td></tr>
+      <tr><td>POST</td><td><code>/email/verification-notification</code></td><td>Resend verification.</td></tr>
+      <tr><td>PUT</td><td><code>/user/password</code></td><td>Change password while signed in.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.2 Profile &amp; account</h3>
+  <table class="compact">
+    <thead><tr><th style="width:10%">Method</th><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/me</code></td><td>Session probe. Returns the user, roles and onboarding state.</td></tr>
+      <tr><td>GET</td><td><code>/api/onboarding</code></td><td>Onboarding progress.</td></tr>
+      <tr><td>POST</td><td><code>/api/onboarding/step-1|2|3</code></td><td>The three onboarding steps.</td></tr>
+      <tr><td>PATCH</td><td><code>/api/profile</code></td><td>Update profile fields.</td></tr>
+      <tr><td>PATCH</td><td><code>/api/profile/username</code></td><td>Change username (rate-limited by history).</td></tr>
+      <tr><td>POST</td><td><code>/api/avatar</code></td><td>Upload an avatar.</td></tr>
+      <tr><td>GET</td><td><code>/api/u/{username}</code></td><td><strong>Public</strong> — the only authenticated-free data route.</td></tr>
+      <tr><td>GET</td><td><code>/api/u/{username}/timeline</code></td><td>Shared review history with that person.</td></tr>
+      <tr><td>DELETE</td><td><code>/api/account</code></td><td>Erase your account.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.3 Speeches &amp; media</h3>
+  <table class="compact">
+    <thead><tr><th style="width:10%">Method</th><th style="width:40%">Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/speeches</code></td><td>Your own speeches only.</td></tr>
+      <tr><td>POST</td><td><code>/api/speeches</code></td><td>Create the record, before any file.</td></tr>
+      <tr><td>GET</td><td><code>/api/speeches/search</code></td><td>Search across captions/transcripts.</td></tr>
+      <tr><td>GET</td><td><code>/api/speeches/{id}</code></td><td>One speech. Three access tiers; 404 if you have none.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/assets/uploads</code></td><td>Open a multipart upload.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/uploads/{uid}/parts/{n}</code></td><td>Sign one part.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/uploads/{uid}/complete</code></td><td>Finish; dispatches transcode + captions.</td></tr>
+      <tr><td>DELETE</td><td><code>&hellip;/uploads/{uid}</code></td><td>Abort an upload.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/assets/{a}/retry</code></td><td>Retry a failed transcode.</td></tr>
+      <tr><td>GET</td><td><code>&hellip;/assets/{a}/playback-url</code></td><td>Presigned playback URL.</td></tr>
+      <tr><td>GET</td><td><code>/api/queue/transcode-depth</code></td><td>&ldquo;N videos ahead of yours&rdquo;.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.4 Reviews &mdash; the invitation lifecycle</h3>
+  <table class="compact">
+    <thead><tr><th style="width:10%">Method</th><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>/api/reviewers</code></td><td>The reviewer directory. <code>member</code> and <code>coach</code> only.</td></tr>
+      <tr><td>POST</td><td><code>/api/speeches/{id}/reviews</code></td><td>Invite someone. Owner only.</td></tr>
+      <tr><td>GET</td><td><code>/api/speeches/{id}/reviews</code></td><td>Who is reviewing this speech.</td></tr>
+      <tr><td>GET</td><td><code>/api/reviews</code></td><td>Your reviews, in four dashboard sections.</td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/accept</code></td><td>Accept. <strong>Admins are refused categorically.</strong></td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/decline</code></td><td>Decline.</td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/withdraw</code></td><td>Reviewer steps back.</td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/abandon</code></td><td>Reviewer gives up mid-review.</td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/revoke</code></td><td>Speaker (or admin) withdraws access.</td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/revoke-and-purge</code></td><td>Revoke and destroy the commentary.</td></tr>
+      <tr><td>POST</td><td><code>/api/reviews/{id}/publish</code></td><td><strong>Publish all drafts at once.</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.5 Commentary</h3>
+  <table class="compact">
+    <thead><tr><th style="width:10%">Method</th><th style="width:40%">Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>GET</td><td><code>&hellip;/annotations?review_id=</code></td><td>Read one reviewer&rsquo;s track. <code>review_id</code> is required.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/annotations</code></td><td>Create a timed note.</td></tr>
+      <tr><td>PATCH</td><td><code>&hellip;/annotations/{id}</code></td><td>Edit. Optimistically locked — 409 on conflict.</td></tr>
+      <tr><td>DELETE</td><td><code>&hellip;/annotations/{id}</code></td><td>Delete (undoable for 6&nbsp;s in the UI).</td></tr>
+      <tr><td>DELETE</td><td><code>&hellip;/annotation-sets/me</code></td><td>Clear your own set. <strong>Takes no author parameter</strong>, so no reviewer can target a peer.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/voice-notes</code></td><td>Upload a voice note. <strong>Coach role required.</strong></td></tr>
+      <tr><td>GET</td><td><code>&hellip;/voice-playback-url</code></td><td>Presigned audio URL.</td></tr>
+      <tr><td>GET/PUT</td><td><code>&hellip;/essay</code></td><td>Read / autosave the essay.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/essay/publish</code></td><td><strong>Separate</strong> essay publish. One-way.</td></tr>
+      <tr><td>GET/PUT</td><td><code>&hellip;/captions</code></td><td>Read / edit captions. Owner edits only.</td></tr>
+      <tr><td>GET</td><td><code>&hellip;/transcript</code></td><td>The transcript.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.6 Social, privacy &amp; admin</h3>
+  <table class="compact">
+    <thead><tr><th style="width:10%">Method</th><th style="width:34%">Path</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td>POST/GET</td><td><code>/api/connections</code></td><td>Request / list connections. Rate-limited.</td></tr>
+      <tr><td>POST</td><td><code>/api/connections/{id}/accept|decline|block|unblock</code></td><td>Connection lifecycle. Only the blocker can unblock.</td></tr>
+      <tr><td>GET/POST</td><td><code>/api/notifications</code>, <code>&hellip;/{id}/read</code></td><td>The notification bell.</td></tr>
+      <tr><td>POST</td><td><code>/api/reports</code></td><td>Report a speech.</td></tr>
+      <tr><td>POST/GET</td><td><code>/api/privacy/exports</code></td><td>Request / list data exports.</td></tr>
+      <tr><td>POST</td><td><code>/api/coach-applications</code></td><td>Apply to become a coach.</td></tr>
+      <tr><td>POST</td><td><code>&hellip;/{id}/documents</code></td><td>Attach certification PDFs (max 2, 10&nbsp;MB, ClamAV-scanned).</td></tr>
+      <tr><td>GET</td><td><code>/control-panel</code></td><td><strong>Filament admin portal.</strong> Admin role + TOTP 2FA.</td></tr>
+      <tr><td>GET</td><td><code>/api/health</code>, <code>/up</code></td><td>Health checks. Unauthenticated.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>8.7 Frontend routes</h3>
+  <table class="compact">
+    <thead><tr><th style="width:30%">Path</th><th style="width:26%">Guard</th><th>Screen</th></tr></thead>
+    <tbody>
+      <tr><td><code>/</code></td><td><span class="pill no">none</span></td><td>Landing page</td></tr>
+      <tr><td><code>/login</code>, <code>/register</code>, <code>/forgot-password</code></td><td><span class="pill opt">guest only</span></td><td>Auth screens; redirect to onboarding if already signed in</td></tr>
+      <tr><td><code>/reset-password/:token</code></td><td><span class="pill no">none</span></td><td>Reset form</td></tr>
+      <tr><td><code>/verify</code></td><td><span class="pill no">none</span></td><td>Verification prompt — deliberately open, for cross-device links</td></tr>
+      <tr><td><code>/onboarding</code></td><td><span class="pill warn">auth</span></td><td>Three-step onboarding</td></tr>
+      <tr><td><code>/u/:username</code> <span style="color:var(--muted)">+ /reviews-left, /reviews-received</span></td><td><span class="pill no">public</span></td><td>Public profile with tabs</td></tr>
+      <tr><td><code>/speeches</code></td><td><span class="pill req">auth + verified</span></td><td>My speeches, polling for status</td></tr>
+      <tr><td><code>/speeches/new</code></td><td><span class="pill req">auth + verified</span></td><td>Create + upload</td></tr>
+      <tr><td><code>/speeches/:id</code></td><td><span class="pill req">auth + verified</span></td><td><strong>The watch / annotate screen</strong></td></tr>
+      <tr><td><code>/dashboard</code></td><td><span class="pill req">auth + verified</span></td><td>My reviews (no link out — see &sect;10)</td></tr>
+      <tr><td><code>/reviewers</code></td><td><span class="pill req">auth + verified</span></td><td>Reviewer directory</td></tr>
+      <tr><td><code>/search</code></td><td><span class="pill req">auth + verified</span></td><td>Search captions/transcripts</td></tr>
+      <tr><td><code>/profile</code>, <code>/account</code></td><td><span class="pill req">auth + verified</span></td><td>Edit profile; privacy &amp; erasure</td></tr>
+      <tr><td><code>/become-a-coach</code></td><td><span class="pill req">auth + verified</span></td><td>Coach application</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 9 ROLES ============================ -->
+<section class="page-break">
+  <h2><span class="num">9</span>Roles &amp; capabilities</h2>
+  <p class="sec-intro">
+    Produced by executing the authorization gates per role against real fixture
+    rows — not by reading the policy files and inferring.
+  </p>
+
+  <div class="box note">
+    <div class="box-title">There are no &ldquo;permissions&rdquo; in this system</div>
+    <p>
+      The permission tables exist but are <strong>completely empty</strong>, and
+      nothing in the codebase ever references a permission. Authorization is
+      <em>roles plus policies</em>, nothing else. Drop &ldquo;permissions&rdquo; as
+      a concept when reasoning about this app.
+    </p>
+  </div>
+
+  <h3>9.1 Who can do what</h3>
+  <table class="compact">
+    <thead>
+      <tr>
+        <th style="width:30%">Capability</th>
+        <th>super<br>admin</th><th>admin</th><th>coach</th>
+        <th>member<br><span style="font-weight:400">(speaker)</span></th>
+        <th>no role</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Upload a speech</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td>Invite a reviewer to own speech</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td><strong>&#10003;</strong></td><td>&#10003;</td></tr>
+      <tr><td>Appear in the reviewer directory</td><td>&ndash;</td><td>&ndash;</td><td><strong>&#10003;</strong></td><td><strong>&#10003;</strong></td><td><strong>&ndash;</strong></td></tr>
+      <tr><td>Accept an invitation</td><td>&ndash;</td><td><strong>&ndash;</strong></td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td></tr>
+      <tr><td>Write timed notes / essay</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td><td>&#10003;</td><td>&ndash;</td></tr>
+      <tr><td>Publish a review</td><td>&ndash;</td><td>&ndash;</td><td>&#10003;</td><td>&#10003;</td><td>&ndash;</td></tr>
+      <tr><td><strong>Record a voice note</strong></td><td>&ndash;</td><td>&ndash;</td><td><strong>&#10003;</strong></td><td><strong>&ndash;</strong></td><td>&ndash;</td></tr>
+      <tr><td>Read commentary on a speech</td><td>&ndash;</td><td>&#10003;</td><td>&#10003;</td><td>&#10003;</td><td>&ndash;</td></tr>
+      <tr><td>Edit captions</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td><strong>&#10003;</strong> owner</td><td>&#10003; owner</td></tr>
+      <tr><td>Revoke / purge a review</td><td>&ndash;</td><td><strong>&#10003;</strong></td><td>&ndash;</td><td>&#10003; owner</td><td>&#10003; owner</td></tr>
+      <tr><td>Assign roles, suspend, delete users</td><td><strong>&ndash;</strong></td><td><strong>&#10003;</strong></td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td></tr>
+      <tr><td>Enter the admin portal</td><td>&#10003;</td><td>&#10003;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:8.6pt;color:var(--muted)">
+    &ldquo;owner&rdquo; means the capability applies to their own speech only.
+  </p>
+
+  <h3>9.2 Three findings worth knowing</h3>
+
+  <div class="box warn">
+    <div class="box-title">1. <code>super_admin</code> is nearly inert in the API</div>
+    <p>
+      Roles here are mutually exclusive — granting <code>super_admin</code>
+      <em>replaces</em> <code>admin</code> rather than adding to it, and there is no
+      hierarchy. Almost every policy checks for <code>admin</code> specifically, so
+      the super-admin account passes very few of them. Its one real power is
+      entering the admin portal. <strong>For moderation testing, use
+      <code>admin@e2e.test</code>, not the super-admin account.</strong>
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title">2. Blocking someone does not restrict their access</div>
+    <p>
+      The block feature governs <em>connection requests only</em>. A blocked user
+      can still be invited as a reviewer, and still reads any speech they already
+      hold a grant on. Connections never widen or narrow what anyone can see — they
+      route a viewer to a profile page, nothing more.
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title">3. An administrator cannot review</div>
+    <p>
+      Admins are blocked from accepting, declining, withdrawing or abandoning a
+      review, from writing any commentary, and from appearing in or browsing the
+      reviewer directory. They <em>can</em> read anyone&rsquo;s commentary and
+      revoke reviews. This is intentional — moderation and participation are kept
+      apart.
+    </p>
+  </div>
+
+  <h3>9.3 Becoming a coach</h3>
+  <p>Two paths, both ending in the same role assignment:</p>
+  <div class="two-col">
+    <div class="card">
+      <h4>The product path</h4>
+      <p style="font-size:9pt">
+        <code>/become-a-coach</code> &rarr; submit an application &rarr; attach up
+        to two certification PDFs (magic-byte checked, ClamAV-scanned) &rarr; an
+        admin approves it in the portal, which grants the role and writes an audit
+        entry. Rejected applicants may reapply.
+      </p>
+    </div>
+    <div class="card">
+      <h4>The direct path</h4>
+      <p style="font-size:9pt">
+        <code>php artisan user:grant-role {email} coach</code> — instant, and what
+        the seeded coaches use. Use this for testing; the application flow is worth
+        exercising separately but is slower.
+      </p>
+    </div>
+  </div>
+  <p style="font-size:9pt;color:var(--muted);margin-top:3mm">
+    One gap found: the admin portal has no UI to <em>grant</em> a role, only to
+    revoke coach status. Promotion to admin or super-admin is artisan-only.
+  </p>
+</section>
+
+<!-- ============================ 10 BROKEN EDGES ============================ -->
+<section class="page-break">
+  <h2><span class="num">10</span>Known broken edges</h2>
+  <p class="sec-intro">
+    What will visibly fail, so you can tell a genuine bug from a known gap.
+  </p>
+
+  <h3>10.1 Will not work today</h3>
+
+  <div class="box stop">
+    <div class="box-title">Captions and voice transcription &mdash; the model file is missing</div>
+    <p>
+      The <code>whisper-models</code> volume is <strong>empty</strong>. The worker
+      starts and idles happily, but every captions job fails because there is no
+      model to load. Nothing in the database has a transcript — the transcript
+      table has zero rows.
+    </p>
+    <p style="margin-top:2.5mm"><strong>To fix it</strong> (downloads ~142&nbsp;MiB):</p>
+    <pre style="margin:2mm 0 0"><span class="p">docker compose --profile whisper-model-init run --rm</span> whisper-model-init</pre>
+    <p style="margin-top:2.5mm">
+      Note that transcription is genuinely slow — it reserves 2 CPUs and 4&nbsp;GB
+      and pegs them for minutes per job. For a quick functional test you can simply
+      skip captions; nothing else depends on them.
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title">The reviewer dashboard does not link to the speech</div>
+    <p>
+      After accepting an invitation, a coach has no way to click through to the
+      speech — the dashboard renders no link, button or clickable row anywhere. The
+      speech id is present in the API response but never rendered. Workaround:
+      type <code>/speeches/{id}</code> by hand. This is the single most likely
+      thing to make a tester think the app is broken when it is not.
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title">No thumbnails on any speech</div>
+    <p>
+      Zero poster images exist, and the poster job has a history of failing here.
+      Every card shows a placeholder. Posters are explicitly best-effort and never
+      fail a transcode, so the video itself is fine.
+    </p>
+  </div>
+
+  <h3>10.2 Rough edges worth knowing</h3>
+  <table class="compact">
+    <thead><tr><th style="width:30%">Issue</th><th>Detail</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Uploads can get stuck at two</td>
+        <td>Abandoning a tab mid-upload holds a slot. Two abandoned uploads block the user entirely, and the nightly reconciler is what releases them. Manual unblock: <code>UPDATE users SET uploads_in_flight = 0 WHERE id = 9004;</code></td>
+      </tr>
+      <tr>
+        <td>Reloading mid-upload loses it</td>
+        <td>Network loss is resumable; a page reload is not — there is no persistence across reloads.</td>
+      </tr>
+      <tr>
+        <td>No server-side file-type check</td>
+        <td>The video type restriction is enforced only in the browser. A direct API call can push any file into storage, where it consumes quota and fails later at the probe step. Worth noting as a real security gap, not just a testing quirk.</td>
+      </tr>
+      <tr>
+        <td>Rotated phone video may play sideways</td>
+        <td>Rotation handling was never exercised against a real fixture. Portrait video from a phone is untested.</td>
+      </tr>
+      <tr>
+        <td>A note count reads zero</td>
+        <td>One seeded review has a stale counter — it shows 0 notes while actually holding 3. Harmless: the authorization path deliberately never reads these counters, precisely so a drifted count cannot deny a speaker commentary they were delivered. Only a profile-timeline count is affected.</td>
+      </tr>
+      <tr>
+        <td>Speech 9101&rsquo;s video will not play</td>
+        <td>Its asset is a deliberate 1&nbsp;KB placeholder. Fine for access-control testing; use speech 17 when you need a video that actually plays.</td>
+      </tr>
+      <tr>
+        <td>Stale mail failures in the queue</td>
+        <td>Six old failed jobs sit in the queue from August. Clear with <code>php artisan queue:flush</code>.</td>
+      </tr>
+      <tr>
+        <td>The spikes page errors</td>
+        <td>The frontend enables it but the backend flag is unset, so the endpoint returns 403. Cosmetic; unrelated to the product.</td>
+      </tr>
+      <tr>
+        <td><code>README.md</code> is wrong</td>
+        <td>It still claims there is no application code. It is about fourteen steps out of date — do not use it as a runbook.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================ 11 TROUBLESHOOTING ============================ -->
+<section class="page-break">
+  <h2><span class="num">11</span>Troubleshooting</h2>
+  <p class="sec-intro">
+    The traps in this stack that cost real hours, each with the symptom that
+    identifies it.
+  </p>
+
+  <div class="box stop">
+    <div class="box-title">&ldquo;Something went wrong. Please try again.&rdquo; on login</div>
+    <p>
+      <strong>Cause:</strong> you are on the wrong origin — almost certainly
+      <code>http://localhost:5173</code> or <code>http://localhost:8080</code>.
+      The backend only accepts <code>https://app.speechcoach.test</code>, so the
+      browser blocks the request and the SPA has no error payload to display, which
+      is why the message is generic rather than specific.
+    </p>
+    <p style="margin-top:2.5mm">
+      <strong>Fix:</strong> use <code>https://app.speechcoach.test</code>. Your
+      credentials were never the problem.
+    </p>
+  </div>
+
+  <div class="box stop">
+    <div class="box-title">A backend change you just made has no effect</div>
+    <p>
+      <strong>Cause:</strong> the <code>app</code> container has <em>no bind
+      mount</em> — <code>api/</code> is copied into the image at build time. The
+      container happily runs the old code and commands succeed against it, which
+      makes this silent and very confusing.
+    </p>
+    <p style="margin-top:2.5mm"><strong>The tell:</strong> <code>migrate</code> says &ldquo;Nothing to migrate&rdquo; while migration files plainly exist on disk. Or a route 404s that you can see in <code>routes/api.php</code>.</p>
+    <pre style="margin:2.5mm 0 0"><span class="p">docker compose build</span> app queue-worker scheduler
+<span class="p">docker compose up -d</span> app queue-worker scheduler</pre>
+    <p style="margin-top:2.5mm;font-size:9pt">
+      <strong>Exception:</strong> <code>api/.env</code> is <em>not</em> baked in —
+      it is injected at container-create time. Env changes need
+      <code>docker compose up -d --force-recreate app</code>, not a rebuild.
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title"><code>https://app.speechcoach.test</code> returns 502</div>
+    <p>
+      <strong>Cause:</strong> the host Vite dev server is not running. nginx proxies
+      that hostname to port 5173 on your Mac, and Vite is deliberately never
+      containerized.
+      <strong>Fix:</strong> <code>cd web &amp;&amp; npm run dev</code>.
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title">Nothing starts, and <code>clamav</code> sits at &ldquo;health: starting&rdquo;</div>
+    <p>
+      <strong>Cause:</strong> ClamAV is loading virus signatures; its startup grace
+      period is three minutes. Both <code>app</code> and <code>queue-worker</code>
+      hard-depend on it being healthy, so the whole stack waits.
+      <strong>Fix:</strong> wait it out. This is normal, not a hang.
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-title">Pages load slowly or a navigation seems to hang</div>
+    <p>
+      <strong>Cause:</strong> you are driving the Vite dev server, which compiles
+      modules on demand, single-threaded. Under host load this can stall for a
+      minute or more. It tracks your Mac&rsquo;s CPU, not the app.
+      <strong>Fix:</strong> be patient on first load of a route; it is fast
+      afterwards. Known causes already ruled out: dev-server age, stray browser
+      processes, and container load.
+    </p>
+  </div>
+
+  <div class="box info">
+    <div class="box-title">Port conflicts on 443, 5433 or 8333</div>
+    <p>
+      <strong>Cause:</strong> the end-to-end test stack is running at the same time
+      as the dev stack. They contend for the same ports and must never both be up.
+      <strong>Fix:</strong> <code>scripts/e2e-stack.sh down</code> first. A leftover
+      Docker network from a previous run can also block startup with a label
+      conflict — check it has no containers attached before removing it.
+    </p>
+  </div>
+
+  <h3>Quick diagnostic commands</h3>
+  <pre class="long"><span class="c"># Is everything healthy?</span>
+<span class="p">docker compose ps</span>
+
+<span class="c"># Is the container's code current? (should print 104)</span>
+<span class="p">docker compose exec</span> app php artisan route:list --json | python3 -c "import json,sys;print(len(json.load(sys.stdin)))"
+
+<span class="c"># Any migrations pending? (should say Nothing to migrate)</span>
+<span class="p">docker compose exec</span> app php artisan migrate:status | grep -i pending
+
+<span class="c"># Is the API alive?</span>
+curl -sk https://api.speechcoach.test/api/health
+
+<span class="c"># Is Vite up?</span>
+lsof -i :5173
+
+<span class="c"># Read the mail the app has sent</span>
+open http://localhost:8025
+
+<span class="c"># What is actually in the database?</span>
+<span class="p">docker compose exec</span> postgres psql -U speechcoach -d speechcoach \
+  -c "SELECT id, user_id, title FROM speeches ORDER BY id;"
+
+<span class="c"># Watch a transcode happen</span>
+<span class="p">docker compose logs -f</span> ffmpeg-worker</pre>
+
+  <h3>Resetting to a clean slate</h3>
+  <div class="box stop">
+    <div class="box-title">This destroys your existing data</div>
+    <p>
+      Only do this if you want the fixtures back from scratch. It will delete the
+      four existing speeches and your six real accounts.
+    </p>
+    <pre style="margin:2.5mm 0 0"><span class="p">docker compose exec</span> app php artisan migrate:fresh --seed --force
+<span class="p">docker compose exec</span> app php artisan db:seed --class=E2ESeeder --force
+<span class="p">docker compose exec</span> app php artisan media:initialize</pre>
+    <p style="margin-top:2.5mm">
+      Two further optional seeders add richer fixtures — caption data and voice
+      annotations with real audio. Both need the storage service healthy:
+    </p>
+    <pre style="margin:2.5mm 0 0"><span class="p">docker compose exec</span> app php artisan db:seed --class=E2ECaptionsSeeder
+<span class="p">docker compose exec</span> app php artisan db:seed --class=E2EVoiceAnnotationSeeder</pre>
+  </div>
+
+  <div class="footer-note">
+    <strong>Verification basis.</strong> Compiled 30 September 2026 against the
+    running stack on this machine. Credentials were confirmed by real logins;
+    routes by <code>route:list</code> inside the container; the permission matrix
+    by executing gates per role; the commentary loop by driving it over HTTP; and
+    video playback by a range request returning <code>206 Partial Content</code>.
+    Where something could not be verified it is marked as such rather than
+    asserted. The nine pending migrations were applied during this review, after a
+    database dump was taken; the two fixture rows touched while proving the publish
+    loop were restored to their original state.
+  </div>
+</section>
+
+</body>
+</html>

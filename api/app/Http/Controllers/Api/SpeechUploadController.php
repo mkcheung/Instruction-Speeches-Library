@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\SpeechAccessDeniedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Speech\CompleteUploadRequest;
 use App\Http\Requests\Speech\CreateUploadRequest;
@@ -38,10 +39,26 @@ class SpeechUploadController extends Controller
     /**
      * STEP-05 §7.3: the playback-URL endpoint is the one place upload
      * ownership widens to "owner OR an access-granting review" — a
-     * reviewer who has accepted (or further) can watch, everyone else
-     * (including an invited-but-not-yet-accepted reviewer) gets the same
-     * 404 a stranger would, never a 403 that would confirm the speech
-     * exists.
+     * reviewer who has accepted (or further) can watch.
+     *
+     * PLAN-ACCESS-DENIED-STATES.md §6.1 amended what happens to everyone
+     * else. This used to 404 every non-granting caller alike, on the stated
+     * rationale of "never a 403 that would confirm the speech exists." That
+     * rationale no longer holds: SpeechController::show now 403s a caller
+     * whose review was revoked/declined/abandoned, and already returned a
+     * 200 reduced-metadata payload to a merely-invited one — so for anyone
+     * holding a row, existence is disclosed before this method is ever
+     * reached, and a 404 here only produces an inconsistency.
+     *
+     * It was also a live UX bug, not just an inconsistency. A reviewer
+     * revoked MID-SESSION still has the speech cached in RTK Query, so the
+     * frontend's refresh-on-expiry path (SpeechWatch's `refreshUrl`) fires
+     * and used to receive a 404 — dropping them into the player's generic
+     * error path rather than the access-denied page.
+     *
+     * The stranger's 404 is unchanged and still the point: no row at all
+     * means no disclosure. Pinned by PlaybackAuthorizationTest's "refuses a
+     * second Member hitting the playback-url endpoint".
      */
     private function authorizeGrantingAccess(Request $request, Speech $speech): void
     {
@@ -49,14 +66,26 @@ class SpeechUploadController extends Controller
             return;
         }
 
-        $granted = Review::query()
+        $review = Review::query()
             ->where('speech_id', $speech->id)
             ->where('reviewer_id', $request->user()->id)
-            ->whereIn('status', Review::ACCESS_GRANTING)
-            ->whereNull('revoked_at')
-            ->exists();
+            ->first();
 
-        abort_unless($granted, Response::HTTP_NOT_FOUND, 'No such speech.');
+        // No row ever — a genuine stranger. Don't confirm existence.
+        if ($review === null) {
+            abort(Response::HTTP_NOT_FOUND, 'No such speech.');
+        }
+
+        $isGranting = $review->revoked_at === null
+            && in_array($review->status, Review::ACCESS_GRANTING, true);
+
+        // Holds a row but it doesn't grant playback: invited-not-yet-accepted,
+        // or revoked/declined/abandoned. One undifferentiated 403, matching
+        // SpeechAccessDeniedException's reasoning — the status must not reveal
+        // WHICH of those applies.
+        if (! $isGranting) {
+            throw new SpeechAccessDeniedException;
+        }
     }
 
     /**

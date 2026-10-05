@@ -2,8 +2,10 @@
 
 use App\Models\Review;
 use App\Models\Speech;
+use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Policies\ReviewPolicy;
+use App\Services\ReviewService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
@@ -288,4 +290,168 @@ it('accepts a Member reviewer (not just Coaches) through the full HTTP path, pro
     $selector = $this->actingAs($speaker)->getJson("/api/speeches/{$speech->id}/reviews");
     $selector->assertOk();
     expect(collect($selector->json('reviews'))->pluck('reviewer.id')->all())->toContain($peerMember->id);
+});
+
+/**
+ * PLAN-ACCESS-DENIED-STATES.md §5.1. The pre-change behaviour — a revoked
+ * reviewer getting the stranger's 404 on `show` — was entirely unpinned,
+ * which is why it survived so long: every existing caller of this endpoint
+ * is either the owner or a genuinely reviewless stranger. These tests pin
+ * the four-tier read so the distinction cannot silently collapse again.
+ */
+it('gives a caller whose review no longer reaches the speech an undifferentiated 403, never naming the revocation', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+
+    Review::factory()->accepted()->revoked()->create([
+        'speech_id' => $speech->id,
+        'reviewer_id' => $reviewer->id,
+        'speech_owner_id' => $speaker->id,
+        'revocation_reason' => 'Taking this one to a different coach.',
+    ]);
+
+    $response = $this->actingAs($reviewer)->getJson("/api/speeches/{$speech->id}");
+
+    $response->assertForbidden();
+    expect($response->json('message'))->toBe('Access denied.');
+    expect($response->json('code'))->toBe('speech_access_denied');
+
+    // The whole point of the copy: the response must not disclose that a
+    // revocation happened, nor echo the speaker's reason. One substring
+    // catches both "revoked" and "revocation".
+    expect(strtolower($response->getContent()))->not->toContain('revok');
+    expect($response->getContent())->not->toContain('different coach');
+});
+
+it('keeps the stranger on 404 with its own body, so the privacy tier is pinned by message and not merely by status', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $stranger = User::factory()->create();
+    $stranger->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+
+    $response = $this->actingAs($stranger)->getJson("/api/speeches/{$speech->id}");
+
+    $response->assertNotFound();
+    expect($response->json('message'))->toBe('No such speech.');
+    expect($response->json('code'))->toBeNull();
+});
+
+it('treats declined and abandoned exactly like revoked, so the status code cannot reveal which one applies', function (string $status, ?string $revokedAt, int $expected) {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+
+    Review::factory()->create([
+        'speech_id' => $speech->id,
+        'reviewer_id' => $reviewer->id,
+        'speech_owner_id' => $speaker->id,
+        'status' => $status,
+        'revoked_at' => $revokedAt,
+    ]);
+
+    $this->actingAs($reviewer)
+        ->getJson("/api/speeches/{$speech->id}")
+        ->assertStatus($expected);
+})->with([
+    // A reviewer knows whether they declined. If `declined` 404'd while
+    // `revoked` 403'd, the status itself would announce "this was done to
+    // me" — so these must be indistinguishable.
+    'declined' => ['declined', null, 403],
+    'abandoned' => ['abandoned', null, 403],
+    'revoked after accept' => ['accepted', '2026-01-01 00:00:00', 403],
+    // The tiers that still grant access, as a regression guard on the
+    // branch rewrite.
+    'accepted' => ['accepted', null, 200],
+    'published' => ['published', null, 200],
+    'invited (reduced)' => ['invited', null, 200],
+]);
+
+it('restores access when a revoked reviewer is re-invited, because the tombstone is cleared in place rather than a second row being written', function () {
+    Notification::fake();
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+
+    // Deliberately driven through the real service, not factories: this is
+    // the test that pins the uq_reviews_speech_reviewer + clear-in-place
+    // invariant the new single-query lookup in SpeechController::show
+    // depends on. A factory would bypass exactly the code that matters.
+    $reviews = app(ReviewService::class);
+
+    $review = $reviews->invite($speaker, $speech, $reviewer, 'First pass?', false, false);
+    $reviews->accept($review);
+    $reviews->revoke($review->fresh(), $speaker, 'Changed my mind.');
+
+    $this->actingAs($reviewer)->getJson("/api/speeches/{$speech->id}")->assertForbidden();
+
+    $reinvited = $reviews->invite($speaker, $speech, $reviewer, 'Actually, please do.', false, false);
+
+    // Same row, tombstone cleared — not a second row that a naive query
+    // could pick over the live one.
+    expect($reinvited->id)->toBe($review->id);
+    expect(Review::query()->where('speech_id', $speech->id)->where('reviewer_id', $reviewer->id)->count())->toBe(1);
+
+    $this->actingAs($reviewer)->getJson("/api/speeches/{$speech->id}")->assertOk();
+});
+
+it('returns a purged reviewer to stranger status with a 404, since revokeAndPurge deletes the row entirely', function () {
+    Notification::fake();
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+
+    $reviews = app(ReviewService::class);
+    $review = $reviews->invite($speaker, $speech, $reviewer, null, false, false);
+    $reviews->accept($review);
+
+    // Documents the one residual distinguishability the 403 introduces:
+    // revoked -> 403 (row survives), revoke-and-purged -> 404 (row gone).
+    // That discloses the purge, not the revocation, and is deliberate.
+    $reviews->revokeAndPurge($review->fresh(), $speaker);
+
+    $this->actingAs($reviewer)->getJson("/api/speeches/{$speech->id}")->assertNotFound();
+});
+
+it('refuses a playback URL with the same undifferentiated 403 once a review stops granting, so a mid-session revoke does not look like a broken player', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create();
+    $asset = SpeechAsset::factory()->for($speech)->video()->ready()->create();
+
+    Review::factory()->accepted()->revoked()->create([
+        'speech_id' => $speech->id,
+        'reviewer_id' => $reviewer->id,
+        'speech_owner_id' => $speaker->id,
+    ]);
+
+    $this->actingAs($reviewer)
+        ->getJson("/api/speeches/{$speech->id}/assets/{$asset->id}/playback-url")
+        ->assertForbidden();
+
+    // A stranger still gets the 404 — no row, no disclosure.
+    $stranger = User::factory()->create();
+    $stranger->assignRole('coach');
+    $this->actingAs($stranger)
+        ->getJson("/api/speeches/{$speech->id}/assets/{$asset->id}/playback-url")
+        ->assertNotFound();
 });

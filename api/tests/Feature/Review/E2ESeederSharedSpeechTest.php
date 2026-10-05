@@ -84,3 +84,75 @@ it('pins the status codes two-users.spec.ts asserts for reviewer isolation', fun
     expect(collect($roster->json('reviews'))->pluck('reviewer.id')->sort()->values()->all())
         ->toBe([E2ESeeder::COACH_ID, E2ESeeder::COACH_B_ID]);
 });
+
+/**
+ * PLAN-ACCESS-DENIED-STATES.md §5.3. The 403 branch added to
+ * SpeechController::show had no reachable fixture — the database contained
+ * zero revoked reviews — so neither a browser session nor a Playwright spec
+ * could exercise it. Coach C exists for that, and this pins both halves:
+ * the tombstone is seeded, and it stays invisible to the speaker's roster.
+ */
+it('seeds a third coach whose review is revoked, so the access-denied branch is reachable', function () {
+    $this->seed(E2ESeeder::class);
+
+    $coachC = User::query()->find(E2ESeeder::COACH_C_ID);
+    expect($coachC)->not->toBeNull();
+    expect($coachC->email)->toBe('coach-c@e2e.test');
+    expect($coachC->hasRole('coach'))->toBeTrue();
+    expect($coachC->profile->onboarding_completed_at)->not->toBeNull();
+
+    $revoked = Review::query()->find(E2ESeeder::REVIEW_COACH_C_REVOKED_ID);
+    expect($revoked)->not->toBeNull();
+    expect($revoked->speech_id)->toBe(E2ESeeder::SHARED_SPEECH_ID);
+    expect($revoked->reviewer_id)->toBe(E2ESeeder::COACH_C_ID);
+    expect($revoked->revoked_at)->not->toBeNull();
+    expect($revoked->revoked_by_id)->toBe(E2ESeeder::MEMBER_ID);
+    // Orthogonal to status, exactly as ReviewService::revoke leaves it.
+    expect($revoked->status)->toBe('accepted');
+
+    // The branch this fixture exists to reach.
+    $response = $this->actingAs($coachC)->getJson('/api/speeches/'.E2ESeeder::SHARED_SPEECH_ID);
+    $response->assertForbidden();
+    expect($response->json('code'))->toBe('speech_access_denied');
+    expect(strtolower($response->getContent()))->not->toContain('revok');
+});
+
+it('keeps the revoked third review out of the speaker roster and out of the other coaches\' way', function () {
+    $this->seed(E2ESeeder::class);
+
+    // The speaker's roster is still exactly the two live reviewers — the
+    // assertion the isolation specs depend on. `forSpeech` filters both
+    // ACCESS_GRANTING and `revoked_at IS NULL`, which is what makes adding
+    // a revoked row safe here.
+    $speaker = User::query()->find(E2ESeeder::MEMBER_ID);
+    $roster = $this->actingAs($speaker)->getJson('/api/speeches/'.E2ESeeder::SHARED_SPEECH_ID.'/reviews');
+    $roster->assertOk();
+    expect(collect($roster->json('reviews'))->pluck('reviewer.id')->sort()->values()->all())
+        ->toBe([E2ESeeder::COACH_ID, E2ESeeder::COACH_B_ID]);
+
+    // And the two live coaches are untouched by the new row.
+    foreach ([E2ESeeder::REVIEW_COACH_A_ID, E2ESeeder::REVIEW_COACH_B_ID] as $reviewId) {
+        expect(Review::query()->find($reviewId)->revoked_at)->toBeNull();
+    }
+});
+
+it('re-seeds the revoked fixture idempotently, and a spec revoking a live review cannot make that permanent', function () {
+    $this->seed(E2ESeeder::class);
+
+    // Simulate a spec revoking coach A mid-run.
+    Review::query()->whereKey(E2ESeeder::REVIEW_COACH_A_ID)->update([
+        'revoked_at' => now(),
+        'revocation_reason' => 'Left behind by a test run.',
+    ]);
+
+    $this->seed(E2ESeeder::class);
+
+    // Re-seeding must reset it — this is why revocationColumnsFor writes
+    // the nulls explicitly for A and B instead of omitting them.
+    $coachA = Review::query()->find(E2ESeeder::REVIEW_COACH_A_ID);
+    expect($coachA->revoked_at)->toBeNull();
+    expect($coachA->revocation_reason)->toBeNull();
+
+    expect(Review::query()->where('speech_id', E2ESeeder::SHARED_SPEECH_ID)->count())->toBe(3);
+    expect(User::query()->where('email', 'coach-c@e2e.test')->count())->toBe(1);
+});

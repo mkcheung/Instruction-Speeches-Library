@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type Player from 'video.js/dist/types/player'
-import { PosterFramePicker, OverlayPositioner } from '@/routes/SpeechWatch'
+import { Routes, Route } from 'react-router-dom'
+import SpeechWatch, { PosterFramePicker, OverlayPositioner } from '@/routes/SpeechWatch'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import type { SpeechSprite } from '@/features/speech/types'
 
@@ -129,5 +130,137 @@ describe('PosterFramePicker', () => {
       const called = fetchMock.mock.calls.some(([input]) => urlOf(input).includes('/api/speeches/1/assets/9/poster-frame'))
       expect(called).toBe(true)
     })
+  })
+})
+
+/**
+ * PLAN-ACCESS-DENIED-STATES.md §0.1/§5.2. Until this block existed, the
+ * default-exported `SpeechWatch` was never rendered by any test — only its
+ * two named sub-components were — which is exactly why the loading guard
+ * shipped conflating "still fetching" with "the fetch failed" and hung on
+ * `Loading…` forever for every 403/404/500.
+ *
+ * Rendered through an explicit `<Routes>` (PublicProfile-style) rather than
+ * bare, because the component reads `:id` via `useParams`.
+ */
+describe('SpeechWatch access states', () => {
+  beforeEach(() => clearCookies())
+  afterEach(() => vi.unstubAllGlobals())
+
+  const me = {
+    user: {
+      id: '9003',
+      email: 'coach@e2e.test',
+      first_name: 'Cora',
+      last_name: 'Coach',
+      username: 'e2e-coach',
+      display_name: 'Cora Coach',
+      email_verified: true,
+      roles: ['coach'],
+      onboarding_completed: true,
+      onboarding_step: 4,
+    },
+  }
+
+  function json(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  /** Answers `/api/me` normally and `/api/speeches/:id` with whatever this
+   * case is exercising. */
+  function stubSpeechFetch(speechResponse: () => Response) {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString()
+      // Order matters: the voice-commentary preference route is nested
+      // UNDER /api/me, so a loose `includes('/api/me')` match swallows it
+      // and hands the hook a `{user}` payload, which it then dereferences
+      // as `.voice_commentary.speech_id` and crashes on. Match the specific
+      // route first and the identity route exactly.
+      if (url.includes('/preferences/voice-commentary/')) {
+        return json({ voice_commentary: { speech_id: 17, mode: 'play', experienced: true } })
+      }
+      if (url.endsWith('/api/me')) return json(me)
+      if (url.includes('/api/speeches/')) return speechResponse()
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  function renderWatch(route = '/speeches/17') {
+    return renderWithProviders(
+      <Routes>
+        <Route path="/speeches/:id" element={<SpeechWatch />} />
+      </Routes>,
+      { route },
+    )
+  }
+
+  it('renders an access-denied refusal on 403, and never says why', async () => {
+    stubSpeechFetch(() => json({ message: 'Access denied.', code: 'speech_access_denied' }, 403))
+    renderWatch()
+
+    expect(await screen.findByText(/access denied/i)).toBeInTheDocument()
+    // The regression that mattered: it must stop claiming to be loading.
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+    // §1 Option A: the denial surface discloses nothing about a revocation.
+    expect(document.body.textContent?.toLowerCase()).not.toContain('revok')
+    // A permission state is muted, not announced as a failure.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('renders a not-found refusal on 404 rather than hanging', async () => {
+    stubSpeechFetch(() => json({ message: 'No such speech.' }, 404))
+    renderWatch()
+
+    expect(await screen.findByText(/no such speech/i)).toBeInTheDocument()
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('announces a genuine failure as an alert, distinct from a refusal', async () => {
+    stubSpeechFetch(() => json({ message: 'Server error.' }, 500))
+    renderWatch()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn.t load this speech/i)
+    expect(screen.queryByText(/access denied/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+  })
+
+  it('refuses a non-numeric id without ever issuing a request', async () => {
+    const fetchMock = stubSpeechFetch(() => json({}, 200))
+    renderWatch('/speeches/not-an-id')
+
+    // `Number('not-an-id')` is NaN, so `skip` suppresses the query entirely
+    // — there is no error object to read, which is the second path into the
+    // old hang.
+    expect(await screen.findByText(/no such speech/i)).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input]) =>
+      (input instanceof Request ? input.url : String(input)).includes('/api/speeches/'),
+    )).toBe(false)
+  })
+
+  it('still renders the speech when access is granted', async () => {
+    stubSpeechFetch(() =>
+      json({
+        speech: {
+          id: 17,
+          ulid: '01ABC',
+          title: 'A Granted Speech',
+          description: null,
+          user_id: 9003,
+          duration_seconds: 65.7,
+          primary_video: null,
+        },
+      }),
+    )
+    renderWatch()
+
+    expect(await screen.findByText('A Granted Speech')).toBeInTheDocument()
+    expect(screen.queryByText(/access denied/i)).not.toBeInTheDocument()
   })
 })
