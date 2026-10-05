@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type Player from 'video.js/dist/types/player'
+import { PageShell } from '@/components/layout/PageShell'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
@@ -240,7 +241,7 @@ export default function SpeechWatch() {
     const failed = !denied && !missing
 
     return (
-      <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-10">
+      <PageShell width="wide">
         <Card>
           <CardContent
             className={
@@ -267,7 +268,7 @@ export default function SpeechWatch() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
     )
   }
 
@@ -280,7 +281,7 @@ export default function SpeechWatch() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-10">
+    <PageShell width="wide">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2">
           <div>
@@ -508,7 +509,7 @@ export default function SpeechWatch() {
           </TabsPanel>
         </Tabs>
       )}
-    </div>
+    </PageShell>
   )
 }
 

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SpeechPoster } from '@/components/speech/SpeechPoster'
 import { StatusBadge, SupersedesBadge } from '@/components/speech/StatusBadge'
 import { useListSpeechesQuery } from '@/features/speech/speechApi'
+import { CardGrid, PageHeader, PageShell } from '@/components/layout/PageShell'
 
 /**
  * STEP-03-upload-and-watch.md's "my speeches" — "the card shows
@@ -31,14 +32,25 @@ export default function MySpeeches() {
   const speeches = data?.speeches ?? []
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
-      <h1 className="text-2xl font-semibold">My speeches</h1>
+    /* `wide`: this is a poster grid, the one content type that genuinely
+       uses every pixel. It was previously capped at `max-w-3xl` with a
+       two-column ceiling, so a 1920px window showed two cards and ~70rem
+       of empty space. */
+    <PageShell width="wide">
+      <PageHeader
+        title="My speeches"
+        actions={
+          <Button size="sm" render={<Link to="/speeches/new" />}>
+            Upload a speech
+          </Button>
+        }
+      />
 
       {speeches.length === 0 && (
         <p className="text-sm text-muted-foreground">No speeches yet.</p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <CardGrid>
         {speeches.map((speech) => (
           <Card key={speech.id}>
             <SpeechPoster speech={speech} className="rounded-b-none" />
@@ -58,7 +70,7 @@ export default function MySpeeches() {
             </CardContent>
           </Card>
         ))}
-      </div>
-    </div>
+      </CardGrid>
+    </PageShell>
   )
 }

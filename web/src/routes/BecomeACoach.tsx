@@ -6,6 +6,7 @@ import { CoachApplicationStatusBadge } from '@/components/coach/CoachApplication
 import { useGetMyCoachApplicationQuery, useSubmitCoachApplicationMutation } from '@/features/coachApplication/coachApplicationApi'
 import type { CoachApplication } from '@/features/coachApplication/types'
 import { getErrorStatus } from '@/lib/errorStatus'
+import { PageShell } from '@/components/layout/PageShell'
 
 /**
  * STEP-12-FROZEN-CONTRACT.md §9: `/become-a-coach` — one route, tab/step-
@@ -33,13 +34,13 @@ export default function BecomeACoach() {
 
   if (otherError) {
     return (
-      <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-10">
+      <PageShell width="form">
         <Card>
           <CardContent className="py-6 text-sm text-destructive" role="alert">
             Couldn't load your coach application — try again.
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
     )
   }
 
@@ -57,7 +58,7 @@ export default function BecomeACoach() {
 
   if (!current || current.status === 'draft') {
     return (
-      <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-10">
+      <PageShell width="form">
         <CoachApplicationForm
           application={current}
           onChanged={(next) => {
@@ -65,13 +66,13 @@ export default function BecomeACoach() {
             refetch()
           }}
         />
-      </div>
+      </PageShell>
     )
   }
 
   if (current.status === 'submitted' || current.status === 'under_review') {
     return (
-      <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-10">
+      <PageShell width="form">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -90,13 +91,13 @@ export default function BecomeACoach() {
             </ul>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
     )
   }
 
   if (current.status === 'approved') {
     return (
-      <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-10">
+      <PageShell width="form">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -106,13 +107,13 @@ export default function BecomeACoach() {
             <CardDescription>Your profile now shows a Coach badge.</CardDescription>
           </CardHeader>
         </Card>
-      </div>
+      </PageShell>
     )
   }
 
   // rejected or withdrawn
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 py-10">
+    <PageShell width="form">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -127,6 +128,6 @@ export default function BecomeACoach() {
           </Button>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }

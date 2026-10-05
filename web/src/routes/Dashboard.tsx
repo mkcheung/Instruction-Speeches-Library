@@ -12,6 +12,7 @@ import {
 } from '@/features/review/reviewApi'
 import type { Review } from '@/features/review/types'
 import { hasRole } from '@/lib/roles'
+import { PageHeader, PageShell } from '@/components/layout/PageShell'
 
 /**
  * STEP-05-invitation-loop.md's reviewer dashboard — four sections, read
@@ -50,21 +51,23 @@ export default function Dashboard() {
   const showProfileLink = Boolean(username) && !hasRole(me?.user, 'admin')
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-10">
+    <PageShell width="content" className="gap-8">
       {/* Email verification lands on `/login?verified=1`, which bounces an
           already-onboarded user straight here — so the confirmation has to
           render at this end too, or finishing verification would look
           silently like nothing happened. */}
       {searchParams.has('verified') && <FormBanner variant="success" message="Email verified." />}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">My reviews</h1>
-        {showProfileLink && (
-          <Button variant="outline" size="sm" render={<Link to={`/u/${username}`} />}>
-            Your profile &amp; connections
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title="My reviews"
+        actions={
+          showProfileLink && (
+            <Button variant="outline" size="sm" render={<Link to={`/u/${username}`} />}>
+              Your profile &amp; connections
+            </Button>
+          )
+        }
+      />
 
       <DashboardSection title="Invitations awaiting response" empty="No pending invitations.">
         {invitations.map((review) => (
@@ -94,7 +97,7 @@ export default function Dashboard() {
           <ReviewCard key={review.id} review={review} timestampLabel="Revoked" timestamp={review.revoked_at} readOnly />
         ))}
       </DashboardSection>
-    </div>
+    </PageShell>
   )
 }
 

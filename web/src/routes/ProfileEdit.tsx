@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { AvatarCropper } from '@/components/onboarding/AvatarCropper'
+import { PageShell } from '@/components/layout/PageShell'
 import { applyServerErrors, extractServerErrorMessage } from '@/lib/applyServerErrors'
 import { usernameSchema } from '@/lib/validation'
 import { useGetMeQuery } from '@/features/auth/authApi'
@@ -130,7 +131,7 @@ export default function ProfileEdit() {
   }
 
   return (
-    <div className="mx-auto flex flex-1 max-w-md flex-col justify-center gap-6 px-4 py-10">
+    <PageShell width="form">
       <Card>
         <CardHeader>
           <CardTitle>Photo</CardTitle>
@@ -236,6 +237,6 @@ export default function ProfileEdit() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }

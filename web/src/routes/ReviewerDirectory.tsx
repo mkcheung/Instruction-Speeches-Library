@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { PageShell } from '@/components/layout/PageShell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -58,7 +59,7 @@ export default function ReviewerDirectory() {
   const failed = isError && !forbidden
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
+    <PageShell width="wide">
       <div>
         <h1 className="text-2xl font-semibold">Find reviewers</h1>
         <p className="text-sm text-muted-foreground">
@@ -160,6 +161,6 @@ export default function ReviewerDirectory() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageShell>
   )
 }

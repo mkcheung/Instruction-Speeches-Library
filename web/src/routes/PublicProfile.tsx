@@ -70,7 +70,7 @@ export default function PublicProfile() {
     railData?.connections.find((c) => c.peer?.username === profile.username) ?? null
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
       {/* Deliberately NOT inside the "Profile sections" <nav> below — that
           landmark is the three tab routes and nothing else, which
           `PublicProfile.test.tsx` pins by exact count and order. */}

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useSearchSpeechesQuery } from '@/features/transcript/transcriptApi'
+import { PageShell } from '@/components/layout/PageShell'
 
 /**
  * STEP-09-FROZEN-CONTRACT.md §5: "Search is a new top-level route,
@@ -37,7 +38,7 @@ export default function Search() {
   const results = data ?? []
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
+    <PageShell width="content">
       <div>
         <h1 className="text-2xl font-semibold">Search your speeches</h1>
         <p className="text-sm text-muted-foreground">
@@ -93,6 +94,6 @@ export default function Search() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }
