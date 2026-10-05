@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import Onboarding from '@/routes/Onboarding'
-import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { createTestStore, renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -87,7 +89,17 @@ describe('Onboarding resumability', () => {
     expect(await screen.findByLabelText(/username/i)).toBeInTheDocument()
   })
 
-  it('shows a link to the finished profile once step 4 (done) is reached', async () => {
+  /**
+   * An established profile has nothing to do on this screen, so step 4
+   * redirects instead of rendering a "You're all set" card.
+   *
+   * Hand-rolls a router rather than using `renderWithProviders`: that
+   * helper mounts `ui` under a single catch-all `path: '*'`, so
+   * `<Navigate to="/dashboard">` would re-match the catch-all, render
+   * `Onboarding` again, and redirect forever. A real `/dashboard` route is
+   * what makes the redirect observable.
+   */
+  it('redirects to the dashboard once step 4 (done) is reached, with no "all set" screen', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
       if (url.includes('/api/onboarding')) {
@@ -106,9 +118,56 @@ describe('Onboarding resumability', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    renderWithProviders(<Onboarding />, { route: '/onboarding' })
+    const router = createMemoryRouter(
+      [
+        { path: '/onboarding', element: <Onboarding /> },
+        { path: '/dashboard', element: <h1>My reviews</h1> },
+      ],
+      { initialEntries: ['/onboarding'] },
+    )
+    render(
+      <Provider store={createTestStore()}>
+        <RouterProvider router={router} />
+      </Provider>,
+    )
 
-    expect(await screen.findByText("You're all set")).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /view your profile/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/dashboard')
+    expect(screen.queryByText("You're all set")).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /view your profile/i })).not.toBeInTheDocument()
+  })
+
+  /** The verification banner has to survive the redirect: post-verify
+   * lands on `/login?verified=1`, which forwards an onboarded user
+   * through here. Dropping the param would make verifying look like a
+   * no-op. */
+  it('carries ?verified=1 through to the dashboard', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/api/onboarding')) {
+        return jsonResponse({
+          step: 4,
+          user: baseUser({ username: 'marscheung', onboarding_completed: true, onboarding_step: 4 }),
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const router = createMemoryRouter(
+      [
+        { path: '/onboarding', element: <Onboarding /> },
+        { path: '/dashboard', element: <h1>My reviews</h1> },
+      ],
+      { initialEntries: ['/onboarding?verified=1'] },
+    )
+    render(
+      <Provider store={createTestStore()}>
+        <RouterProvider router={router} />
+      </Provider>,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
+    expect(router.state.location.search).toBe('?verified=1')
   })
 })

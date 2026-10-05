@@ -32,14 +32,39 @@ function review(overrides: Partial<Review> = {}): Review {
   }
 }
 
-function stubReviews(sections: {
-  invited?: Review[]
-  in_progress?: Review[]
-  published?: Review[]
-  revoked?: Review[]
-}) {
+/** `Dashboard` reads `/api/me` for the username and roles behind the
+ * "Your profile & connections" link, so every case has to stub it —
+ * this mock throws on anything it doesn't recognise. */
+function meResponse(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    user: {
+      id: '1',
+      email: 'mars@example.com',
+      first_name: 'Mars',
+      last_name: 'Cheung',
+      username: 'marscheung',
+      display_name: 'Mars Cheung',
+      email_verified: true,
+      roles: [],
+      onboarding_completed: true,
+      onboarding_step: 4,
+      ...overrides,
+    },
+  }
+}
+
+function stubReviews(
+  sections: {
+    invited?: Review[]
+    in_progress?: Review[]
+    published?: Review[]
+    revoked?: Review[]
+  },
+  me: ReturnType<typeof meResponse> = meResponse(),
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = urlOf(input)
+    if (url.includes('/api/me')) return jsonResponse(me)
     if (url.includes('/api/reviews')) {
       return jsonResponse({
         invited: sections.invited ?? [],
@@ -106,5 +131,63 @@ describe('Dashboard', () => {
 
     expect(await screen.findByRole('button', { name: /accept/i })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /watch/i })).not.toBeInTheDocument()
+  })
+  /**
+   * Before this link existed, the onboarding "all set" card was the ONLY
+   * in-app navigation to `/u/:username` anywhere — so removing that card
+   * without this would have left the whole social layer reachable only by
+   * typing a URL.
+   */
+  it('links to the social profile page', async () => {
+    stubReviews({})
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    const link = await screen.findByRole('link', { name: /your profile & connections/i })
+    expect(link).toHaveAttribute('href', '/u/marscheung')
+  })
+
+  /** `roles: []` is the normal state for a self-registered user — the
+   * case that actually matters in production. */
+  it('shows the profile link to a coach and to a roleless user', async () => {
+    stubReviews({}, meResponse({ roles: ['coach'], username: 'e2e-coach' }))
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    expect(await screen.findByRole('link', { name: /your profile & connections/i })).toHaveAttribute(
+      'href',
+      '/u/e2e-coach',
+    )
+  })
+
+  it('hides the profile link from an admin and a super_admin', async () => {
+    stubReviews({}, meResponse({ roles: ['admin'], username: 'e2e-admin' }))
+    const { unmount } = renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /your profile & connections/i })).not.toBeInTheDocument()
+    unmount()
+
+    stubReviews({}, meResponse({ roles: ['super_admin'], username: 'e2e-super-admin' }))
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /your profile & connections/i })).not.toBeInTheDocument()
+  })
+
+  /** Post-verification lands on `/login?verified=1`, which forwards an
+   * already-onboarded user here — the confirmation has to survive that
+   * hop or verifying looks like a no-op. */
+  it('shows the email-verified banner when ?verified=1 is present', async () => {
+    stubReviews({})
+    renderWithProviders(<Dashboard />, { route: '/dashboard?verified=1' })
+
+    expect(await screen.findByText('Email verified.')).toBeInTheDocument()
+  })
+
+  it('shows no banner without the query param', async () => {
+    stubReviews({})
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
+    expect(screen.queryByText('Email verified.')).not.toBeInTheDocument()
   })
 })

@@ -24,7 +24,7 @@ describe('hasRole', () => {
 
 describe('navItemsFor', () => {
   it('returns the complete baseline sidebar for roles: [] — the state every real user is in (S3)', () => {
-    const items = navItemsFor({ roles: [] })
+    const items = navItemsFor({ roles: [], username: 'marscheung' })
     const labels = items.map((item) => item.label)
     expect(labels).toContain('My reviews')
     expect(labels).toContain('My speeches')
@@ -38,31 +38,73 @@ describe('navItemsFor', () => {
   })
 
   it('hides Find reviewers from an admin (S4)', () => {
-    const items = navItemsFor({ roles: ['admin'] })
+    const items = navItemsFor({ roles: ['admin'], username: 'e2e-admin' })
     expect(items.map((item) => item.label)).not.toContain('Find reviewers')
   })
 
   it('hides Find reviewers from a super_admin too', () => {
-    const items = navItemsFor({ roles: ['super_admin'] })
+    const items = navItemsFor({ roles: ['super_admin'], username: 'e2e-super-admin' })
     expect(items.map((item) => item.label)).not.toContain('Find reviewers')
   })
 
   it('shows Find reviewers to a member or coach', () => {
-    expect(navItemsFor({ roles: ['member'] }).map((item) => item.label)).toContain('Find reviewers')
-    expect(navItemsFor({ roles: ['coach'] }).map((item) => item.label)).toContain('Find reviewers')
+    expect(navItemsFor({ roles: ['member'], username: 'e2e-member' }).map((item) => item.label)).toContain('Find reviewers')
+    expect(navItemsFor({ roles: ['coach'], username: 'e2e-coach' }).map((item) => item.label)).toContain('Find reviewers')
   })
 
   it('shows Become a Coach to a plain member', () => {
-    expect(navItemsFor({ roles: [] }).map((item) => item.label)).toContain('Become a Coach')
-    expect(navItemsFor({ roles: ['member'] }).map((item) => item.label)).toContain('Become a Coach')
+    expect(navItemsFor({ roles: [], username: 'marscheung' }).map((item) => item.label)).toContain('Become a Coach')
+    expect(navItemsFor({ roles: ['member'], username: 'e2e-member' }).map((item) => item.label)).toContain('Become a Coach')
   })
 
   it('hides Become a Coach from an existing coach', () => {
-    expect(navItemsFor({ roles: ['coach'] }).map((item) => item.label)).not.toContain('Become a Coach')
+    expect(navItemsFor({ roles: ['coach'], username: 'e2e-coach' }).map((item) => item.label)).not.toContain('Become a Coach')
   })
 
   it('hides Become a Coach from an admin or super_admin', () => {
-    expect(navItemsFor({ roles: ['admin'] }).map((item) => item.label)).not.toContain('Become a Coach')
-    expect(navItemsFor({ roles: ['super_admin'] }).map((item) => item.label)).not.toContain('Become a Coach')
+    expect(navItemsFor({ roles: ['admin'], username: 'e2e-admin' }).map((item) => item.label)).not.toContain('Become a Coach')
+    expect(navItemsFor({ roles: ['super_admin'], username: 'e2e-super-admin' }).map((item) => item.label)).not.toContain('Become a Coach')
+  })
+
+  /**
+   * The social page is reachable from the nav on every authenticated
+   * route. Before this existed, the ONLY in-app link to `/u/:username`
+   * was the onboarding "all set" card — which the redirect removed, so
+   * without these items the whole social layer would be URL-only.
+   */
+  it('links a member to their own profile at /u/{username}', () => {
+    const items = navItemsFor({ roles: ['member'], username: 'e2e-member' })
+    expect(items.map((item) => item.label)).toContain('Your profile')
+    expect(items.find((item) => item.label === 'Your profile')?.to).toBe('/u/e2e-member')
+  })
+
+  it('links a coach to their own profile too', () => {
+    expect(navItemsFor({ roles: ['coach'], username: 'e2e-coach' }).map((item) => item.label)).toContain('Your profile')
+  })
+
+  /** `roles: []` is the normal state for every self-registered user, so
+   * this is the case that actually matters in production. */
+  it('links a roleless user to their own profile', () => {
+    expect(navItemsFor({ roles: [], username: 'marscheung' }).map((item) => item.label)).toContain('Your profile')
+  })
+
+  it('hides Your profile from an admin or super_admin', () => {
+    expect(navItemsFor({ roles: ['admin'], username: 'e2e-admin' }).map((item) => item.label)).not.toContain('Your profile')
+    expect(navItemsFor({ roles: ['super_admin'], username: 'e2e-super-admin' }).map((item) => item.label)).not.toContain('Your profile')
+  })
+
+  /** `username` is null until onboarding step 1 completes; `/u/null` is
+   * not a page. */
+  it('omits Your profile when the user has no username yet', () => {
+    expect(navItemsFor({ roles: [], username: null }).map((item) => item.label)).not.toContain('Your profile')
+    expect(navItemsFor(undefined).map((item) => item.label)).not.toContain('Your profile')
+  })
+
+  it('keeps Your profile distinct from the Edit profile settings form', () => {
+    const items = navItemsFor({ roles: [], username: 'marscheung' })
+    const labels = items.map((item) => item.label)
+    expect(labels).toContain('Your profile')
+    expect(labels).toContain('Edit profile')
+    expect(items.find((item) => item.label === 'Edit profile')?.to).toBe('/profile')
   })
 })

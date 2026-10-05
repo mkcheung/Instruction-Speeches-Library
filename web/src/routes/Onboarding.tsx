@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm, useWatch } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
@@ -48,6 +48,29 @@ export default function Onboarding() {
     )
   }
 
+  /**
+   * An already-onboarded user has nothing to do here, so this screen is a
+   * router rather than a destination — no "You're all set" card. This is
+   * the authoritative check: `Login` and `RequireGuest` both aim at
+   * `/dashboard` directly for a completed user (so the common paths never
+   * flash this route at all), but they read `/api/me`, and a typed URL
+   * reaches neither. Landing it here too covers both.
+   *
+   * Reads `getOnboardingStatus`, NOT `getMe`: this route owns the step
+   * mutations, and `OnboardingStatus` is the tag they invalidate directly,
+   * so it is correct here by construction. (`profileApi` now also refreshes
+   * `authApi`'s `Me` — see `refreshMe` there — but that is a second hop
+   * across `createApi` instances, and there is no reason to depend on it
+   * from the one place that has the first-hand answer.)
+   *
+   * Placed before the step rail below, which would otherwise render in a
+   * nonsense all-steps-past state (`stepIndex` is 3 at step 4).
+   */
+  if (status.step === 4) {
+    const suffix = searchParams.has('verified') ? '?verified=1' : ''
+    return <Navigate to={`/dashboard${suffix}`} replace />
+  }
+
   const stepIndex = status.step - 1 // 0-based; step 4 ("done") is >= STEP_LABELS.length
 
   return (
@@ -76,7 +99,6 @@ export default function Onboarding() {
       {status.step === 1 && <StepOne />}
       {status.step === 2 && <StepTwo />}
       {status.step === 3 && <StepThree />}
-      {status.step === 4 && <OnboardingComplete username={status.user.username} />}
     </div>
   )
 }
@@ -275,23 +297,6 @@ function StepThree() {
             </Button>
           </div>
         )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function OnboardingComplete({ username }: { username: string | null }) {
-  const navigate = useNavigate()
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>You're all set</CardTitle>
-        <CardDescription>Your profile is ready.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Button onClick={() => navigate(username ? `/u/${username}` : '/')}>
-          View your profile
-        </Button>
       </CardContent>
     </Card>
   )

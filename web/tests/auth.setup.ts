@@ -57,16 +57,16 @@ async function authenticate(
   await page.getByRole('textbox', { name: 'Password', exact: true }).fill(FIXTURE_PASSWORD)
   await page.getByRole('button', { name: 'Log in' }).click()
 
-  // Login.tsx navigates to /onboarding on success (there is no
-  // already-onboarded redirect yet), so this URL is the success signal —
-  // not a statement that these fixture users need onboarding. They don't;
-  // E2ESeeder sets onboarding_completed_at.
+  // Login.tsx now reads `onboarding_completed` off the login response and
+  // lands an already-onboarded user on /dashboard. Every E2ESeeder fixture
+  // user has `onboarding_completed_at` set, so /dashboard — not
+  // /onboarding — is the success signal here.
   //
   // Same budget as the `goto` above, and for the same reason: this is a
   // real route change that pulls a module subgraph the login page did not,
   // so it is just as exposed to the transform stall. Leaving it on the 30s
   // default would have made the raise above cosmetic.
-  await page.waitForURL(`${APP_URL}/onboarding`, { timeout: NAV_TIMEOUT })
+  await page.waitForURL(`${APP_URL}/dashboard`, { timeout: NAV_TIMEOUT })
 
   await page.context().storageState({ path: storageState })
 }

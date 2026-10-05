@@ -9,6 +9,20 @@ import { UNAUTHENTICATED_EVENT } from '@/lib/baseQuery'
 const GUEST_PATHS = ['/login', '/register', '/forgot-password']
 
 /**
+ * Routes that render for anonymous visitors but still fire authenticated
+ * queries whose 401 means "no session", not "session expired". D5
+ * (PLAN-APP-HEADER.md) requires `/u/:username` to stay reachable logged
+ * out, but `PublicProfile` mounts `useGetConnectionsRailQuery` for the
+ * identity block's connection action — and `/api/connections` is
+ * `auth:sanctum`, so every anonymous visit 401s and (before this list
+ * existed) ejected the visitor to `/login`. Exempting the route rather
+ * than skipping that one query keeps the fix at the layer that actually
+ * owns the decision: any future session probe on a public page is covered
+ * too, instead of re-opening the same hole from a different call site.
+ */
+const PUBLIC_PATHS = ['/u/']
+
+/**
  * Defense-in-depth for the 401 path: `RequireAuth` catches the common case
  * (session already gone when a protected route mounts), but a session can
  * also expire mid-session — e.g. a mutation on the onboarding form 401s
@@ -41,6 +55,7 @@ export function UnauthenticatedRedirect() {
   useEffect(() => {
     function handleUnauthenticated() {
       if (GUEST_PATHS.some((path) => location.pathname.startsWith(path))) return
+      if (PUBLIC_PATHS.some((path) => location.pathname.startsWith(path))) return
       dispatch(authApi.util.resetApiState())
       dispatch(profileApi.util.resetApiState())
       navigate('/login', { state: { from: location }, replace: true })

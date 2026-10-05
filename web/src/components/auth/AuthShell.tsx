@@ -61,7 +61,14 @@ export function RequireGuest({ children }: { children: ReactNode }) {
 
   if (data) {
     const suffix = searchParams.has('verified') ? '?verified=1' : ''
-    return <Navigate to={`/onboarding${suffix}`} replace />
+    // Post-verification lands here (`VerifyEmailResponse` redirects the
+    // browser to `/login?verified=1` and the session is already live), so
+    // this is the path an already-onboarded user takes after clicking a
+    // verification link — send them to the dashboard, not back through a
+    // wizard they finished. `?verified=1` rides along either way so the
+    // "Email verified." banner still renders at the destination.
+    const target = data.user.onboarding_completed ? '/dashboard' : '/onboarding'
+    return <Navigate to={`${target}${suffix}`} replace />
   }
 
   return <>{children}</>
