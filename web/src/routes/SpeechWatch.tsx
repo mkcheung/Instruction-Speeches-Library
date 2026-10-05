@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
-import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
+import { InviteReviewerPanel } from '@/components/review/InviteReviewerPanel'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
@@ -83,7 +83,6 @@ export default function SpeechWatch() {
   const { data: me } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
   const [initialUrl, setInitialUrl] = useState<string | null>(null)
-  const [inviteOpen, setInviteOpen] = useState(false)
   const playerRef = useRef<Player | null>(null)
   // Render-triggering state, deliberately not a bare ref — §8.2: a ref
   // mutation doesn't re-render, so `useTimedAnnotations` (inside
@@ -288,11 +287,6 @@ export default function SpeechWatch() {
             <CardTitle>{speech.title}</CardTitle>
             {speech.description && <CardDescription>{speech.description}</CardDescription>}
           </div>
-          {isOwner && !inviteOpen && (
-            <Button type="button" size="sm" onClick={() => setInviteOpen(true)}>
-              Invite a reviewer
-            </Button>
-          )}
           {/* STEP-11-FROZEN-CONTRACT.md §10: speech-level report, visible to
               non-owners — an owner reporting their own speech isn't a case
               this step's UI needs to support, and `isOwner`/`!isOwner` is
@@ -398,15 +392,6 @@ export default function SpeechWatch() {
         </CardContent>
       </Card>
 
-      {isOwner && inviteOpen && (
-        <InviteReviewerDialog
-          speechId={speechId}
-          supersedesId={speech.supersedes?.id}
-          onClose={() => setInviteOpen(false)}
-          onInvited={() => setInviteOpen(false)}
-        />
-      )}
-
       {/* STEP-08-FROZEN-CONTRACT.md's tab strip: notes stay adjacent to the
           player (where the timestamp context lives), the essay goes
           underneath in its own panel — the two are used in different
@@ -414,10 +399,15 @@ export default function SpeechWatch() {
           than a stack. */}
       {isOwner && (
         <Tabs defaultValue="notes">
-          <TabsList aria-label="Reviewer feedback">
+          {/* `flex-wrap max-w-full`, not bare `flex-wrap`: the list is
+              `inline-flex w-fit` (components/ui/tabs.tsx), i.e. sized to
+              max-content, so without a cap it has no reason to wrap and a
+              fourth tab would simply overflow a narrow phone. */}
+          <TabsList aria-label="Speech tools" className="flex-wrap max-w-full">
             <TabsTab value="notes">Notes</TabsTab>
             <TabsTab value="essay">Essay</TabsTab>
             <TabsTab value="transcript">Transcript</TabsTab>
+            <TabsTab value="reviewers">Reviewers</TabsTab>
           </TabsList>
           <TabsPanel value="notes">
             <TrackSelector
@@ -466,6 +456,28 @@ export default function SpeechWatch() {
               onSeek={(seconds) => {
                 if (videoEl) seekVideo(videoEl, seconds)
               }}
+            />
+          </TabsPanel>
+          {/* Inviting used to be a header button that swapped in a panel
+              ABOVE this strip, pushing Notes/Essay/Transcript down the page
+              — far enough, with the reviewer directory expanded, to scroll
+              them out of view. A tab panel occupies a fixed slot, so it
+              cannot displace its siblings.
+
+              `keepMounted` because Base UI unmounts an inactive panel by
+              default (verified against @base-ui/react 1.7.0: `shouldRender
+              = keepMounted || mounted`, else `return null`) — without it a
+              half-written invitation is destroyed by a glance at Notes to
+              check a timestamp.
+
+              No `onClose`: there is nothing to dismiss in a tab, and the
+              panel resets itself via "Invite someone else" after a
+              successful send. */}
+          <TabsPanel value="reviewers" keepMounted>
+            <InviteReviewerPanel
+              speechId={speechId}
+              supersedesId={speech.supersedes?.id}
+              hideHeading
             />
           </TabsPanel>
         </Tabs>

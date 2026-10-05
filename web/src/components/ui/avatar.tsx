@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
  * STEP-13-FROZEN-CONTRACT.md §9: extracted out of `PublicProfile.tsx`'s
  * inline `<img>` + fallback-`<div>` pattern (confirmed missing as a shared
  * component anywhere in this codebase — `ReviewerDirectory.tsx` and
- * `InviteReviewerDialog.tsx` both render reviewers with no avatar at all).
+ * `InviteReviewerPanel.tsx` both render reviewers with no avatar at all).
  * Every place an avatar renders from STEP-13 forward should use this
  * instead of hand-rolling the fallback again.
  */

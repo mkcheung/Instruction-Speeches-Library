@@ -12,7 +12,7 @@ import { getErrorStatus } from '@/lib/errorStatus'
  * S2/S4 (PLAN-APP-HEADER.md) — surfaces §6.3's reviewer directory as its
  * own destination. The directory itself was already fully built
  * (`reviewApi.ts`'s `searchReviewers`) but reachable only mid-invite-flow,
- * inside `InviteReviewerDialog` — "a built feature currently unreachable
+ * inside `InviteReviewerPanel` — "a built feature currently unreachable
  * except mid-invite-flow." This page reuses that same query rather than
  * a new endpoint; no backend change needed on this side (the contract's
  * server-side `viewDirectory` wiring is what actually gates who may load
