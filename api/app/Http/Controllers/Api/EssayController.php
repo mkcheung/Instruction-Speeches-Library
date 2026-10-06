@@ -51,7 +51,7 @@ class EssayController extends Controller
     {
         $speechModel = $this->resolveSpeech($speech);
 
-        $review = Review::query()->find($request->validated('review_id'));
+        $review = Review::query()->find((int) $request->validated('review_id'));
 
         if ($review === null || $review->speech_id !== $speechModel->id) {
             return new JsonResponse(['message' => 'No such review.'], Response::HTTP_NOT_FOUND);
@@ -59,7 +59,7 @@ class EssayController extends Controller
 
         $this->authorize('readAnnotations', $review);
 
-        $user = $request->user();
+        $user = $this->currentUser($request);
         $isAuthor = $review->reviewer_id === $user->id;
         // Same owner exclusion as Annotation::scopeVisibleTo: an admin who
         // is also the speaker must be held to the speaker's rules, or they
@@ -89,11 +89,12 @@ class EssayController extends Controller
     public function update(UpdateEssayRequest $request, string $speech, EssayService $essays, ReviewService $reviews): JsonResponse
     {
         $speechModel = $this->resolveSpeech($speech);
-        $review = $reviews->findOwnReview($speechModel, $request->user());
+        $user = $this->currentUser($request);
+        $review = $reviews->findOwnReview($speechModel, $user);
 
         $this->authorize('essay.update', $review);
 
-        $updated = $essays->update($review, $request->user(), $request->validated('html'), (int) $request->validated('lock_version'));
+        $updated = $essays->update($review, $user, $request->validated('html'), (int) $request->validated('lock_version'));
 
         return new JsonResponse([
             'essay' => new EssayResource($updated),
@@ -108,7 +109,7 @@ class EssayController extends Controller
     public function publish(Request $request, string $speech, EssayService $essays, ReviewService $reviews): JsonResponse
     {
         $speechModel = $this->resolveSpeech($speech);
-        $review = $reviews->findOwnReview($speechModel, $request->user());
+        $review = $reviews->findOwnReview($speechModel, $this->currentUser($request));
 
         $this->authorize('essay.publish', $review);
 

@@ -34,31 +34,32 @@ class ReportController extends Controller
         abort_if($modelClass === null, Response::HTTP_UNPROCESSABLE_ENTITY, 'Unsupported report target.');
 
         $reportableId = (int) $request->validated('reportable_id');
+        $user = $this->currentUser($request);
 
         if ($modelClass === Speech::class) {
             $speech = Speech::query()->find($reportableId);
             abort_if($speech === null, Response::HTTP_NOT_FOUND);
-            abort_unless(Gate::forUser($request->user())->allows('view', $speech), Response::HTTP_FORBIDDEN);
+            abort_unless(Gate::forUser($user)->allows('view', $speech), Response::HTTP_FORBIDDEN);
             $reportable = $speech;
         } else {
             $review = Review::query()->find($reportableId);
             abort_if($review === null, Response::HTTP_NOT_FOUND);
             $speech = $review->speech()->firstOrFail();
-            abort_unless(Gate::forUser($request->user())->allows('view', $speech), Response::HTTP_FORBIDDEN);
+            abort_unless(Gate::forUser($user)->allows('view', $speech), Response::HTTP_FORBIDDEN);
             $reportable = $review;
         }
 
         $report = Report::query()->create([
             'reportable_type' => $modelClass,
             'reportable_id' => $reportable->id,
-            'reporter_id' => $request->user()->id,
+            'reporter_id' => $user->id,
             'reason' => $request->validated('reason'),
             'detail' => $request->validated('detail'),
             'state' => 'open',
         ]);
 
         AuditLog::query()->create([
-            'actor_id' => $request->user()->id,
+            'actor_id' => $user->id,
             'action' => AuditAction::REPORT_CREATED,
             'subject_type' => $modelClass,
             'subject_id' => $reportable->id,

@@ -40,6 +40,11 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
+ *
+ * STEP-14-deploy-hardening.md phpstan level 8: `review_id` is `NOT NULL`
+ * (per this class's own docblock above), but Larastan infers `BelongsTo`
+ * as nullable generically from the relation method's return type alone.
+ * @property-read Review $review
  */
 #[Fillable([
     'review_id', 'client_uuid', 'body', 'start_seconds', 'duration_seconds',

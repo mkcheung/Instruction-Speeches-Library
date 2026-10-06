@@ -24,9 +24,18 @@ class VoiceAnnotationController extends Controller
 {
     public function store(CreateVoiceAnnotationRequest $request, Speech $speech, ReviewService $reviews, VoiceNoteService $notes): JsonResponse
     {
-        $review = $reviews->findOwnReview($speech, $request->user());
+        $review = $reviews->findOwnReview($speech, $this->currentUser($request));
         $this->authorize('voice.create', $review);
-        [$annotation, $created] = $notes->create($review, $request->file('audio'), $request->validated());
+        $validated = $request->validated();
+        $data = [
+            'client_uuid' => (string) $validated['client_uuid'],
+            'start_seconds' => (float) $validated['start_seconds'],
+            'topic' => isset($validated['topic']) ? (string) $validated['topic'] : null,
+        ];
+        if (array_key_exists('kind', $validated)) {
+            $data['kind'] = (string) $validated['kind'];
+        }
+        [$annotation, $created] = $notes->create($review, $request->file('audio'), $data);
 
         return new JsonResponse(['annotation' => new AnnotationResource($annotation)], $created ? 202 : 200);
     }
@@ -43,9 +52,10 @@ class VoiceAnnotationController extends Controller
         // for a nonexistent id, revealing that the peer exists and how much
         // they recorded. Matches AnnotationController::update/destroy,
         // which resolve entitlement before any status-bearing branch.
-        abort_unless(Gate::forUser($request->user())->allows('readAnnotations', $review), Response::HTTP_NOT_FOUND);
+        $user = $this->currentUser($request);
+        abort_unless(Gate::forUser($user)->allows('readAnnotations', $review), Response::HTTP_NOT_FOUND);
 
-        $visible = Annotation::query()->whereKey($annotation->id)->visibleTo($request->user(), $review)->exists();
+        $visible = Annotation::query()->whereKey($annotation->id)->visibleTo($user, $review)->exists();
         abort_unless($visible, Response::HTTP_NOT_FOUND);
         $asset = $annotation->audioAsset()->first();
         abort_unless($asset !== null && $asset->speech_id === $speech->id && $asset->kind === 'voice_note', Response::HTTP_NOT_FOUND);
@@ -68,7 +78,7 @@ class VoiceAnnotationController extends Controller
         // through to `authorize()`, whose 403 (vs 404 for a nonexistent id)
         // confirmed the peer's voice note exists. Same shape as
         // AnnotationController::update/destroy.
-        $review = $reviews->findOwnReview($speech, $request->user());
+        $review = $reviews->findOwnReview($speech, $this->currentUser($request));
         abort_unless($annotation->review_id === $review->id, Response::HTTP_NOT_FOUND);
         $annotation->setRelation('review', $review);
         $this->authorize('voice.retryTranscript', $annotation);
@@ -101,7 +111,7 @@ class VoiceAnnotationController extends Controller
     {
         $snapshot = Annotation::withTrashed()->whereKey($annotation)->firstOrFail(['id', 'review_id', 'audio_asset_id']);
         abort_unless($snapshot->audio_asset_id !== null, Response::HTTP_NOT_FOUND);
-        $reviewerId = $request->user()->id;
+        $reviewerId = $this->currentUser($request)->id;
         $restored = DB::transaction(function () use ($speech, $annotation, $snapshot, $reviewerId): Annotation {
             // Match revokeAndPurge's review -> asset -> annotation order so
             // Undo cannot deadlock a concurrent hard purge on PostgreSQL.

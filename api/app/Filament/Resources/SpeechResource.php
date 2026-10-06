@@ -64,7 +64,14 @@ class SpeechResource extends Resource
                             ->get()
                             ->groupBy('reviewer_id')
                             ->map(fn ($reviews) => [
-                                'reviewer' => $reviews->first()->reviewer,
+                                // `groupBy()` never produces an empty
+                                // group — `$reviews` here is always the
+                                // non-empty subset that shared this key —
+                                // but `first()`'s return type is
+                                // unconditionally nullable, so this stays
+                                // a real null-safe read rather than an
+                                // assumed-safe direct access.
+                                'reviewer' => $reviews->first()?->reviewer,
                                 'annotations' => $reviews->flatMap(
                                     fn ($review) => Annotation::query()->where('review_id', $review->id)->get()
                                 ),

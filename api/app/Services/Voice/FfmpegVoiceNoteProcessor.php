@@ -141,6 +141,9 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
         }
     }
 
+    /**
+     * @return array{input_i: string, input_lra: string, input_tp: string, input_thresh: string, target_offset: string}|null
+     */
     private function loudnormStats(ProcessResult $result): ?array
     {
         $text = $result->output()."\n".$result->errorOutput();

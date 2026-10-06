@@ -45,7 +45,7 @@ class AnnotationController extends Controller
     {
         $speechModel = $this->resolveSpeech($speech);
 
-        $review = Review::query()->find($request->validated('review_id'));
+        $review = Review::query()->find((int) $request->validated('review_id'));
 
         if ($review === null || $review->speech_id !== $speechModel->id) {
             return new JsonResponse(['message' => 'No such review.'], Response::HTTP_NOT_FOUND);
@@ -53,7 +53,7 @@ class AnnotationController extends Controller
 
         $this->authorize('readAnnotations', $review);
 
-        $rows = $annotations->forReview($review, $request->user());
+        $rows = $annotations->forReview($review, $this->currentUser($request));
 
         return new JsonResponse([
             'review_id' => $review->id,
@@ -84,11 +84,19 @@ class AnnotationController extends Controller
     public function store(CreateAnnotationRequest $request, string $speech, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
         $speechModel = $this->resolveSpeech($speech);
-        $review = $reviews->findOwnReview($speechModel, $request->user());
+        $review = $reviews->findOwnReview($speechModel, $this->currentUser($request));
 
         $this->authorize('annotation.create', $review);
 
-        [$annotation, $wasCreated] = $annotations->create($review, $request->validated());
+        $validated = $request->validated();
+        [$annotation, $wasCreated] = $annotations->create($review, [
+            'client_uuid' => (string) $validated['client_uuid'],
+            'body' => (string) $validated['body'],
+            'start_seconds' => $validated['start_seconds'],
+            'duration_seconds' => $validated['duration_seconds'] ?? null,
+            'kind' => $validated['kind'] ?? null,
+            'topic' => $validated['topic'] ?? null,
+        ]);
 
         return new JsonResponse([
             'annotation' => new AnnotationResource($annotation),
@@ -107,7 +115,8 @@ class AnnotationController extends Controller
     public function update(UpdateAnnotationRequest $request, string $speech, Annotation $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
         $speechModel = $this->resolveSpeech($speech);
-        $review = $reviews->findOwnReview($speechModel, $request->user());
+        $user = $this->currentUser($request);
+        $review = $reviews->findOwnReview($speechModel, $user);
 
         if ($annotation->review_id !== $review->id) {
             abort(Response::HTTP_NOT_FOUND, 'No such annotation.');
@@ -120,7 +129,7 @@ class AnnotationController extends Controller
         // annotation id belongs to a live voice note on a peer's review —
         // exactly the oracle this method's own docblock promises never to
         // expose.
-        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
+        if ($annotation->audio_asset_id !== null && ! $user->hasVerifiedEmail()) {
             abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
         }
 
@@ -139,7 +148,24 @@ class AnnotationController extends Controller
 
         $this->authorize($annotation->audio_asset_id === null ? 'annotation.update' : 'voice.updateTranscript', $annotation);
 
-        $updated = $annotations->update($annotation, $data);
+        $payload = ['lock_version' => (int) $data['lock_version']];
+        if (array_key_exists('body', $data)) {
+            $payload['body'] = (string) $data['body'];
+        }
+        if (array_key_exists('start_seconds', $data)) {
+            $payload['start_seconds'] = (float) $data['start_seconds'];
+        }
+        if (array_key_exists('duration_seconds', $data)) {
+            $payload['duration_seconds'] = (float) $data['duration_seconds'];
+        }
+        if (array_key_exists('kind', $data)) {
+            $payload['kind'] = (string) $data['kind'];
+        }
+        if (array_key_exists('topic', $data)) {
+            $payload['topic'] = $data['topic'] === null ? null : (string) $data['topic'];
+        }
+
+        $updated = $annotations->update($annotation, $payload);
 
         return new JsonResponse([
             'annotation' => new AnnotationResource($updated),
@@ -156,7 +182,8 @@ class AnnotationController extends Controller
     public function destroy(Request $request, string $speech, Annotation $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
     {
         $speechModel = $this->resolveSpeech($speech);
-        $review = $reviews->findOwnReview($speechModel, $request->user());
+        $user = $this->currentUser($request);
+        $review = $reviews->findOwnReview($speechModel, $user);
 
         if ($annotation->review_id !== $review->id) {
             abort(Response::HTTP_NOT_FOUND, 'No such annotation.');
@@ -165,7 +192,7 @@ class AnnotationController extends Controller
         // See update() above: ownership must be confirmed before this
         // check, or 403-vs-404 leaks whether an arbitrary annotation id
         // belongs to a live voice note on a peer's review.
-        if ($annotation->audio_asset_id !== null && ! $request->user()->hasVerifiedEmail()) {
+        if ($annotation->audio_asset_id !== null && ! $user->hasVerifiedEmail()) {
             abort(Response::HTTP_FORBIDDEN, 'Your email address is not verified.');
         }
 
@@ -189,7 +216,7 @@ class AnnotationController extends Controller
     public function clearMine(Request $request, string $speech, ReviewService $reviews): JsonResponse
     {
         $speechModel = $this->resolveSpeech($speech);
-        $review = $reviews->findOwnReview($speechModel, $request->user());
+        $review = $reviews->findOwnReview($speechModel, $this->currentUser($request));
 
         $this->authorize('review.clearAnnotations', $review);
 

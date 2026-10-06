@@ -76,7 +76,7 @@ class AnnotationPolicy
         // in_progress review reads as an empty set and a coach's drafts
         // stay invisible — the §8.5 requirement is enforced there, per
         // row, which is the layer that actually holds it.
-        if ($review->speech->user_id === $user->id) {
+        if ($review->speech_owner_id === $user->id) {
             return in_array($review->status, Review::ACCESS_GRANTING, true);
         }
 

@@ -32,9 +32,9 @@ class ConnectionController extends Controller
 {
     public function store(CreateConnectionRequest $request, ConnectionService $connections): JsonResponse
     {
-        $target = User::query()->findOrFail($request->validated('user_id'));
+        $target = User::query()->findOrFail((int) $request->validated('user_id'));
 
-        $connection = $connections->request($request->user(), $target, $request->validated('note'));
+        $connection = $connections->request($this->currentUser($request), $target, $request->validated('note'));
 
         return new JsonResponse([
             'connection' => new ConnectionResource($connection->load('peer.profile')),
@@ -45,7 +45,7 @@ class ConnectionController extends Controller
     {
         $this->assertOwnRow($request, $connection);
 
-        $updated = $connections->accept($request->user(), $connection->id);
+        $updated = $connections->accept($this->currentUser($request), $connection->id);
 
         return new JsonResponse([
             'connection' => new ConnectionResource($updated->load('peer.profile')),
@@ -56,7 +56,7 @@ class ConnectionController extends Controller
     {
         $this->assertOwnRow($request, $connection);
 
-        $updated = $connections->decline($request->user(), $connection->id);
+        $updated = $connections->decline($this->currentUser($request), $connection->id);
 
         return new JsonResponse([
             'connection' => new ConnectionResource($updated->load('peer.profile')),
@@ -69,7 +69,7 @@ class ConnectionController extends Controller
         Gate::authorize('connection.block', $connection);
 
         $peer = User::query()->findOrFail($connection->peer_id);
-        $updated = $connections->block($request->user(), $peer);
+        $updated = $connections->block($this->currentUser($request), $peer);
 
         return new JsonResponse([
             'connection' => new ConnectionResource($updated->load('peer.profile')),
@@ -81,7 +81,7 @@ class ConnectionController extends Controller
         $this->assertOwnRow($request, $connection);
 
         $peer = User::query()->findOrFail($connection->peer_id);
-        $updated = $connections->unblock($request->user(), $peer);
+        $updated = $connections->unblock($this->currentUser($request), $peer);
 
         return new JsonResponse([
             'connection' => new ConnectionResource($updated->load('peer.profile')),
@@ -110,7 +110,7 @@ class ConnectionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $viewerId = $request->user()->id;
+        $viewerId = $this->currentUser($request)->id;
         $limit = 20;
         $state = $request->query('state', 'accepted');
         abort_unless(in_array($state, ['accepted', 'pending'], true), Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -163,7 +163,7 @@ class ConnectionController extends Controller
             ]);
         }
 
-        $peerIds = $rows->pluck('peer_id')->all();
+        $peerIds = array_values(array_map(fn ($id) => (int) $id, $rows->pluck('peer_id')->all()));
         $metrics = self::metricsFor($viewerId, $peerIds);
 
         // The metric line is attached to each resolved row's array output
@@ -258,7 +258,7 @@ class ConnectionController extends Controller
 
     private function assertOwnRow(Request $request, Connection $connection): void
     {
-        abort_unless($connection->owner_id === $request->user()->id, Response::HTTP_NOT_FOUND);
+        abort_unless($connection->owner_id === $this->currentUser($request)->id, Response::HTTP_NOT_FOUND);
     }
 
     /**

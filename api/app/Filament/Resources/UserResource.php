@@ -89,6 +89,12 @@ class UserResource extends Resource
                     ->requiresConfirmation()
                     ->action(function (User $record) {
                         $actor = auth()->user();
+                        // Gated by EnsureUserIsAdmin before any
+                        // /control-panel route (including this action) is
+                        // reachable at all — same "auth guaranteed
+                        // non-null" guarantee as Controller::currentUser(),
+                        // just enforced by a different middleware.
+                        abort_if($actor === null, 403);
 
                         try {
                             Gate::authorize('role.revoke', $record);
@@ -110,6 +116,7 @@ class UserResource extends Resource
                     ->requiresConfirmation()
                     ->action(function (User $record) {
                         $actor = auth()->user();
+                        abort_if($actor === null, 403);
                         $service = app(UserDeletionService::class);
 
                         try {
@@ -141,6 +148,7 @@ class UserResource extends Resource
                     ->requiresConfirmation()
                     ->action(function (Collection $records) {
                         $actor = auth()->user();
+                        abort_if($actor === null, 403);
 
                         try {
                             // §7.4/§3: still through UserDeletionService's

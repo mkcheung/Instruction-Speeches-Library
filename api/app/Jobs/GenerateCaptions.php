@@ -102,6 +102,17 @@ class GenerateCaptions implements ShouldQueue
 
         $speech = $captionsAsset->speech;
 
+        // The speech may be gone entirely by the time this runs (a
+        // soft-delete via the admin takedown path in SpeechResource).
+        // Must resolve to `failed` for the same reason as the
+        // captions_enabled check below — nothing else will ever move the
+        // row off `processing` otherwise.
+        if ($speech === null) {
+            $this->markFailed('speech_deleted', 'This speech no longer exists.');
+
+            return;
+        }
+
         // Defense in depth against the off-switch (§20 Q12): the request
         // that dispatched this job already checked captions_enabled, but a
         // speaker can toggle it off between dispatch and a worker actually
@@ -114,7 +125,7 @@ class GenerateCaptions implements ShouldQueue
         // a terminal status — the asset (and CaptionEditor's "Captions are
         // still processing..." UI) would be stuck forever, with no retry
         // affordance, since retry() only re-dispatches a `failed` asset.
-        if ($speech === null || ! $speech->captions_enabled) {
+        if (! $speech->captions_enabled) {
             $this->markFailed('captions_disabled', 'Captions are turned off for this speech.');
 
             return;

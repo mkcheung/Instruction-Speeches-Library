@@ -139,3 +139,84 @@ it('reconciles quota for a ready voice note whose temporary reservation was neve
     // reconcileDirect(reserved=2_000_000, real=1_500_000): delta -500_000.
     expect($reviewer->fresh()->storage_bytes_used)->toBe(4_500_000);
 });
+
+/**
+ * MODERNIZATION_PLAN §13 R10 / §21: "stop retaining originals once a
+ * rendition is ready" — once the video rendition is ready, captions have
+ * settled (disabled here), and the retention window has passed, the source
+ * file and row are both gone.
+ */
+it('prunes a ready source once its video rendition is ready and the retention window has passed', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create(['captions_enabled' => false]);
+
+    $source = SpeechAsset::factory()->for($speech)->ready()->create(['path' => 'speeches/abc/source.mp4']);
+    $source->forceFill(['updated_at' => now()->subHours(48)])->save();
+    Storage::disk('media')->put($source->path, 'fake-source-bytes');
+
+    SpeechAsset::factory()->for($speech)->video()->ready()->create();
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($source->id)->exists())->toBeFalse();
+    expect(Storage::disk('media')->exists($source->path))->toBeFalse();
+});
+
+it('does not prune a source before its retention window elapses', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create(['captions_enabled' => false]);
+
+    $source = SpeechAsset::factory()->for($speech)->ready()->create(['path' => 'speeches/fresh/source.mp4']);
+    Storage::disk('media')->put($source->path, 'fake-source-bytes');
+    SpeechAsset::factory()->for($speech)->video()->ready()->create();
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($source->id)->exists())->toBeTrue();
+    expect(Storage::disk('media')->exists($source->path))->toBeTrue();
+});
+
+it('does not prune a source with no ready video rendition yet', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create(['captions_enabled' => false]);
+
+    $source = SpeechAsset::factory()->for($speech)->ready()->create(['path' => 'speeches/novideo/source.mp4']);
+    $source->forceFill(['updated_at' => now()->subHours(48)])->save();
+    Storage::disk('media')->put($source->path, 'fake-source-bytes');
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($source->id)->exists())->toBeTrue();
+});
+
+it('does not prune a source while captions are still mid-flight', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create(['captions_enabled' => true]);
+
+    $source = SpeechAsset::factory()->for($speech)->ready()->create(['path' => 'speeches/captioning/source.mp4']);
+    $source->forceFill(['updated_at' => now()->subHours(48)])->save();
+    Storage::disk('media')->put($source->path, 'fake-source-bytes');
+
+    SpeechAsset::factory()->for($speech)->video()->ready()->create();
+    SpeechAsset::factory()->for($speech)->captions()->create(['status' => 'processing']);
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($source->id)->exists())->toBeTrue();
+});
+
+it('prunes a source once captions have reached a terminal state', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create(['captions_enabled' => true]);
+
+    $source = SpeechAsset::factory()->for($speech)->ready()->create(['path' => 'speeches/captioned/source.mp4']);
+    $source->forceFill(['updated_at' => now()->subHours(48)])->save();
+    Storage::disk('media')->put($source->path, 'fake-source-bytes');
+
+    SpeechAsset::factory()->for($speech)->video()->ready()->create();
+    SpeechAsset::factory()->for($speech)->captions()->ready()->create();
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($source->id)->exists())->toBeFalse();
+});

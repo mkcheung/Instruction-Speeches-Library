@@ -44,7 +44,13 @@ class PdfUploadValidator
 
     public function sha256(string $absolutePath): string
     {
-        return hash_file('sha256', $absolutePath);
+        $hash = hash_file('sha256', $absolutePath);
+
+        if ($hash === false) {
+            throw new \RuntimeException("Unable to hash file: {$absolutePath}");
+        }
+
+        return $hash;
     }
 
     /**

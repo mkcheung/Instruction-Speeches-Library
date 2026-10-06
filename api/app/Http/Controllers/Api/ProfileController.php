@@ -47,19 +47,19 @@ class ProfileController extends Controller
 
     public function updateSelf(UpdateProfileRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         /** @var Profile $profile */
         $profile = Profile::query()->firstOrCreate(['user_id' => $user->id]);
         $profile->fill($request->validated())->save();
 
-        return new JsonResponse(['user' => new UserResource($user->fresh('profile'))]);
+        return new JsonResponse(['user' => new UserResource($user->fresh('profile') ?? $user)]);
     }
 
     public function updateUsername(UpdateUsernameRequest $request, UsernameService $usernames): JsonResponse
     {
-        $user = $usernames->set($request->user(), $request->validated('username'));
+        $user = $usernames->set($this->currentUser($request), $request->validated('username'));
 
-        return new JsonResponse(['user' => new UserResource($user->fresh('profile'))]);
+        return new JsonResponse(['user' => new UserResource($user->fresh('profile') ?? $user)]);
     }
 }

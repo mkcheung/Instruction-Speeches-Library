@@ -8,10 +8,49 @@ parameters:
         - database
         - routes
 
-    # S0 target: level 5. The plan's eventual goal is level 8 (MODERNIZATION_PLAN.md
-    # §12 S0 / CP track); raise this incrementally as later steps add real domain
-    # code rather than jumping straight to 8 on a near-empty skeleton.
-    level: 5
+    # STEP-14-deploy-hardening.md (2026-10-05): raised 5 -> 7 here, then a
+    # dedicated follow-up pass (same date) took 7 -> 8, genuinely clean, no
+    # suppressions. The 152 errors that follow-up found at level 8 split
+    # into two real root causes, both fixed at the cause rather than the
+    # call site:
+    #
+    #   - ~130 errors: `$request->user()`/FormRequest's `$this->user()` is
+    #     typed `?Authenticatable` everywhere a controller/request/policy
+    #     trusts `auth`/`auth:sanctum`/`verified.api` middleware (or, for
+    #     the three Filament/Resources/*.php files, EnsureUserIsAdmin) to
+    #     guarantee non-null. Fixed with `Controller::currentUser(Request):
+    #     User` — a real, PHPStan-visible `abort_if`-based guard (Larastan
+    #     registers `abort_if` as a type-narrowing extension, same as a
+    #     hand-written null check before a `never`-returning `abort()`),
+    #     not a cast or `@var` override — called from every controller
+    #     method that used to call `$request->user()` directly. The two
+    #     FormRequest classes and one bare route closure that don't extend
+    #     Controller use the same `abort_if` pattern inline; the three
+    #     Filament files use it with Filament's own `auth()->user()`.
+    #   - ~20 errors: Eloquent `BelongsTo` relations Larastan infers as
+    #     nullable generically from the relation method's return type
+    #     alone, even where the underlying FK is schema-verified `NOT
+    #     NULL` (checked against each migration directly) — `Review::
+    #     speech`/`speechOwner`, `SpeechAsset::speech`, `Speech::user`,
+    #     `Annotation::review`, `CoachApplication::user`. Fixed with an
+    #     explicit `@property-read` override on each model (the actual
+    #     source of truth Larastan is designed to be corrected by), not a
+    #     per-call-site guard — this alone cleared 13 of the 20 affected
+    #     files with zero controller/service changes. Relations that are
+    #     genuinely nullable at the schema level (`reviewer`, `invitedBy`,
+    #     `revokedBy`, `supersedes`) were deliberately left alone.
+    #
+    # Fixing those two cleared the model-docblock fix's own ripple of
+    # now-dead nullsafe/strict-null-comparison checks elsewhere
+    # (VoiceWhisperSmokeVerifyCommand, GenerateCaptions, GenerateDataExport,
+    # ReviewService) — real simplifications, not suppressions, once the
+    # relation they were guarding became statically non-nullable. A
+    # handful of standalone real bugs (MediaReconcileCommand's
+    # `temporary_path` used after a `whereNotNull` the type system can't
+    # see through; ProfileTimelineController's `Collection::last()` after
+    # a count check that already guarantees non-empty) got the same
+    # "real, checked guard" treatment.
+    level: 8
 
     tmpDir: build/phpstan
 

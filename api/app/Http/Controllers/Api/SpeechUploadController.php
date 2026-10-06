@@ -33,7 +33,7 @@ class SpeechUploadController extends Controller
 {
     private function authorizeOwner(Request $request, Speech $speech): void
     {
-        abort_unless($speech->user_id === $request->user()->id, Response::HTTP_NOT_FOUND, 'No such speech.');
+        abort_unless($speech->user_id === $this->currentUser($request)->id, Response::HTTP_NOT_FOUND, 'No such speech.');
     }
 
     /**
@@ -62,13 +62,15 @@ class SpeechUploadController extends Controller
      */
     private function authorizeGrantingAccess(Request $request, Speech $speech): void
     {
-        if ($speech->user_id === $request->user()->id) {
+        $user = $this->currentUser($request);
+
+        if ($speech->user_id === $user->id) {
             return;
         }
 
         $review = Review::query()
             ->where('speech_id', $speech->id)
-            ->where('reviewer_id', $request->user()->id)
+            ->where('reviewer_id', $user->id)
             ->first();
 
         // No row ever — a genuine stranger. Don't confirm existence.
@@ -104,10 +106,11 @@ class SpeechUploadController extends Controller
         // Reserve BEFORE opening the S3-side multipart upload — a rejected
         // reservation should never leave an orphaned multipart upload
         // sitting in the bucket.
-        $quota->reserve($request->user(), $validated['byte_size']);
+        $user = $this->currentUser($request);
+        $quota->reserve($user, $validated['byte_size']);
 
         $format = str_contains($validated['content_type'], 'quicktime') ? 'mov' : 'mp4';
-        $key = "uploads/{$request->user()->id}/".Str::uuid().'/source';
+        $key = "uploads/{$user->id}/".Str::uuid().'/source';
         $uploadId = $multipart->create($key, $validated['content_type']);
 
         $asset = $speech->assets()->create([
@@ -157,9 +160,10 @@ class SpeechUploadController extends Controller
         $this->authorizeOwner($request, $speech);
         abort_unless($asset->speech_id === $speech->id && $asset->upload_id === $uploadId, Response::HTTP_NOT_FOUND);
 
-        $parts = collect($request->validated('parts'))
-            ->map(fn (array $part) => ['PartNumber' => $part['part_number'], 'ETag' => $part['etag']])
-            ->all();
+        $parts = array_values(array_map(
+            fn (array $part): array => ['PartNumber' => (int) $part['part_number'], 'ETag' => (string) $part['etag']],
+            $request->safe()->array('parts'),
+        ));
 
         $result = $multipart->complete($asset->path, $uploadId, $parts);
         $quota->releaseOnComplete($asset, $result['byte_size']);

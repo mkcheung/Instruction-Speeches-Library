@@ -32,10 +32,11 @@ class ReviewInvited extends Notification implements ShouldQueue
     {
         $speech = $this->review->speech;
         $inviter = $this->review->invitedBy ?? $this->review->speechOwner;
+        $title = $speech->title ?? 'a speech that has since been removed';
 
         return (new MailMessage)
             ->subject("{$inviter->first_name} invited you to review a speech")
-            ->line("{$inviter->first_name} {$inviter->last_name} has invited you to review \"{$speech->title}\".")
+            ->line("{$inviter->first_name} {$inviter->last_name} has invited you to review \"{$title}\".")
             ->when($this->review->invitation_message, fn (MailMessage $mail) => $mail->line("\"{$this->review->invitation_message}\""))
             ->action('View invitation', url('/reviews'))
             ->line('You can accept or decline from your reviewer dashboard.');
@@ -60,7 +61,7 @@ class ReviewInvited extends Notification implements ShouldQueue
             'type' => 'review.invited',
             'review_id' => $this->review->id,
             'speech_id' => $this->review->speech_id,
-            'speech_title' => $this->review->speech->title,
+            'speech_title' => $this->review->speech?->title,
             'actor_name' => trim("{$inviter->first_name} {$inviter->last_name}"),
         ];
     }

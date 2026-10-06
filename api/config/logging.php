@@ -1,5 +1,6 @@
 <?php
 
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -91,6 +92,30 @@ return [
                 'port' => env('PAPERTRAIL_PORT'),
                 'connectionString' => 'tls://'.env('PAPERTRAIL_URL').':'.env('PAPERTRAIL_PORT'),
             ],
+            'processors' => [PsrLogMessageProcessor::class],
+        ],
+
+        // STEP-14-deploy-hardening.md / MODERNIZATION_PLAN §14: "structured
+        // JSON logs with correlation IDs" — no JSON-formatted channel
+        // existed before this one (confirmed: every other channel above
+        // uses Monolog's default line formatter). This is the default
+        // `LOG_CHANNEL` (.env.example) in every environment, because
+        // App\Http\Middleware\AssignCorrelationId calls
+        // `Log::withContext(['correlation_id' => ...])` on every request —
+        // that context only shows up as a pivotable, greppable JSON field
+        // ({"correlation_id":"...",...}) if the active channel's formatter
+        // actually emits context as structured data, which the default
+        // line formatter does not do legibly. Writes to the same
+        // `storage/logs/laravel.log` path as `single`/`daily` — only the
+        // formatter differs.
+        'json' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => storage_path('logs/laravel.log'),
+            ],
+            'formatter' => JsonFormatter::class,
             'processors' => [PsrLogMessageProcessor::class],
         ],
 

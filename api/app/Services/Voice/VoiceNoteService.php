@@ -20,7 +20,10 @@ class VoiceNoteService
 {
     public function __construct(private readonly ReviewService $reviews, private readonly QuotaService $quota) {}
 
-    /** @return array{0: Annotation, 1: bool} */
+    /**
+     * @param  array{client_uuid: string, start_seconds: float|int, kind?: string, topic?: string|null}  $data
+     * @return array{0: Annotation, 1: bool}
+     */
     public function create(Review $review, UploadedFile $audio, array $data): array
     {
         $storedPath = null;
@@ -45,6 +48,14 @@ class VoiceNoteService
 
                 $bytes = (int) $audio->getSize();
                 $reviewer = $locked->reviewer;
+                // `reviewer_id` is nullable at the schema level (erasure
+                // nulls it — see Review's own docblock), but a review
+                // reaching this far is always a live, accepted grant owned
+                // by the authenticated caller; the erasure check two lines
+                // above already handles the in-progress case. This guard
+                // is defense-in-depth against the row having gone fully
+                // null between that check and here, not a live path.
+                abort_if($reviewer === null, 409, 'Reviewer account is no longer available.');
                 $this->quota->reserveDirect($reviewer, $bytes);
 
                 // The object is written only after this transaction commits.
@@ -52,8 +63,15 @@ class VoiceNoteService
                 // ledger; a hard kill before commit cannot orphan an object.
                 $storedPath = "voice-uploads/{$reviewer->id}/{$locked->id}/{$data['client_uuid']}/source";
 
-                $finalPath = "speeches/{$locked->speech->ulid}/voice/".Str::uuid().'.m4a';
-                $asset = $locked->speech->assets()->create([
+                $speech = $locked->speech;
+                // Same defense-in-depth reasoning as the reviewer guard
+                // above: speech_id is NOT NULL, but Speech is soft-deletable
+                // (admin takedown), so a row going null between the lock
+                // above and here is a real, if narrow, race.
+                abort_if($speech === null, 409, 'This speech no longer exists.');
+
+                $finalPath = "speeches/{$speech->ulid}/voice/".Str::uuid().'.m4a';
+                $asset = $speech->assets()->create([
                     'kind' => 'voice_note', 'format' => 'm4a', 'disk' => 'media',
                     'path' => $finalPath, 'original_filename' => $audio->getClientOriginalName(),
                     'mime_type' => $audio->getMimeType(), 'byte_size' => $bytes,

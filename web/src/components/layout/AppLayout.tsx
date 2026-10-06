@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import { AppHeader } from '@/components/layout/AppHeader'
 import { AppSidebar } from '@/components/layout/AppSidebar'
+import { RouteErrorBoundary } from '@/components/error/RouteErrorBoundary'
 
 /**
  * D1/D8/S7 (PLAN-APP-HEADER.md) — the layout route `App.tsx` renders once
@@ -38,7 +39,13 @@ export function AppLayout() {
             `align-items: stretch`), and being a flex column in turn makes
             that height something a `flex-1` child can grow into. */}
         <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-          <Outlet />
+          {/* STEP-14: a crash in any one of these routes (SpeechWatch's
+              video annotation overlay above all) stays contained to
+              <main> — the header and sidebar above/beside it keep
+              working. See RouteErrorBoundary.tsx. */}
+          <RouteErrorBoundary>
+            <Outlet />
+          </RouteErrorBoundary>
         </main>
       </div>
     </div>

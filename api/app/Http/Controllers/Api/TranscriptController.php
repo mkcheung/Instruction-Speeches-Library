@@ -8,9 +8,8 @@ use App\Http\Requests\Transcript\SearchTranscriptsRequest;
 use App\Http\Resources\SpeechResource;
 use App\Http\Resources\TranscriptResource;
 use App\Models\Speech;
-use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -78,7 +77,7 @@ class TranscriptController extends Controller
     public function search(SearchTranscriptsRequest $request): JsonResponse
     {
         $q = (string) $request->validated('q');
-        $userId = $request->user()->id;
+        $userId = $this->currentUser($request)->id;
         $driver = DB::connection()->getDriverName();
 
         // A single query (whereHas over the transcript match, rather than
@@ -116,15 +115,16 @@ class TranscriptController extends Controller
      * `assets` load (poster/sprite only) to avoid an N+1 across the result
      * set.
      *
-     * @return array<int|string, string|\Closure(HasMany<SpeechAsset, Speech>): mixed>
+     * @return array<int|string, string|\Closure(Relation<*, *, *>): mixed>
      */
     private static function eagerLoads(): array
     {
         return [
             'primaryVideo',
             'supersedes',
-            /** @param HasMany<SpeechAsset, Speech> $query */
-            'assets' => fn (HasMany $query) => $query->whereIn('kind', ['poster', 'sprite']),
+            // See SpeechController::eagerLoads()'s identical comment on why
+            // this is typed against the base `Relation`, not `HasMany`.
+            'assets' => fn (Relation $query) => $query->whereIn('kind', ['poster', 'sprite']),
         ];
     }
 

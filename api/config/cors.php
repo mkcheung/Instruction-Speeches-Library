@@ -22,7 +22,7 @@ return [
     // No wildcard: wildcards are rejected by browsers whenever
     // supports_credentials is true. The dev SPA origin is the default;
     // override via FRONTEND_URL for other environments.
-    'allowed_origins' => array_filter(explode(',', env('CORS_ALLOWED_ORIGINS', env('FRONTEND_URL', 'http://localhost:5173')))),
+    'allowed_origins' => array_filter(explode(',', (string) env('CORS_ALLOWED_ORIGINS', env('FRONTEND_URL', 'http://localhost:5173')))),
 
     'allowed_origins_patterns' => [],
 

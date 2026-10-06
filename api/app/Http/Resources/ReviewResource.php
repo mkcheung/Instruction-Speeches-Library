@@ -34,7 +34,7 @@ class ReviewResource extends JsonResource
             'last_transition_at' => $this->last_transition_at,
             'revoked_at' => $this->revoked_at,
             'revocation_reason' => $this->revocation_reason,
-            'speech' => $this->whenLoaded('speech', fn () => [
+            'speech' => $this->whenLoaded('speech', fn () => $this->speech === null ? null : [
                 'id' => $this->speech->id,
                 'ulid' => $this->speech->ulid,
                 'title' => $this->speech->title,

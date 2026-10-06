@@ -12,7 +12,7 @@ class EraseSelfController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
-        EraseSelfAccount::dispatch($request->user()->id)->afterCommit();
+        EraseSelfAccount::dispatch($this->currentUser($request)->id)->afterCommit();
 
         return new JsonResponse(['message' => 'Account erasure queued.'], Response::HTTP_ACCEPTED);
     }

@@ -59,7 +59,7 @@ class PurgeDeletedVoiceAnnotation implements ShouldQueue
             }
             $annotation->update(['audio_asset_id' => null, 'transcript_status' => 'not_applicable', 'transcript_failure_code' => null, 'transcript_attempt_id' => null]);
             $asset->delete();
-            $reviewer = $claim['reviewer_id'] === null ? null : User::query()->find($claim['reviewer_id']);
+            $reviewer = $claim['reviewer_id'] === null ? null : User::query()->find((int) $claim['reviewer_id']);
             if ($reviewer !== null && $claim['charged'] > 0) {
                 $quota->releaseDirect($reviewer, $claim['charged']);
             }

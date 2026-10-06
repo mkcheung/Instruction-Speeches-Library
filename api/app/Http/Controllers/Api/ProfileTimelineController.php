@@ -43,7 +43,7 @@ class ProfileTimelineController extends Controller
             return new JsonResponse(['message' => 'No such user.'], Response::HTTP_NOT_FOUND);
         }
 
-        $viewer = $request->user();
+        $viewer = $this->currentUser($request);
         $tab = $request->query('tab', 'left') === 'received' ? 'received' : 'left';
         $limit = 20;
 
@@ -93,7 +93,14 @@ class ProfileTimelineController extends Controller
         if ($rows->count() > $limit) {
             $rows = $rows->take($limit);
             $last = $rows->last();
-            $nextCursor = self::encodeCursor((string) $last->last_transition_at, (int) $last->review_id);
+            // `$rows->count() > $limit` (checked above, before `take()`)
+            // guarantees at least $limit > 0 rows remain after take(), so
+            // `last()` is never null here — but Collection::last()'s
+            // return type is unconditionally nullable, so this guard makes
+            // that real rather than assumed.
+            if ($last !== null) {
+                $nextCursor = self::encodeCursor((string) $last->last_transition_at, (int) $last->review_id);
+            }
         }
 
         $signer = app(MediaUrlSigner::class);

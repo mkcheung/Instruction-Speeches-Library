@@ -21,17 +21,22 @@
 FROM composer:2 AS vendor
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
-# `--ignore-platform-req=ext-intl`: the official `composer:2` image is a bare
-# installer with no PHP extensions beyond the core set — it doesn't bundle
-# `intl`, which `filament/support` (STEP-12) requires. This stage only
-# resolves/installs *files*, it never executes application code, so the
-# extension doesn't need to be physically present here — only where the
-# code actually runs. The `runtime` stage below installs `intl` for real
-# (`docker-php-ext-install ... intl ...`), so every image built FROM it
-# (ffmpeg-worker/whisper-worker/whisper-smoke included) genuinely has it at
-# execution time. Confirmed by reproducing this exact failure with a local
-# `composer install` against the `composer:2` image before adding the flag.
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl
+# `--ignore-platform-req=ext-intl,ext-pcntl`: the official `composer:2` image
+# is a bare installer with no PHP extensions beyond the core set — it doesn't
+# bundle `intl` (`filament/support`, STEP-12) or `pcntl` (`laravel/horizon`,
+# STEP-14). This stage only resolves/installs *files*, it never executes
+# application code, so neither extension needs to be physically present here
+# — only where the code actually runs. The `runtime` stage below installs
+# both for real (`docker-php-ext-install ... intl pcntl ...`), so every image
+# built FROM it (ffmpeg-worker/whisper-worker/whisper-smoke included)
+# genuinely has them at execution time. Confirmed by reproducing this exact
+# failure with a local `composer install` against the `composer:2` image
+# before adding the flag — first for `intl` at STEP-12, then again for
+# `pcntl` at STEP-14 when `composer require laravel/horizon` hit the same
+# wall (`docker compose build app` fails at this exact line without it; it
+# is not optional, and Horizon is unusable without the real extension below
+# regardless of this flag, which only silences composer's install-time check).
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl --ignore-platform-req=ext-pcntl
 COPY api/ .
 RUN composer dump-autoload --optimize --no-dev
 
@@ -102,7 +107,12 @@ RUN apk add --no-cache postgresql-dev libzip-dev libzip zip icu-dev icu-libs \
     libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev \
     libpng libjpeg-turbo libwebp freetype \
     && docker-php-ext-configure gd --with-jpeg --with-webp --with-freetype \
-    && docker-php-ext-install pdo_pgsql opcache zip bcmath intl gd exif \
+    # `pcntl` (STEP-14): laravel/horizon's actual runtime dependency, not
+    # just a composer platform-req — it uses pcntl signal handling to manage
+    # worker processes. Installing it here (not just ignoring the platform
+    # req above) is what makes `php artisan horizon` actually work rather
+    # than fail at boot with the same error composer was silenced about.
+    && docker-php-ext-install pdo_pgsql opcache zip bcmath intl gd exif pcntl \
     && apk del --no-cache libzip-dev icu-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev
 WORKDIR /var/www/html
 COPY --from=vendor /app /var/www/html
@@ -291,10 +301,10 @@ FROM composer:2 AS vendor-dev
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
 # See the `vendor` stage's own comment above for why `--ignore-platform-req=
-# ext-intl` is correct here too: `composer:2` never executes app code, and
-# every image built FROM `runtime` (which this stage's output ultimately
-# layers onto, via `whisper-smoke`) has `intl` installed for real.
-RUN composer install --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl
+# ext-intl,ext-pcntl` is correct here too: `composer:2` never executes app
+# code, and every image built FROM `runtime` (which this stage's output
+# ultimately layers onto, via `whisper-smoke`) has both installed for real.
+RUN composer install --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl --ignore-platform-req=ext-pcntl
 COPY api/ .
 RUN composer dump-autoload --optimize
 

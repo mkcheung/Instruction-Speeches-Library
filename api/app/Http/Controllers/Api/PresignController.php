@@ -62,7 +62,7 @@ class PresignController extends Controller
      */
     private function pathIsAccessibleTo(Request $request, string $path): bool
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         if (preg_match('#^avatars/(\d+)/#', $path, $matches) === 1) {
             return (int) $matches[1] === $user->id;

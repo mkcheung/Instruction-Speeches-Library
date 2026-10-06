@@ -24,7 +24,7 @@ class OnboardingController extends Controller
 {
     public function show(Request $request): JsonResponse
     {
-        $user = $request->user()->load('profile');
+        $user = $this->currentUser($request)->load('profile');
 
         return new JsonResponse([
             'step' => Onboarding::currentStep($user),
@@ -34,7 +34,7 @@ class OnboardingController extends Controller
 
     public function stepOne(StepOneRequest $request, UsernameService $usernames): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         $usernames->set($user, $request->validated('username'));
 
@@ -43,29 +43,36 @@ class OnboardingController extends Controller
             'last_name' => $request->validated('last_name'),
         ])->save();
 
+        // `fresh()` is typed nullable (the row could theoretically have
+        // been deleted between the save above and here) — fall back to
+        // the just-saved in-memory instance rather than assume non-null.
+        $refreshed = $user->fresh('profile') ?? $user;
+
         return new JsonResponse([
-            'step' => Onboarding::currentStep($user->fresh('profile')),
-            'user' => new UserResource($user->fresh('profile')),
+            'step' => Onboarding::currentStep($refreshed),
+            'user' => new UserResource($refreshed),
         ]);
     }
 
     public function stepTwo(StepTwoRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         /** @var Profile $profile */
         $profile = Profile::query()->firstOrCreate(['user_id' => $user->id]);
         $profile->fill($request->only(['bio', 'pronouns', 'location']))->save();
 
+        $refreshed = $user->fresh('profile') ?? $user;
+
         return new JsonResponse([
-            'step' => Onboarding::currentStep($user->fresh('profile')),
-            'user' => new UserResource($user->fresh('profile')),
+            'step' => Onboarding::currentStep($refreshed),
+            'user' => new UserResource($refreshed),
         ]);
     }
 
     public function stepThree(StepThreeRequest $request, AvatarProcessor $avatars): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         /** @var Profile $profile */
         $profile = Profile::query()->firstOrCreate(['user_id' => $user->id]);
@@ -80,9 +87,11 @@ class OnboardingController extends Controller
         $profile->onboarding_completed_at ??= now();
         $profile->save();
 
+        $refreshed = $user->fresh('profile') ?? $user;
+
         return new JsonResponse([
-            'step' => Onboarding::currentStep($user->fresh('profile')),
-            'user' => new UserResource($user->fresh('profile')),
+            'step' => Onboarding::currentStep($refreshed),
+            'user' => new UserResource($refreshed),
         ]);
     }
 }

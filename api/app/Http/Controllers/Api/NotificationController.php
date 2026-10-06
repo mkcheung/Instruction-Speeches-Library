@@ -18,7 +18,7 @@ class NotificationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         $notifications = $user->notifications()
             ->latest()
@@ -40,7 +40,7 @@ class NotificationController extends Controller
 
     public function markRead(Request $request, string $notification): JsonResponse
     {
-        $record = $request->user()->notifications()->findOrFail($notification);
+        $record = $this->currentUser($request)->notifications()->findOrFail($notification);
         $record->markAsRead();
 
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
