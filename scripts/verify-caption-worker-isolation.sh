@@ -80,7 +80,7 @@ cleanup() {
                 \$disk->delete(\$asset->path);
             }
             \$disk->deleteDirectory('speeches/'.\$speech->ulid);
-            \$speech->delete();
+            \$speech->forceDelete();
             App\Models\User::whereKey(\$userId)->delete();
         }
         echo 'cleaned'.PHP_EOL;

@@ -6,39 +6,25 @@
 # concurrent enable/upload/retry, and attempt A -> disable -> re-enable B
 # before returning to one default worker and no caption worker."
 #
-# HONEST GAP UP FRONT (found while building this script, not asserted by
-# the task brief that commissioned it): §4.1's "Projection convergence
-# token" paragraph — a content_revision/caption_revision column pair, a
-# revision argument on RederiveTranscript, and removing that job's
-# WithoutOverlapping middleware plus its redis-long/captions routing — is
-# NOT implemented on this branch. `grep -n content_revision
-# api/app/**` turns up nothing but a comment in
-# WhisperSmokeVerifyCommand.php admitting the same thing. RederiveTranscript
-# (api/app/Jobs/RederiveTranscript.php) still sets `$connection =
-# 'redis-long'`, `$queue = 'captions'`, and still carries
-# `WithoutOverlapping('rederive-{id}')->releaseAfter(0)`. That mutex
-# actually serializes every execution for one asset, so the specific
-# stale-read-then-late-write race the frozen contract worries about cannot
-# be forced from outside without a code-level delay hook this branch does
-# not have. Scenario 1 below therefore proves the weaker, still real
-# property that IS observable through this queue's actual behavior: rapid
-# consecutive edits, drained by two concurrent workers on the queue this
-# job actually uses, always converge to the LAST edit's canonical VTT and
-# derived transcript body (RederiveTranscript re-reads current storage at
-# execution time rather than a payload snapshot, which is what makes this
-# hold even without a revision column). It does NOT prove revision-based
-# compare-and-set, because that mechanism does not exist yet. Fix the gap
-# by landing §4.1's revision work, then tighten this scenario to assert
-# the revision fields directly.
+# §4.1's "Projection convergence token" (content_revision/caption_revision,
+# a revision argument on RederiveTranscript, no WithoutOverlapping
+# middleware, routed onto redis/default instead of redis-long/captions) IS
+# implemented (api/app/Jobs/RederiveTranscript.php, api/app/Services/
+# Captions/CaptionService.php). Scenario 1 below proves the real property
+# the frozen contract calls for: rapid consecutive edits, drained by two
+# concurrent workers on the queue RederiveTranscript actually uses today,
+# always converge to the LAST edit's canonical VTT and derived transcript
+# body via the revision compare-and-set (a stale job sees
+# content_revision has moved on and no-ops rather than clobbering).
 #
 # "two normal workers" (§7 point 7's own phrase) is compose.yaml's
-# `queue-worker` service in the plan's prose, but that service only ever
-# drains `--queue=default`, which none of GenerateCaptions/
-# RederiveTranscript/caption-test-worker use — every job this script
-# exercises is on `redis-long`/`captions`. This script therefore scales
-# `caption-test-worker` (compose.e2e.yaml, the actual consumer of that
-# queue in the E2E stack) to 2 replicas where real concurrent consumption
-# is needed, and never touches `queue-worker`'s replica count.
+# `queue-worker` service — and since RederiveTranscript now runs on
+# `redis`/`default`, that IS the queue it uses (GenerateCaptions is still
+# `redis-long`/`captions`, drained by `caption-test-worker`, which plays no
+# part in this scenario). This script therefore scales `queue-worker`
+# itself to 2 replicas for scenario 1's forced-overlap proof, then
+# restores it to 1 before returning (see cleanup() below and the end of
+# scenario_rederive_overlap).
 #
 # CONCURRENCY MECHANISM CHOICE (scenarios 2 and 3): parallel `artisan
 # tinker --execute` processes backgrounded from this script, calling
@@ -141,12 +127,11 @@ cleanup() {
   done
 
   log "cleanup: stopping caption-test-worker, restoring queue-worker's single default replica"
-  # This script never scales queue-worker itself (RederiveTranscript/
-  # GenerateCaptions both route to redis-long/captions, which queue-worker
-  # never drains — see the gap note at the top of this file) — the
-  # restore below is defensive only, in case a prior/failed run left it
-  # scaled from something else, per the plan's "returning to ... one
-  # default worker and no caption worker" closing requirement.
+  # Scenario 1 scales queue-worker to 2 (RederiveTranscript's actual
+  # redis/default queue) and scales it back down at its own end — this
+  # restore is the defensive backstop for a run that fails/exits before
+  # reaching that point, per the plan's "returning to ... one default
+  # worker and no caption worker" closing requirement.
   _compose stop caption-test-worker >/dev/null 2>&1 || true
   _compose up -d --scale caption-test-worker=0 caption-test-worker >/dev/null 2>&1 || true
   _compose up -d --scale queue-worker=1 queue-worker >/dev/null 2>&1 || true
@@ -222,8 +207,8 @@ scenario_rederive_overlap() {
   CREATED_SPEECH_IDS+=("$speech_id")
   log "scenario-1 speech id: $speech_id"
 
-  log "scaling caption-test-worker to 2 replicas so two real processes drain redis-long/captions concurrently"
-  _compose up -d --scale caption-test-worker=2 caption-test-worker >/dev/null
+  log "scaling queue-worker to 2 replicas so two real processes drain redis/default (RederiveTranscript's actual queue) concurrently"
+  _compose up -d --scale queue-worker=2 queue-worker >/dev/null
 
   log "firing two rapid consecutive owner edits (edit1 then edit2) — each PUT's real code path: CaptionService::update writes VTT synchronously, then dispatches RederiveTranscript"
   _tinker "
@@ -235,17 +220,17 @@ scenario_rederive_overlap() {
     (new App\Services\Captions\CaptionService)->update(\$speech, base64_decode('${edit2_b64}'));
   " >/dev/null
 
-  log "waiting for the redis-long/captions queue to drain both RederiveTranscript jobs"
+  log "waiting for the redis/default queue to drain both RederiveTranscript jobs"
   local end=$((SECONDS + 60))
   local depth="unknown"
   while [ "$SECONDS" -lt "$end" ]; do
-    depth="$(_compose exec -T app php artisan tinker --execute="echo Illuminate\Support\Facades\Redis::connection('default')->llen('queues:captions').PHP_EOL;" | tr -d '\r' | tail -n1)"
+    depth="$(_compose exec -T app php artisan tinker --execute="echo Illuminate\Support\Facades\Redis::connection('default')->llen('queues:default').PHP_EOL;" | tr -d '\r' | tail -n1)"
     if [ "$depth" = "0" ]; then
       break
     fi
     sleep 1
   done
-  [ "$depth" = "0" ] || fail "captions queue did not drain within 60s (last depth observed: $depth)"
+  [ "$depth" = "0" ] || fail "default queue did not drain within 60s (last depth observed: $depth)"
 
   log "asserting the FINAL stored VTT and derived transcript body match the LAST edit (edit2), not edit1"
   local expected_hash actual_hash body_ok
@@ -263,8 +248,8 @@ scenario_rederive_overlap() {
   " | tail -n1)"
   [ "$body_ok" = "yes" ] || fail "derived transcript body does not reflect edit2 — a stale re-derive clobbered the newest edit"
 
-  log "scaling caption-test-worker back to 0 before the next scenario"
-  _compose up -d --scale caption-test-worker=0 caption-test-worker >/dev/null
+  log "scaling queue-worker back to 1 replica before the next scenario"
+  _compose up -d --scale queue-worker=1 queue-worker >/dev/null
 
   log "[1/3] PASS: last edit (edit2) is authoritative in both canonical VTT and derived transcript after concurrent draining"
 }
