@@ -85,6 +85,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Debug-throw opt-in
+    |--------------------------------------------------------------------------
+    |
+    | STEP-14-deploy-hardening.md's demo-script route ("deliberately throw
+    | an exception, it appears in GlitchTip"). Same double-guard shape as
+    | `enable_spikes` immediately above: the route only EXISTS (checked
+    | inside the controller, not at route-registration time, so a test can
+    | flip it with Config::set) when the app is running in local/staging
+    | AND this flag is explicitly on — failing either half 404s rather than
+    | merely forbidding it, so it can never be hit in a real production
+    | environment "accidentally-on-purpose".
+    |
+    */
+
+    'enable_debug_throw' => (bool) env('ENABLE_DEBUG_THROW', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

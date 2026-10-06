@@ -54,35 +54,63 @@ class SpeechResource extends JsonResource
             'captions_enabled' => (bool) $this->captions_enabled,
             'created_at' => $this->created_at,
             'primary_video' => new SpeechAssetResource($this->whenLoaded('primaryVideo')),
-            'poster' => $this->when($primaryPoster !== null, fn () => [
-                'url' => $this->presignPoster($primaryPoster->path),
-                'width' => $primaryPoster->width,
-                'height' => $primaryPoster->height,
-                'variants' => $posters->map(fn (SpeechAsset $asset) => [
-                    'url' => $this->presignPoster($asset->path),
-                    'width' => $asset->width,
-                    'format' => $asset->format,
-                ])->values()->all(),
-            ]),
-            'sprite' => $this->when($sprite !== null, fn () => [
-                'url' => $this->presignPoster($sprite->path),
-                // Fixed geometry per the spec's ffmpeg call
-                // (`fps=10/DURATION,scale=160:-2,tile=5x2`): 5 columns x 2
-                // rows = 10 frames. `frame_width`/`frame_height` come off
-                // the sprite row's own width/height (the tile's dimensions,
-                // not a single frame's) so the frontend can compute
-                // click-position -> timestamp without hardcoding 160px.
-                'columns' => 5,
-                'rows' => 2,
-                'frame_width' => $sprite->width,
-                'frame_height' => $sprite->height,
-                'duration_seconds' => $this->whenLoaded('primaryVideo', fn () => $this->primaryVideo?->duration_seconds),
-            ]),
-            'supersedes' => $this->when($this->relationLoaded('supersedes') && $this->supersedes !== null, fn () => [
-                'id' => $this->supersedes->id,
-                'ulid' => $this->supersedes->ulid,
-                'title' => $this->supersedes->title,
-            ]),
+            // STEP-14-deploy-hardening.md phpstan level 8: each closure
+            // below re-checks its own null condition even though `when()`
+            // already guarantees it true before calling the closure at
+            // all — PHPStan does not carry a condition checked in `when()`'s
+            // first argument into the closure passed as its second, so
+            // without the inner check these read as the nullable type
+            // unconditionally. The inner branch is unreachable in practice
+            // (the outer `when()` condition already ensures it), same
+            // defense-in-depth shape as the rest of this pass.
+            'poster' => $this->when($primaryPoster !== null, function () use ($primaryPoster, $posters) {
+                if ($primaryPoster === null) {
+                    return null;
+                }
+
+                return [
+                    'url' => $this->presignPoster($primaryPoster->path),
+                    'width' => $primaryPoster->width,
+                    'height' => $primaryPoster->height,
+                    'variants' => $posters->map(fn (SpeechAsset $asset) => [
+                        'url' => $this->presignPoster($asset->path),
+                        'width' => $asset->width,
+                        'format' => $asset->format,
+                    ])->values()->all(),
+                ];
+            }),
+            'sprite' => $this->when($sprite !== null, function () use ($sprite) {
+                if ($sprite === null) {
+                    return null;
+                }
+
+                return [
+                    'url' => $this->presignPoster($sprite->path),
+                    // Fixed geometry per the spec's ffmpeg call
+                    // (`fps=10/DURATION,scale=160:-2,tile=5x2`): 5 columns x 2
+                    // rows = 10 frames. `frame_width`/`frame_height` come off
+                    // the sprite row's own width/height (the tile's dimensions,
+                    // not a single frame's) so the frontend can compute
+                    // click-position -> timestamp without hardcoding 160px.
+                    'columns' => 5,
+                    'rows' => 2,
+                    'frame_width' => $sprite->width,
+                    'frame_height' => $sprite->height,
+                    'duration_seconds' => $this->whenLoaded('primaryVideo', fn () => $this->primaryVideo?->duration_seconds),
+                ];
+            }),
+            'supersedes' => $this->when($this->relationLoaded('supersedes') && $this->supersedes !== null, function () {
+                $supersedes = $this->supersedes;
+                if ($supersedes === null) {
+                    return null;
+                }
+
+                return [
+                    'id' => $supersedes->id,
+                    'ulid' => $supersedes->ulid,
+                    'title' => $supersedes->title,
+                ];
+            }),
         ];
     }
 

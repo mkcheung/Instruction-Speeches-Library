@@ -50,22 +50,22 @@ class SpeechArcService
         $visibleIds = Speech::query()->visibleTo($viewer)->whereIn('id', $ids)->pluck('id')->all();
         $visibleIds = array_flip($visibleIds);
 
-        return array_map(function ($row) use ($visibleIds) {
+        return array_values(array_map(function ($row) use ($visibleIds) {
             $isVisible = isset($visibleIds[(int) $row->id]);
 
             return [
                 'id' => (int) $row->id,
-                'ulid' => $isVisible ? ($row->ulid ?? null) : null,
+                'ulid' => $isVisible && $row->ulid !== null ? (string) $row->ulid : null,
                 // §6.11: "being shown that v2 exists never makes v2
                 // playable" — an entry the viewer holds no grant on
                 // surfaces only as a depth marker, never its title, date,
                 // or change note.
-                'title' => $isVisible ? $row->title : null,
-                'delivered_on' => $isVisible ? $row->delivered_on : null,
-                'change_note' => $isVisible ? $row->change_note : null,
+                'title' => $isVisible && $row->title !== null ? (string) $row->title : null,
+                'delivered_on' => $isVisible && $row->delivered_on !== null ? (string) $row->delivered_on : null,
+                'change_note' => $isVisible && $row->change_note !== null ? (string) $row->change_note : null,
                 'depth' => (int) $row->depth,
                 'visible' => $isVisible,
             ];
-        }, $rows);
+        }, $rows));
     }
 }

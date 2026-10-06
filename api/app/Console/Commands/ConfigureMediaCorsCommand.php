@@ -42,6 +42,9 @@ class ConfigureMediaCorsCommand extends Command
      * Shared with `MediaInitializeCommand` so the E2E bucket-initializer
      * and the standalone `media:configure-cors` command can never apply
      * two different policies to the same bucket.
+     *
+     * @param  array<int, string>  $origins
+     * @return array<string, mixed>
      */
     public static function corsRule(array $origins): array
     {

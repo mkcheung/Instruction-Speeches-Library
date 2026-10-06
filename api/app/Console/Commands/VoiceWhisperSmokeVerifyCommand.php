@@ -95,7 +95,7 @@ class VoiceWhisperSmokeVerifyCommand extends Command
         if ((float) $annotation->duration_seconds <= 0 || (float) $annotation->duration_seconds > 90) {
             $failures[] = "annotation duration={$annotation->duration_seconds}";
         }
-        $speechId = (int) $annotation->review?->speech_id;
+        $speechId = (int) $annotation->review->speech_id;
         if (SpeechTranscript::query()->where('speech_id', $speechId)->exists()) {
             $failures[] = 'voice transcription incorrectly created a speech_transcripts row';
         }

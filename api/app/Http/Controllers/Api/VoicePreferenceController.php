@@ -14,7 +14,7 @@ class VoicePreferenceController extends Controller
     public function show(Request $request, Speech $speech): JsonResponse
     {
         $this->authorize('view', $speech);
-        $entry = ($request->user()->preferences ?? [])['voice_commentary'][(string) $speech->id]
+        $entry = ($this->currentUser($request)->preferences ?? [])['voice_commentary'][(string) $speech->id]
             ?? ['mode' => 'play', 'experienced' => false];
 
         return new JsonResponse(['voice_commentary' => ['speech_id' => $speech->id, ...$entry]]);
@@ -28,8 +28,9 @@ class VoicePreferenceController extends Controller
             'experienced' => ['required', 'boolean'],
         ]);
 
-        $user = DB::transaction(function () use ($request, $speech, $data) {
-            $user = $request->user()->newQuery()->whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
+        $currentUser = $this->currentUser($request);
+        $user = DB::transaction(function () use ($currentUser, $speech, $data) {
+            $user = $currentUser->newQuery()->whereKey($currentUser->id)->lockForUpdate()->firstOrFail();
             $preferences = $user->preferences ?? [];
             $preferences['voice_commentary'][(string) $speech->id] = $data;
             $user->update(['preferences' => $preferences]);

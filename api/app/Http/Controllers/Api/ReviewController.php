@@ -30,10 +30,10 @@ class ReviewController extends Controller
     {
         $this->authorize('speech.invite', $speech);
 
-        $reviewer = User::query()->findOrFail($request->validated('reviewer_id'));
+        $reviewer = User::query()->findOrFail((int) $request->validated('reviewer_id'));
 
         $review = $reviews->invite(
-            speaker: $request->user(),
+            speaker: $this->currentUser($request),
             speech: $speech,
             reviewer: $reviewer,
             message: $request->validated('message'),
@@ -82,7 +82,7 @@ class ReviewController extends Controller
         $this->authorize('review.revoke', $review);
 
         return new JsonResponse([
-            'review' => new ReviewResource($reviews->revoke($review, $request->user(), $request->validated('reason'))),
+            'review' => new ReviewResource($reviews->revoke($review, $this->currentUser($request), $request->validated('reason'))),
         ]);
     }
 
@@ -90,7 +90,7 @@ class ReviewController extends Controller
     {
         $this->authorize('review.purge', $review);
 
-        $reviews->revokeAndPurge($review, $request->user());
+        $reviews->revokeAndPurge($review, $this->currentUser($request));
 
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
     }
@@ -130,7 +130,7 @@ class ReviewController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $reviewerId = $request->user()->id;
+        $reviewerId = $this->currentUser($request)->id;
         $section = $request->query('section');
         $sections = [];
 
@@ -193,7 +193,7 @@ class ReviewController extends Controller
      */
     public function forSpeech(Request $request, Speech $speech): JsonResponse
     {
-        if ($speech->user_id !== $request->user()->id) {
+        if ($speech->user_id !== $this->currentUser($request)->id) {
             return new JsonResponse(['message' => 'No such speech.'], Response::HTTP_NOT_FOUND);
         }
 

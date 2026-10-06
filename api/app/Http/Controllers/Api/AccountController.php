@@ -31,7 +31,7 @@ class AccountController extends Controller
      */
     public function destroy(Request $request, AccountErasureService $service): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
         $this->authorize('account.eraseSelf');
         $service->execute($user);
 

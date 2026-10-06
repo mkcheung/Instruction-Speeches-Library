@@ -188,7 +188,7 @@ class ReviewService
         });
 
         if ($transitioned) {
-            DB::afterCommit(fn () => $locked->speechOwner?->notify(new ReviewAccepted($locked)));
+            DB::afterCommit(fn () => $locked->speechOwner->notify(new ReviewAccepted($locked)));
         }
 
         return $locked;
@@ -213,7 +213,7 @@ class ReviewService
         });
 
         if ($transitioned) {
-            DB::afterCommit(fn () => $locked->speechOwner?->notify(new ReviewDeclined($locked)));
+            DB::afterCommit(fn () => $locked->speechOwner->notify(new ReviewDeclined($locked)));
         }
 
         return $locked;

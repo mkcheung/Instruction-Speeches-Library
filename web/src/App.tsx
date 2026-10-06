@@ -26,6 +26,7 @@ import BecomeACoach from '@/routes/BecomeACoach'
 import { RequireAuth, RequireGuest, RequireVerified } from '@/components/auth/AuthShell'
 import { UnauthenticatedRedirect } from '@/components/auth/UnauthenticatedRedirect'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { AppErrorBoundary } from '@/components/error/AppErrorBoundary'
 import { isSpikesEnabled } from '@/lib/spikes-guard'
 
 /** STEP-08's unsaved-changes guard (`useEssayEditor`'s navigation blocker)
@@ -148,7 +149,12 @@ const router = createBrowserRouter(
 function App() {
   return (
     <Provider store={store}>
-      <RouterProvider router={router} />
+      {/* STEP-14: top-level boundary, wraps the whole router — see
+          AppErrorBoundary.tsx for why this specific seam and why it's
+          outside, not inside, <RouterProvider>. */}
+      <AppErrorBoundary>
+        <RouterProvider router={router} />
+      </AppErrorBoundary>
     </Provider>
   )
 }

@@ -30,11 +30,13 @@ class ReviewDeclined extends Notification implements ShouldQueue
     {
         $reviewer = $this->review->reviewer;
         $speech = $this->review->speech;
+        $title = $speech->title ?? 'a speech that has since been removed';
 
-        return (new MailMessage)
+        $message = (new MailMessage)
             ->subject("{$reviewer?->first_name} declined your review invitation")
-            ->line("{$reviewer?->first_name} {$reviewer?->last_name} declined your invitation to review \"{$speech->title}\".")
-            ->action('Invite someone else', url("/speeches/{$speech->ulid}"));
+            ->line("{$reviewer?->first_name} {$reviewer?->last_name} declined your invitation to review \"{$title}\".");
+
+        return $speech === null ? $message : $message->action('Invite someone else', url("/speeches/{$speech->ulid}"));
     }
 
     /**
@@ -56,7 +58,7 @@ class ReviewDeclined extends Notification implements ShouldQueue
             'type' => 'review.declined',
             'review_id' => $this->review->id,
             'speech_id' => $this->review->speech_id,
-            'speech_title' => $this->review->speech->title,
+            'speech_title' => $this->review->speech?->title,
             'actor_name' => $reviewer !== null ? trim("{$reviewer->first_name} {$reviewer->last_name}") : null,
         ];
     }

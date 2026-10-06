@@ -8,10 +8,9 @@ use App\Http\Requests\Speech\CreateSpeechRequest;
 use App\Http\Resources\SpeechResource;
 use App\Models\Review;
 use App\Models\Speech;
-use App\Models\SpeechAsset;
 use App\Services\SpeechService;
 use Closure;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -33,7 +32,7 @@ class SpeechController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $speeches = $request->user()->speeches()
+        $speeches = $this->currentUser($request)->speeches()
             ->with(self::eagerLoads())
             ->latest()
             ->paginate(20);
@@ -50,7 +49,25 @@ class SpeechController extends Controller
 
     public function store(CreateSpeechRequest $request, SpeechService $speeches): JsonResponse
     {
-        $speech = $speeches->create($request->user(), $request->validated());
+        $validated = $request->validated();
+        $attributes = ['title' => (string) $validated['title']];
+        if (array_key_exists('description', $validated)) {
+            $attributes['description'] = $validated['description'] === null ? null : (string) $validated['description'];
+        }
+        if (array_key_exists('delivered_on', $validated)) {
+            $attributes['delivered_on'] = $validated['delivered_on'] === null ? null : (string) $validated['delivered_on'];
+        }
+        if (array_key_exists('supersedes_id', $validated)) {
+            $attributes['supersedes_id'] = $validated['supersedes_id'] === null ? null : (int) $validated['supersedes_id'];
+        }
+        if (array_key_exists('change_note', $validated)) {
+            $attributes['change_note'] = $validated['change_note'] === null ? null : (string) $validated['change_note'];
+        }
+        if (array_key_exists('captions_enabled', $validated)) {
+            $attributes['captions_enabled'] = (bool) $validated['captions_enabled'];
+        }
+
+        $speech = $speeches->create($this->currentUser($request), $attributes);
 
         return new JsonResponse([
             'speech' => new SpeechResource($speech->load(self::eagerLoads())),
@@ -59,7 +76,7 @@ class SpeechController extends Controller
 
     public function show(Request $request, Speech $speech): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
         $isOwner = $speech->user_id === $user->id;
 
         // §7.3's own review row (if any) drives both tiers below — one
@@ -133,15 +150,18 @@ class SpeechController extends Controller
      * into the same constrained `assets` load, since SpeechResource still
      * reads `primary_video` off that relation specifically.
      *
-     * @return array<int|string, string|Closure(HasMany<SpeechAsset, Speech>): mixed>
+     * @return array<int|string, string|Closure(Relation<*, *, *>): mixed>
      */
     private static function eagerLoads(): array
     {
         return [
             'primaryVideo',
             'supersedes',
-            /** @param HasMany<SpeechAsset, Speech> $query */
-            'assets' => fn (HasMany $query) => $query->whereIn('kind', ['poster', 'sprite']),
+            // Typed against the base `Relation` (not `HasMany`), matching
+            // `with()`'s own closure signature — at runtime this is always
+            // called with the `assets` HasMany, since the key it's keyed
+            // under here is the relation name itself.
+            'assets' => fn (Relation $query) => $query->whereIn('kind', ['poster', 'sprite']),
         ];
     }
 }

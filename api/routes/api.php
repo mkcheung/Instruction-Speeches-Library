@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\CaptionController;
 use App\Http\Controllers\Api\CoachApplicationController;
 use App\Http\Controllers\Api\ConnectionController;
+use App\Http\Controllers\Api\DebugThrowController;
 use App\Http\Controllers\Api\EraseSelfController;
 use App\Http\Controllers\Api\EssayController;
 use App\Http\Controllers\Api\HealthController;
@@ -42,6 +43,11 @@ Route::middleware('auth:sanctum')
     ->get('/spikes/presign', PresignController::class)
     ->name('api.spikes.presign');
 
+// STEP-14-deploy-hardening.md's demo-script route — see DebugThrowController
+// for the double guard (local/staging AND `enable_debug_throw`) that 404s
+// this everywhere else, including real production.
+Route::get('/debug/throw', DebugThrowController::class)->name('api.debug.throw');
+
 // Fortify's own routes (register/login/logout/forgot-password/reset-password/
 // email verification) are registered by Laravel\Fortify\FortifyServiceProvider
 // itself against the `web` middleware group, root-mounted (config/fortify.php
@@ -53,9 +59,15 @@ Route::middleware('auth:sanctum')
 
 // account-only gate (§6.5): browsing/editing own (possibly incomplete) profile.
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/me', fn (Request $request): JsonResponse => new JsonResponse([
-        'user' => new UserResource($request->user()->load('profile')),
-    ]))->name('api.me');
+    Route::get('/me', function (Request $request): JsonResponse {
+        $user = $request->user();
+        // Same `auth:sanctum`-guarantees-non-null reasoning as
+        // Controller::currentUser() — this route is a bare closure, not a
+        // controller method, so it can't use that helper directly.
+        abort_if($user === null, 401);
+
+        return new JsonResponse(['user' => new UserResource($user->load('profile'))]);
+    })->name('api.me');
     Route::delete('/me', EraseSelfController::class)->middleware('verified.api')->name('api.me.erase');
 
     Route::get('/onboarding', [OnboardingController::class, 'show'])->name('api.onboarding.show');
@@ -65,7 +77,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::patch('/profile', [ProfileController::class, 'updateSelf'])->name('api.profile.update');
     Route::patch('/profile/username', [ProfileController::class, 'updateUsername'])->name('api.profile.username');
-    Route::post('/avatar', [AvatarController::class, 'update'])->name('api.avatar.update');
+    Route::post('/avatar', [AvatarController::class, 'update'])
+        ->middleware('throttle:avatar-upload')
+        ->name('api.avatar.update');
     Route::get('/me/preferences/voice-commentary/{speech}', [VoicePreferenceController::class, 'show'])
         ->middleware('verified.api')
         ->name('api.me.preferences.voice-commentary.show');
@@ -91,6 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/speeches/{speech}', [SpeechController::class, 'show'])->name('api.speeches.show');
 
     Route::post('/speeches/{speech}/assets/uploads', [SpeechUploadController::class, 'createUpload'])
+        ->middleware('throttle:video-upload')
         ->name('api.speeches.assets.uploads.create');
     Route::post('/speeches/{speech}/assets/{asset}/uploads/{uploadId}/parts/{partNumber}', [SpeechUploadController::class, 'signPart'])
         ->name('api.speeches.assets.uploads.sign-part');
@@ -137,7 +152,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/speeches/{speech}/annotations', [AnnotationController::class, 'store'])
         ->name('api.speeches.annotations.store');
     Route::post('/speeches/{speech}/voice-notes', [VoiceAnnotationController::class, 'store'])
-        ->middleware('verified.api')
+        ->middleware(['verified.api', 'throttle:voice-note-upload'])
         ->name('api.speeches.voice-notes.store');
     Route::get('/speeches/{speech}/annotations/{annotation}/voice-playback-url', [VoiceAnnotationController::class, 'audioUrl'])
         ->middleware('verified.api')
@@ -248,6 +263,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/coach-applications/me', [CoachApplicationController::class, 'me'])
         ->name('api.coach-applications.me');
     Route::post('/coach-applications/{coachApplication}/documents', [CoachApplicationController::class, 'uploadDocuments'])
+        ->middleware('throttle:coach-document-upload')
         ->name('api.coach-applications.documents.store');
 
     // STEP-13-FROZEN-CONTRACT.md §5/§9: the social layer. `POST /connections`

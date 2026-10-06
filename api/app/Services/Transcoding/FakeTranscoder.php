@@ -41,7 +41,9 @@ class FakeTranscoder implements TranscoderContract
         $seekSeconds = max(0.0, min($seekSeconds, $duration));
 
         $timeMs = (int) round($seekSeconds * 1000);
-        $ulid = $videoAsset->speech->ulid;
+        $speech = $videoAsset->speech;
+        abort_if($speech === null, 404, 'Speech no longer exists.');
+        $ulid = $speech->ulid;
 
         DB::transaction(function () use ($videoAsset, $timeMs, $ulid, $seekSeconds) {
             // Same delete-then-insert-in-one-transaction shape

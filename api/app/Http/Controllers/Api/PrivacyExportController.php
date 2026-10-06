@@ -23,8 +23,9 @@ class PrivacyExportController extends Controller
 {
     public function store(RequestDataExportRequest $request): JsonResponse
     {
+        $user = $this->currentUser($request);
         $export = DataExport::query()->create([
-            'user_id' => $request->user()->id,
+            'user_id' => $user->id,
             'kind' => $request->validated('kind'),
             'status' => 'processing',
             'disk' => 'media',
@@ -33,7 +34,7 @@ class PrivacyExportController extends Controller
         GenerateDataExport::dispatch($export->id)->afterCommit();
 
         AuditLog::query()->create([
-            'actor_id' => $request->user()->id,
+            'actor_id' => $user->id,
             'action' => AuditAction::ACCOUNT_EXPORT_REQUESTED,
             'subject_type' => DataExport::class,
             'subject_id' => $export->id,
@@ -49,7 +50,7 @@ class PrivacyExportController extends Controller
     public function index(Request $request): JsonResponse
     {
         $exports = DataExport::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $this->currentUser($request)->id)
             ->orderByDesc('created_at')
             ->get();
 
@@ -58,7 +59,8 @@ class PrivacyExportController extends Controller
 
     public function download(Request $request, DataExport $export, MediaUrlSigner $signer): JsonResponse
     {
-        abort_unless($export->user_id === $request->user()->id, Response::HTTP_FORBIDDEN);
+        $user = $this->currentUser($request);
+        abort_unless($export->user_id === $user->id, Response::HTTP_FORBIDDEN);
         abort_unless($export->status === 'ready' && $export->path !== null, Response::HTTP_FORBIDDEN);
         // §7: "exports are not kept forever" — expires_at exists specifically
         // to bound how long a full personal-data-plus-others'-commentary
@@ -73,7 +75,7 @@ class PrivacyExportController extends Controller
         $url = $signer->presign($export->path, MediaUrlSigner::DEFAULT_TTL_SECONDS);
 
         AuditLog::query()->create([
-            'actor_id' => $request->user()->id,
+            'actor_id' => $user->id,
             'action' => AuditAction::ACCOUNT_EXPORT_DOWNLOADED,
             'subject_type' => DataExport::class,
             'subject_id' => $export->id,

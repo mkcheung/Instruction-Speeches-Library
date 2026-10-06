@@ -1,0 +1,66 @@
+name: Deploy (staging)
+
+# STEP-14: "a commit to main reaches staging automatically and runs
+# migrations" — this is that path. It is DELIBERATELY separate from
+# deploy.yml's production job, not a second job in the same workflow:
+# staging is the automatic promotion on every push to master, production
+# promotion stays a separate, more deliberate action (today: the existing
+# deploy.yml, also on push — nothing in this step narrows production's
+# trigger; STEP-14 only asks to ADD staging). The two must be able to run
+# independently without racing each other, which is why this workflow gets
+# its own `concurrency.group` below rather than sharing deploy.yml's.
+#
+# Mechanism: this deploys to the SAME faux-server container as production,
+# on a second, fully independent shelf (/srv/speechcoach-staging instead of
+# /srv/speechcoach — see speechcoach-deploy-target/bin/provision.sh and the
+# Dockerfile comment explaining why both shelves exist at image-build time).
+# scripts/deploy.sh's shelf-swap logic is NOT duplicated: DEPLOY_PATH is
+# already a scripts/_ssh.sh env override, so pointing it at the staging
+# shelf is the only difference from deploy.yml's job below.
+on:
+  push:
+    branches: [master]        # same caveat as deploy.yml: master, not main.
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: deploy-staging        # OWN group, distinct from deploy.yml's
+                                # `deploy-production` — a staging deploy and
+                                # a production deploy target different
+                                # shelves on the same host and must be free
+                                # to run concurrently, not queue behind
+                                # each other.
+  cancel-in-progress: false    # same reasoning as production: a cancelled
+                                # deploy mid-flight can leave files
+                                # half-copied or migrations half-run.
+  queue: max                   # FIFO queueing of rapid successive pushes,
+                                # same as production — `single` (the
+                                # default) would silently drop a middle
+                                # commit's staging deploy.
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy-staging:
+    needs: ci                  # same gate as production: no green CI, no
+                                # deploy. Do not add `if: always()`.
+    runs-on: [self-hosted, macOS, ARM64]
+    environment: staging       # a SEPARATE GitHub Environment from
+                                # production's — gives staging its own
+                                # secrets scope and its own deployment
+                                # history entry in the repo sidebar.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Deploy to staging
+        env:
+          DEPLOY_HOST:     ${{ vars.DEPLOY_HOST }}
+          DEPLOY_KEY:      ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+          # The only difference from deploy.yml's job: a different shelf on
+          # the same host. scripts/_ssh.sh already treats DEPLOY_PATH as an
+          # overridable env var (default /srv/speechcoach), so deploy.sh's
+          # upload/migrate/cutover logic runs completely unchanged here.
+          DEPLOY_PATH: /srv/speechcoach-staging
+        run: ./scripts/deploy.sh

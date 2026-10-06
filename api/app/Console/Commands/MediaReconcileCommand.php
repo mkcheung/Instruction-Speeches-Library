@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\PurgeDeletedVoiceAnnotation;
 use App\Jobs\PurgeVoiceAsset;
 use App\Models\Annotation;
+use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Captions\CaptionAttemptTracker;
 use App\Services\QuotaService;
@@ -30,9 +31,10 @@ class MediaReconcileCommand extends Command
         {--upload-hours=2 : age threshold for a stuck upload}
         {--transcode-hours=2 : age threshold for a hung transcode, per §9.2}
         {--caption-queue-wait-seconds= : seconds a captions job may sit dispatched with no worker before failing (default: config(captions.queue_wait_seconds), STEP-09 §4.1)}
-        {--caption-heartbeat-stale-seconds= : seconds since the last WhisperTranscriber heartbeat before a started captions attempt is considered lost (default: config(captions.heartbeat_stale_seconds), >=4200 per STEP-09 §4.1)}';
+        {--caption-heartbeat-stale-seconds= : seconds since the last WhisperTranscriber heartbeat before a started captions attempt is considered lost (default: config(captions.heartbeat_stale_seconds), >=4200 per STEP-09 §4.1)}
+        {--source-retention-hours=24 : hours a ready source (original upload) is kept after its video rendition is ready and captions have settled, before the original is deleted (R10, MODERNIZATION_PLAN §13/§21)}';
 
-    protected $description = 'Release quota held by abandoned uploads, surface hung transcodes, and recover stale caption attempts (§9.1, §9.2, STEP-09 §4.1).';
+    protected $description = 'Release quota held by abandoned uploads, surface hung transcodes, recover stale caption attempts, and prune retained originals (§9.1, §9.2, STEP-09 §4.1, R10).';
 
     public function handle(QuotaService $quota): int
     {
@@ -87,6 +89,15 @@ class MediaReconcileCommand extends Command
             ->where('updated_at', '<', now()->subHours((int) $this->option('transcode-hours')))->get();
         foreach ($staleVoice as $asset) {
             $temporaryPath = $asset->temporary_path;
+            // STEP-14-deploy-hardening.md phpstan level 8: `temporary_path`
+            // is nullable at the schema level, but the query above already
+            // filters `whereNotNull('temporary_path')` — PHPStan can't see
+            // through a query-builder condition into the hydrated model's
+            // attribute type, so this re-states the same guarantee as a
+            // real, checked guard rather than a cast.
+            if ($temporaryPath === null) {
+                continue;
+            }
             $candidatePath = $asset->normalization_candidate_path;
             $reserved = (int) ($asset->temporary_byte_size ?? 0);
             if ($asset->status === 'ready') {
@@ -188,9 +199,118 @@ class MediaReconcileCommand extends Command
             }
         }
 
-        $this->info("Reconciled {$staleUploads->count()} abandoned upload(s), {$hungTranscodes->count()} hung transcode(s), {$staleVoice->count()} stale voice note(s), {$reconciledCaptions} stale caption attempt(s), {$purgedTombstones} voice tombstone(s), and {$purgedOrphans} orphan voice asset(s).");
+        $prunedOriginals = $this->pruneRetainedOriginals((int) $this->option('source-retention-hours'));
+
+        $this->info("Reconciled {$staleUploads->count()} abandoned upload(s), {$hungTranscodes->count()} hung transcode(s), {$staleVoice->count()} stale voice note(s), {$reconciledCaptions} stale caption attempt(s), {$purgedTombstones} voice tombstone(s), {$purgedOrphans} orphan voice asset(s), and {$prunedOriginals} retained original(s) pruned.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * MODERNIZATION_PLAN §13 R10 ("most likely production outage") and §21:
+     * "stop retaining originals once a rendition is ready ... loses nothing"
+     * for a coaching product. Before this method, `kind='source'` rows were
+     * never deleted anywhere in the codebase (confirmed by reading
+     * FfmpegTranscoder, GenerateCaptions, and every purge job) — a ready
+     * video plus its never-reclaimed source is 2x the accounted storage per
+     * speech, exactly the gap the plan's quota section calls out.
+     *
+     * A source is only ever deleted once ALL of the following hold, each
+     * re-checked here rather than trusted from whatever triggered the
+     * original upload:
+     *
+     *  - `kind=video` is `ready` for the same speech — there is a durable
+     *    rendition to serve; deleting the source before this exists would
+     *    destroy the only playable copy.
+     *  - Captions have settled: either the speech has captions disabled, or
+     *    no `kind=captions` row is currently `uploading`/`processing`. Both
+     *    GenerateCaptions (STEP-09) and a user re-enabling captions later
+     *    via EnsureCaptionJob::enable() read `kind=source` directly — a
+     *    delete racing a dispatched-but-not-yet-started captions job would
+     *    fail that job outright. This check does NOT prevent captions being
+     *    turned on again much later and finding no source (EnsureCaptionJob
+     *    handles that as "no ready source yet", a safe no-op, not an
+     *    error) — the plan explicitly accepts that trade-off.
+     *  - `updated_at` is older than `--source-retention-hours` (default 24)
+     *    — a grace window past the two checks above, not relied on alone,
+     *    so a slow-to-dispatch captions job has room to start before its
+     *    source can vanish out from under it.
+     *
+     * Storage is deleted BEFORE the row, mirroring every other
+     * delete-then-clear sequence in this command (see the voice-note
+     * branches above): a storage delete that fails (returns false while the
+     * file still exists) leaves the row in place so the NEXT sweep retries
+     * it, rather than deleting the row and orphaning an unreachable but
+     * still-billed file.
+     */
+    private function pruneRetainedOriginals(int $retentionHours): int
+    {
+        $pruned = 0;
+
+        $eligibleSources = SpeechAsset::query()
+            ->where('kind', 'source')
+            ->where('status', 'ready')
+            ->where('updated_at', '<', now()->subHours($retentionHours))
+            ->get(['id', 'speech_id', 'disk', 'path']);
+
+        $speechIds = $eligibleSources->pluck('speech_id');
+
+        // Batched once per sweep, not once per row: the loop below only
+        // ever does array lookups against these three, instead of 3N+1
+        // queries for N eligible sources.
+        $captionsEnabledBySpeech = Speech::query()
+            ->whereIn('id', $speechIds)
+            ->pluck('captions_enabled', 'id');
+
+        $speechIdsWithReadyVideo = SpeechAsset::query()
+            ->whereIn('speech_id', $speechIds)
+            ->where('kind', 'video')
+            ->where('status', 'ready')
+            ->pluck('speech_id')
+            ->flip();
+
+        $speechIdsWithCaptionsMidFlight = SpeechAsset::query()
+            ->whereIn('speech_id', $speechIds)
+            ->where('kind', 'captions')
+            ->whereIn('status', ['uploading', 'processing'])
+            ->pluck('speech_id')
+            ->flip();
+
+        foreach ($eligibleSources as $source) {
+            // Cascade-deleted speech: some other purge path owns the
+            // asset's fate, not this sweep.
+            if (! $captionsEnabledBySpeech->has($source->speech_id)) {
+                continue;
+            }
+
+            if (! $speechIdsWithReadyVideo->has($source->speech_id)) {
+                continue;
+            }
+
+            $captionsMidFlight = $captionsEnabledBySpeech[$source->speech_id]
+                && $speechIdsWithCaptionsMidFlight->has($source->speech_id);
+
+            if ($captionsMidFlight) {
+                continue;
+            }
+
+            $disk = Storage::disk($source->disk);
+
+            if ($disk->exists($source->path) && ! $disk->delete($source->path)) {
+                continue;
+            }
+
+            $removed = SpeechAsset::query()
+                ->whereKey($source->id)
+                ->where('status', 'ready')
+                ->delete();
+
+            if ($removed) {
+                $pruned++;
+            }
+        }
+
+        return $pruned;
     }
 
     /**

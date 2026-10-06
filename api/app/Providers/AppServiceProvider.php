@@ -311,5 +311,43 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perDay(5)->by($request->user()?->id.'|'.$targetId);
         });
+
+        // STEP-14-deploy-hardening.md ("Upload rate limiting"), R10: on a
+        // free-tier fixed disk volume, uncontrolled uploads are the single
+        // most likely production outage per the plan's own risk register
+        // (MODERNIZATION_PLAN.md R10) — same reasoning as connection-request
+        // above (R17's unsolicited-invite spam), applied to disk/storage
+        // instead of inbox noise. Same `Limit::perX(...)->by(...)` idiom,
+        // keyed on user id (falling back to IP for the rare unauthenticated
+        // case) rather than the (requester, target) pair above, since there
+        // is no "target" for an upload. One limiter per upload-shaped
+        // surface, each picked generous enough that ordinary single-speech
+        // usage never sees a 429:
+        //
+        // - video-upload: each call opens a NEW S3 multipart upload and a
+        //   NEW SpeechAsset row. QuotaService::reserve already caps
+        //   aggregate bytes, but says nothing about upload COUNT — a
+        //   speaker rarely starts more than a handful of speeches an hour.
+        // - avatar-upload: a profile photo changes rarely.
+        // - voice-note-upload: the one surface genuinely used many times in
+        //   a single sitting (a reviewer can leave dozens of notes across
+        //   one speech), so this is the most generous of the four.
+        // - coach-document-upload: STEP-12-FROZEN-CONTRACT.md §9 caps an
+        //   application at two documents total in the ordinary flow.
+        RateLimiter::for('video-upload', function (Request $request) {
+            return Limit::perHour(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('avatar-upload', function (Request $request) {
+            return Limit::perHour(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('voice-note-upload', function (Request $request) {
+            return Limit::perHour(60)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('coach-document-upload', function (Request $request) {
+            return Limit::perHour(10)->by($request->user()?->id ?: $request->ip());
+        });
     }
 }

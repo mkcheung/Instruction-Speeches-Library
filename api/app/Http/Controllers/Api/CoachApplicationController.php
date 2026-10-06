@@ -47,7 +47,7 @@ class CoachApplicationController extends Controller
      */
     public function store(CreateCoachApplicationRequest $request): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
         $statement = $request->validated('statement');
 
         $application = DB::transaction(function () use ($user, $statement) {
@@ -93,7 +93,7 @@ class CoachApplicationController extends Controller
     public function me(Request $request): JsonResponse
     {
         $application = CoachApplication::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $this->currentUser($request)->id)
             ->with('documents')
             ->latest('id')
             ->first();
@@ -114,7 +114,7 @@ class CoachApplicationController extends Controller
      */
     public function uploadDocuments(UploadApplicationDocumentsRequest $request, CoachApplication $coachApplication, PdfUploadValidator $validator): JsonResponse
     {
-        abort_unless($coachApplication->user_id === $request->user()->id, Response::HTTP_NOT_FOUND);
+        abort_unless($coachApplication->user_id === $this->currentUser($request)->id, Response::HTTP_NOT_FOUND);
         abort_unless(in_array($coachApplication->status, ['draft', 'submitted', 'under_review'], true), Response::HTTP_CONFLICT, 'This application can no longer accept documents.');
 
         $existingCount = $coachApplication->documents()->count();
@@ -136,7 +136,9 @@ class CoachApplicationController extends Controller
             // (STEP-12-FROZEN-CONTRACT.md §5), on the dedicated
             // `application_documents` disk.
             $key = 'applications/'.$coachApplication->id.'/'.Str::uuid().'.pdf';
-            Storage::disk('application_documents')->put($key, file_get_contents($tempPath));
+            $contents = file_get_contents($tempPath);
+            abort_if($contents === false, Response::HTTP_UNPROCESSABLE_ENTITY, 'Unable to read uploaded file.');
+            Storage::disk('application_documents')->put($key, $contents);
 
             $document = ApplicationDocument::query()->create([
                 'application_id' => $coachApplication->id,

@@ -110,7 +110,15 @@ class FfmpegTranscoder implements TranscoderContract
             return;
         }
 
-        $source = $videoAsset->speech->assets()->where('kind', 'source')->first();
+        $speech = $videoAsset->speech;
+
+        if ($speech === null) {
+            $this->fail($videoAsset, 'speech_deleted', 'This speech no longer exists.');
+
+            return;
+        }
+
+        $source = $speech->assets()->where('kind', 'source')->first();
 
         if ($source === null) {
             $this->fail($videoAsset, 'source_missing', 'No source asset found for this speech.');
@@ -135,7 +143,7 @@ class FfmpegTranscoder implements TranscoderContract
         // since nothing ever reclaims them. `generatePoster()` already had
         // this shape; `transcode()` did not.
         try {
-            $this->transcodeFromLocalSource($videoAsset, $source, $localSource);
+            $this->transcodeFromLocalSource($videoAsset, $speech, $source, $localSource);
         } finally {
             @unlink($localSource);
         }
@@ -144,9 +152,12 @@ class FfmpegTranscoder implements TranscoderContract
     /**
      * The body of `transcode()` once the source is on local disk, split out
      * purely so the caller's `finally` can own `$localSource` while this
-     * method owns its own rendition scratch file.
+     * method owns its own rendition scratch file. `$speech` is passed
+     * through rather than re-read off `$videoAsset->speech` so this method
+     * doesn't need its own soft-delete race guard — `transcode()` already
+     * resolved it.
      */
-    private function transcodeFromLocalSource(SpeechAsset $videoAsset, SpeechAsset $source, string $localSource): void
+    private function transcodeFromLocalSource(SpeechAsset $videoAsset, Speech $speech, SpeechAsset $source, string $localSource): void
     {
         $probe = $this->probe($localSource);
 
@@ -158,7 +169,7 @@ class FfmpegTranscoder implements TranscoderContract
 
         // Deterministic output path (§9.2): never a timestamp suffix, so
         // duplicate output is structurally impossible on retry.
-        $outputPath = "speeches/{$videoAsset->speech->ulid}/{$videoAsset->speech->ulid}/720p.mp4";
+        $outputPath = "speeches/{$speech->ulid}/{$speech->ulid}/720p.mp4";
         // ffmpeg infers the muxer from the `.mp4` suffix, so the raw
         // tempnam() path can't be used directly — but the placeholder it
         // created must be unlinked, or every run leaks a zero-byte file.
@@ -364,8 +375,17 @@ class FfmpegTranscoder implements TranscoderContract
             return;
         }
 
+        $speech = $videoAsset->speech;
+
+        if ($speech === null) {
+            $this->cleanupTemps($localTemps);
+            Log::warning('Poster pipeline skipped: speech no longer exists.', ['video_asset_id' => $videoAsset->id]);
+
+            return;
+        }
+
         $timeMs = (int) round($seekSeconds * 1000);
-        $ulid = $videoAsset->speech->ulid;
+        $ulid = $speech->ulid;
 
         $variants = [];
 
@@ -406,6 +426,12 @@ class FfmpegTranscoder implements TranscoderContract
                     'height' => $dimensions[1],
                     'is_primary' => $width === self::PRIMARY_POSTER_WIDTH && $format === self::PRIMARY_POSTER_FORMAT,
                     'poster_time_seconds' => $seekSeconds,
+                    // Placeholder, always overwritten below once the file is
+                    // actually stored — declared here (rather than left
+                    // absent until then) so the array shape carries the key
+                    // from construction, matching what the later byte_size
+                    // read expects.
+                    'byte_size' => 0,
                 ];
             }
         }
@@ -447,6 +473,9 @@ class FfmpegTranscoder implements TranscoderContract
                         'height' => $dimensions[1],
                         'is_primary' => false,
                         'poster_time_seconds' => null,
+                        // See the poster variant above for why this
+                        // placeholder exists.
+                        'byte_size' => 0,
                     ];
                 }
             }

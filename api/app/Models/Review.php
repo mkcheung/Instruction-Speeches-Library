@@ -51,6 +51,23 @@ use Illuminate\Support\Carbon;
  * @property int $essay_lock_version
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ *
+ * STEP-14-deploy-hardening.md phpstan level 8: `@property-read` overrides
+ * below for the two relations the schema actually guarantees non-null
+ * (`speech_id`/`speech_owner_id` are both `NOT NULL` — see the migration's
+ * raw SQL). Without this, Larastan infers every `BelongsTo` as nullable
+ * from the relation method's generic return type alone, regardless of the
+ * FK's real nullability. `reviewer`/`invitedBy`/`revokedBy` are
+ * deliberately NOT listed here — `reviewer_id`/`invited_by_id`/
+ * `revoked_by_id` are genuinely nullable columns (erasure nulls
+ * `reviewer_id`; see ReviewResource's own comment), and every call site
+ * already null-checks them correctly. `speech` IS listed as nullable
+ * despite `speech_id` being `NOT NULL` — Speech uses SoftDeletes, and the
+ * admin takedown path (SpeechResource) soft-deletes it, which makes this
+ * BelongsTo resolve to null via the default global scope. Call sites must
+ * still null-check.
+ * @property-read Speech|null $speech
+ * @property-read User $speechOwner
  */
 #[Fillable([
     'speech_id', 'reviewer_id', 'speech_owner_id', 'invited_by_id',

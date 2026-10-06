@@ -35,7 +35,14 @@ jobs:
           # the whole suite fails on a runner that never had the Docker
           # image's Dockerfile changes applied to it (CI installs PHP
           # itself, it doesn't build/run the app image).
-          extensions: gd, exif, pdo_sqlite
+          # pcntl (STEP-14): laravel/horizon's real runtime dependency, not
+          # just a composer platform-req (see Dockerfile's `vendor` stage
+          # comment for the full story) — `composer install` below resolves
+          # horizon's real requirement against THIS runner's extension list,
+          # not a `--ignore-platform-req` flag, so it has to actually be
+          # present here or CI's install fails the same way the Docker build
+          # did before that fix.
+          extensions: gd, exif, pdo_sqlite, pcntl
 
       - uses: actions/setup-node@v7
         with:

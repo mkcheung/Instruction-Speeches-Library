@@ -54,6 +54,15 @@ use Illuminate\Support\Carbon;
  * @property string|null $content_revision
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ *
+ * STEP-14-deploy-hardening.md phpstan level 8: `speech_id` is `NOT NULL`
+ * (every asset belongs to exactly one speech — see the migration), but
+ * Larastan infers `BelongsTo` as nullable generically from the relation
+ * method's return type alone. Still nullable here despite that, though —
+ * Speech uses SoftDeletes, and the admin takedown path (SpeechResource)
+ * soft-deletes it, which makes this BelongsTo resolve to null via the
+ * default global scope. Call sites must still null-check.
+ * @property-read Speech|null $speech
  */
 #[Fillable([
     'speech_id', 'kind', 'format', 'rendition', 'disk', 'path',

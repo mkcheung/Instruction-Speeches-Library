@@ -78,6 +78,12 @@ class CoachApplicationResource extends Resource
                     ->modalContent(function (CoachApplication $record) {
                         $signer = app(ApplicationDocumentUrlSigner::class);
                         $actor = auth()->user();
+                        // Gated by EnsureUserIsAdmin before any
+                        // /control-panel route (including this modal) is
+                        // reachable at all — same "auth guaranteed
+                        // non-null" guarantee as Controller::currentUser(),
+                        // just enforced by a different middleware.
+                        abort_if($actor === null, 403);
 
                         $documents = $record->documents()->where('status', 'clean')->get()->map(function (ApplicationDocument $document) use ($signer, $actor) {
                             AuditLog::query()->create([
@@ -98,13 +104,17 @@ class CoachApplicationResource extends Resource
                     ->requiresConfirmation()
                     ->schema([Textarea::make('reason')->label('Reason')])
                     ->action(function (CoachApplication $record, array $data) {
-                        app(CoachApplicationDecisionService::class)->approve(auth()->user(), $record, $data['reason'] ?? null);
+                        $actor = auth()->user();
+                        abort_if($actor === null, 403);
+                        app(CoachApplicationDecisionService::class)->approve($actor, $record, $data['reason'] ?? null);
                     }),
                 Action::make('reject')
                     ->requiresConfirmation()
                     ->schema([Textarea::make('reason')->label('Reason')->required()])
                     ->action(function (CoachApplication $record, array $data) {
-                        app(CoachApplicationDecisionService::class)->reject(auth()->user(), $record, $data['reason']);
+                        $actor = auth()->user();
+                        abort_if($actor === null, 403);
+                        app(CoachApplicationDecisionService::class)->reject($actor, $record, $data['reason']);
                     }),
             ]);
     }

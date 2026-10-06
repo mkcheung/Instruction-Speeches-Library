@@ -65,7 +65,15 @@ services:
       context: .
       dockerfile: Dockerfile
       target: runtime
-    command: php artisan queue:work --queue=default --timeout=60 --sleep=1 --tries=1
+    # STEP-14: `horizon --environment=local-default` replaces bare
+    # `queue:work`, so Horizon's dashboard (gated to admin/super_admin,
+    # HorizonServiceProvider) actually has a process to report queue depth
+    # and failed jobs for — config/horizon.php's own comment explains why
+    # this is a SEPARATE environment key per container rather than one
+    # `local`/`production` key covering all three workers: Horizon runs
+    # every supervisor in the given environment IN this container, and only
+    # this container has none of ffmpeg-worker's/whisper-worker's binaries.
+    command: php artisan horizon --environment=local-default
     restart: unless-stopped
     depends_on:
       postgres:
@@ -104,11 +112,18 @@ services:
   # and `redis-long`'s `retry_after=>3900` — the ordering §9.2 requires so a
   # process kill and a queue-release can't race each other. `nice -n 19` is
   # the process-level throttle; `cpus`/`mem_limit` below are this compose
-  # deploy's equivalent of §9.2's systemd `CPUQuota=150%` (this repo deploys
-  # via `scripts/deploy.sh` + Compose on the target host, not bare-metal
-  # systemd units — confirmed by reading scripts/deploy.sh, no systemd unit
-  # path exists here). Concurrency 1 is just "run one replica of this
-  # service" — no `deploy.replicas`, no second copy.
+  # deploy's equivalent of §9.2's systemd `CPUQuota=150%`.
+  #
+  # STEP-14 landed the real systemd units this comment used to say didn't
+  # exist: ../speechcoach-deploy-target/systemd/laravel-worker-transcode@.service
+  # (CPUQuota=150%, Nice=19 — the exact §9.2 mechanism) and its sibling
+  # laravel-worker-default@.service, installable on any real systemd host
+  # (see that directory's README.md for why they can't be live-verified
+  # inside the faux-server container itself, which is Alpine/musl with no
+  # systemd). This `ffmpeg-worker` Compose service remains the dev/Compose
+  # path — the two are parallel deploy targets for the same command, not a
+  # Compose-vs-systemd contradiction. Concurrency 1 is just "run one
+  # replica of this service" — no `deploy.replicas`, no second copy.
   #
   # `-threads 2` (an ffmpeg CLI flag, not a compose/Docker setting) belongs
   # in the actual `ffmpeg` invocation in FfmpegTranscoder.php, not here —
@@ -118,7 +133,13 @@ services:
       context: .
       dockerfile: Dockerfile
       target: ffmpeg-worker
-    command: sh -c "nice -n 19 php artisan queue:work redis-long --queue=transcode --timeout=3700 --tries=1 --sleep=1"
+    # STEP-14: `nice -n 19` moved out of this shell wrapper and into
+    # config/horizon.php's `supervisor-transcode.nice` — Horizon applies it
+    # per-supervisor via pcntl itself, so wrapping the command is redundant
+    # (and would be WRONG here: it would only `nice` horizon's own master
+    # process, not the worker children it forks, which is what actually
+    # needs the lower priority against a runaway ffmpeg).
+    command: php artisan horizon --environment=local-transcode
     restart: unless-stopped
     depends_on:
       postgres:
@@ -187,7 +208,10 @@ services:
       context: .
       dockerfile: Dockerfile
       target: whisper-worker
-    command: sh -c "nice -n 19 php artisan queue:work redis-long --queue=captions --timeout=1800 --tries=1 --sleep=1"
+    # STEP-14: same reasoning as `ffmpeg-worker`'s command above — `nice` is
+    # now `config/horizon.php`'s `supervisor-captions.nice`, applied by
+    # Horizon per-worker-process rather than wrapping its master process.
+    command: php artisan horizon --environment=local-captions
     restart: unless-stopped
     depends_on:
       postgres:
@@ -524,6 +548,213 @@ services:
     networks:
       - default
 
+  # ---------------------------------------------------------------------
+  # STEP-14-deploy-hardening.md: "Containers introduced: glitchtip,
+  # uptime-kuma. Teaches: Compose profiles, so the observability stack
+  # does not run on your laptop by default."
+  #
+  # ALL FOUR services below (glitchtip-db-init, glitchtip-migrate,
+  # glitchtip, glitchtip-worker) plus `uptime-kuma` further down carry
+  # `profiles: ["observability"]`. A bare `docker compose up -d` — the
+  # command used throughout every other STEP in this repo — does NOT
+  # start anything in this block: Compose only starts a service whose
+  # `profiles:` list intersects the active profile set, and the active
+  # set is empty unless a human opts in with `--profile observability`
+  # or `COMPOSE_PROFILES=observability` (confirmed against this
+  # project's actual Compose v5.3.1 — `docker compose config -q` and
+  # `docker compose --profile observability config -q` both verified
+  # below, and `docker compose up -d` with no flag was confirmed NOT to
+  # list these services in its plan). Bring the stack up explicitly:
+  #   docker compose --profile observability up -d
+  #
+  # ⚠️ To stop JUST these services, do NOT use `docker compose
+  # --profile observability down` — confirmed twice, live, that it tears
+  # down the ENTIRE project (postgres, seaweedfs, everything), not only
+  # the profiled services: `down` resolves and removes the whole compose
+  # project regardless of which profile flag accompanies it, `--profile`
+  # only affects which services `up` is willing to START. These are the
+  # commands that really are scoped:
+  #   docker compose --profile observability stop glitchtip glitchtip-worker uptime-kuma
+  #   docker compose --profile observability rm -f glitchtip glitchtip-worker uptime-kuma
+  # ---------------------------------------------------------------------
+
+  # GlitchTip needs its OWN Postgres database, not `speechcoach` — same
+  # "its own database" rule ../speechcoach-deploy-target/bin/provision.sh
+  # applies to the staging/prod deploy DB (a migration against one
+  # logical app must never be able to touch another's tables). The
+  # `postgres:17-alpine` image this repo already pulls for the `postgres`
+  # service above ships `createdb`, so this one-shot service reuses that
+  # same image purely as an S3-free psql client against the already-
+  # running `postgres` service — no new image, no second Postgres
+  # instance. `|| true` makes a second run against an already-provisioned
+  # volume a safe no-op (createdb's own error on an existing database is
+  # otherwise non-zero), matching provision.sh's identical idempotency
+  # guard. Not a long-running service — no `restart:` key, same
+  # no-restart-policy convention `whisper-model-init` below documents as
+  # "the one-shot pattern" in this file.
+  glitchtip-db-init:
+    profiles: ["observability"]
+    image: postgres:17-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${DB_PASSWORD:-speechcoach}
+    entrypoint: ["sh", "-c"]
+    command:
+      - createdb -h postgres -U ${DB_USERNAME:-speechcoach} glitchtip || true
+    networks:
+      - default
+
+  # §21.5's migrations rule applies here exactly as it does to the app
+  # itself: "Migrations must not run from a container entrypoint. With
+  # one container it works; with two they race." `glitchtip`/
+  # `glitchtip-worker` below both start from the same image and would
+  # race a migration baked into either one's entrypoint — so, like this
+  # file's own `app` container, migrations are a separate one-shot step
+  # that must complete before the web/worker containers are allowed to
+  # start. `condition: service_completed_successfully` (not
+  # `service_healthy` — this container has no healthcheck, it exits) is
+  # what actually enforces the ordering; `restart:` is deliberately
+  # omitted, the same one-shot convention as `glitchtip-db-init` above
+  # and `whisper-model-init` below.
+  #
+  # `bin/run-migrate.sh` (confirmed by reading it inside the pulled
+  # `glitchtip/glitchtip:latest` image) runs `manage.py migrate`,
+  # `createcachetable`, and `maintain_partitions` — GlitchTip's own
+  # documented one-shot migration entrypoint, not a hand-rolled
+  # alternative.
+  glitchtip-migrate:
+    profiles: ["observability"]
+    image: glitchtip/glitchtip:latest
+    command: ["bin/run-migrate.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      glitchtip-db-init:
+        condition: service_completed_successfully
+    environment: &glitchtip-env
+      # Dev-only literal, not a real secret, in the same spirit as this
+      # file's `DB_PASSWORD=speechcoach`/`AWS_SECRET_ACCESS_KEY=
+      # speechcoach-dev-secret` defaults — GlitchTip refuses to leave
+      # `DEBUG=True` with this still at its OWN placeholder ("change_me")
+      # but is otherwise happy running dev with a fixed, visible value.
+      # The `${...:-default}` form lets a real deploy override it (e.g.
+      # via a shell export or a root `.env` Compose file, neither of
+      # which this repo has today) without touching this file — but
+      # note that `api/.env` is NOT such a source: it is only ever
+      # injected INTO already-started containers via `env_file:`
+      # (Laravel's own runtime config), never read by `docker compose`
+      # itself for `${...}` substitution. See api/.env.example's
+      # GLITCHTIP_* block for the informational mirror of these values
+      # and that exact caveat.
+      SECRET_KEY: "${GLITCHTIP_SECRET_KEY:-speechcoach-dev-glitchtip-secret-not-for-prod}"
+      DEBUG: "false"
+      # GlitchTip's own database — never `speechcoach` (see
+      # `glitchtip-db-init` above). Shares this compose's Postgres
+      # credentials because it shares the one `postgres` service, not
+      # because the two apps share a schema.
+      DATABASE_URL: "postgres://${DB_USERNAME:-speechcoach}:${DB_PASSWORD:-speechcoach}@postgres:5432/glitchtip"
+      # Valkey db INDEX 1, not the default 0 — `api/.env`'s REDIS_HOST=
+      # valkey (Laravel's queue/cache) already owns db 0 on this same
+      # instance; a shared db index would let GlitchTip's cache keys and
+      # Laravel's queue keys collide under the same keyspace.
+      VALKEY_URL: "redis://valkey:6379/1"
+      # Used in email bodies (digest links, invite links) and DSN
+      # generation — the browser-reachable address of the `glitchtip`
+      # service's published port below, not the in-network service name.
+      GLITCHTIP_DOMAIN: "http://localhost:8010"
+      # Routes GlitchTip's own async digest/notification email through
+      # this repo's existing zero-cost mail intercept (see `mailpit`'s
+      # own comment above) instead of attempting a real SMTP send —
+      # consistent with api/.env's MAIL_HOST=mailpit for the Laravel
+      # side. View delivered digest mail at http://localhost:8025.
+      EMAIL_URL: "smtp://mailpit:1025"
+      DEFAULT_FROM_EMAIL: "glitchtip@speechcoach.test"
+      # Single-instance dev box, no reverse-proxy host allowlist to get
+      # right — GlitchTip's own default (`["*"]`) is fine for a profiled,
+      # localhost-only container that `web`/nginx never proxies to.
+    networks:
+      - default
+
+  # The actual Sentry-wire-protocol-compatible ingest + UI server. Takes
+  # `SENTRY_LARAVEL_DSN` (api/.env.example) as its client-facing address
+  # once a project/DSN is created through this service's own onboarding —
+  # that's application-level GlitchTip configuration, not something this
+  # compose file can template, so it's a documented manual step, not
+  # automated here.
+  glitchtip:
+    profiles: ["observability"]
+    image: glitchtip/glitchtip:latest
+    command: ["bin/run-web.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      glitchtip-migrate:
+        condition: service_completed_successfully
+    environment: *glitchtip-env
+    ports:
+      - "8010:8000" # 8000 itself is already claimed on this host (see `web`'s own port comment)
+    healthcheck:
+      # No `curl`/`wget` in this image (confirmed: `which curl wget`
+      # exits non-zero inside it) — `python3` is present, and GlitchTip
+      # ships its own liveness route at `/_health/` (confirmed by
+      # reading glitchtip/urls.py in the pulled image).
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/_health/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - default
+
+  # Celery's async worker, the other half of "a Celery worker/beat process
+  # for async email+digest processing" — GlitchTip 6.x merged beat INTO
+  # the worker (confirmed by reading bin/run-beat.sh in the pulled image:
+  # "This script is deprecated and no longer does anything"; the real
+  # scheduler lives in `manage.py runworker --scheduler`, which
+  # `bin/run-worker.sh` already invokes), so there is deliberately no
+  # separate `glitchtip-beat` service here — a third container running a
+  # script that is a documented no-op would just be dead weight.
+  glitchtip-worker:
+    profiles: ["observability"]
+    image: glitchtip/glitchtip:latest
+    command: ["bin/run-worker.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      glitchtip-migrate:
+        condition: service_completed_successfully
+    environment: *glitchtip-env
+    networks:
+      - default
+
+  # STEP-14: "Uptime Kuma is paired with a free external check —
+  # monitoring from the same box tells you nothing when the box dies."
+  # Uptime Kuma itself is the ON-box half of that pair (the external
+  # check is a separate free third-party service configured at deploy
+  # time, outside this repo). Official image, SQLite-backed — `/app/data`
+  # is a NAMED volume (not a bind mount), same `postgres-data`/
+  # `seaweedfs-data` convention, so monitors survive a rebuild.
+  #
+  # No `healthcheck:` override here — the image ships its OWN (`CMD-SHELL
+  # extra/healthcheck`, confirmed via `docker inspect`), so this is the
+  # one service in this file that genuinely needs no healthcheck authored
+  # here at all.
+  uptime-kuma:
+    profiles: ["observability"]
+    image: louislam/uptime-kuma:1
+    volumes:
+      - uptime-kuma-data:/app/data
+    ports:
+      - "3001:3001"
+    networks:
+      - default
+
 networks:
   default:
     name: speechcoach-dev
@@ -533,3 +764,4 @@ volumes:
   seaweedfs-data:
   whisper-models:
   clamav-signatures:
+  uptime-kuma-data:

@@ -1,0 +1,6 @@
+# STEP-14: scripts/backup.sh writes real database dumps and media tarballs
+# here. Never committed — a Postgres dump of real user data has no business
+# in a public repo, and these files are reproducible from the live stack at
+# any time by re-running the script.
+*
+!.gitignore

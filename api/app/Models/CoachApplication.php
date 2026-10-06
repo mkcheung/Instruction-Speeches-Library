@@ -31,6 +31,13 @@ use RuntimeException;
  * @property Carbon|null $documents_purge_after
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ *
+ * STEP-14-deploy-hardening.md phpstan level 8: `user_id` is `NOT NULL`
+ * (every application belongs to exactly one applicant), but Larastan
+ * infers `BelongsTo` as nullable generically from the relation method's
+ * return type alone. `decidedBy` is NOT overridden — `decided_by_id` is
+ * genuinely nullable until a decision is made.
+ * @property-read User $user
  */
 #[Fillable(['user_id', 'status', 'statement'])]
 class CoachApplication extends Model

@@ -18,7 +18,7 @@ class AvatarController extends Controller
 {
     public function update(UpdateAvatarRequest $request, AvatarProcessor $avatars): JsonResponse
     {
-        $user = $request->user();
+        $user = $this->currentUser($request);
 
         /** @var Profile $profile */
         $profile = Profile::query()->firstOrCreate(['user_id' => $user->id]);

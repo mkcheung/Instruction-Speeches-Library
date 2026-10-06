@@ -12,10 +12,12 @@
         "intervention/image": "^4.2",
         "laravel/fortify": "^1.37",
         "laravel/framework": "^13.8",
+        "laravel/horizon": "^5.50",
         "laravel/sanctum": "^4.3",
         "laravel/tinker": "^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
         "predis/predis": "^3",
+        "sentry/sentry-laravel": "^4.28",
         "spatie/laravel-permission": "^8.3",
         "symfony/html-sanitizer": "^8.1"
     },
