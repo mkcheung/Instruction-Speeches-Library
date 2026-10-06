@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { UploadDashboard } from '@/components/speech/UploadDashboard'
+import { PageShell } from '@/components/layout/PageShell'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { speechCreateSchema, type SpeechCreateFormValues } from '@/lib/validation'
 import { useCreateSpeechMutation, useListSpeechesQuery } from '@/features/speech/speechApi'
@@ -60,7 +61,7 @@ export default function SpeechCreate() {
 
   if (createdSpeech) {
     return (
-      <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 px-4 py-10">
+      <PageShell width="form">
         <Card>
           <CardHeader>
             <CardTitle>Upload "{createdSpeech.title}"</CardTitle>
@@ -77,12 +78,12 @@ export default function SpeechCreate() {
             </Button>
           </CardContent>
         </Card>
-      </div>
+      </PageShell>
     )
   }
 
   return (
-    <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 px-4 py-10">
+    <PageShell width="form">
       <Card>
         <CardHeader>
           <CardTitle>Upload a speech</CardTitle>
@@ -146,6 +147,6 @@ export default function SpeechCreate() {
           </form>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }

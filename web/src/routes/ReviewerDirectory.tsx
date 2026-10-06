@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { PageShell } from '@/components/layout/PageShell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,7 +12,7 @@ import { getErrorStatus } from '@/lib/errorStatus'
  * S2/S4 (PLAN-APP-HEADER.md) — surfaces §6.3's reviewer directory as its
  * own destination. The directory itself was already fully built
  * (`reviewApi.ts`'s `searchReviewers`) but reachable only mid-invite-flow,
- * inside `InviteReviewerDialog` — "a built feature currently unreachable
+ * inside `InviteReviewerPanel` — "a built feature currently unreachable
  * except mid-invite-flow." This page reuses that same query rather than
  * a new endpoint; no backend change needed on this side (the contract's
  * server-side `viewDirectory` wiring is what actually gates who may load
@@ -58,7 +59,7 @@ export default function ReviewerDirectory() {
   const failed = isError && !forbidden
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-10">
+    <PageShell width="wide">
       <div>
         <h1 className="text-2xl font-semibold">Find reviewers</h1>
         <p className="text-sm text-muted-foreground">
@@ -160,6 +161,6 @@ export default function ReviewerDirectory() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </PageShell>
   )
 }

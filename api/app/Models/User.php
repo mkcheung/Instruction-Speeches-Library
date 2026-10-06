@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Support\Username;
 use Database\Factories\UserFactory;
+use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthentication;
+use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthenticationRecovery;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -15,16 +17,20 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\HasApiTokens;
+use SensitiveParameter;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
  * @property array<string,mixed> $preferences
  * @property Carbon|null $erasure_started_at
  * @property Carbon|null $anonymized_at
+ * @property string|null $two_factor_secret
+ * @property array<string>|null $two_factor_recovery_codes
+ * @property Carbon|null $two_factor_confirmed_at
  */
 #[Fillable(['name', 'first_name', 'last_name', 'email', 'password', 'preferences', 'erasure_started_at', 'anonymized_at'])]
-#[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmailContract
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
+class User extends Authenticatable implements HasAppAuthentication, HasAppAuthenticationRecovery, MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
@@ -125,6 +131,85 @@ class User extends Authenticatable implements MustVerifyEmailContract
             // narrower reviewer-voice-note erasure slice
             // (App\Jobs\EraseSelfAccount, pre-existing).
             'anonymized_at' => 'datetime',
+            // Fortify's own cast choices for the columns its migration
+            // created, kept identical so the two never disagree about
+            // what is stored: the secret is encrypted at rest, and the
+            // recovery codes are an encrypted JSON array.
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Filament's TOTP multi-factor contract (STEP-12-FROZEN-CONTRACT.md
+     * §11 — `AdminPanelProvider` declares `multiFactorAuthentication(...,
+     * isRequired: true)`). Filament ships the TOTP arithmetic but is
+     * deliberately storage-agnostic, so these five methods are the whole
+     * of what it needs from us: where the secret lives, and how to label
+     * it in the user's authenticator app.
+     *
+     * Mapped onto the `two_factor_secret` / `two_factor_recovery_codes` /
+     * `two_factor_confirmed_at` columns Fortify's migration already
+     * created and nothing else reads — an adapter between two packages
+     * implementing the same feature under different method names, not a
+     * new storage scheme. No migration needed.
+     *
+     * `EnsureUserIsAdmin`'s docblock argued against implementing a
+     * Filament interface here, on the grounds that `User` loads on every
+     * request while `filament/filament` might not be installed. That
+     * concern is now obsolete: Filament is a `require` (not
+     * `require-dev`) dependency, so it is in the `--no-dev` production
+     * image too.
+     */
+    public function getAppAuthenticationSecret(): ?string
+    {
+        return $this->two_factor_secret;
+    }
+
+    /**
+     * Filament reads "has a secret" as "is enrolled"
+     * (`AppAuthentication::isEnabled()` is `filled($secret)`), whereas
+     * Fortify's flow is two-phase and treats `two_factor_confirmed_at`
+     * as the real enrollment marker. Setting both together keeps that
+     * column truthful rather than leaving it a third piece of state
+     * nobody maintains — Filament only calls this AFTER the user has
+     * proven a valid code, so "secret saved" really does mean
+     * "confirmed" on this path.
+     */
+    public function saveAppAuthenticationSecret(#[SensitiveParameter] ?string $secret): void
+    {
+        $this->forceFill([
+            'two_factor_secret' => $secret,
+            'two_factor_confirmed_at' => $secret === null ? null : now(),
+        ])->save();
+    }
+
+    /** The label under the brand name in the user's authenticator app. */
+    public function getAppAuthenticationHolderName(): string
+    {
+        return $this->email;
+    }
+
+    /**
+     * Recovery codes are what stop `isRequired: true` being a one-way
+     * door: role management lives INSIDE the panel, so an admin who
+     * loses their phone cannot be restored unless another admin already
+     * exists. `RoleAssignmentService` guarantees an admin ROW survives;
+     * it cannot guarantee anyone can still authenticate as one.
+     *
+     * @return ?array<string>
+     */
+    public function getAppAuthenticationRecoveryCodes(): ?array
+    {
+        return $this->two_factor_recovery_codes;
+    }
+
+    /**
+     * @param  ?array<string>  $codes
+     */
+    public function saveAppAuthenticationRecoveryCodes(#[SensitiveParameter] ?array $codes): void
+    {
+        $this->forceFill(['two_factor_recovery_codes' => $codes])->save();
     }
 }

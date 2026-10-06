@@ -28,7 +28,11 @@ export const authApi = createApi({
       query: (body) => ({ url: '/register', method: 'POST', body }),
       invalidatesTags: ['Me'],
     }),
-    login: builder.mutation<void, LoginPayload>({
+    /** Typed `MeResponse`, not `void`: `LoginResponse::toResponse` returns
+     * `{ user: UserResource }`, and `Login` reads `onboarding_completed`
+     * off it to pick `/dashboard` vs `/onboarding` without paying for a
+     * second round-trip to `/api/me`. */
+    login: builder.mutation<MeResponse, LoginPayload>({
       query: (body) => ({ url: '/login', method: 'POST', body }),
       invalidatesTags: ['Me'],
     }),

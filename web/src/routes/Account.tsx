@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ExportSection } from '@/components/account/ExportSection'
 import { DeleteAccountDialog } from '@/components/account/DeleteAccountDialog'
 import { useExportJob, latestExportOfKind } from '@/hooks/useExportJob'
+import { PageShell } from '@/components/layout/PageShell'
 
 /**
  * STEP-11-FROZEN-CONTRACT.md §10: a new `/account` route, nested in
@@ -19,7 +20,7 @@ export default function Account() {
   const { exports } = useExportJob()
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-10">
+    <PageShell width="form">
       <Card>
         <CardHeader>
           <CardTitle>Your data</CardTitle>
@@ -50,6 +51,6 @@ export default function Account() {
           <DeleteAccountDialog />
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   )
 }

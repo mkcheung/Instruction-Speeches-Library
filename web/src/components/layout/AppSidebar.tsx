@@ -13,6 +13,17 @@ import { cn } from '@/lib/utils'
  *
  * Reads `useGetMeQuery()` for roles — no new fetch, RTK Query dedupes
  * with the route guards' own subscription.
+ *
+ * Shown from `md` (48rem) rather than S5's original `lg`: between 768px
+ * and 1024px — a small laptop or a landscape tablet — there is ample room
+ * for a 14rem rail, and hiding it there pushed navigation into the avatar
+ * dropdown for no reason. Below `md` it still collapses and `UserMenu`
+ * remains the only nav, which is S1's documented behaviour and the reason
+ * that menu duplicates this list.
+ *
+ * The rail widens one step at `xl` so the nav keeps its proportion beside
+ * content that now grows to fill a large window, instead of leaving a thin
+ * column stranded next to it.
  */
 export function AppSidebar() {
   const { data } = useGetMeQuery()
@@ -21,7 +32,7 @@ export function AppSidebar() {
   return (
     <nav
       aria-label="Main"
-      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-3 lg:flex"
+      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-3 md:flex xl:w-64"
     >
       {items.map((item) => (
         <SidebarLink key={item.to} item={item} />

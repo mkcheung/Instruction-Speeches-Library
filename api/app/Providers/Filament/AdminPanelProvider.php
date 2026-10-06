@@ -36,10 +36,25 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
  * `HasAuth::multiFactorAuthentication()` signature directly, correcting
  * the original guess.
  *
- * `filament:upgrade` is not a real artisan command in this installed
- * version (no `filament` namespace commands are registered by
- * `filament/filament` itself) — assets/views ship pre-published in the
- * package and needed no publish step to boot.
+ * Two claims that used to stand here were wrong, corrected in place
+ * rather than deleted because the second kept the panel unusable for a
+ * whole step without failing anything. `filament:upgrade` is indeed not
+ * a command in this version, but the `filament` namespace IS registered
+ * and has ~30 commands (`php artisan list filament`) — among them
+ * `filament:assets`, which is required. Assets do NOT ship pre-published:
+ * a fresh image's `public/` holds only favicon.ico, index.php and
+ * robots.txt, so every /css/filament and /js/filament request 404s and
+ * the panel renders unstyled with no Alpine. The Dockerfile `runtime`
+ * stage now runs `filament:assets`, and the `nginx` stage copies the
+ * output onto nginx's own disk — nginx cannot read this container's
+ * public/, and api.speechcoach.test fastcgi_pass'es every path to
+ * php-fpm, which can only execute index.php. See the
+ * `location ~ ^/(css|js|fonts)/filament/` block in
+ * docker/nginx/default.conf.
+ *
+ * Both errors share a cause worth remembering: the login page returns
+ * HTTP 200 whether or not its stylesheet exists, and no test ever
+ * requested an asset, so "it boots" was mistaken for "it works".
  *
  * Mounted at `/control-panel` (STEP-12.md: "a separate prefix... pick
  * something clearly non-default") — never the framework's own

@@ -710,7 +710,7 @@ async function openSpeakerEssayFor(page: Page, reviewerName: string) {
     .getByRole('radiogroup', { name: 'Choose commentary track' })
     .getByRole('radio', { name: reviewerName })
     .click()
-  await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Essay' }).click()
+  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Essay' }).click()
 }
 
 /** Re-opens the Essay tab without a page load — the panel unmounts when

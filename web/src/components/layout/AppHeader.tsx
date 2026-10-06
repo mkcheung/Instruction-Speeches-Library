@@ -13,7 +13,7 @@ import { UserMenu } from '@/components/layout/UserMenu'
  */
 export function AppHeader() {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 sm:px-6 lg:px-8">
       <Link to="/dashboard" className="min-w-0 truncate text-sm font-semibold">
         Instruction Speeches Library
       </Link>

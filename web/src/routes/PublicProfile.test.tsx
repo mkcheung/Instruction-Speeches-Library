@@ -66,6 +66,10 @@ describe('PublicProfile', () => {
         })
       }
       if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -97,6 +101,10 @@ describe('PublicProfile', () => {
         })
       }
       if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -124,6 +132,10 @@ describe('PublicProfile', () => {
         })
       }
       if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -140,6 +152,10 @@ describe('PublicProfile', () => {
       if (url.includes('/api/u/nobody')) {
         return jsonResponse({ message: 'No such user.' }, 404)
       }
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -166,6 +182,10 @@ describe('PublicProfile', () => {
         })
       }
       if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -218,6 +238,10 @@ describe('PublicProfile', () => {
           meta: { next_cursor: null },
         })
       }
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -246,6 +270,10 @@ describe('PublicProfile', () => {
         })
       }
       if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -295,6 +323,10 @@ describe('PublicProfile', () => {
         })
       }
       if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      // Anonymous by default: `PublicProfile` probes the session to decide
+      // whether to render the "Back to dashboard" link, and D5 requires the
+      // page to work fine without one. The two cases below cover both sides.
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -310,5 +342,89 @@ describe('PublicProfile', () => {
     // One primary link per card — not a second link to the same
     // destination off the poster/title (§6.7.4's accessibility rule).
     expect(screen.getAllByRole('link', { name: /watch with your commentary/i })).toHaveLength(1)
+  })
+  /**
+   * `/u/:username` is registered outside `AppLayout` (it must render for
+   * anonymous visitors, D5), so it has no header and no sidebar — a
+   * signed-in viewer who lands here otherwise has no way back into the app
+   * but the browser's back button.
+   */
+  it('gives a signed-in viewer a link back to the dashboard', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/api/me')) {
+        return jsonResponse({
+          user: {
+            id: '1',
+            email: 'mars@example.com',
+            first_name: 'Mars',
+            last_name: 'Cheung',
+            username: 'marscheung',
+            display_name: 'Mars Cheung',
+            email_verified: true,
+            roles: [],
+            onboarding_completed: true,
+            onboarding_step: 4,
+          },
+        })
+      }
+      if (url.includes('/api/u/jordan/timeline')) return jsonResponse(emptyTimeline)
+      if (url.includes('/api/u/jordan')) {
+        return jsonResponse({
+          profile: {
+            username: 'jordan',
+            display_name: 'Jordan Reyes',
+            pronouns: null,
+            bio: null,
+            location: null,
+            avatar_url: null,
+          },
+        })
+      }
+      if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderProfileApp('/u/jordan')
+
+    const back = await screen.findByRole('link', { name: /back to dashboard/i })
+    expect(back).toHaveAttribute('href', '/dashboard')
+
+    // It must NOT live in the profile-sections landmark, which is the
+    // three tab routes and nothing else.
+    const nav = screen.getByRole('navigation', { name: /profile sections/i })
+    expect(within(nav).queryByRole('link', { name: /back to dashboard/i })).not.toBeInTheDocument()
+    expect(within(nav).getAllByRole('link')).toHaveLength(3)
+  })
+
+  /** D5 again: the back link points into an authenticated area, so an
+   * anonymous visitor must not be offered it. */
+  it('does not show the back link to an anonymous visitor', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
+      if (url.includes('/api/u/jordan/timeline')) return jsonResponse(emptyTimeline)
+      if (url.includes('/api/u/jordan')) {
+        return jsonResponse({
+          profile: {
+            username: 'jordan',
+            display_name: 'Jordan Reyes',
+            pronouns: null,
+            bio: null,
+            location: null,
+            avatar_url: null,
+          },
+        })
+      }
+      if (url.includes('/api/connections')) return jsonResponse(emptyRail)
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderProfileApp('/u/jordan')
+
+    expect(await screen.findByText('Jordan Reyes')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /back to dashboard/i })).not.toBeInTheDocument()
   })
 })

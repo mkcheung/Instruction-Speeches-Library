@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import type Player from 'video.js/dist/types/player'
+import { PageShell } from '@/components/layout/PageShell'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
-import { InviteReviewerDialog } from '@/components/review/InviteReviewerDialog'
+import { InviteReviewerPanel } from '@/components/review/InviteReviewerPanel'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
@@ -18,6 +19,7 @@ import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
 import { CaptionSettingsToggle } from '@/components/caption/CaptionSettingsToggle'
 import { ReportDialog } from '@/components/report/ReportDialog'
+import { getErrorStatus } from '@/lib/errorStatus'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { canRecordVoiceForRoles } from '@/lib/voiceRoles'
@@ -77,11 +79,10 @@ export function OverlayPositioner({
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
-  const { data: speech, isLoading } = useGetSpeechQuery(speechId, { skip: !speechId })
+  const { data: speech, isLoading, error } = useGetSpeechQuery(speechId, { skip: !speechId })
   const { data: me } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
   const [initialUrl, setInitialUrl] = useState<string | null>(null)
-  const [inviteOpen, setInviteOpen] = useState(false)
   const playerRef = useRef<Player | null>(null)
   // Render-triggering state, deliberately not a bare ref — §8.2: a ref
   // mutation doesn't re-render, so `useTimedAnnotations` (inside
@@ -206,6 +207,70 @@ export default function SpeechWatch() {
   // the owner and for a still-loading `speech`.
   const { review: myReview } = useMyReviewForSpeech(speechId, !isOwner && !!speech)
 
+  // PLAN-ACCESS-DENIED-STATES.md §0.1/§3.2. This used to be a single
+  // `isLoading || !speech` guard, which conflated "still fetching" with
+  // "the fetch failed": RTK Query settles a failed request to
+  // `isLoading: false, data: undefined`, so `!speech` still held and the
+  // page rendered `Loading…` forever — silently, with no redirect and no
+  // console error, for every 403/404/500/network failure. The branches
+  // below are ordered, and the last one is a catch-all specifically so
+  // that hang cannot come back: any state where `speech` is absent and we
+  // are not loading now renders something.
+  //
+  // `!speechId` is its own branch, not folded into the error case: a
+  // non-numeric or zero `:id` (`/speeches/abc`, `/speeches/0`) makes
+  // `Number(id)` falsy, which `skip: !speechId` turns into a query that
+  // never runs — so there is no error to read, and the old guard hung
+  // there too.
+  //
+  // Copy convention is `ReviewerDirectory.tsx`'s (whose own comment puts
+  // it best — "'the request failed' and 'nobody matched' are different
+  // facts"): a permission or absence state is muted and carries no
+  // `role="alert"`; only a genuine failure is `destructive` and announced.
+  // Deliberately NOT `<NotFound />` — that renders its own `<main>` with
+  // `min-h-svh`, and this route is inside `AppLayout`, which already
+  // provides `<main id="content">`.
+  if (!speechId || (!isLoading && !speech)) {
+    const status = speechId ? getErrorStatus(error) : 404
+    // 403 covers revoked/declined/abandoned as one undifferentiated case —
+    // see the plan's §2.1: splitting them would make the status code itself
+    // reveal which one applies.
+    const denied = status === 403
+    const missing = status === 404
+    const failed = !denied && !missing
+
+    return (
+      <PageShell width="wide">
+        <Card>
+          <CardContent
+            className={
+              failed
+                ? 'flex flex-col items-start gap-3 py-6 text-sm text-destructive'
+                : 'flex flex-col items-start gap-3 py-6 text-sm text-muted-foreground'
+            }
+            {...(failed ? { role: 'alert' } : {})}
+          >
+            <p>
+              {denied
+                ? "Access denied. This speech isn't available to your account."
+                : missing
+                  ? 'No such speech.'
+                  : "Couldn't load this speech — try again."}
+            </p>
+            {/* `render={<Link/>}` is the repo's only button-as-link idiom.
+                Base UI emits a dev warning about non-<button> renders here
+                (as it does at the four older call sites); `nativeButton=
+                {false}` silences it but stamps `role="button"` on the
+                anchor, which is the wrong accessible role for navigation. */}
+            <Button size="sm" variant="outline" render={<Link to="/dashboard" />}>
+              Back to my reviews
+            </Button>
+          </CardContent>
+        </Card>
+      </PageShell>
+    )
+  }
+
   if (isLoading || !speech) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
@@ -215,18 +280,13 @@ export default function SpeechWatch() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-10">
+    <PageShell width="wide">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2">
           <div>
             <CardTitle>{speech.title}</CardTitle>
             {speech.description && <CardDescription>{speech.description}</CardDescription>}
           </div>
-          {isOwner && !inviteOpen && (
-            <Button type="button" size="sm" onClick={() => setInviteOpen(true)}>
-              Invite a reviewer
-            </Button>
-          )}
           {/* STEP-11-FROZEN-CONTRACT.md §10: speech-level report, visible to
               non-owners — an owner reporting their own speech isn't a case
               this step's UI needs to support, and `isOwner`/`!isOwner` is
@@ -332,15 +392,6 @@ export default function SpeechWatch() {
         </CardContent>
       </Card>
 
-      {isOwner && inviteOpen && (
-        <InviteReviewerDialog
-          speechId={speechId}
-          supersedesId={speech.supersedes?.id}
-          onClose={() => setInviteOpen(false)}
-          onInvited={() => setInviteOpen(false)}
-        />
-      )}
-
       {/* STEP-08-FROZEN-CONTRACT.md's tab strip: notes stay adjacent to the
           player (where the timestamp context lives), the essay goes
           underneath in its own panel — the two are used in different
@@ -348,10 +399,15 @@ export default function SpeechWatch() {
           than a stack. */}
       {isOwner && (
         <Tabs defaultValue="notes">
-          <TabsList aria-label="Reviewer feedback">
+          {/* `flex-wrap max-w-full`, not bare `flex-wrap`: the list is
+              `inline-flex w-fit` (components/ui/tabs.tsx), i.e. sized to
+              max-content, so without a cap it has no reason to wrap and a
+              fourth tab would simply overflow a narrow phone. */}
+          <TabsList aria-label="Speech tools" className="flex-wrap max-w-full">
             <TabsTab value="notes">Notes</TabsTab>
             <TabsTab value="essay">Essay</TabsTab>
             <TabsTab value="transcript">Transcript</TabsTab>
+            <TabsTab value="reviewers">Reviewers</TabsTab>
           </TabsList>
           <TabsPanel value="notes">
             <TrackSelector
@@ -402,6 +458,28 @@ export default function SpeechWatch() {
               }}
             />
           </TabsPanel>
+          {/* Inviting used to be a header button that swapped in a panel
+              ABOVE this strip, pushing Notes/Essay/Transcript down the page
+              — far enough, with the reviewer directory expanded, to scroll
+              them out of view. A tab panel occupies a fixed slot, so it
+              cannot displace its siblings.
+
+              `keepMounted` because Base UI unmounts an inactive panel by
+              default (verified against @base-ui/react 1.7.0: `shouldRender
+              = keepMounted || mounted`, else `return null`) — without it a
+              half-written invitation is destroyed by a glance at Notes to
+              check a timestamp.
+
+              No `onClose`: there is nothing to dismiss in a tab, and the
+              panel resets itself via "Invite someone else" after a
+              successful send. */}
+          <TabsPanel value="reviewers" keepMounted>
+            <InviteReviewerPanel
+              speechId={speechId}
+              supersedesId={speech.supersedes?.id}
+              hideHeading
+            />
+          </TabsPanel>
         </Tabs>
       )}
 
@@ -443,7 +521,7 @@ export default function SpeechWatch() {
           </TabsPanel>
         </Tabs>
       )}
-    </div>
+    </PageShell>
   )
 }
 

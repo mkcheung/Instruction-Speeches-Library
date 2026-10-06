@@ -30,9 +30,15 @@ export default function Login() {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)
     try {
-      await login(values).unwrap()
+      // The login response already carries `onboarding_completed`
+      // (`LoginResponse` returns the same `UserResource` as `/api/me`), so
+      // the destination is decided here rather than by bouncing everyone
+      // through `/onboarding` and letting that route redirect — which
+      // would flash a "Loading…" screen on every single login.
+      const { user } = await login(values).unwrap()
       const from = (location.state as { from?: { pathname?: string } } | null)?.from
-      navigate(from?.pathname ?? '/onboarding', { replace: true })
+      const landing = user.onboarding_completed ? '/dashboard' : '/onboarding'
+      navigate(from?.pathname ?? landing, { replace: true })
     } catch (error) {
       setFormError(applyServerErrors(error, setError))
     }

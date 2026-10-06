@@ -15,28 +15,39 @@ import type { ReviewerDirectoryEntry } from '@/features/review/types'
 import { cn } from '@/lib/utils'
 
 /**
- * STEP-05-invitation-loop.md's invite composer, built as an inline panel
- * on the speech-watch page (toggled by an "Invite a reviewer" button)
- * rather than a modal dialog — this codebase has no existing dialog
- * wrapper component to match, and a panel needs none of that plumbing.
+ * STEP-05-invitation-loop.md's invite composer, rendered as the
+ * `Reviewers` tab panel on the speech-watch screen. It was always an
+ * inline `<Card>` rather than a modal dialog — this codebase had no
+ * dialog wrapper to match when it was written — which is why it moves
+ * into a tab panel with no overlay or focus-trap plumbing to unpick.
+ * Dismissal is the container's business, so `onClose` is optional and
+ * every control that depends on it renders only when it is supplied.
  *
  * §6.3: with no open reviewer pool, the directory browse/search/filter
  * below is the *only* discovery mechanism, so it's budgeted as a real
  * list (name, username, credential badge) rather than a bare `<select>`.
  */
-export function InviteReviewerDialog({
+/** Rendered as the card description with the heading, or as a lead-in
+ * paragraph without it — one string so the two cannot drift. */
+const DESCRIPTION = 'Search the reviewer directory, pick someone, and send them a message.'
+
+export function InviteReviewerPanel({
   speechId,
   supersedesId,
   onClose,
-  onInvited,
+  hideHeading = false,
 }: {
   speechId: number
   /** Only when the speech being reviewed supersedes an earlier attempt
    * (§6.11) does the "share the previous version's feedback" opt-in
    * render at all. */
   supersedesId?: number
-  onClose: () => void
-  onInvited?: () => void
+  /** Absent in the tab container, where there is nothing to close. */
+  onClose?: () => void
+  /** Under a tab labelled "Reviewers" the card title is a redundant
+   * second heading; the description is not, so it survives as body copy
+   * when the header goes. */
+  hideHeading?: boolean
 }) {
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -79,6 +90,7 @@ export function InviteReviewerDialog({
   const {
     register,
     handleSubmit,
+    reset,
     setValue,
     setError,
     formState: { errors },
@@ -97,6 +109,19 @@ export function InviteReviewerDialog({
     setValue('reviewer_id', reviewer.id, { shouldValidate: true })
   }
 
+  // Reset the form instead of remounting the panel on a `key`: the directory
+  // query state (search text, credential filter, page) is deliberately kept,
+  // so a speaker inviting two people off the same filtered list doesn't retype
+  // it. Bare `reset()` returns `reviewer_id` to its `0` default, which is what
+  // re-disables the submit button — clearing `selectedReviewer` alone would
+  // leave a stale id in the form.
+  const inviteSomeoneElse = () => {
+    setSuccess(false)
+    setSelectedReviewer(null)
+    setFormError(null)
+    reset()
+  }
+
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)
     try {
@@ -110,7 +135,6 @@ export function InviteReviewerDialog({
         },
       }).unwrap()
       setSuccess(true)
-      onInvited?.()
     } catch (error) {
       setFormError(applyServerErrors(error, setError))
     }
@@ -121,17 +145,29 @@ export function InviteReviewerDialog({
 
   return (
     <Card data-testid="invite-reviewer-panel">
-      <CardHeader>
-        <CardTitle>Invite a reviewer</CardTitle>
-        <CardDescription>Search the reviewer directory, pick someone, and send them a message.</CardDescription>
-      </CardHeader>
+      {!hideHeading && (
+        <CardHeader>
+          <CardTitle>Invite a reviewer</CardTitle>
+          <CardDescription>{DESCRIPTION}</CardDescription>
+        </CardHeader>
+      )}
       <CardContent className="flex flex-col gap-4">
+        {hideHeading && (
+          <p className="text-sm text-muted-foreground">{DESCRIPTION}</p>
+        )}
         {success ? (
           <>
             <FormBanner variant="success" message={`Invitation sent to ${selectedReviewer?.name ?? 'the reviewer'}.`} />
-            <Button type="button" variant="outline" onClick={onClose}>
-              Close
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="button" onClick={inviteSomeoneElse}>
+                Invite someone else
+              </Button>
+              {onClose && (
+                <Button type="button" variant="outline" onClick={onClose}>
+                  Close
+                </Button>
+              )}
+            </div>
           </>
         ) : (
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
@@ -255,9 +291,11 @@ export function InviteReviewerDialog({
               <Button type="submit" disabled={isInviting || !selectedReviewer}>
                 {isInviting ? 'Sending…' : 'Send invitation'}
               </Button>
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
+              {onClose && (
+                <Button type="button" variant="outline" onClick={onClose}>
+                  Cancel
+                </Button>
+              )}
             </div>
           </form>
         )}

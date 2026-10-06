@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
  * Thin wrapper around `@base-ui/react`'s `alert-dialog` module — same
  * pattern as `toast.tsx`. `role="alertdialog"` comes from the primitive
  * itself; this file only adds styling and this codebase's naming
- * convention (`InviteReviewerDialog.tsx`'s comment notes there was no
+ * convention (`InviteReviewerPanel.tsx`'s comment notes there was no
  * dialog wrapper to match before this step — this is that wrapper, scoped
  * to the alert-dialog variant STEP-07 actually needs).
  */

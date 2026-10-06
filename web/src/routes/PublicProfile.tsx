@@ -1,8 +1,9 @@
-import { NavLink, Outlet, useParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { ConnectionsRail } from '@/components/profile/ConnectionsRail'
 import { ProfileConnectionAction } from '@/components/profile/ProfileConnectionAction'
+import { useGetMeQuery } from '@/features/auth/authApi'
 import { useGetPublicProfileQuery } from '@/features/profile/profileApi'
 import { useGetConnectionsRailQuery } from '@/features/connection/connectionApi'
 import type { PublicProfile as PublicProfileType } from '@/features/profile/types'
@@ -45,6 +46,13 @@ export default function PublicProfile() {
   // returns the viewer's own list rather than something scoped to
   // `username`.
   const { data: railData } = useGetConnectionsRailQuery(undefined, { skip: !profile })
+  // This route is outside `AppLayout` (it must render for anonymous
+  // visitors, D5), so there is no header or sidebar here and therefore no
+  // way back into the app — hence the explicit link below, for signed-in
+  // viewers only. Safe to probe the session from a public page only
+  // because `UnauthenticatedRedirect`'s `PUBLIC_PATHS` exempts `/u/`;
+  // without that, this 401 would eject the very visitors D5 protects.
+  const { data: me } = useGetMeQuery()
 
   if (isLoading) {
     return (
@@ -62,7 +70,19 @@ export default function PublicProfile() {
     railData?.connections.find((c) => c.peer?.username === profile.username) ?? null
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
+      {/* Deliberately NOT inside the "Profile sections" <nav> below — that
+          landmark is the three tab routes and nothing else, which
+          `PublicProfile.test.tsx` pins by exact count and order. */}
+      {me && (
+        <Link
+          to="/dashboard"
+          className="self-start rounded-md text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          &larr; Back to dashboard
+        </Link>
+      )}
+
       <div className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="aspect-[3/1] w-full bg-gradient-to-r from-muted to-muted/40" aria-hidden="true" />
 

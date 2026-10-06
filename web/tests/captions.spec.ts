@@ -334,7 +334,7 @@ test('Scenario B — editing a cue persists, re-derives, and survives reload', a
   const page = await context.newPage()
   await openSpeech(page, CAPTIONS.editSpeechId)
 
-  await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
 
   const cueButton = page.getByTestId('caption-cue-cue-0')
   await expect(cueButton).toContainText(CAPTIONS.editUncorrectedPhrase)
@@ -408,7 +408,7 @@ test('Scenario B — editing a cue persists, re-derives, and survives reload', a
 
   // Step 5: reload to prove durability.
   await page.reload({ waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
-  await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
   await expect(page.getByTestId('caption-cue-cue-0')).toContainText('Toastmasters')
 
   const videoAfterReload = await waitForVideo(page)
@@ -490,7 +490,7 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
   await card.getByRole('link', { name: 'Watch' }).click()
   await expect(page).toHaveURL(speechUrl(CAPTIONS.searchEditSpeechId))
 
-  await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
   const cueButton = page.getByTestId('caption-cue-cue-1')
   await expect(cueButton).toBeVisible()
   await cueButton.click()
@@ -552,7 +552,7 @@ test('Scenario E — processing and failed captions never block playback', async
   await expect(page.getByText('Captions processing…', { exact: false }).first()).toBeVisible()
   await expect(page.getByTestId('captions-toggle')).toHaveCount(0)
 
-  await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
   await expect(page.getByText('Captions are still processing…')).toBeVisible()
   await expect(page.locator('[data-testid^="caption-cue-input-"]')).toHaveCount(0)
 
@@ -560,7 +560,7 @@ test('Scenario E — processing and failed captions never block playback', async
   // Retry.
   await openSpeech(page, CAPTIONS.failedSpeechId)
   const video = await waitForVideo(page)
-  await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
   const transcriptPanel = page.getByRole('tabpanel', { name: 'Transcript' })
   const failureAlert = transcriptPanel.getByRole('alert')
   await expect(failureAlert).toBeVisible()
@@ -641,7 +641,7 @@ test('Scenario F — reviewer read-only surface, auth seam, and owner off-switch
     const page = await context.newPage()
     await openSpeech(page, CAPTIONS.displaySpeechId)
     await waitForVideo(page)
-    await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+    await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
 
     const before = await fetchCaptions(page, CAPTIONS.displaySpeechId)
     expect(before.status).toBe('ready')
@@ -654,7 +654,7 @@ test('Scenario F — reviewer read-only surface, auth seam, and owner off-switch
 
     // Reload to prove persistence and retained VTT/transcript.
     await page.reload({ waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
-    await page.getByRole('tablist', { name: 'Reviewer feedback' }).getByRole('tab', { name: 'Transcript' }).click()
+    await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
     await expect(page.getByTestId('caption-settings-toggle')).toHaveAttribute('aria-pressed', 'false')
     const afterDisable = await fetchCaptions(page, CAPTIONS.displaySpeechId)
     expect(afterDisable.status, 'ready VTT must still be served while disabled').toBe('ready')
