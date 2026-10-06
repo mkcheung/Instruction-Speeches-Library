@@ -74,7 +74,15 @@ test('creating a speech record surfaces the upload step', async ({ page }) => {
     await onboarding.getByRole('button', { name: 'Continue' }).click();
     await onboarding.getByRole('textbox', { name: 'Bio' }).fill('Testing 123');
     await onboarding.getByRole('button', { name: 'Continue' }).click();
-    await onboarding.getByRole('button', { name: /skip|continue/i }).click();
+    // Exact name, never /skip|continue/i: that regex also matches step 2's
+    // own "Continue" button, which is still mounted and enabled in the
+    // window after its mutation resolves (`isLoading` false, label back to
+    // "Continue") but before the invalidated `getOnboardingStatus` refetch
+    // swaps in step 3. Matching loosely clicks step 2 a second time, step 3
+    // is never skipped, and the waitForURL below burns the full timeout.
+    // `onboarding.spec.ts` walks the same flow and always used the exact
+    // name — which is why it never caught this.
+    await onboarding.getByRole('button', { name: 'Skip for now' }).click();
 
     // Completing step 3 redirects to /dashboard. Waiting for it before the
     // goto below keeps the two navigations from racing — this test only
