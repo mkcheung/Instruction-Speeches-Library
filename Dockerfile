@@ -111,6 +111,17 @@ COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/zz-uploads.ini
 # Overrides the stock pool's pm.max_children=5 — see the file's own comment
 # for why five is too few even for one user on the watch page.
 COPY docker/php/www-pool.conf /usr/local/etc/php-fpm.d/zz-www-pool.conf
+# Filament's CSS/JS/fonts are NOT pre-published in the package, contrary to
+# what AdminPanelProvider's docblock originally claimed: a fresh image ships
+# a `public/` holding only favicon.ico, index.php and robots.txt, so every
+# /css/filament and /js/filament request 404s and `/control-panel` renders
+# as unstyled HTML with no Alpine. `filament:assets` writes them into
+# `public/`. It must run here rather than in the `vendor` stage, which is
+# the composer:2 image and lacks ext-intl (hence that stage's
+# --ignore-platform-req) — booting artisan there fails. Runs as root,
+# before the USER switch below, because `public/` is root-owned and the
+# command mkdir()s into it.
+RUN php artisan filament:assets
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 USER www-data
 EXPOSE 9000
@@ -382,5 +393,17 @@ ENTRYPOINT ["/usr/local/bin/clamav-entrypoint.sh"]
 # ---- nginx: the `web` service. Serves the built SPA and proxies /api to app:9000 ----
 FROM nginx:1.27-alpine AS nginx
 COPY --from=webbuild /web/dist /usr/share/nginx/html
+# The admin panel's static assets have to live on NGINX's disk, not the app
+# container's. api.speechcoach.test fastcgi_pass'es every path to php-fpm,
+# and fastcgi only ever executes index.php — it cannot hand back a .css or
+# .woff2 sitting in the app container's public/. nginx and app are separate
+# containers with separate filesystems, so nginx cannot read that directory
+# either. Copying the published output across at build time is what lets
+# the `location ~ ^/(css|js|fonts)/filament/` block in default.conf serve
+# them from nginx's own root. Sourced from `runtime` because that is the
+# stage where `filament:assets` runs.
+COPY --from=runtime /var/www/html/public/css/filament /usr/share/nginx/html/css/filament
+COPY --from=runtime /var/www/html/public/js/filament /usr/share/nginx/html/js/filament
+COPY --from=runtime /var/www/html/public/fonts/filament /usr/share/nginx/html/fonts/filament
 COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
