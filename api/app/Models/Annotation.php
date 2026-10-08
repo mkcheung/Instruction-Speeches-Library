@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Role;
 use Database\Factories\AnnotationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -111,7 +112,7 @@ class Annotation extends Model
         // speech correctly returned none. `speech_owner_id` is denormalized
         // onto `reviews` (NOT NULL), so this costs no extra query and no
         // lazy load.
-        if ($user->hasRole('admin') && $review->speech_owner_id !== $user->id) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER) && $review->speech_owner_id !== $user->id) {
             return $q;
         }
 

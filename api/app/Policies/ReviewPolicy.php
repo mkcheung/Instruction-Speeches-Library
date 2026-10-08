@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Review;
 use App\Models\User;
 use App\Policies\Concerns\GrantsReviewWriteAccess;
+use App\Support\Role;
 
 /**
  * MODERNIZATION_PLAN §7.1/§7.4. First Policy classes in this codebase —
@@ -32,7 +33,7 @@ class ReviewPolicy
      */
     public function accept(User $user, Review $review): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER)) {
             return false;
         }
 
@@ -43,7 +44,7 @@ class ReviewPolicy
 
     public function decline(User $user, Review $review): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER)) {
             return false;
         }
 
@@ -54,7 +55,7 @@ class ReviewPolicy
 
     public function withdraw(User $user, Review $review): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER)) {
             return false;
         }
 
@@ -65,7 +66,7 @@ class ReviewPolicy
 
     public function abandon(User $user, Review $review): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER)) {
             return false;
         }
 
@@ -81,12 +82,12 @@ class ReviewPolicy
      */
     public function revoke(User $user, Review $review): bool
     {
-        return $review->speech_owner_id === $user->id || $user->hasRole('admin');
+        return $review->speech_owner_id === $user->id || $user->hasAnyRole(Role::ADMIN_TIER);
     }
 
     public function purge(User $user, Review $review): bool
     {
-        return $review->speech_owner_id === $user->id || $user->hasRole('admin');
+        return $review->speech_owner_id === $user->id || $user->hasAnyRole(Role::ADMIN_TIER);
     }
 
     /**
@@ -119,9 +120,22 @@ class ReviewPolicy
      * ReviewerDirectoryController::index via Gate::authorize
      * (PLAN-APP-HEADER.md S4) — previously dead code (P2), so this method
      * ran against nothing.
+     *
+     * ⚠️ PLAN-ADMIN-DASHBOARD.md §5.2 flags this as the ONE site among the
+     * 15 where `hasRole('admin')` → `hasAnyRole(Role::ADMIN_TIER)` WIDENS a
+     * DENIAL rather than widening a grant: the leading `!` means this now
+     * refuses the directory to super_admins too, where before they slipped
+     * through the gap and were allowed. That is deliberate and it is the
+     * correct reading of §5.2 — "super_admin is a strict superset of admin"
+     * cuts both ways, so an ability admin categorically lacks cannot be a
+     * backdoor for the tier above it. It also aligns the backend with the
+     * frontend, which was already ahead of it: `web/src/lib/roles.ts:20-22`
+     * maps `super_admin` onto `admin` and so has always hidden "Find
+     * reviewers" from super_admins (pinned by `roles.test.ts:15-17`). Before
+     * this change the button was hidden while the endpoint still answered.
      */
     public function viewDirectory(User $user): bool
     {
-        return ! $user->hasRole('admin');
+        return ! $user->hasAnyRole(Role::ADMIN_TIER);
     }
 }

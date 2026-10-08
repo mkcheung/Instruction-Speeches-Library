@@ -2,10 +2,14 @@
 
 namespace App\Models;
 
+use App\Support\Role;
 use App\Support\Username;
 use Database\Factories\UserFactory;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthentication;
 use Filament\Auth\MultiFactor\App\Contracts\HasAppAuthenticationRecovery;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Models\Contracts\HasName;
+use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -30,7 +34,7 @@ use Spatie\Permission\Traits\HasRoles;
  */
 #[Fillable(['name', 'first_name', 'last_name', 'email', 'password', 'preferences', 'erasure_started_at', 'anonymized_at'])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
-class User extends Authenticatable implements HasAppAuthentication, HasAppAuthenticationRecovery, MustVerifyEmailContract
+class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery, HasName, MustVerifyEmailContract
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
@@ -131,6 +135,24 @@ class User extends Authenticatable implements HasAppAuthentication, HasAppAuthen
             // narrower reviewer-voice-note erasure slice
             // (App\Jobs\EraseSelfAccount, pre-existing).
             'anonymized_at' => 'datetime',
+            // PLAN-ADMIN-DASHBOARD.md §5.1. Both columns exist since
+            // 2026_08_22_100003_add_suspended_at_to_users_table.php and
+            // both were missing from this list, so every read returned a
+            // raw string: `$user->suspended_at->diffForHumans()` threw,
+            // and any `->isPast()`/comparison silently did string
+            // arithmetic. Filament's `->dateTime()` column masked it
+            // because that formatter parses strings itself, which is why
+            // the panel looked fine while `App\Http\Middleware\
+            // CheckUserIsActive` (the first real consumer of these two)
+            // needed them to be Carbon instances.
+            //
+            // `deleted_at` is NOT Eloquent's soft-delete column here —
+            // `User` deliberately omits the SoftDeletes trait (see the
+            // migration's own docblock); it is a moderation grace stamp
+            // that every query must filter on explicitly. Casting it adds
+            // no global scope.
+            'suspended_at' => 'datetime',
+            'deleted_at' => 'datetime',
             // Fortify's own cast choices for the columns its migration
             // created, kept identical so the two never disagree about
             // what is stored: the secret is encrypted at rest, and the
@@ -139,6 +161,83 @@ class User extends Authenticatable implements HasAppAuthentication, HasAppAuthen
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Filament's `HasName` contract — and a genuine production bug fix,
+     * not a nicety.
+     *
+     * `FilamentManager::getUserName()` (vendor, :614-621) is typed
+     * `: string` and falls back to `$user->getAttributeValue('name')` for
+     * any user that does NOT implement this interface. But STEP-01 made
+     * `users.name` NULLABLE when it split identity into
+     * `first_name`/`last_name`/`username`
+     * (2026_08_07_004005_add_identity_columns_to_users_table.php:23), and
+     * nothing on the registration path has written it since. So
+     * `getUserName()` returned null from a non-nullable signature and
+     * threw a TypeError while rendering the panel's own layout —
+     * **every authenticated page of /control-panel 500'd for every user
+     * whose `name` is null**, which in this database is 6 of them,
+     * including both seeded admins.
+     *
+     * Not caught by any backend test, and that is the instructive part:
+     * `Livewire::test()` drives a component in isolation and never
+     * renders `components/layout/index.blade.php`, so 122 green panel
+     * tests sat on top of a panel no human could load. §9's note that
+     * "the panel has never been exercised by a browser in CI" was not a
+     * coverage gap in the abstract — this is what was hiding in it, and a
+     * browser found it on the first authenticated render.
+     *
+     * Deliberately the SAME expression `UserResource`/`PublicProfileResource`
+     * already use, rather than a new one: a panel that disagreed with the
+     * API about a person's name would be its own, quieter bug. Falls back
+     * through display name -> first+last -> username -> email so the
+     * return is always a non-empty string, which the signature requires.
+     */
+    public function getFilamentName(): string
+    {
+        $displayName = $this->profile?->display_name
+            ?: trim("{$this->first_name} {$this->last_name}");
+
+        return $displayName !== '' ? $displayName : ($this->username ?? $this->email);
+    }
+
+    /**
+     * Filament's `FilamentUser` contract, and the second production bug in
+     * this pair — the larger of the two.
+     *
+     * `Filament\Http\Middleware\Authenticate::authenticate()` ends in
+     *
+     *     abort_if($user instanceof FilamentUser
+     *         ? (! $user->canAccessPanel($panel))
+     *         : (config('app.env') !== 'local'), 403)
+     *
+     * so a `User` that does NOT implement this interface makes that an
+     * **unconditional 403 on every authenticated panel route outside
+     * `APP_ENV=local`** — for admins and super_admins alike. That is
+     * every deployed environment: `compose.e2e.yaml` sets `APP_ENV: e2e`
+     * and production sets `production`. The dev stack (`api/.env`,
+     * `APP_ENV=local`) was the only place `/control-panel` had ever been
+     * opened, which is why the whole panel could be built, tested and
+     * browsed while being unreachable everywhere it matters.
+     *
+     * `EnsureUserIsAdmin`'s docblock argued against implementing this
+     * interface because `User.php` is loaded on every request while
+     * `filament/filament` "isn't installed yet". That reasoning expired:
+     * the package is installed, and this class already imports
+     * `HasAppAuthentication`, `HasAppAuthenticationRecovery` and `HasName`
+     * from it, so the dependency it was protecting against is three
+     * `use` statements above this one.
+     *
+     * The predicate is deliberately IDENTICAL to `EnsureUserIsAdmin`'s —
+     * `Role::ADMIN_TIER`, per §5.2 — so the two layers can never disagree
+     * about who may enter the panel. `$panel` is unused because there is
+     * exactly one panel (`->id('admin')`); a second panel would branch on
+     * `$panel->getId()` here.
+     */
+    public function canAccessPanel(Panel $panel): bool
+    {
+        return $this->hasAnyRole(Role::ADMIN_TIER);
     }
 
     /**

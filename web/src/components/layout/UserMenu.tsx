@@ -66,8 +66,15 @@ export function UserMenu() {
       <DropdownMenuPortal>
         <DropdownMenuPositioner align="end">
           <DropdownMenuPopup>
+            {/* PLAN-ADMIN-DASHBOARD.md §7 — this menu is the ONLY
+                navigation below `md`, where `AppSidebar`'s rail is
+                hidden, so an external item has to be handled here too or
+                the admin panel is unreachable on a phone. `<Link>` is a
+                React Router link and would resolve `/control-panel`
+                against this SPA's router; an external destination needs a
+                real anchor with an absolute href. See `NavItem.external`. */}
             {navItems.map((item) => (
-              <DropdownMenuItem key={item.to} render={<Link to={item.to} />}>
+              <DropdownMenuItem key={item.to} render={item.external ? <a href={item.to} rel="noreferrer" /> : <Link to={item.to} />}>
                 {item.label}
               </DropdownMenuItem>
             ))}

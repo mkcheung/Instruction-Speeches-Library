@@ -44,6 +44,27 @@ export function AppSidebar() {
 function SidebarLink({ item }: { item: NavItem }) {
   const Icon = item.icon
 
+  // PLAN-ADMIN-DASHBOARD.md §7. `NavLink` is a React Router link: it
+  // intercepts the click and resolves `to` against this SPA's own router,
+  // which has no `/control-panel` route and would render the 404 page
+  // inside the app shell. An external destination has to be a real anchor
+  // with an absolute href so the browser performs a full navigation to
+  // the other origin. `rel="noreferrer"` matters here specifically — the
+  // panel is the highest-privilege origin in the system and there is no
+  // reason to leak this page's URL to it as a Referer.
+  if (item.external) {
+    return (
+      <a
+        href={item.to}
+        rel="noreferrer"
+        className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <Icon className="size-4 shrink-0" />
+        {item.label}
+      </a>
+    )
+  }
+
   return (
     <NavLink
       to={item.to}

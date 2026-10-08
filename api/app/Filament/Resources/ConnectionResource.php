@@ -31,6 +31,21 @@ class ConnectionResource extends Resource
 {
     protected static ?string $model = Connection::class;
 
+    /**
+     * PLAN-ADMIN-DASHBOARD.md §7. Five flat, icon-less, arbitrarily
+     * ordered nav items was the shipped state — no resource set a group,
+     * an icon or a sort. Grouping matters more than it looks: the panel's
+     * landing page is now a dashboard (§6.1), so the sidebar is the only
+     * wayfinding an admin has, and "Moderation" (what needs attention
+     * today) versus "People" (who the platform is made of) is the split
+     * an actual moderation session follows.
+     */
+    protected static \UnitEnum|string|null $navigationGroup = 'People';
+
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-arrows-right-left';
+
+    protected static ?int $navigationSort = 3;
+
     protected static ?string $navigationLabel = 'Connections';
 
     public static function form(Schema $schema): Schema
@@ -62,6 +77,19 @@ class ConnectionResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+        // PLAN-ADMIN-DASHBOARD.md §7. Filament tables already scroll
+        // horizontally when they overflow, but `filament/tables`'
+        // own layout doc is explicit that this is NOT sufficient: "on
+        // mobile, the user is unable to see much information in a table
+        // row at once without scrolling". `stackedOnMobile()` turns each
+        // row into a labelled card below the `sm` breakpoint and adds a
+        // sort dropdown, which is the difference between a moderator
+        // being able to triage on a phone and not.
+        //
+        // Applied to all five resources identically rather than per
+        // table, because the one thing worse than an unreadable mobile
+        // table is four readable ones and a fifth nobody noticed.
+            ->stackedOnMobile()
             ->modifyQueryUsing(fn ($query) => $query->whereColumn('owner_id', '<', 'peer_id')->with(['owner', 'peer']))
             ->columns([
                 TextColumn::make('owner.username')->label('User A')->searchable(),

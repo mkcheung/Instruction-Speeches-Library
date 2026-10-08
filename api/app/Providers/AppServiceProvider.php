@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Policies\AccountPolicy;
 use App\Policies\AnnotationPolicy;
 use App\Policies\ConnectionPolicy;
+use App\Policies\ReportPolicy;
 use App\Policies\ReviewPolicy;
 use App\Policies\SpeechPolicy;
 use App\Policies\UserPolicy;
@@ -30,6 +31,7 @@ use App\Services\Voice\FfmpegVoiceNoteProcessor;
 use App\Services\Voice\VoiceNoteProcessorContract;
 use App\Services\Voice\VoiceNoteTranscriberContract;
 use App\Services\Voice\WhisperVoiceNoteTranscriber;
+use App\Support\Role;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -229,6 +231,46 @@ class AppServiceProvider extends ServiceProvider
         // in this same commit.
         Gate::define('connection.block', [ConnectionPolicy::class, 'block']);
 
+        // PLAN-ADMIN-DASHBOARD.md §5.3: the four PHANTOM abilities. All
+        // four strings have sat in $mustFallThrough below since STEP-12
+        // with no Gate::define anywhere — an ability that is both
+        // unregistered AND excluded from the admin bypass denies
+        // everyone, so this was safe but inert, and §5.3's actual
+        // complaint is the consequence: "there is no path to grant
+        // `super_admin` at all." Per §4 all four are super_admin-ONLY
+        // (see UserPolicy's own docblocks) — the only abilities in this
+        // provider where the two administrative tiers diverge, now that
+        // §5.2 has collapsed every other site onto Role::ADMIN_TIER.
+        //
+        // They STAY in $mustFallThrough after this change, and that is
+        // the load-bearing half: a plain admin must keep getting `false`
+        // here, and Gate::before's blanket bypass would hand them `true`
+        // before these policy methods ever ran.
+        Gate::define('user.erase', [UserPolicy::class, 'erase']);
+        Gate::define('user.demote', [UserPolicy::class, 'demote']);
+        Gate::define('role.grantSuperAdmin', [UserPolicy::class, 'grantSuperAdmin']);
+        Gate::define('role.revokeSuperAdmin', [UserPolicy::class, 'revokeSuperAdmin']);
+
+        // §5.4: three abilities that did not exist in any form. The
+        // takedown hole is the one §5.4 ranks worst — "the only
+        // destructive verb on content, gated solely by
+        // `EnsureUserIsAdmin`" (SpeechResource.php:90-107), with no
+        // Gate::authorize and no ability string to authorize against —
+        // and report resolve/dismiss had neither Gate nor audit
+        // (ReportResource.php:47-69). All three are admin-tier per §4,
+        // so they answer `true` for an admin either way TODAY; what
+        // $mustFallThrough buys is that the answer comes from a policy
+        // method instead of the bypass, which is what lets §5.5's
+        // mandatory reason and §5.6's byte purge actually bind.
+        //
+        // `report.resolve` covers dismissal too — one capability, two
+        // outcomes, distinguished by AuditAction::REPORT_RESOLVED vs
+        // REPORT_DISMISSED rather than by two abilities (see
+        // ReportPolicy's docblock).
+        Gate::define('speech.takedown', [SpeechPolicy::class, 'takedown']);
+        Gate::define('speech.restore', [SpeechPolicy::class, 'restore']);
+        Gate::define('report.resolve', [ReportPolicy::class, 'resolve']);
+
         // Admin's override is a SCOPED Gate::before, not a blanket one
         // (§7.2) — a blanket hook would bypass the very policies Admin must
         // NOT have, e.g. reviewing. Written now, before any concrete
@@ -236,8 +278,24 @@ class AppServiceProvider extends ServiceProvider
         // having to remember to retrofit this hook (revision 2's mistake,
         // per the plan: it omitted `user.delete` and let a destructive
         // admin action skip its safeguards entirely).
+        // PLAN-ADMIN-DASHBOARD.md §5.2 / §1.2: this hook's role test was
+        // `hasRole('admin')` EXACTLY, while EnsureUserIsAdmin.php:39
+        // admitted hasAnyRole(['admin','super_admin']). Spatie applies no
+        // hierarchy and the roles never stack (GrantRoleCommand and
+        // E2ESeeder both syncRoles), so super_admin was a strict SUBSET
+        // of admin, not a superset: §1.2's "a super_admin-only account
+        // logs in, sees every table, and every moderation button fails
+        // with a red toast." This line is the most important of the 15
+        // sites §5.2 corrects — it is the one that governs every ability
+        // NOT in the list below.
+        //
+        // Break-glass (§5.8): a Gate::before change that goes wrong locks
+        // the only operator out of their own panel. Recovery is
+        // `php artisan user:grant-role` from the CLI, which calls
+        // syncRoles() directly and bypasses both this hook and
+        // RoleAssignmentService.
         Gate::before(function (User $user, string $ability) {
-            if (! $user->hasRole('admin')) {
+            if (! $user->hasAnyRole(Role::ADMIN_TIER)) {
                 return null;
             }
 
@@ -266,6 +324,27 @@ class AppServiceProvider extends ServiceProvider
 
                 'user.delete', 'user.erase', 'user.demote',            // destructive identity ops
                 'role.grantSuperAdmin', 'role.revokeSuperAdmin',
+
+                // PLAN-ADMIN-DASHBOARD.md §5.7's STANDING RULE, applied
+                // to the three abilities §5.4 adds: "Gate::before state 3
+                // is allow-by-default for admins on any unregistered
+                // ability string (AuthorizationScaffoldTest.php:24
+                // asserts allows('some.arbitrary.ability') === true).
+                // Every new ability must be added to $mustFallThrough in
+                // the same commit, or it is an unconditional admin yes."
+                //
+                // These three are admin-tier in §4's matrix, so unlike
+                // every other entry in this list they are NOT here to
+                // DENY an admin — their policies grant admin-tier. They
+                // are here so the GRANT is the policy's to make. Leaving
+                // them out would produce the same `true` today and then
+                // silently ignore §5.5's mandatory takedown reason and
+                // §5.6's byte purge the moment either is added to
+                // SpeechPolicy, because an admin would never reach it.
+                //
+                // That makes this block the easiest one in the file to
+                // "clean up" by mistake. It is not dead weight.
+                'speech.takedown', 'speech.restore', 'report.resolve',
 
                 // STEP-12-FROZEN-CONTRACT.md §2: confirmed missing prior
                 // to this step, added in the SAME commit as
