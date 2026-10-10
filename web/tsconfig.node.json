@@ -19,5 +19,10 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts", "playwright.config.ts", "tests"]
+  /* `tests` used to live here and now has its own project (tsconfig.e2e.json)
+     — the specs need the DOM lib for their `page.evaluate()` callbacks, and
+     these two config files must NOT have it. The absence of DOM here is the
+     point: it is what turns a stray `document` in Vite/Playwright config code
+     into a compile error. */
+  "include": ["vite.config.ts", "playwright.config.ts"]
 }

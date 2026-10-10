@@ -1,7 +1,11 @@
 {
+  /* A solution file: `"files": []` means `tsc --noEmit` against it checks
+     NOTHING and exits 0. Every typecheck must go through `tsc -b`, which is
+     what builds the referenced projects below — see `npm run typecheck`. */
   "files": [],
   "references": [
     { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
+    { "path": "./tsconfig.node.json" },
+    { "path": "./tsconfig.e2e.json" }
   ]
 }
