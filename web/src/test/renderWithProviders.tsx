@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
-import { RouterProvider, createMemoryRouter } from 'react-router-dom'
+import { RouterProvider, createMemoryRouter, type InitialEntry } from 'react-router-dom'
 import { authApi } from '@/features/auth/authApi'
 import { profileApi } from '@/features/profile/profileApi'
 import { speechApi } from '@/features/speech/speechApi'
@@ -69,7 +69,10 @@ export function createTestStore() {
  */
 export function renderWithProviders(
   ui: ReactElement,
-  { route = '/', store = createTestStore() }: { route?: string; store?: ReturnType<typeof createTestStore> } = {},
+  {
+    route = '/',
+    store = createTestStore(),
+  }: { route?: InitialEntry; store?: ReturnType<typeof createTestStore> } = {},
 ) {
   const router = createMemoryRouter([{ path: '*', element: ui }], { initialEntries: [route] })
   return {

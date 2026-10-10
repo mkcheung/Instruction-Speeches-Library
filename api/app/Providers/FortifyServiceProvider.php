@@ -7,9 +7,11 @@ use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Actions\Fortify\UpdateUserProfileInformation;
 use App\Http\Responses\Fortify as FortifyResponses;
+use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -51,6 +53,36 @@ class FortifyServiceProvider extends ServiceProvider
         Fortify::updateUserPasswordsUsing(UpdateUserPassword::class);
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
         Fortify::redirectUserForTwoFactorAuthenticationUsing(RedirectIfTwoFactorAuthenticatable::class);
+
+        // code-review finding (2026-10-10), surfaced by
+        // PLAN-ADMIN-LOGIN-REDIRECT.md's Phase 2: without this, a
+        // suspended/deleted/anonymized user's password still succeeds at
+        // `POST /login` — `CheckUserIsActive` only evicts on the NEXT
+        // authenticated request, since `$request->user()` resolves `null`
+        // during the login request itself. `LoginResponse` then returns
+        // 200 with `roles` in the body for an account that is about to be
+        // evicted. Before Phase 2 that was a latent one-response window;
+        // after it, `getPostLoginDestination()` reads those `roles` and
+        // can fire a real cross-origin `window.location.replace()` to the
+        // admin panel for a SUSPENDED admin, stranding them on a bare
+        // Blade page with no Back. Rejecting the credential here — at
+        // authentication, not just at the next request — closes the
+        // underlying gap rather than only the symptom, and applies
+        // uniformly (not just to admins), matching `CheckUserIsActive`'s
+        // own three terminal-for-access states.
+        Fortify::authenticateUsing(function (Request $request) {
+            $user = User::where('email', $request->input('email'))->first();
+
+            if (! $user || ! Hash::check((string) $request->input('password'), $user->password)) {
+                return null;
+            }
+
+            if ($user->suspended_at !== null || $user->deleted_at !== null || $user->anonymized_at !== null) {
+                return null;
+            }
+
+            return $user;
+        });
 
         // Headless Fortify (`config('fortify.views') === false`) never
         // registers the `password.reset` named route — that route only

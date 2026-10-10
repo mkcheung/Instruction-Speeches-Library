@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\RequireFilamentMfaChallenge;
 use Illuminate\Support\Str;
 
 return [
@@ -83,7 +84,14 @@ return [
     |
     */
 
-    'middleware' => ['web'],
+    // PLAN-ADMIN-LOGIN-REDIRECT.md §1.6/§6.7. Horizon's `Authenticate`
+    // middleware calls `Gate::check('viewHorizon')` (HorizonServiceProvider),
+    // which is MFA-blind the same way the panel was before this plan: a
+    // password-only admin/super_admin session gets full queue control —
+    // retry, delete, job-payload inspection — on the same shared cookie.
+    // Horizon is not Livewire, so route middleware alone is sufficient here
+    // (no `persistentMiddleware()` equivalent needed).
+    'middleware' => ['web', RequireFilamentMfaChallenge::class],
 
     /*
     |--------------------------------------------------------------------------

@@ -96,7 +96,7 @@ const BECOME_A_COACH_ITEM: NavItem = { label: 'Become a Coach', to: '/become-a-c
  * `external: true` is what makes the two renderers emit a real `<a>`
  * instead of a React Router link; see the field's own docblock.
  */
-const ADMIN_PANEL_ITEM: NavItem = {
+export const ADMIN_PANEL_ITEM: NavItem = {
   label: 'Admin panel',
   to: `${API_URL}/control-panel`,
   icon: Shield,
@@ -158,4 +158,54 @@ export function navItemsFor(
     items.push(ADMIN_PANEL_ITEM)
   }
   return items
+}
+
+/** What `getPostLoginDestination` returns — `external` is what tells a
+ * call site whether it can hand `to` to `navigate()` or must perform a
+ * real cross-origin navigation instead (see `NavItem.external`'s own
+ * docblock for why the two cannot be treated the same). */
+export interface PostLoginDestination {
+  to: string
+  external: boolean
+}
+
+/**
+ * PLAN-ADMIN-LOGIN-REDIRECT.md §7.1/§7.3 (the resolved Q2) — where an
+ * authenticated user lands, shared between site 1 (`Login.tsx`'s
+ * post-mutation callback) and site 2 (`AuthShell.tsx`'s `RequireGuest`,
+ * a render-phase guard). One definition, one place to test (§7.4).
+ *
+ * Three rules, in priority order, and the first is the one that decides
+ * most cases:
+ *
+ * 1. **A specific destination always wins.** If `from` is set — the user
+ *    followed a link, was bounced to `/login` by `RequireAuth`, and
+ *    signed in — they land there. Shared links must survive, and a role
+ *    check ordered ahead of this would silently eat them.
+ * 2. **A plain sign-in with no destination escorts an admin to the
+ *    panel.** That is the feature this helper exists to add.
+ * 3. **Otherwise, the ordinary onboarding/dashboard landing.**
+ *
+ * Deliberately NOT special-cased for a suspended admin (§7.3 names the
+ * risk: `CheckUserIsActive` runs before the login controller, so a
+ * suspended account's `POST /login` still returns 200 with `roles` in the
+ * body, and this helper would send them cross-origin to a bare Blade
+ * suspension page with no Back). There is no field on `CurrentUser` that
+ * could tell this helper that — `UserResource` carries no suspension
+ * state, and changing it is explicitly out of scope for this plan. The
+ * same failure mode already exists for `ADMIN_PANEL_ITEM`'s own nav link,
+ * which this helper does not make any worse; closing it for real needs a
+ * backend contract change, not a frontend workaround.
+ */
+export function getPostLoginDestination(
+  user: Pick<CurrentUser, 'roles' | 'onboarding_completed'> | undefined | null,
+  from?: string,
+): PostLoginDestination {
+  if (from) {
+    return { to: from, external: false }
+  }
+  if (hasRole(user, 'admin')) {
+    return { to: ADMIN_PANEL_ITEM.to, external: true }
+  }
+  return { to: user?.onboarding_completed ? '/dashboard' : '/onboarding', external: false }
 }

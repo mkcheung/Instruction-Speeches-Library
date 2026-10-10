@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { API_URL, APP_URL, FIXTURE_PASSWORD, USERS } from './fixtures.js'
-import { signInToPanel } from './panel-auth.js'
+import { msUntilNextTimestep, signInToPanel, totp } from './panel-auth.js'
 
 /**
  * PLAN-ADMIN-DASHBOARD.md §9's E2E row — Phase 4.
@@ -423,7 +423,17 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
     await page.getByRole('textbox', { name: 'Email' }).fill(USERS.admin.email)
     await page.getByRole('textbox', { name: 'Password', exact: true }).fill(FIXTURE_PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await page.waitForURL(`${APP_URL}/dashboard`, { timeout: 120_000 })
+
+    // PLAN-ADMIN-LOGIN-REDIRECT.md Phase 2: a plain admin sign-in with no
+    // `from` now escorts straight to the panel origin (`getPostLoginDestination`),
+    // not `/dashboard` — that redirect is itself the feature this block's
+    // later tests exercise, so it has to be allowed to happen here rather
+    // than asserted against. Getting back into the SPA for the
+    // nav-rendering tests below relies on the resolved Q2's third rule:
+    // "no route guard — typing `/dashboard` still works for an admin,
+    // forever."
+    await page.waitForURL((url) => url.origin === API_URL, { timeout: 120_000 })
+    await page.goto(`${APP_URL}/dashboard`, { timeout: 120_000 })
   })
 
   test.afterAll(async () => {
@@ -464,14 +474,17 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
     await expect(item).toHaveAttribute('href', `${API_URL}/control-panel`)
   })
 
-  test('clicking it actually arrives at the panel, not at a 404 in the app shell', async () => {
-    // The end-to-end of §7. This also pins something worth knowing: the
-    // SPA session is accepted by the panel directly (same `web` guard,
-    // and `SESSION_DOMAIN=.speechcoach.test` spans both hosts), so an
-    // admin who is already signed into the app is NOT challenged for TOTP
-    // again — `EnsureMultiFactorAuthenticationIsEnabled` only requires
-    // that a secret EXISTS, which is why E2ESeeder seeding one matters
-    // beyond the login form.
+  test('clicking it lands on the step-up challenge, not the panel directly — the MFA bypass PLAN-ADMIN-LOGIN-REDIRECT.md closes', async () => {
+    // The end-to-end of §7, INVERTED from what this test used to assert.
+    // Its old comment recorded, as a known-good fact, that "an admin who
+    // is already signed into the app is NOT challenged for TOTP again" —
+    // `EnsureMultiFactorAuthenticationIsEnabled` only checks that a secret
+    // is ENROLLED, never that this session presented one, so a
+    // password-only SPA session reached the full panel. That was the live
+    // bypass PLAN-ADMIN-LOGIN-REDIRECT.md §1 found and §6 closes:
+    // `RequireFilamentMfaChallenge` now demands a session-bound stamp,
+    // and this admin's session has never visited the panel before, so it
+    // has none.
     await page.setViewportSize({ width: 1280, height: 900 })
     await page.goto(`${APP_URL}/dashboard`)
 
@@ -479,6 +492,50 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
       .getByRole('navigation', { name: 'Main' })
       .getByRole('link', { name: 'Admin panel' })
       .click()
+
+    await expect(page).toHaveURL(`${API_URL}/control-panel/multi-factor-authentication/challenge`)
+    await expect(page.getByRole('heading', { name: 'Verify your identity' })).toBeVisible()
+
+    // Completing it here, rather than deferring to a separate test, is
+    // what actually proves the mechanism end to end: the stamp write, the
+    // `redirect()->intended()` back to the originally requested panel
+    // URL, and the Livewire persistent-middleware allowlist all have to
+    // be correct for this to land on the real panel rather than looping,
+    // erroring, or stranding the admin on the challenge forever.
+    //
+    // Two attempts, same reason `signInToPanel` retries (`panel-auth.ts`):
+    // `AppAuthentication::verifyCode(…, shouldPreventCodeReuse: true)`
+    // refuses a second code from the same 30-second window for the same
+    // secret, which is exactly what happens if another Playwright project
+    // (chromium / mobile-webkit) races this one against the same seeded
+    // `USERS.admin` secret. This page shares that secret and that
+    // rate-limiting key with the panel's own login form, so it is
+    // exposed to the identical race.
+    const codeInput = page.getByLabel('Enter the 6-digit code from the authenticator app')
+    const confirmButton = page.getByRole('button', { name: 'Confirm sign in' })
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await codeInput.fill(totp(USERS.admin.totpSecret))
+      await confirmButton.click()
+
+      try {
+        await page.waitForURL((url) => !url.pathname.endsWith('/multi-factor-authentication/challenge'), {
+          timeout: 15_000,
+        })
+        break
+      } catch (error) {
+        if (attempt === 2) {
+          throw new Error(
+            `the step-up challenge rejected two consecutive codes for ${USERS.admin.email}. ` +
+              'If the page shows "The code you entered is invalid", the seeded secret and ' +
+              "web/tests/fixtures.ts have drifted apart (check E2ESeeder's ADMIN_TOTP_SECRET " +
+              'constant).',
+            { cause: error },
+          )
+        }
+        await page.waitForTimeout(msUntilNextTimestep())
+      }
+    }
 
     await expect(page).toHaveURL(`${API_URL}/control-panel`)
     await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible()
