@@ -34,6 +34,39 @@ export const FIXTURE_PASSWORD = 'password'
 export const AUTH_DIR = 'playwright/.auth'
 
 export const USERS = {
+  /**
+   * PLAN-ADMIN-DASHBOARD.md §9. Seeded as ids 9001/9002 with real Spatie
+   * roles since STEP-01 and used by NO test until `admin-panel.spec.ts` —
+   * which is the single reason eight authorization holes and an
+   * unreachable panel survived three steps.
+   *
+   * No `storageState`: these two do NOT go through `auth.setup.ts`. The
+   * Filament panel login is a Blade page on the API origin behind a
+   * mandatory TOTP challenge, and putting it in the shared `setup`
+   * project — which every browser project declares a dependency on —
+   * would mean a panel regression takes the entire suite down with it.
+   * `admin-panel.spec.ts` signs in for itself; see `panel-auth.ts`.
+   *
+   * `totpSecret` must match `E2ESeeder::ADMIN_TOTP_SECRET` /
+   * `SUPER_ADMIN_TOTP_SECRET` exactly. Drift fails loudly: the six digits
+   * this generates stop matching the ones the panel computes and the
+   * challenge rejects them.
+   */
+  admin: {
+    email: 'admin@e2e.test',
+    username: 'e2e-admin',
+    name: 'Adam Admin',
+    totpSecret: 'E2EADMINE2EADMIN',
+  },
+  /** §5.2's asymmetry, and §9's "the case nothing covers": before
+   * `Role::ADMIN_TIER`, a super_admin cleared `EnsureUserIsAdmin` and was
+   * then denied by everything inside the panel. */
+  superAdmin: {
+    email: 'super-admin@e2e.test',
+    username: 'e2e-super-admin',
+    name: 'Sadie Superadmin',
+    totpSecret: 'E2ESUPERADMIN234',
+  },
   /** Owns the shared speech — the "speaker" in CP-05's terms. */
   speaker: {
     email: 'member@e2e.test',

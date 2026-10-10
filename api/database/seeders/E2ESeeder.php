@@ -64,6 +64,64 @@ class E2ESeeder extends Seeder
      */
     public const COACH_C_ID = 9006;
 
+    /**
+     * PLAN-ADMIN-DASHBOARD.md §9 — the two TOTP secrets that make the
+     * Filament panel reachable by a browser at all.
+     *
+     * `AdminPanelProvider` sets `multiFactorAuthentication([
+     * AppAuthentication::make()], isRequired: true)`, and that `isRequired`
+     * installs `EnsureMultiFactorAuthenticationIsEnabled` on every panel
+     * page route. Its only test is
+     * `filled($user->getAppAuthenticationSecret())` — so an admin seeded
+     * WITHOUT a secret is redirected into Filament's mandatory enrollment
+     * flow (QR code, confirm, recovery codes) instead of the panel, and
+     * `web/tests/admin-panel.spec.ts` could never reach a single panel
+     * surface. These two columns are the entire fix; nothing in the panel
+     * ever checks `two_factor_confirmed_at`.
+     *
+     * ## Why a hardcoded secret is safe here
+     *
+     * These are base32 TOTP seeds for two accounts that exist only in a
+     * disposable E2E/dev database, whose password is already the literal
+     * string "password" in this same file. They buy an attacker nothing
+     * that the password does not already give away. They are hardcoded
+     * rather than generated because `web/tests/panel-auth.ts` has to
+     * derive the same six digits in Node, and a generated secret would
+     * have to be exported from the database to the test runner somehow.
+     *
+     * ## Why the two accounts get DIFFERENT secrets
+     *
+     * `AppAuthentication::verifyCode(..., shouldPreventCodeReuse: true)`
+     * caches the last accepted timestep under
+     * `filament.app_authentication_codes.md5($secret)` and then requires
+     * every later code to be strictly NEWER (RFC 6238). Two users sharing
+     * one secret would therefore share one reuse counter, and the admin
+     * and super_admin logins — which run within seconds of each other —
+     * would knock each other out roughly half the time. Separate secrets
+     * give them separate counters.
+     *
+     * Each must be valid base32 (A-Z, 2-7) and a multiple of 8 characters;
+     * 16 is what `AppAuthentication::generateSecret()` itself produces.
+     * `php artisan tinker` cross-check, against the Node implementation in
+     * `web/tests/panel-auth.ts`:
+     *
+     *     (new PragmaRX\Google2FA\Google2FA)->getCurrentOtp('E2EADMINE2EADMIN')
+     *
+     * agrees digit-for-digit with `totp('E2EADMINE2EADMIN')` there.
+     *
+     * ⚠️ Fortify's own two-factor feature is NOT enabled
+     * (`config/fortify.php` lists registration, resetPasswords,
+     * emailVerification, updateProfileInformation, updatePasswords and
+     * nothing else), so `RedirectIfTwoFactorAuthenticatable` is absent
+     * from the login pipeline and these columns cannot affect the SPA
+     * login for these two accounts. If that feature is ever switched on,
+     * `E2ESeederRolesTest`'s `postJson('/login')` assertions for
+     * super-admin@e2e.test / admin@e2e.test are the canary.
+     */
+    public const SUPER_ADMIN_TOTP_SECRET = 'E2ESUPERADMIN234';
+
+    public const ADMIN_TOTP_SECRET = 'E2EADMINE2EADMIN';
+
     /** The one speech both coaches review, so isolation has a subject. */
     public const SHARED_SPEECH_ID = 9101;
 
@@ -141,8 +199,8 @@ class E2ESeeder extends Seeder
         $timestamp = Carbon::parse(self::FIXTURE_TIMESTAMP);
 
         $spec = [
-            'super_admin' => ['id' => self::SUPER_ADMIN_ID, 'email' => 'super-admin@e2e.test', 'first_name' => 'Sadie', 'last_name' => 'Superadmin', 'username' => 'e2e-super-admin'],
-            'admin' => ['id' => self::ADMIN_ID, 'email' => 'admin@e2e.test', 'first_name' => 'Adam', 'last_name' => 'Admin', 'username' => 'e2e-admin'],
+            'super_admin' => ['id' => self::SUPER_ADMIN_ID, 'email' => 'super-admin@e2e.test', 'first_name' => 'Sadie', 'last_name' => 'Superadmin', 'username' => 'e2e-super-admin', 'totp_secret' => self::SUPER_ADMIN_TOTP_SECRET],
+            'admin' => ['id' => self::ADMIN_ID, 'email' => 'admin@e2e.test', 'first_name' => 'Adam', 'last_name' => 'Admin', 'username' => 'e2e-admin', 'totp_secret' => self::ADMIN_TOTP_SECRET],
             'coach' => ['id' => self::COACH_ID, 'email' => 'coach@e2e.test', 'first_name' => 'Cora', 'last_name' => 'Coach', 'username' => 'e2e-coach'],
             'coach_b' => ['id' => self::COACH_B_ID, 'email' => 'coach-b@e2e.test', 'first_name' => 'Bram', 'last_name' => 'Bystander', 'username' => 'e2e-coach-b'],
             'coach_c' => ['id' => self::COACH_C_ID, 'email' => 'coach-c@e2e.test', 'first_name' => 'Cyrus', 'last_name' => 'Cutoff', 'username' => 'e2e-coach-c'],
@@ -152,6 +210,8 @@ class E2ESeeder extends Seeder
         $users = [];
 
         foreach ($spec as $role => $attrs) {
+            $totpSecret = $attrs['totp_secret'] ?? null;
+
             $users[$role] = User::query()->updateOrCreate(
                 ['id' => $attrs['id']],
                 [
@@ -162,6 +222,18 @@ class E2ESeeder extends Seeder
                     'username_changed_at' => $timestamp,
                     'password' => Hash::make('password'),
                     'email_verified_at' => $timestamp,
+                    // Only the two admin-tier fixtures carry one; see the
+                    // constants' docblock. Written through the model (not
+                    // DB::table) on purpose — `two_factor_secret` has an
+                    // `encrypted` cast, so a raw insert would store the
+                    // plaintext and `getAppAuthenticationSecret()` would
+                    // throw on decrypt instead of returning the seed.
+                    'two_factor_secret' => $totpSecret,
+                    // Unused by Filament (`isEnabled()` only checks the
+                    // secret) but set anyway so the row is not in Fortify's
+                    // half-enrolled state, which its own flow treats as
+                    // "secret issued, never confirmed".
+                    'two_factor_confirmed_at' => $totpSecret === null ? null : $timestamp,
                     'created_at' => $timestamp,
                     'updated_at' => $timestamp,
                 ]

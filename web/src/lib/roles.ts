@@ -1,5 +1,6 @@
 import { FileText, GraduationCap, Home, Search, Shield, Upload, User, UserRound, type LucideIcon } from 'lucide-react'
 import type { CurrentUser } from '@/features/auth/types'
+import { API_URL } from '@/lib/api'
 
 /**
  * S3 (PLAN-APP-HEADER.md) — role logic is additive only. Registration
@@ -32,6 +33,17 @@ export interface NavItem {
    * just renders without one, rather than needing a second, string-keyed
    * table (`AppSidebar`'s old `ICONS` map) kept in sync by hand. */
   icon: LucideIcon
+  /**
+   * PLAN-ADMIN-DASHBOARD.md §7. `to` is normally a client-side route fed
+   * straight to `<NavLink>`/`<Link>`, but the admin panel is NOT part of
+   * this SPA: it is a server-rendered Filament panel on the API origin.
+   * A `<NavLink to="/control-panel">` would hand the path to React
+   * Router, which has no such route, and render a 404 inside the app
+   * shell — so the destination needs to be an absolute URL on a real
+   * anchor instead. Flagged per item rather than inferred from `to`
+   * starting with `http`, so the two renderers opt in explicitly.
+   */
+  external?: boolean
 }
 
 /**
@@ -72,6 +84,26 @@ const REVIEWER_DIRECTORY_ITEM: NavItem = { label: 'Find reviewers', to: '/review
 const BECOME_A_COACH_ITEM: NavItem = { label: 'Become a Coach', to: '/become-a-coach', icon: GraduationCap }
 
 /**
+ * PLAN-ADMIN-DASHBOARD.md §7 — the admin panel, which lives OUTSIDE this
+ * SPA (a server-rendered Filament panel mounted at `/control-panel` on the
+ * API origin, guarded by `EnsureUserIsAdmin` + mandatory TOTP).
+ *
+ * Absolute, built from `API_URL`, because the SPA and the panel are served
+ * from different hosts in every environment — `app.` vs `api.` in
+ * dev/e2e. Hardcoding `/control-panel` would resolve against the SPA's own
+ * origin and 404.
+ *
+ * `external: true` is what makes the two renderers emit a real `<a>`
+ * instead of a React Router link; see the field's own docblock.
+ */
+const ADMIN_PANEL_ITEM: NavItem = {
+  label: 'Admin panel',
+  to: `${API_URL}/control-panel`,
+  icon: Shield,
+  external: true,
+}
+
+/**
  * The public profile — the app's social surface (connections rail,
  * profile timeline, arc strip). Not in `BASELINE_NAV_ITEMS` because its
  * `to` is per-user (`/u/:username`) rather than a fixed path, and because
@@ -110,6 +142,20 @@ export function navItemsFor(
   }
   if (!hasRole(user, 'admin') && !hasRole(user, 'coach')) {
     items.push(BECOME_A_COACH_ITEM)
+  }
+  // PLAN-ADMIN-DASHBOARD.md §7, and the FIRST additive admin branch in
+  // this function. Every other role check above is subtractive, which is
+  // how the shipped state ended up with an admin's sidebar being strictly
+  // SMALLER than a member's — and with no route to their own panel from
+  // anywhere in the app (`grep -rn "control-panel" web/` returned zero
+  // hits). PLAN-APP-HEADER.md:344 specified exactly this line
+  // (`if (roles.includes('admin')) add(adminItems)`) and STEP-12 shipped
+  // the panel without it.
+  //
+  // Last in the list on purpose: it leaves the SPA entirely, so it should
+  // not sit among the in-app destinations.
+  if (hasRole(user, 'admin')) {
+    items.push(ADMIN_PANEL_ITEM)
   }
   return items
 }

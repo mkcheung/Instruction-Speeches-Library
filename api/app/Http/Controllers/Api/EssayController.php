@@ -11,6 +11,7 @@ use App\Models\Review;
 use App\Models\Speech;
 use App\Services\EssayService;
 use App\Services\ReviewService;
+use App\Support\Role;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -65,7 +66,7 @@ class EssayController extends Controller
         // is also the speaker must be held to the speaker's rules, or they
         // read their own coach's UNPUBLISHED essay. Admin moderation of
         // someone else's speech is unaffected.
-        $isAdmin = $user->hasRole('admin') && $review->speech_owner_id !== $user->id;
+        $isAdmin = $user->hasAnyRole(Role::ADMIN_TIER) && $review->speech_owner_id !== $user->id;
         $canSeeContent = $isAuthor || $isAdmin || $review->essay_published_at !== null;
 
         if (! $canSeeContent) {

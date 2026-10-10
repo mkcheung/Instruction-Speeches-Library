@@ -37,13 +37,44 @@ describe('navItemsFor', () => {
     expect(navItemsFor(undefined).length).toBeGreaterThan(0)
   })
 
+  // PLAN-ADMIN-DASHBOARD.md §7 — the first ADDITIVE admin branch in
+  // `navItemsFor`. Before this, every role check in that function was
+  // subtractive, so an admin's sidebar was strictly smaller than a
+  // member's and nothing anywhere in the SPA linked to `/control-panel`.
+  it('gives an admin an Admin panel link, as an EXTERNAL absolute URL', () => {
+    const item = navItemsFor({ roles: ['admin'], username: 'e2e-admin' }).find((navItem) => navItem.label === 'Admin panel')
+
+    expect(item).toBeDefined()
+    // `external` is what makes the renderers emit a real anchor. Without
+    // it, React Router would resolve the path against this SPA and render
+    // the 404 page inside the app shell.
+    expect(item?.external).toBe(true)
+    expect(item?.to).toMatch(/^https?:\/\/.+\/control-panel$/)
+  })
+
+  it('gives a super_admin the Admin panel link too', () => {
+    const labels = navItemsFor({
+      roles: ['super_admin'],
+      username: 'e2e-super-admin',
+    }).map((item) => item.label)
+    expect(labels).toContain('Admin panel')
+  })
+
+  it('never shows the Admin panel link to a member or coach', () => {
+    expect(navItemsFor({ roles: [], username: 'milo' }).map((item) => item.label)).not.toContain('Admin panel')
+    expect(navItemsFor({ roles: ['coach'], username: 'cora' }).map((item) => item.label)).not.toContain('Admin panel')
+  })
+
   it('hides Find reviewers from an admin (S4)', () => {
     const items = navItemsFor({ roles: ['admin'], username: 'e2e-admin' })
     expect(items.map((item) => item.label)).not.toContain('Find reviewers')
   })
 
   it('hides Find reviewers from a super_admin too', () => {
-    const items = navItemsFor({ roles: ['super_admin'], username: 'e2e-super-admin' })
+    const items = navItemsFor({
+      roles: ['super_admin'],
+      username: 'e2e-super-admin',
+    })
     expect(items.map((item) => item.label)).not.toContain('Find reviewers')
   })
 

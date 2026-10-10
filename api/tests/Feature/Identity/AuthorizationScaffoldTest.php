@@ -30,23 +30,34 @@ it('does not grant an admin a free pass on abilities that must fall through to a
     $admin = User::factory()->create();
     $admin->assignRole('admin');
 
-    // No policy exists yet for these abilities, so Gate::before deferring
-    // (returning null) means Gate::allows() falls back to "no policy ->
-    // denied" — proving the exclusion actually excludes, not that these
-    // specific operations are already safe (they aren't built yet).
+    // Gate::before deferring (returning null) means Gate::allows() falls
+    // through to the real policy — proving the exclusion actually
+    // excludes, rather than proving anything about the operation itself.
     //
-    // 'review.accept' was dropped from this list in STEP-05, and
-    // 'user.delete' is dropped here in STEP-12 for the identical reason:
-    // both now have a real, model-bound policy method registered via
-    // Gate::define (App\Policies\UserPolicy::delete), so calling
-    // Gate::allows('user.delete') with no target-User argument is a usage
-    // error (missing the target), not a meaningful assertion about the
-    // fall-through list. The fall-through behavior for user.delete is
-    // covered for real, model-bound calls in
-    // tests/Feature/Admin/AdminAbilityDenialTest.php instead.
-    foreach (['user.erase', 'user.demote'] as $ability) {
-        expect(Gate::forUser($admin)->allows($ability))->toBeFalse();
-    }
+    // 'review.accept' was dropped from this list in STEP-05, 'user.delete'
+    // in STEP-12, and 'user.erase'/'user.demote' here in STEP-16, all for
+    // the identical reason: each now has a real, MODEL-BOUND policy method
+    // registered via Gate::define, so calling e.g.
+    // Gate::allows('user.erase') with no target-User argument is a usage
+    // error rather than a meaningful assertion. PLAN-ADMIN-DASHBOARD.md
+    // §5.3 names this precisely — the call "throws ArgumentCountError —
+    // it errors rather than failing an assertion", which is strictly worse
+    // than a red assertion because it reads as a broken test rather than a
+    // broken invariant. (Verified before this edit: the run errored with
+    // "Too few arguments to function App\Policies\UserPolicy::erase(), 1
+    // passed ... and exactly 2 expected".) Model-bound coverage for all
+    // four lives in tests/Feature/Admin/AdminAbilityDenialTest.php.
+    //
+    // 'viewDirectory' is what remains, and it is now the ONLY member of
+    // $mustFallThrough whose policy signature takes no model at all
+    // (ReviewPolicy::viewDirectory(User $user)) — every other entry binds
+    // a Review, Speech, User, Connection or Report. So it is the only
+    // ability that can still make this specific assertion, which is worth
+    // keeping distinct from the model-bound file: this test pins the
+    // SHAPE of Gate::before (an excluded string is not short-circuited),
+    // not any policy's rule. If a future step gives viewDirectory a model
+    // argument, this assertion must move too rather than be deleted.
+    expect(Gate::forUser($admin)->allows('viewDirectory'))->toBeFalse();
 });
 
 it('does not grant a non-admin any Gate::before shortcut', function () {

@@ -1,0 +1,45 @@
+{
+  /* The Playwright suite, split out of tsconfig.node.json because it is the
+     one directory in this repo that is genuinely BOTH environments at once.
+
+     A spec file's top level runs in Node — `node:crypto` in panel-auth.ts,
+     `node:child_process` in the seeding helpers — but the callback passed to
+     `page.evaluate()` is serialized, shipped over CDP and executed inside the
+     browser, where `document` is real. TypeScript type-checks one file under
+     one set of libs, so that file needs ES2023 + DOM + node, all three.
+
+     tsconfig.node.json cannot simply gain "DOM": it also covers vite.config.ts
+     and playwright.config.ts, which run in Node and nowhere else. Leaving DOM
+     out of THAT project is a real guarantee — it's what makes a stray
+     `document` in a config file a compile error — so widening it to serve the
+     specs would have traded a genuine check for a shortcut.
+
+     Found by CI, not locally, and the gap is worth naming: `tsc --noEmit`
+     exits 0 here no matter what is broken, because the root tsconfig.json is
+     a solution file (`"files": []`) and --noEmit does not follow project
+     references. Only `tsc -b` builds them. ci.yml's Typecheck step says so in
+     a comment, and `npm run typecheck` now exists so the correct command is
+     the reachable one. */
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode — kept identical to tsconfig.node.json. `nodenext` is what
+       makes the `./fixtures.js` import specifiers in these specs correct. */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["tests"]
+}

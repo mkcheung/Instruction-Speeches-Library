@@ -55,5 +55,26 @@ final class AuditAction
 
     public const SPEECH_TAKEN_DOWN = 'speech.taken_down';
 
+    // PLAN-ADMIN-DASHBOARD.md §5.7. `ReportResource::resolve`/`dismiss`
+    // were the only moderation verbs in the panel with NEITHER a
+    // `Gate::authorize` NOR an audit write (the class does not even import
+    // AuditLog) — and no constant covered report resolution, so the audit
+    // half could not be fixed without adding these two first.
+    public const REPORT_RESOLVED = 'report.resolved';
+
+    public const REPORT_DISMISSED = 'report.dismissed';
+
+    // §6.3: takedown is reversible (soft delete), so the inverse verb
+    // needs its own trail — `SPEECH_TAKEN_DOWN` alone would leave a
+    // restored speech looking permanently removed in the audit history.
+    public const SPEECH_RESTORED = 'speech.restored';
+
+    // §5.6: the object-purge half of a takedown, written when the bytes
+    // are actually deleted rather than when the row is soft-deleted. These
+    // are separated deliberately — a takedown is immediate, the purge runs
+    // after the quarantine window, and conflating them would record a
+    // deletion that has not happened yet.
+    public const SPEECH_MEDIA_PURGED = 'speech.media_purged';
+
     private function __construct() {}
 }

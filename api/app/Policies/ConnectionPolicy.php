@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Connection;
 use App\Models\User;
+use App\Support\Role;
 
 /**
  * MODERNIZATION_PLAN §6.7.2 / STEP-13-FROZEN-CONTRACT.md §11. Plain
@@ -28,7 +29,7 @@ class ConnectionPolicy
      */
     public function block(User $user, Connection $connection): bool
     {
-        if ($user->hasRole('admin')) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER)) {
             return false;
         }
 

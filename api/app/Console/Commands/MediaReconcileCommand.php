@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Jobs\PurgeDeletedVoiceAnnotation;
+use App\Jobs\PurgeSpeechMedia;
 use App\Jobs\PurgeVoiceAsset;
 use App\Models\Annotation;
 use App\Models\Speech;
@@ -23,6 +24,14 @@ use Illuminate\Support\Facades\Storage;
  * Releases the counter, not just the row — that distinction is the entire
  * point (§9.1's release-paths table).
  *
+ * PLAN-ADMIN-DASHBOARD.md §5.6 added a sixth sweep with a different owner:
+ * the taken-down-speech media purge. It is here rather than on a 30-day
+ * `->delay()` at the takedown site because `speeches.deleted_at` is a durable
+ * fact and a month-old delayed job in Redis is not — the same argument the
+ * voice-tombstone sweep below already makes for itself. See
+ * App\Jobs\PurgeSpeechMedia for the window, the deletion scope, and why
+ * reviewer voice notes survive a takedown.
+ *
  * Scheduled nightly; see routes/console.php.
  */
 class MediaReconcileCommand extends Command
@@ -32,9 +41,10 @@ class MediaReconcileCommand extends Command
         {--transcode-hours=2 : age threshold for a hung transcode, per §9.2}
         {--caption-queue-wait-seconds= : seconds a captions job may sit dispatched with no worker before failing (default: config(captions.queue_wait_seconds), STEP-09 §4.1)}
         {--caption-heartbeat-stale-seconds= : seconds since the last WhisperTranscriber heartbeat before a started captions attempt is considered lost (default: config(captions.heartbeat_stale_seconds), >=4200 per STEP-09 §4.1)}
-        {--source-retention-hours=24 : hours a ready source (original upload) is kept after its video rendition is ready and captions have settled, before the original is deleted (R10, MODERNIZATION_PLAN §13/§21)}';
+        {--source-retention-hours=24 : hours a ready source (original upload) is kept after its video rendition is ready and captions have settled, before the original is deleted (R10, MODERNIZATION_PLAN §13/§21)}
+        {--takedown-quarantine-days= : days a taken-down (soft-deleted) speech keeps its media before the bytes are purged (default: config(media.takedown_quarantine_days), PLAN-ADMIN-DASHBOARD §5.6/§11.2)}';
 
-    protected $description = 'Release quota held by abandoned uploads, surface hung transcodes, recover stale caption attempts, and prune retained originals (§9.1, §9.2, STEP-09 §4.1, R10).';
+    protected $description = 'Release quota held by abandoned uploads, surface hung transcodes, recover stale caption attempts, prune retained originals, and purge media for speeches taken down beyond the quarantine window (§9.1, §9.2, STEP-09 §4.1, R10, PLAN-ADMIN-DASHBOARD §5.6).';
 
     public function handle(QuotaService $quota): int
     {
@@ -199,11 +209,78 @@ class MediaReconcileCommand extends Command
             }
         }
 
+        $purgedTakedowns = $this->purgeQuarantinedTakedowns($quota);
+
         $prunedOriginals = $this->pruneRetainedOriginals((int) $this->option('source-retention-hours'));
 
-        $this->info("Reconciled {$staleUploads->count()} abandoned upload(s), {$hungTranscodes->count()} hung transcode(s), {$staleVoice->count()} stale voice note(s), {$reconciledCaptions} stale caption attempt(s), {$purgedTombstones} voice tombstone(s), {$purgedOrphans} orphan voice asset(s), and {$prunedOriginals} retained original(s) pruned.");
+        $this->info("Reconciled {$staleUploads->count()} abandoned upload(s), {$hungTranscodes->count()} hung transcode(s), {$staleVoice->count()} stale voice note(s), {$reconciledCaptions} stale caption attempt(s), {$purgedTombstones} voice tombstone(s), {$purgedOrphans} orphan voice asset(s), {$purgedTakedowns} taken-down speech(es) purged, and {$prunedOriginals} retained original(s) pruned.");
 
         return self::SUCCESS;
+    }
+
+    /**
+     * PLAN-ADMIN-DASHBOARD.md §5.6/§11.2: purge the media of speeches whose
+     * takedown quarantine has run out. Before this, `media:reconcile` had
+     * ZERO speech soft-delete awareness — §1.3's finding — so every byte of
+     * every taken-down speech survived forever (see PurgeSpeechMedia's
+     * docblock for why no other sweep reclaims them either, including the
+     * retained-originals prune directly below, which cannot see a trashed
+     * speech at all).
+     *
+     * Modelled on the voice-tombstone loop in handle() rather than on a new
+     * pattern, down to the per-item try/catch: a `deleted_at` old enough to
+     * purge is a durable DB fact, so this re-derives the work from the
+     * database every night instead of trusting a delayed job dispatched 30
+     * days earlier to still exist in Redis. One speech's failure (a storage
+     * delete that returns false, which PurgeSpeechMedia turns into a throw
+     * precisely so the rows survive for the retry) must not abandon the rest
+     * of the sweep or fail the command.
+     *
+     * Selection is on ROW EXISTENCE of a purgeable kind, not on a byte
+     * count: `byte_size` is nullable and only set at completion, so a
+     * `byte_size`-based filter would silently skip rows whose objects are
+     * very much still there. A row whose object is already gone is still
+     * worth selecting — the purge deletes the stranded row and its
+     * `exists()`-guarded storage delete is simply a no-op. Once purged, a
+     * speech has no rows of these kinds left and drops out of this query, so
+     * the sweep does not re-visit it nightly.
+     *
+     * The window is passed down explicitly: the job re-checks it (no
+     * dispatch site is trusted to have honoured it), and if it re-read the
+     * config while this query used a `--takedown-quarantine-days` override,
+     * the override would select speeches the job then silently refused.
+     */
+    private function purgeQuarantinedTakedowns(QuotaService $quota): int
+    {
+        $quarantineDays = (int) ($this->option('takedown-quarantine-days') ?? config('media.takedown_quarantine_days'));
+
+        $purged = 0;
+
+        $quarantined = Speech::onlyTrashed()
+            ->where('deleted_at', '<', now()->subDays($quarantineDays))
+            ->whereExists(fn ($query) => $query->selectRaw('1')->from('speech_assets')
+                ->whereColumn('speech_assets.speech_id', 'speeches.id')
+                ->whereIn('speech_assets.kind', PurgeSpeechMedia::PURGED_KINDS))
+            ->get();
+
+        foreach ($quarantined as $speech) {
+            try {
+                // Counted on the job's own answer, not on having called it:
+                // `handle()` returns false for a run that removed nothing
+                // (another runner holds the `purge_claim_id`, or the rows
+                // went away between this SELECT and the row lock), and a
+                // summary line that counted those would over-report every
+                // night a sweep raced an eager dispatch.
+                if ((new PurgeSpeechMedia($speech, $quarantineDays))->handle($quota)) {
+                    $purged++;
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
+                $this->warn("Speech {$speech->id} media purge remains pending: {$exception->getMessage()}");
+            }
+        }
+
+        return $purged;
     }
 
     /**
@@ -277,8 +354,21 @@ class MediaReconcileCommand extends Command
             ->flip();
 
         foreach ($eligibleSources as $source) {
-            // Cascade-deleted speech: some other purge path owns the
-            // asset's fate, not this sweep.
+            // No speech row visible for this source. Two distinct cases, and
+            // naming them matters because PLAN-ADMIN-DASHBOARD §13 records
+            // rev 1 of that plan getting this exact line backwards:
+            //
+            //  - hard-deleted speech: the CASCADE owns the row's fate.
+            //  - SOFT-deleted (taken down) speech: `Speech::query()` above
+            //    carries the SoftDeletes global scope, so a trashed speech
+            //    is simply absent here and its source falls through this
+            //    `continue` — retained, not pruned. That is deliberate;
+            //    purging a taken-down speech's media is
+            //    purgeQuarantinedTakedowns()'s job, under the §11.2
+            //    quarantine window this sweep's retention hours know nothing
+            //    about. Do NOT "fix" this by switching to `withTrashed()`:
+            //    it would delete the source hours after a takedown and break
+            //    the restore window.
             if (! $captionsEnabledBySpeech->has($source->speech_id)) {
                 continue;
             }

@@ -6,6 +6,7 @@ use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\User;
 use App\Policies\Concerns\GrantsReviewWriteAccess;
+use App\Support\Role;
 
 /**
  * MODERNIZATION_PLAN §7.3 "Requirement: coaches may not read each other's
@@ -44,7 +45,7 @@ class AnnotationPolicy
         // `true`. Pairs with the same owner exclusion in
         // Annotation::scopeVisibleTo — see its comment for the draft leak
         // this closes.
-        if ($user->hasRole('admin') && $review->speech_owner_id !== $user->id) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER) && $review->speech_owner_id !== $user->id) {
             assert(! Review::where('speech_id', $review->speech_id)
                 ->where('reviewer_id', $user->id)->exists(),
                 'Admins must not hold reviews — see ReviewPolicy::accept.');

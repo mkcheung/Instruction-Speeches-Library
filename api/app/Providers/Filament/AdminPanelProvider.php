@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\CheckUserIsActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\Http\Middleware\Authenticate;
@@ -73,6 +74,14 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->authGuard('web')
             ->colors(['primary' => Color::Indigo])
+            // PLAN-ADMIN-DASHBOARD.md §7. Filament already collapses the
+            // sidebar to an overlay below `lg` with no help, so the mobile
+            // case was never the gap — the DESKTOP one was. This panel's
+            // densest surfaces are the annotations and video modals, and
+            // on a laptop the fixed rail costs them horizontal room they
+            // actually use. Collapsible-on-desktop is opt-in; nothing
+            // called it.
+            ->sidebarCollapsibleOnDesktop()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
@@ -92,6 +101,62 @@ class AdminPanelProvider extends PanelProvider
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
+                // PLAN-ADMIN-DASHBOARD.md §5.1, third of the three
+                // registration sites. This panel declares its own explicit
+                // middleware list and does NOT use the `web` group, so the
+                // `$middleware->web(append: ...)` registration in
+                // bootstrap/app.php does not reach a single panel route.
+                // Without this line a suspended ADMIN keeps full
+                // /control-panel access — an RBAC hole introduced by the
+                // fix for an RBAC hole, and one that no test of the SPA
+                // would ever notice.
+                //
+                // ## Why it sits HERE, immediately after StartSession
+                //
+                // An earlier version of this file placed it after
+                // `AuthenticateSession` and claimed in a comment that it
+                // therefore ran "ahead of that `authMiddleware()`". That
+                // claim was false, and measurably so: `Router::gatherRouteMiddleware`
+                // pipes the array through `SortedMiddleware` using the
+                // kernel's `$middlewarePriority`, in which
+                // `Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests`
+                // ranks at index 5 — above `AuthenticatesSessions` (8) and
+                // `SubstituteBindings` (9) — so `Filament\Http\Middleware\Authenticate`
+                // is hoisted out of `authMiddleware()` and lands directly
+                // after `ShareErrorsFromSession`, which is *before* any
+                // unmapped middleware declared later in this list.
+                // Declaration order does not decide this; the priority map
+                // does.
+                //
+                // That mattered, because Filament's `Authenticate` ends in
+                //
+                //     abort_if($user instanceof FilamentUser
+                //         ? (! $user->canAccessPanel($panel))
+                //         : (config('app.env') !== 'local'), 403)
+                //
+                // and `App\Models\User` implements neither `FilamentUser`
+                // nor `canAccessPanel()`. So outside `local` that is an
+                // unconditional 403 on every panel route — and with this
+                // middleware downstream of it, a suspended admin got a
+                // bare, unexplained 403 (§8.1 asks for the opposite) and,
+                // far worse, **was never actually evicted**: `handle()`
+                // never ran, so the session was not invalidated and the
+                // Sanctum tokens were not revoked. The credential survived
+                // the "block".
+                //
+                // Placed before `AuthenticateSession` (an unmapped
+                // middleware cannot be hoisted past a priority-mapped one,
+                // and `AuthenticateSession` is mapped at 8) this lands at
+                // sorted index 4 — after StartSession, so `$request->user()`
+                // has a session to resolve through, and before
+                // Filament's `Authenticate` at index 6.
+                //
+                // Nothing is lost by preceding `AuthenticateSession`: that
+                // middleware's job is to log out a session whose password
+                // hash is stale, and this one either waves an active user
+                // through to it untouched or performs a strictly larger
+                // teardown of its own.
+                CheckUserIsActive::class,
                 AuthenticateSession::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
