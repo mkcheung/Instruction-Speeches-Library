@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Exceptions\LastAdministratorException;
 use App\Models\User;
 use App\Services\RoleAssignmentService;
+use App\Support\Role as AppRole;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
@@ -61,7 +62,7 @@ class GrantRoleCommand extends Command
                 // removal in every sense that matters here — it must be
                 // guarded exactly like `RoleAssignmentService::revoke()`
                 // guards a real revoke.
-                if (! in_array($roleName, ['admin', 'super_admin'], true) && $roles->wouldOrphanAdminRoster($user)) {
+                if (! in_array($roleName, AppRole::ADMIN_TIER, true) && $roles->wouldOrphanAdminRoster($user)) {
                     throw new LastAdministratorException;
                 }
 

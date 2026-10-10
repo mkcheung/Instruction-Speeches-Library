@@ -2,8 +2,11 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Auth\MfaChallenge;
+use App\Filament\Auth\PanelLogin;
 use App\Http\Middleware\CheckUserIsActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Middleware\RequireFilamentMfaChallenge;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -17,6 +20,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\AuthenticateSession;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Route;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /**
@@ -70,8 +74,18 @@ class AdminPanelProvider extends PanelProvider
     {
         return $panel
             ->id('admin')
+            // PLAN-ADMIN-LOGIN-REDIRECT.md §6.7: `RequireFilamentMfaChallenge`
+            // is reused verbatim on Horizon's routes, which never pass
+            // through this panel's own route group (no `SetUpPanel`
+            // middleware sets a "current" panel there). Without a default
+            // panel, `Filament::getCurrentOrDefaultPanel()` — which that
+            // middleware calls, directly and via `Filament::getUrl()` /
+            // `getSetUpRequiredMultiFactorAuthenticationUrl()` — throws
+            // `NoDefaultPanelSetException` outside this panel's own routes.
+            // Harmless here: there is exactly one panel.
+            ->default()
             ->path('control-panel')
-            ->login()
+            ->login(PanelLogin::class)
             ->authGuard('web')
             ->colors(['primary' => Color::Indigo])
             // PLAN-ADMIN-DASHBOARD.md §7. Filament already collapses the
@@ -94,9 +108,54 @@ class AdminPanelProvider extends PanelProvider
             // takes `$isRequired` directly), correcting an earlier guess
             // that couldn't be verified without a real install.
             ->multiFactorAuthentication(
-                [AppAuthentication::make()],
+                // PLAN-ADMIN-LOGIN-REDIRECT.md §6.3: recovery-code support
+                // is not optional here — role management lives INSIDE the
+                // panel (`User.php:252-258`'s own docblock), so an admin
+                // who loses their phone cannot be restored unless another
+                // admin already exists. Without `->recoverable()` the
+                // `AppAuthentication` provider defaults to NOT recoverable,
+                // the recovery-code field never becomes visible on either
+                // the ordinary login form or the step-up challenge, and
+                // `code` stays required forever — this was dormant on the
+                // panel's own login page before this plan touched it too,
+                // found only by actually driving the challenge page's
+                // recovery-code path in a test.
+                [AppAuthentication::make()->recoverable()],
                 isRequired: true,
             )
+            // PLAN-ADMIN-LOGIN-REDIRECT.md §1/§6. The vendor default
+            // (`EnsureMultiFactorAuthenticationIsEnabled`) only checks that
+            // a provider is ENROLLED, never that this session passed a
+            // challenge — a password-only SPA session reaches the full
+            // panel with no second factor. `RequireFilamentMfaChallenge`
+            // keeps that enrollment check and adds the session-stamp one.
+            ->multiFactorAuthenticationRequiredMiddlewareName(RequireFilamentMfaChallenge::class)
+            // §6.5: route middleware alone never reaches `POST
+            // /livewire/update`, where every panel mutation after the
+            // first page load actually happens — Livewire registers that
+            // route against the `web` group, not this panel's stack, and
+            // re-applies the original page's middleware only through this
+            // hardcoded allowlist. `persistentMiddleware()` adds to that
+            // allowlist only; it does not attach the middleware to any
+            // route itself, so the challenge route below (deliberately
+            // registered without it) is unaffected.
+            ->persistentMiddleware([RequireFilamentMfaChallenge::class])
+            // §6.3: registered manually, NOT via `->pages()`/discoverPages().
+            // A page reached that way is routed through
+            // `Pages\Concerns\HasRoutes`, which would attach
+            // `RequireFilamentMfaChallenge` to this very route (the panel's
+            // multi-factor authentication is required) and self-gate it —
+            // the same mechanism `MfaChallenge`'s own docblock traces.
+            // `authenticatedRoutes()` lands inside the vendor route file's
+            // `$panel->getAuthMiddleware()` group, so `Authenticate` and
+            // `EnsureUserIsAdmin` still gate it, exactly like the vendor
+            // set-up-required page sitting beside it.
+            ->authenticatedRoutes(function (Panel $panel): void {
+                Route::get(
+                    'multi-factor-authentication/challenge',
+                    MfaChallenge::class,
+                )->name('auth.multi-factor-authentication.challenge');
+            })
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

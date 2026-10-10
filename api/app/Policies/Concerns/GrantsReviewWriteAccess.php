@@ -4,6 +4,7 @@ namespace App\Policies\Concerns;
 
 use App\Models\Review;
 use App\Models\User;
+use App\Support\Role;
 
 /**
  * STEP-07-write-commentary.md: the "does this user hold this review as an
@@ -28,7 +29,7 @@ trait GrantsReviewWriteAccess
 {
     private function reviewerOwnsActiveReview(User $user, Review $review): bool
     {
-        if ($user->hasAnyRole(['admin', 'super_admin'])) {
+        if ($user->hasAnyRole(Role::ADMIN_TIER)) {
             return false;
         }
 

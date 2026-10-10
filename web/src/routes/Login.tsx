@@ -9,6 +9,7 @@ import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useLoginMutation } from '@/features/auth/authApi'
 import { applyServerErrors } from '@/lib/applyServerErrors'
+import { getPostLoginDestination } from '@/lib/roles'
 import { loginSchema, type LoginFormValues } from '@/lib/validation'
 
 export default function Login() {
@@ -37,8 +38,17 @@ export default function Login() {
       // would flash a "Loading…" screen on every single login.
       const { user } = await login(values).unwrap()
       const from = (location.state as { from?: { pathname?: string } } | null)?.from
-      const landing = user.onboarding_completed ? '/dashboard' : '/onboarding'
-      navigate(from?.pathname ?? landing, { replace: true })
+      const destination = getPostLoginDestination(user, from?.pathname)
+      // PLAN-ADMIN-LOGIN-REDIRECT.md §7.3: the panel is on `API_URL`, a
+      // different origin — `navigate()` can only express an in-SPA path
+      // and would render the 404 route inside this app's own shell.
+      // `replace()`, not `assign()`, so Back does not return to the
+      // submitted login form.
+      if (destination.external) {
+        window.location.replace(destination.to)
+      } else {
+        navigate(destination.to, { replace: true })
+      }
     } catch (error) {
       setFormError(applyServerErrors(error, setError))
     }

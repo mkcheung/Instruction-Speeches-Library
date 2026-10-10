@@ -31,10 +31,13 @@ use App\Services\Voice\FfmpegVoiceNoteProcessor;
 use App\Services\Voice\VoiceNoteProcessorContract;
 use App\Services\Voice\VoiceNoteTranscriberContract;
 use App\Services\Voice\WhisperVoiceNoteTranscriber;
+use App\Support\FilamentMfaStamp;
 use App\Support\Role;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
@@ -427,6 +430,29 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('coach-document-upload', function (Request $request) {
             return Limit::perHour(10)->by($request->user()?->id ?: $request->ip());
+        });
+
+        // PLAN-ADMIN-LOGIN-REDIRECT.md §6.1, the resolved Q3 security half.
+        // `session()->regenerate()` (fired inside Fortify's and Filament's
+        // `attemptWhen`) migrates the session ID but preserves its DATA, so
+        // without this a stamp written by an earlier panel login survives a
+        // later password-only Fortify login on the same browser session —
+        // inheriting a valid second-factor proof without ever presenting a
+        // second factor, defeating `RequireFilamentMfaChallenge` entirely.
+        // Both guards share the `web` guard (SESSION_DOMAIN's leading dot),
+        // so this listens for ANY `web`-guard login, not just the panel's.
+        //
+        // Ordering is load-bearing, not incidental: this fires INSIDE
+        // `parent::authenticate()` (Fortify's own `attemptWhen`/`attempt()`
+        // calls fire the same event), strictly before `PanelLogin::authenticate()`
+        // stamps past `parent::authenticate()`'s return. An implementation
+        // that stamped any earlier would have this listener delete the
+        // stamp it just wrote, and the symptom would be an endless MFA
+        // challenge loop rather than an obvious error.
+        Event::listen(Login::class, function (Login $event): void {
+            if ($event->guard === 'web') {
+                FilamentMfaStamp::forget();
+            }
         });
     }
 }

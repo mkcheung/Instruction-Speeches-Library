@@ -6,6 +6,7 @@ use App\Filament\Widgets\MostConnectionsWidget;
 use App\Models\Report;
 use App\Models\Speech;
 use App\Models\User;
+use App\Support\FilamentMfaStamp;
 use App\Support\Role;
 use Database\Seeders\RoleSeeder;
 use Filament\Facades\Filament;
@@ -133,8 +134,21 @@ it('serves /control-panel through its real middleware stack outside a local env'
         return $user;
     };
 
-    $this->actingAs($enrolled(Role::ADMIN))->get('/control-panel')->assertOk();
-    $this->actingAs($enrolled(Role::SUPER_ADMIN))->get('/control-panel')->assertOk();
+    // PLAN-ADMIN-LOGIN-REDIRECT.md §6.1/§8: `actingAs()` alone no longer
+    // reaches a 200 here — `RequireFilamentMfaChallenge` demands a stamp
+    // that only a real login (panel or step-up challenge) writes. This
+    // test's own point is the env/`canAccessPanel()` behaviour, not MFA,
+    // so the stamp is written directly rather than driven through a form.
+    $stampFor = fn (User $user): array => [FilamentMfaStamp::SESSION_KEY => [
+        'user' => $user->getAuthIdentifier(),
+        'at' => now()->toIso8601String(),
+    ]];
+
+    $admin = $enrolled(Role::ADMIN);
+    $this->actingAs($admin)->withSession($stampFor($admin))->get('/control-panel')->assertOk();
+
+    $superAdmin = $enrolled(Role::SUPER_ADMIN);
+    $this->actingAs($superAdmin)->withSession($stampFor($superAdmin))->get('/control-panel')->assertOk();
 
     // The negative control, and the one that proves the 200s above came
     // from `canAccessPanel()` answering rather than from the env check

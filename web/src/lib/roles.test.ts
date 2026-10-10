@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasRole, navItemsFor } from '@/lib/roles'
+import { ADMIN_PANEL_ITEM, getPostLoginDestination, hasRole, navItemsFor } from '@/lib/roles'
 
 describe('hasRole', () => {
   it('is false for a user with roles: []', () => {
@@ -137,5 +137,66 @@ describe('navItemsFor', () => {
     expect(labels).toContain('Your profile')
     expect(labels).toContain('Edit profile')
     expect(items.find((item) => item.label === 'Edit profile')?.to).toBe('/profile')
+  })
+})
+
+/**
+ * PLAN-ADMIN-LOGIN-REDIRECT.md §7.4 — the resolved Q2's full truth table.
+ * The three "rejected" rows (admin+from, suspended) encode the resolution
+ * itself and must not be dropped as redundant with the plainer cases.
+ */
+describe('getPostLoginDestination', () => {
+  it('sends an admin with no `from` to the panel — the feature', () => {
+    const destination = getPostLoginDestination({ roles: ['admin'], onboarding_completed: true }, undefined)
+    expect(destination).toEqual({ to: ADMIN_PANEL_ITEM.to, external: true })
+  })
+
+  it('sends a super_admin with no `from` to the panel too', () => {
+    const destination = getPostLoginDestination({ roles: ['super_admin'], onboarding_completed: true }, undefined)
+    expect(destination).toEqual({ to: ADMIN_PANEL_ITEM.to, external: true })
+  })
+
+  /**
+   * The shared-link rule, and the case that decides the whole resolution:
+   * a role check ordered ahead of the `from` lookup would silently eat an
+   * admin's deep link, the same way `RequireAuth` preserves one for every
+   * other role.
+   */
+  it('an admin WITH a `from` destination lands there — NOT the panel', () => {
+    const destination = getPostLoginDestination({ roles: ['admin'], onboarding_completed: true }, '/speeches/123')
+    expect(destination).toEqual({ to: '/speeches/123', external: false })
+  })
+
+  it('sends a coach with no `from` to the dashboard', () => {
+    const destination = getPostLoginDestination({ roles: ['coach'], onboarding_completed: true }, undefined)
+    expect(destination).toEqual({ to: '/dashboard', external: false })
+  })
+
+  it('sends a member with no `from` to the dashboard', () => {
+    const destination = getPostLoginDestination({ roles: ['member'], onboarding_completed: true }, undefined)
+    expect(destination).toEqual({ to: '/dashboard', external: false })
+  })
+
+  it('sends a roleless user to onboarding, not the dashboard, when onboarding is incomplete', () => {
+    const destination = getPostLoginDestination({ roles: [], onboarding_completed: false }, undefined)
+    expect(destination).toEqual({ to: '/onboarding', external: false })
+  })
+
+  it('sends a roleless user with completed onboarding to the dashboard', () => {
+    const destination = getPostLoginDestination({ roles: [], onboarding_completed: true }, undefined)
+    expect(destination).toEqual({ to: '/dashboard', external: false })
+  })
+
+  it('treats an undefined user as roleless, not admin', () => {
+    const destination = getPostLoginDestination(undefined, undefined)
+    expect(destination).toEqual({ to: '/onboarding', external: false })
+  })
+
+  it('a `from` destination wins over every other rule, admin or not', () => {
+    expect(getPostLoginDestination(undefined, '/speeches/123')).toEqual({ to: '/speeches/123', external: false })
+    expect(getPostLoginDestination({ roles: ['member'], onboarding_completed: true }, '/speeches/123')).toEqual({
+      to: '/speeches/123',
+      external: false,
+    })
   })
 })

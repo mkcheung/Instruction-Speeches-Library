@@ -92,7 +92,7 @@ export function totp(secret: string, atMs: number = Date.now()): string {
 }
 
 /** Milliseconds until the next TOTP timestep begins, plus a small margin. */
-function msUntilNextTimestep(atMs: number = Date.now()): number {
+export function msUntilNextTimestep(atMs: number = Date.now()): number {
   const periodMs = TOTP_PERIOD_SECONDS * 1000
 
   return periodMs - (atMs % periodMs) + 1_000
