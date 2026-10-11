@@ -68,9 +68,13 @@ it('prefers profile.display_name over the first/last fallback, matching PublicPr
 it('returns the mid-onboarding contract: null names/username and an empty roles array', function () {
     $this->seed(RoleSeeder::class);
 
-    // Deliberately no assignRole() call — P1: registration assigns no
-    // role, so roles: [] is the normal case for every real user, not an
-    // edge case (S3).
+    // Deliberately no assignRole() call. User::factory()->create() bypasses
+    // CreateNewUser (the real registration action) entirely, so it still
+    // produces a roles: [] user even though real registration now assigns
+    // `member`. This test exercises the mid-onboarding contract for a
+    // no-role user, which can still arise via the factory or via data
+    // created before a role-assignment migration — it is not asserting
+    // anything about what real registration does today.
     $user = User::factory()->create([
         'first_name' => null,
         'last_name' => null,
