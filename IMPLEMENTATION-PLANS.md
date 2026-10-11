@@ -41,7 +41,7 @@ Three conventions carried from the repo's own documents:
 
 | Phase | Items | Rationale |
 |---|---|---|
-| **1 — unblock** | §7.1 | Nothing else matters while the only discovery surface returns nothing. Three lines + a backfill. |
+| **1 — unblock** | ✅ §7.1 **DONE** (commit pending in this same batch) | Nothing else matters while the only discovery surface returns nothing. Shipped as three lines + a backfill, as planned — plus four review-driven fixes beyond the original plan (§7.1's own section has the detail). |
 | **2 — close the promise** | §7.2, §7.3 | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
 | **3 — make it legible** | §7.4, §7.9 | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2** (§13 seam 1). |
 | **4 — trust and law** | §7.5 | Owner speech delete. Highest-risk item, and **specified in the plan already** (§7.5 §1) — which changes the design from the one the UX review recommended. |
@@ -50,6 +50,8 @@ Three conventions carried from the repo's own documents:
 | **7 — blocked** | §7.6C | ⚠️ Has a hard prerequisite that is not a code task. Do not schedule until §7.6C §2 is resolved. |
 
 **A reasonable first sitting is §7.1 + §7.3 + §7.9**: one backend action, one notification class plus a broken-link fix, one placeholder page. No shared files, no ordering constraints between them, and together they move the product from "cannot be used" to "usable end to end."
+
+**§7.1 is now done. §7.3 is next.** No shared files with the §7.1 diff, so it can start immediately.
 
 ---
 
@@ -96,7 +98,7 @@ No plan document was needed for these; they are specified here in full.
 
 ---
 
-## §7.1 Assign the `member` role at registration 🔴 **Do this first**
+## §7.1 Assign the `member` role at registration 🔴 ✅ **DONE**
 
 **Why:** `User::scopeReviewerCandidates` opens with `$query->role(['member', 'coach'])` (`api/app/Models/User.php:86`), correctly, because §7.1 of the plan requires that an admin can *never* appear as a reviewable candidate regardless of filters. But `CreateNewUser::create()` (`api/app/Actions/Fortify/CreateNewUser.php:41`) persists a user with **no role**, so every self-registered account fails that `whereHas`. The product's only discovery mechanism returns an empty set, permanently. Approved coaches are the sole exception — `CoachApplicationDecisionService:30` assigns `coach` — so the "Members" filter is dead and the whole directory is dead until a coach is approved by hand.
 
@@ -112,7 +114,27 @@ No plan document was needed for these; they are specified here in full.
 
 **Do not "simplify" `web/src/lib/roles.ts` afterwards.** It is deliberately written so `roles: []` is the normal case and nav is additive-only. That stays correct after this change; it just stops being load-bearing. It is defence in depth.
 
-**Risk:** low. The only behaviour that changes is directory visibility, which is currently broken. ⚠️ Open product question the plan does not answer: assign at registration (chosen here, with the username guard) or at onboarding completion? Registration keeps role state simple — every account is a member — and the guard handles the consequence.
+**Risk:** low. The only behaviour that changes is directory visibility, which is currently broken. The open product question this plan left — assign at registration vs. onboarding completion — was resolved in favour of registration, for the reason given: it keeps role state simple (every account is a member) and the username guard handles the consequence.
+
+### Shipped: what actually landed, and the review that changed four things
+
+Implemented by two subagents working in parallel (backend; tests), merged, then validated independently rather than trusting either agent's self-report — that pass caught one real gap neither agent owned: the original `it registers a new user with just email and password` test in `RegistrationTest.php` didn't seed `RoleSeeder`, so once `CreateNewUser` started unconditionally assigning a role, that one test 500'd. Fixed directly (one `$this->seed(RoleSeeder::class);` line).
+
+A six-angle code review (reuse, simplification/efficiency, altitude, and three line-by-line/cross-file/removed-behaviour tracers) then found four things worth fixing before calling this done — two of them independently confirmed by multiple agents reading the actual files, which is why they're trusted over single-agent speculation elsewhere in this process:
+
+1. **A factually false code comment.** The merged `CreateNewUser.php` comment claimed this bypasses `RoleAssignmentService` "the same exemption `CoachApplicationDecisionService` claims for its own `assignRole()` call." Two independent agents read `CoachApplicationDecisionService` directly and found it calls `RoleAssignmentService::assign()` — it is the *compliant* pattern, not a second exemption. **Fixed**: the comment now states the real reason — `assign()`'s self-check (`abort_if($actor->id === $target->id, 422, ...)`) would always trip at registration, since the user being created is the only party.
+2. **No transaction.** If `assignRole()` throws (a missing/renamed `member` role), `User::create()` had already committed — leaving a half-registered account that permanently occupies that email address under the uniqueness rule, with no retry path. **Fixed**: both calls now run inside one `DB::transaction()`.
+3. **No audit trail for the highest-volume role grant in the product.** `RoleAssignmentService::assign()` writes an `AuditLog` row for every other grant; the direct `assignRole()` call here wrote none. **Fixed**: an `AuditLog` row (`AuditAction::ROLE_ASSIGNED`, `actor_id: null` — the column is nullable for exactly this "no human actor" case) now accompanies the registration-time grant. The one-time backfill migration deliberately does **not** get a per-row audit write — its own existence in version control is that event's record, and auditing a potentially large historical catch-up the same way as an ongoing path was judged disproportionate.
+4. **The backfill's lifecycle filter was missing two sibling columns.** It checked `anonymized_at` alone; `RoleAssignmentService::remainingAdminCountExcluding()` checks `deleted_at`, `suspended_at` and `anonymized_at` together as one unit. Without the other two, a roleless user who had been suspended or soft-deleted — invisible to the reviewer directory today only as an accident of holding no role at all — would have been handed `member` and made visible. **Fixed**: the migration now checks all three.
+
+Two more were fixed as cheap, directly-adjacent hygiene rather than full remediation: a comment cross-referencing `App\Support\Onboarding::currentStep()` was added to `scopeReviewerCandidates()`, flagging that `whereNotNull('username')` tests "finished onboarding step 1," not "finished onboarding" — the two only coincide because step 1 currently writes `username`/`first_name`/`last_name` together; and `VoiceWhisperSmokeSeedCommand`'s two factory-created users were given usernames (capped at 30 chars, so a short random suffix, not a full UUID, which would have overflowed the column) so they don't silently become unreachable through the directory the way a roleless or usernameless factory user now would.
+
+**Not fixed, deliberately, to avoid scope creep beyond "assign the role at registration":**
+- `RoleAssignmentService` has no system-actor variant (an `assignSystem()` that writes an audited grant with no human actor). Two call sites (this one and the migration) now independently justify bypassing the service with hand-written comments citing the same reasoning. A real method would centralize it; building one is a bigger decision than this item's scope and is flagged here as a follow-up rather than built silently mid-task.
+- The migration's per-row `assignRole()` loop costs roughly 3 queries per user instead of ~1 per chunk via a bulk insert. One-time cost, flagged by the efficiency agent itself as "not urgent."
+- **The production deploy pipeline risk, corroborated by three independent review angles**: `scripts/deploy.sh` runs `php artisan migrate --force` and never `db:seed`, so if a fresh environment's role rows were never seeded, the *first* real `/register` call — or this migration, at deploy time — throws `RoleDoesNotExist`. The transaction fix (point 2 above) already turns the worst consequence (a permanently stuck email address) into a clean rollback that can be retried once roles exist. Actually seeding roles in production is a deploy-infrastructure decision outside this repo's visible scope (the real provisioning script lives in a sibling repo not present here) and is not something to patch silently alongside a feature commit — **flagged here for the maintainer to confirm roles are seeded on every target before this ships**, not fixed in code.
+
+Validated independently after every round of fixes, not just once: `php -d memory_limit=-1 vendor/bin/pest` — 645/647 passing, 2 pre-existing skips, 0 failures; `php -d memory_limit=-1 vendor/bin/phpstan analyse` on all four touched/new files — 0 errors.
 
 ---
 
@@ -708,7 +730,7 @@ Both are current defects in shipped code. Neither belongs to a plan above; both 
 
 | Item | Plan needed? | Shape | Blocked by |
 |---|---|---|---|
-| §7.1 member role | no | 2 files + backfill + 1 test. Zero test breakage (C7) | — |
+| §7.1 member role | ✅ **shipped** | 2 files + backfill + 1 test, plus 4 review-driven fixes (false precedent comment, transaction, audit write, lifecycle columns) and 2 hygiene fixes. 645/647 pest, 0 phpstan | — |
 | §7.2 roster + revoke | **re-scoped here** | 1 new endpoint, 1 resource, 4 audit writes, 1 notification, 2 components | — |
 | §7.3 notification layer | no | 1 new class + 1 url helper + 4 dead links + 3 missing bell cases | — |
 | §7.4 feedback visible | no | 1 default, badges, localStorage | §7.2 (seam 1) |

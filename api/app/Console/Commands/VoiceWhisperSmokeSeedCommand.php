@@ -46,9 +46,20 @@ class VoiceWhisperSmokeSeedCommand extends Command
 
         try {
             [$assetId, $annotationId, $speechId] = DB::transaction(function () use ($temporaryPath, $fixtureBytes): array {
-                $speaker = User::factory()->create();
+                // `username` set on both: `scopeReviewerCandidates()` now
+                // requires `whereNotNull('username')` (User.php, §7.1), and
+                // while this command wires `$coach->id` onto the review
+                // directly rather than through the directory, a factory
+                // user with no username is a latent landmine for any
+                // future assertion that does go through it. `username` is
+                // unique AND capped at 30 chars (users migration) — an
+                // 8-char random suffix, not a fixed literal or a full
+                // `Str::uuid()`, stays well under that limit while still
+                // avoiding a collision if this command ever runs twice
+                // without the DB being reset in between.
+                $speaker = User::factory()->create(['username' => 'vs-spk-'.Str::random(8)]);
                 $speaker->assignRole('member');
-                $coach = User::factory()->create(['storage_bytes_used' => strlen($fixtureBytes)]);
+                $coach = User::factory()->create(['storage_bytes_used' => strlen($fixtureBytes), 'username' => 'vs-coach-'.Str::random(8)]);
                 $coach->assignRole('coach');
                 $speech = Speech::factory()->for($speaker)->create();
                 $review = Review::factory()->accepted()->create([

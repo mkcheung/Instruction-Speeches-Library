@@ -85,6 +85,26 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     {
         $query->role(['member', 'coach']);
 
+        // `first_name`/`last_name`/`username` are all nullable and are only
+        // populated at onboarding step 1 (2026_08_07_004005_add_identity_
+        // columns_to_users_table.php:24-30) — a user who registers and
+        // never finishes onboarding already clears `role(['member',
+        // 'coach'])` (CreateNewUser.php assigns `member` at registration)
+        // and would otherwise surface here with a blank
+        // `ReviewerDirectoryResource` display name and no resolvable
+        // `/u/{username}` profile. Exclude them at the source rather than
+        // patching the resource.
+        //
+        // This tests "finished step 1" specifically, not "finished
+        // onboarding" (step 4, `profiles.onboarding_completed_at` —
+        // App\Support\Onboarding::currentStep()) — the two currently
+        // coincide only because `username`/`first_name`/`last_name` are
+        // all written together in one step-1 request. If that step is
+        // ever split, re-check this against `Onboarding::currentStep()`
+        // rather than assuming `username` alone still implies a
+        // displayable profile.
+        $query->whereNotNull('username');
+
         if ($search !== null && $search !== '') {
             $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
             $query->where(function (Builder $q) use ($like) {

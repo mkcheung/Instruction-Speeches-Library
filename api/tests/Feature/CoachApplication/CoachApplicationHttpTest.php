@@ -105,7 +105,12 @@ it('a coach approval routes through RoleAssignmentService and reaches the review
     $this->seed(RoleSeeder::class);
     $admin = User::factory()->create();
     $admin->assignRole('admin');
-    $member = User::factory()->create();
+    // Onboarded (has a username) — `scopeReviewerCandidates()` now
+    // requires `whereNotNull('username')` (User.php) so a directory row
+    // always has a resolvable `/u/{username}` profile; this test is about
+    // coach approval reaching the directory, not about the onboarding
+    // gate, so give the member the username that gate expects.
+    $member = User::factory()->create(['username' => 'reviewercandidate']);
     $member->assignRole('member');
 
     $this->actingAs($member)->postJson('/api/coach-applications', ['statement' => 'Statement.'])->assertCreated();
