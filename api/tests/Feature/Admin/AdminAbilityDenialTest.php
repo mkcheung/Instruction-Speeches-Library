@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Report;
+use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
 use App\Support\Role;
@@ -334,4 +335,55 @@ it('denies a speech owner takedown and restore on their own speech', function ()
 
     expect(Gate::forUser($owner)->allows('speech.takedown', $speech))->toBeFalse();
     expect(Gate::forUser($owner)->allows('speech.restore', $speech))->toBeFalse();
+});
+
+/**
+ * §7.2.5: `review.revoke`/`review.purge` are `Gate::define`d
+ * (AppServiceProvider.php:165-166) but were absent from
+ * `$mustFallThrough`, so an admin was short-circuited to `true` before
+ * `ReviewPolicy::revoke`/`purge` ever ran — inert today, since those
+ * policy methods already grant admin-tier, but a live hole the moment
+ * any future condition (e.g. a mandatory reason) moves into the policy.
+ * Same shape and same caveat as the test above: the admin/super_admin
+ * grants cannot distinguish the bypass from the real policy on their
+ * own (both produce `true` here), so the non-admin-stranger denial below
+ * is the load-bearing assertion that a real, model-bound policy is
+ * actually wired up and answering.
+ */
+it('grants review.revoke and review.purge to both admin tiers and denies a non-owner non-admin stranger', function () {
+    $this->seed(RoleSeeder::class);
+
+    $admin = User::factory()->create();
+    $admin->assignRole(Role::ADMIN);
+
+    $superAdmin = User::factory()->create();
+    $superAdmin->assignRole(Role::SUPER_ADMIN);
+
+    $stranger = User::factory()->create();
+    $stranger->assignRole(Role::MEMBER);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole(Role::MEMBER);
+    $coach = User::factory()->create();
+    $coach->assignRole(Role::MEMBER);
+    $speech = Speech::factory()->for($speaker)->create();
+    $review = Review::factory()->create([
+        'speech_id' => $speech->id,
+        'speech_owner_id' => $speaker->id,
+        'reviewer_id' => $coach->id,
+        'status' => 'accepted',
+    ]);
+
+    foreach ([$admin, $superAdmin] as $moderator) {
+        expect(Gate::forUser($moderator)->allows('review.revoke', $review))->toBeTrue();
+        expect(Gate::forUser($moderator)->allows('review.purge', $review))->toBeTrue();
+    }
+
+    expect(Gate::forUser($stranger)->allows('review.revoke', $review))->toBeFalse();
+    expect(Gate::forUser($stranger)->allows('review.purge', $review))->toBeFalse();
+
+    // The speech owner (not an admin) is granted by the real policy too
+    // — confirms the ability is reachable at all for the ordinary case.
+    expect(Gate::forUser($speaker)->allows('review.revoke', $review))->toBeTrue();
+    expect(Gate::forUser($speaker)->allows('review.purge', $review))->toBeTrue();
 });

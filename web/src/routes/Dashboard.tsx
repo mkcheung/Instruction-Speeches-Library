@@ -1,17 +1,20 @@
 import type { ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { FormBanner } from '@/components/ui/form-message'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import {
+  useAbandonReviewMutation,
   useAcceptReviewMutation,
   useDeclineReviewMutation,
   useListMyReviewsQuery,
+  useWithdrawReviewMutation,
 } from '@/features/review/reviewApi'
 import type { Review } from '@/features/review/types'
 import { hasRole } from '@/lib/roles'
+import { formatTimestamp } from '@/lib/time'
 import { PageHeader, PageShell } from '@/components/layout/PageShell'
 
 /**
@@ -77,7 +80,13 @@ export default function Dashboard() {
 
       <DashboardSection title="In progress" empty="Nothing in progress.">
         {inProgress.map((review) => (
-          <ReviewCard key={review.id} review={review} timestampLabel="Started" timestamp={review.last_transition_at} />
+          <ReviewCard
+            key={review.id}
+            review={review}
+            timestampLabel="Started"
+            timestamp={review.last_transition_at}
+            showExitActions
+          />
         ))}
       </DashboardSection>
 
@@ -124,22 +133,66 @@ function DashboardSection({
   )
 }
 
-function formatTimestamp(value: string | null) {
-  if (!value) return null
-  return new Date(value).toLocaleString()
-}
-
 function ReviewCard({
   review,
   timestampLabel,
   timestamp,
   readOnly,
+  showExitActions,
 }: {
   review: Review
   timestampLabel: string
   timestamp: string | null
   readOnly?: boolean
+  /** IMPLEMENTATION-PLANS.md §7.2.4/§7.2.6: Withdraw + Abandon, only on
+   * the "In progress" section's cards (`accepted`/`in_progress` —
+   * `ReviewService::abandon`'s own guard, and `withdraw`'s guard is a
+   * superset that also covers `invited`, which this section never shows
+   * anyway). Deliberately NOT on "Invitations awaiting response" — see
+   * `InvitationCard`'s own comment below for why Withdraw doesn't belong
+   * there (identical outcome to Decline, minus the notification). */
+  showExitActions?: boolean
 }) {
+  const navigate = useNavigate()
+  const [withdraw, { isLoading: isWithdrawing }] = useWithdrawReviewMutation()
+  const [abandon, { isLoading: isAbandoning }] = useAbandonReviewMutation()
+  const busy = isWithdrawing || isAbandoning
+  const speechId = review.speech?.id
+
+  // IMPLEMENTATION-PLANS.md §7.2.6's traced bug: on THIS page a stale
+  // `Speech` cache isn't visible (Dashboard never reads `speechApi` at
+  // all), but the mutation's own cross-slice invalidation still needs to
+  // fire so a coach who clicks through to `/speeches/:id` afterward (or
+  // who had it open in another tab) gets the honest 403 rather than a
+  // stale page. Navigating to `/dashboard` here is a no-op in terms of
+  // location (we're already here) but kept for symmetry with the
+  // composer's call site, which is NOT a no-op there.
+  //
+  // code-review finding: this used to bail out with `if (!speechId)
+  // return` — silently doing nothing — when `review.speech` came back
+  // null (a taken-down speech's still-active review, since this list
+  // doesn't eager-load `withTrashed()`). That's exactly the case the
+  // button is now reachable for (see the render guard below), so the
+  // action itself must not depend on `speechId`; only the cache
+  // invalidation inside the mutation does, and that's already optional.
+  const handleWithdraw = async () => {
+    try {
+      await withdraw({ id: review.id, speechId }).unwrap()
+      navigate('/dashboard')
+    } catch {
+      // Left on the dashboard with the stale card — the user can retry.
+    }
+  }
+
+  const handleAbandon = async () => {
+    try {
+      await abandon({ id: review.id, speechId }).unwrap()
+      navigate('/dashboard')
+    } catch {
+      // Left on the dashboard with the stale card — the user can retry.
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -178,15 +231,52 @@ function ReviewCard({
             Revoked cards get a line instead of a link, so the coach learns
             without having to click into a refusal. Copy says nothing about
             why — see the plan's §1 Option A. */}
-        {!readOnly && review.speech?.id && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="self-start"
-            render={<Link to={`/speeches/${review.speech.id}`} />}
-          >
-            Watch
-          </Button>
+        {/* code-review finding: Withdraw/Abandon used to live nested
+            inside this `review.speech?.id` check, which exists only to
+            guard the Watch link's `to={}` target. That meant a coach
+            whose review's `speech` relation came back null (e.g. an
+            admin takes a speech down while the review is still active —
+            `ReviewController::index` doesn't eager-load `withTrashed()`)
+            silently lost BOTH exit actions with no other path off the
+            review: `SpeechWatch`'s composer footer, the only other place
+            Abandon lives, isn't reachable for a taken-down speech either.
+            The two concerns are independent now — Watch needs a speech
+            id, Withdraw/Abandon need a review id, which always exists. */}
+        {!readOnly && (review.speech?.id || showExitActions) && (
+          <div className="flex items-center gap-2">
+            {review.speech?.id && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="self-start"
+                render={<Link to={`/speeches/${review.speech.id}`} />}
+              >
+                Watch
+              </Button>
+            )}
+            {showExitActions && (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => void handleWithdraw()}
+                >
+                  {isWithdrawing ? 'Withdrawing…' : 'Withdraw'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  disabled={busy}
+                  onClick={() => void handleAbandon()}
+                >
+                  {isAbandoning ? 'Abandoning…' : 'Abandon'}
+                </Button>
+              </>
+            )}
+          </div>
         )}
         {readOnly && (
           <p className="text-sm text-muted-foreground">This speech isn&rsquo;t available to open.</p>

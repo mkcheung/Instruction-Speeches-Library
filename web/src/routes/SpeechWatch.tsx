@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { InviteReviewerPanel } from '@/components/review/InviteReviewerPanel'
+import { ReviewerRoster } from '@/components/review/ReviewerRoster'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
@@ -474,6 +475,15 @@ export default function SpeechWatch() {
               panel resets itself via "Invite someone else" after a
               successful send. */}
           <TabsPanel value="reviewers" keepMounted>
+            {/* IMPLEMENTATION-PLANS.md §7.2.6: the roster goes ABOVE the
+                invite panel — a speaker checking in on existing reviewers
+                is the more common path into this tab than inviting a new
+                one, and the invite form staying "two inches below" (§7.2.4)
+                is exactly what keeps re-invite deferrable without feeling
+                like a dead end. */}
+            <div className="mb-6">
+              <ReviewerRoster speechId={speechId} />
+            </div>
             <InviteReviewerPanel
               speechId={speechId}
               supersedesId={speech.supersedes?.id}

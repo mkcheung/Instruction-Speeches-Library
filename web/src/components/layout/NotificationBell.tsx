@@ -76,6 +76,15 @@ function describe(notification: Notification): string {
       return 'Your account was suspended'
     case 'user.deleted':
       return 'Your account was deleted'
+    // IMPLEMENTATION-PLANS.md §7.2.5: the one notification §7.2 ships —
+    // to the reviewer, on `revoke`/`revokeAndPurge` only (withdraw/
+    // abandon are the reviewer's own acts, so they get none). `purged`
+    // changes the verb since a purge also destroys the reviewer's own
+    // notes/essay, not just the access grant.
+    case 'review.access_revoked':
+      return notification.data.purged
+        ? `Your access to "${speech}" was removed, and your notes on it were deleted.`
+        : `Your access to "${speech}" was removed.`
     default:
       return speech
   }

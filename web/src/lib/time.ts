@@ -23,3 +23,16 @@ export function formatSpokenTimecode(totalSeconds: number): string {
   const secondPart = `${seconds} second${seconds === 1 ? '' : 's'}`
   return minutes > 0 ? `${minutePart} ${secondPart}` : secondPart
 }
+
+/**
+ * code-review finding (§7.2 max review): a wall-clock ISO timestamp
+ * formatter, not a video-position one like the two above — grouped here
+ * anyway as this file's natural home for "time formatting shared across
+ * routes/components" rather than adding a third near-duplicate home.
+ * Previously copied byte-for-byte into both `Dashboard.tsx` and
+ * `ReviewerRoster.tsx`.
+ */
+export function formatTimestamp(value: string | null): string | null {
+  if (!value) return null
+  return new Date(value).toLocaleString()
+}

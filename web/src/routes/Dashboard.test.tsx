@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import Dashboard from '@/routes/Dashboard'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import type { Review } from '@/features/review/types'
@@ -10,6 +11,10 @@ function jsonResponse(body: unknown, status = 200) {
 
 function urlOf(input: RequestInfo | URL): string {
   return input instanceof Request ? input.url : input.toString()
+}
+
+function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
+  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
 }
 
 /** A `GET /api/reviews` row, trimmed to the fields `ReviewCard` reads. */
@@ -62,9 +67,13 @@ function stubReviews(
   },
   me: ReturnType<typeof meResponse> = meResponse(),
 ) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = urlOf(input)
+    if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
     if (url.includes('/api/me')) return jsonResponse(me)
+    if (/\/api\/reviews\/\d+\/(withdraw|abandon)$/.test(url) && methodOf(input, init) === 'POST') {
+      return jsonResponse({ review: { id: 1, status: url.endsWith('withdraw') ? 'declined' : 'abandoned' } })
+    }
     if (url.includes('/api/reviews')) {
       return jsonResponse({
         invited: sections.invited ?? [],
@@ -189,5 +198,74 @@ describe('Dashboard', () => {
 
     expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
     expect(screen.queryByText('Email verified.')).not.toBeInTheDocument()
+  })
+
+  /**
+   * IMPLEMENTATION-PLANS.md §7.2.4: Withdraw + Abandon only belong on
+   * "In progress" — never on "Invitations awaiting response" (Withdraw
+   * there would be an identical outcome to the existing Decline button,
+   * minus the notification — §7.2.6) and never on the already-closed
+   * Published/Revoked sections.
+   */
+  it('offers Withdraw and Abandon only on an in-progress review, not on an invitation, published, or revoked review', async () => {
+    stubReviews({
+      invited: [review({ id: 1, status: 'invited', responded_at: null })],
+      in_progress: [review({ id: 2, status: 'accepted' })],
+      published: [review({ id: 3, status: 'published', last_published_at: '2026-09-03T10:00:00Z' })],
+      revoked: [review({ id: 4, status: 'published', revoked_at: '2026-09-04T10:00:00Z' })],
+    })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    await screen.findByRole('heading', { name: 'My reviews' })
+
+    expect(screen.getAllByRole('button', { name: /^withdraw$/i })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /^abandon$/i })).toHaveLength(1)
+  })
+
+  /**
+   * code-review finding (§7.2 max review): Withdraw/Abandon used to live
+   * nested inside the same `review.speech?.id` check that gates the
+   * Watch link, so a review whose `speech` relation comes back null (an
+   * admin takes a speech down while a coach's review on it is still
+   * active — this list doesn't eager-load `withTrashed()`) silently lost
+   * BOTH exit actions with no other way off the review.
+   */
+  it('still offers Withdraw and Abandon on an in-progress review whose speech relation is null', async () => {
+    stubReviews({ in_progress: [review({ id: 2, status: 'accepted', speech: undefined })] })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    await screen.findByRole('heading', { name: 'My reviews' })
+
+    expect(screen.getByRole('button', { name: /^withdraw$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^abandon$/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^watch$/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking Withdraw on an in-progress review posts to /withdraw with the review id', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubReviews({ in_progress: [review({ id: 2, status: 'accepted' })] })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    await user.click(await screen.findByRole('button', { name: /^withdraw$/i }))
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => urlOf(input).endsWith('/api/reviews/2/withdraw'))).toBe(
+        true,
+      ),
+    )
+  })
+
+  it('clicking Abandon on an in-progress review posts to /abandon with the review id', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubReviews({ in_progress: [review({ id: 2, status: 'in_progress' })] })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    await user.click(await screen.findByRole('button', { name: /^abandon$/i }))
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([input]) => urlOf(input).endsWith('/api/reviews/2/abandon'))).toBe(
+        true,
+      ),
+    )
   })
 })

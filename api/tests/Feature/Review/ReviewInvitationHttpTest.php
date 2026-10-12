@@ -424,7 +424,7 @@ it('returns a purged reviewer to stranger status with a 404, since revokeAndPurg
     // Documents the one residual distinguishability the 403 introduces:
     // revoked -> 403 (row survives), revoke-and-purged -> 404 (row gone).
     // That discloses the purge, not the revocation, and is deliberate.
-    $reviews->revokeAndPurge($review->fresh(), $speaker);
+    $reviews->revokeAndPurge($review->fresh(), $speaker, 'purge test');
 
     $this->actingAs($reviewer)->getJson("/api/speeches/{$speech->id}")->assertNotFound();
 });

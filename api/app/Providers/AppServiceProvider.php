@@ -305,6 +305,14 @@ class AppServiceProvider extends ServiceProvider
             static $mustFallThrough = [
                 'review.accept', 'review.decline', 'review.publish',   // coaching is an act
                 'review.withdraw', 'review.abandon',                   // ditto — reviewer-only acts
+
+                // §7.2.5: both are Gate::define'd (above) but were absent
+                // from this list, so an admin was short-circuited to `true`
+                // before ReviewPolicy::revoke/purge ever ran. Inert today —
+                // the policy grants admin-tier anyway — but it becomes a
+                // live hole the moment any future condition (e.g. a
+                // mandatory reason) moves into the policy itself.
+                'review.revoke', 'review.purge',
                 'speech.invite',                                       // ownership, not an admin power
                 'annotation.create', 'voice.create', 'voice.retryTranscript', 'voice.updateTranscript', 'voice.restore', 'voice.delete', 'annotation.update', 'annotation.delete',
                 'review.clearAnnotations',                             // STEP-07: never an admin power either

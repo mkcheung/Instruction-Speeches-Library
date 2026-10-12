@@ -117,3 +117,36 @@ export interface PublishReviewResponse {
   published_count: number
   review: Review
 }
+
+/**
+ * IMPLEMENTATION-PLANS.md §7.2.3/§7.2.5 — `GET /api/speeches/{speech}/
+ * review-roster`'s `ReviewRosterResource`, typed against the spec since
+ * the backend half of this feature is being built in a separate worktree
+ * and doesn't exist here to verify against live. Everything `Review` has
+ * except `speech` (redundant — this endpoint is already speech-scoped),
+ * plus the two counter-cache display counts and `revoked_by_is_self`.
+ * `reviewer` is NOT optional here, unlike on `Review` — the roster
+ * endpoint always eager-loads it (§7.2.5: "Copy `ReviewResource:67-74`'s
+ * erased-reviewer block with its comment, don't re-derive it" — so an
+ * erased reviewer still arrives as `{ display_name: 'Former reviewer' }`,
+ * never `null`/`undefined`).
+ */
+export interface RosterReview extends Omit<Review, 'speech' | 'reviewer'> {
+  reviewer: {
+    id?: number
+    username?: string
+    name?: string
+    display_name?: string
+  }
+  annotations_count: number
+  published_annotations_count: number
+  /** True only if `revoked_at` is set AND the current speaker caused it.
+   * False in every other case — including "not revoked at all" — so this
+   * must always be read alongside `revoked_at`, never on its own. Never
+   * exposes which OTHER party (e.g. an admin) revoked it. */
+  revoked_by_is_self: boolean
+}
+
+export interface ReviewRosterResponse {
+  reviews: RosterReview[]
+}
