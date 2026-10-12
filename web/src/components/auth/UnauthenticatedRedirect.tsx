@@ -23,6 +23,34 @@ const GUEST_PATHS = ['/login', '/register', '/forgot-password']
 const PUBLIC_PATHS = ['/u/']
 
 /**
+ * Both entries here are the same shape of problem `PUBLIC_PATHS` exists
+ * for, discovered the same way — a route fires `useGetMeQuery()`
+ * unconditionally, so every anonymous visit 401s:
+ *
+ * - `/` (§7.9's landing page) needs to probe the session to redirect an
+ *   already-authenticated visitor onward.
+ * - `/verify` (`VerifyEmail.tsx`) has a real, designed branch for exactly
+ *   this case — "You're not logged in on this device... it works
+ *   cross-device" — that was unreachable: the 401 fired and redirected to
+ *   `/login` before React ever rendered it. code-review finding, found
+ *   the same day as the `/` case by the same mechanism, after `/` was
+ *   already fixed — the first fix was scoped to the one route it was
+ *   written for rather than generalized, and this is the predicted cost
+ *   of that (see this file's own `PUBLIC_PATHS`/`GUEST_PATHS` arrays,
+ *   which have the identical "can't see the route table" limitation).
+ *
+ * Neither can just join `PUBLIC_PATHS` above: that array is matched with
+ * `.startsWith()`, and `'/anything'.startsWith('/')` is true for every
+ * route in the app — adding `/` there would disable this component's
+ * redirect for the entire SPA, not exempt one route. Checked by exact
+ * equality instead, below. (`/verify` would be safe as a `.startsWith()`
+ * prefix too, since nothing is nested under it — kept here instead of
+ * splitting it across both arrays, so there is exactly one place that
+ * means "this exact path, no descendants.")
+ */
+const EXACT_PUBLIC_PATHS = ['/', '/verify']
+
+/**
  * Defense-in-depth for the 401 path: `RequireAuth` catches the common case
  * (session already gone when a protected route mounts), but a session can
  * also expire mid-session — e.g. a mutation on the onboarding form 401s
@@ -56,6 +84,7 @@ export function UnauthenticatedRedirect() {
     function handleUnauthenticated() {
       if (GUEST_PATHS.some((path) => location.pathname.startsWith(path))) return
       if (PUBLIC_PATHS.some((path) => location.pathname.startsWith(path))) return
+      if (EXACT_PUBLIC_PATHS.includes(location.pathname)) return
       dispatch(authApi.util.resetApiState())
       dispatch(profileApi.util.resetApiState())
       navigate('/login', { state: { from: location }, replace: true })

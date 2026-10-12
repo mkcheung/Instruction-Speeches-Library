@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -125,6 +126,22 @@ export function NotificationBell() {
                 const onVisit = () => !notification.read_at && markRead(notification.id)
                 const url = notification.data.url
                 const routerPath = url ? toRouterPath(url) : null
+                // code-review finding: a native <a> only activates on
+                // Enter, not Space — every other interactive control on
+                // this row (and in this app) activates on both, via the
+                // `Button` primitive. Not swapping to `Button` here: its
+                // variant classes assume a fixed-height, centered control,
+                // which conflicts with this row's left-aligned, can-wrap
+                // text styling — would need most of them reset anyway.
+                // `.click()` re-fires the same click path (this `onClick`
+                // AND react-router's own `Link` handler), so Space and
+                // Enter end up identical without touching layout at all.
+                const activateOnSpace = (event: KeyboardEvent<HTMLAnchorElement>) => {
+                  if (event.key === ' ') {
+                    event.preventDefault()
+                    event.currentTarget.click()
+                  }
+                }
 
                 return (
                   <li key={notification.id}>
@@ -137,7 +154,12 @@ export function NotificationBell() {
                      * with nowhere to send the user.
                      */}
                     {routerPath ? (
-                      <Link to={routerPath} onClick={onVisit} className={cn(rowClassName, 'block')}>
+                      <Link
+                        to={routerPath}
+                        onClick={onVisit}
+                        onKeyDown={activateOnSpace}
+                        className={cn(rowClassName, 'block')}
+                      >
                         {describe(notification)}
                       </Link>
                     ) : (

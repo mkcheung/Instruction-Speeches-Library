@@ -29,8 +29,13 @@ export interface Notification {
     type: NotificationType | string
     review_id?: number
     speech_id?: number
-    speech_title?: string
-    actor_name?: string
+    // `| null`, not just `| undefined` — same reason as `url` below.
+    // `ReviewAccepted`/`ReviewDeclined`/`ReviewPublished` send explicit
+    // `'speech_title' => $speech?->title` and
+    // `'actor_name' => $reviewer !== null ? trim(...) : null`, both real
+    // `null` wire values once the speech/reviewer is gone, not absent keys.
+    speech_title?: string | null
+    actor_name?: string | null
     // STEP-15: the backend now emits a navigable `url` on every
     // notification's payload, not just new types — optional because
     // older rows (and any type we haven't accounted for) may lack it.

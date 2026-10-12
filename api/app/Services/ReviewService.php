@@ -411,12 +411,25 @@ class ReviewService
      * `??=` below only tells you the column is non-null AFTER, which is
      * equally true on the first publish and every repeat call after it.
      *
-     * Gated on `$delta > 0` as well: a `publish()` call with nothing
-     * actually unpublished (every draft already published, or none ever
-     * written) still stamps `first_published_at` under this method's
-     * existing, pre-existing semantics — that stamping is left untouched
-     * — but firing "a coach published feedback" when zero annotations
-     * were published would tell the speech owner something false.
+     * Gated on `$delta > 0` as well, and that gate controls BOTH the
+     * notification AND the `first_published_at` stamp itself — a
+     * `publish()` call with nothing actually unpublished (every draft
+     * already published, or none ever written) must not fire "a coach
+     * published feedback" when zero annotations were published, since
+     * that would tell the speech owner something false.
+     *
+     * code-review finding: an earlier version of this method stamped
+     * `first_published_at` unconditionally on every call, including a
+     * zero-delta one. That correctly suppressed THAT call's own
+     * notification, but it also permanently poisoned every later call's
+     * `$wasFirstPublish` read — the review's actual first SUBSTANTIVE
+     * publish, whenever it happened, would find the column already
+     * non-null and silently never notify the speech owner either. A
+     * publish-nothing-then-publish-something sequence lost the
+     * notification for good, and neither existing test chained the two
+     * calls to catch it. Stamping only on `$delta > 0` (below) is what
+     * keeps that sequence correct: the first, empty call leaves the
+     * column null, so the second, real call still reads as "first."
      *
      * The notification itself is deferred with `DB::afterCommit`, matching
      * `accept`/`decline`/`invite` above, for the same reason their
@@ -454,7 +467,13 @@ class ReviewService
                 ->update(['published_at' => now()]);
 
             $locked->published_annotations_count += $delta;
-            $locked->first_published_at ??= now();
+            // Only stamp on a call that actually published something —
+            // see the method docblock's code-review note. Stamping
+            // unconditionally would make a zero-delta call permanently
+            // poison the NEXT call's `$wasFirstPublish` read.
+            if ($delta > 0) {
+                $locked->first_published_at ??= now();
+            }
             $locked->last_published_at = now();
             $locked->status = 'published';
             $locked->last_transition_at = now();

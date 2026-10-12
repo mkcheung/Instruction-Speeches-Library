@@ -355,3 +355,36 @@ it('does not send a second ReviewPublished notification on a subsequent incremen
 
     Notification::assertSentToTimes($speaker, ReviewPublished::class, 1);
 });
+
+/**
+ * code-review finding: an earlier version of `publish()` stamped
+ * `first_published_at` unconditionally, even on a zero-delta call — which
+ * correctly skipped THAT call's own notification but permanently poisoned
+ * the next call's `$wasFirstPublish` read, since the column was already
+ * non-null by then. This chains exactly the two calls neither test above
+ * does: a first publish with nothing to publish, followed by a real one.
+ */
+it('sends a ReviewPublished notification on the first SUBSTANTIVE publish, even after an earlier publish had nothing to publish', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $review = Review::factory()->for($speaker, 'speechOwner')->create([
+        'speech_owner_id' => $speaker->id,
+        'status' => 'in_progress',
+    ]);
+
+    // First call: nothing to publish yet. Must not notify — and must not
+    // foreclose the notification on the later call that actually has
+    // something to say.
+    app(ReviewService::class)->publish($review);
+    Notification::assertNothingSentTo($speaker);
+
+    // Now there's real content.
+    $review->refresh();
+    Annotation::factory()->for($review)->draft()->create();
+    $review->update(['annotations_count' => 1]);
+
+    app(ReviewService::class)->publish($review->fresh());
+
+    Notification::assertSentToTimes($speaker, ReviewPublished::class, 1);
+});

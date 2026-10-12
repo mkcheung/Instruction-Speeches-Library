@@ -43,7 +43,7 @@ Three conventions carried from the repo's own documents:
 |---|---|---|
 | **1 — unblock** | ✅ §7.1 **DONE** (commit pending in this same batch) | Nothing else matters while the only discovery surface returns nothing. Shipped as three lines + a backfill, as planned — plus four review-driven fixes beyond the original plan (§7.1's own section has the detail). |
 | **2 — close the promise** | §7.2, ✅ §7.3 **DONE (uncommitted)** | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
-| **3 — make it legible** | §7.4, §7.9 | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2** (§13 seam 1). |
+| **3 — make it legible** | §7.4, ✅ §7.9 **DONE (uncommitted)** | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2** (§13 seam 1). |
 | **4 — trust and law** | §7.5 | Owner speech delete. Highest-risk item, and **specified in the plan already** (§7.5 §1) — which changes the design from the one the UX review recommended. |
 | **5 — the scheduled step** | §7.7 | This *is* STEP-15, which is next in `STEPS.md` anyway. Carries two acceptance criteria that cannot be met as written. |
 | **6 — small, independent** | §7.8, §7.10 | Fit alongside anything. §7.10 needs no migration after all. |
@@ -237,7 +237,7 @@ Validated independently after every round of fixes: `php -d memory_limit=-1 vend
 
 ---
 
-## §7.9 A real landing page 🟡
+## §7.9 A real landing page 🟡 ✅ **DONE (uncommitted)**
 
 **Why:** `web/src/routes/Home.tsx:5` renders *"Frontend foundation is up."* `/` is registered unguarded at `App.tsx:57`. Nothing in the app ever links there — a grep for navigation to `/` returns zero hits and logout goes to `/login` (`LogoutButton.tsx:55`) — so it is reached **only** from outside: the bare domain typed or bookmarked, a shared root link, an external referral. It is pure first-impression traffic.
 
@@ -250,7 +250,42 @@ Four things the page must say:
 
 **Change:** `web/src/routes/Home.tsx` only. Reuse `PageShell` and the existing `ui/` primitives — no new components, and explicitly **not** the designer-led visual pass `STEP-15` excludes by scope. Redirect an authenticated visitor to `/dashboard`, consistent with `getPostLoginDestination` in `web/src/lib/roles.ts`.
 
-**Risk:** none. One file, no logic.
+**Risk:** turned out not to be none — see below.
+
+### Shipped: what actually landed, and the review that changed the risk assessment
+
+Implemented by two parallel subagents (page content + redirect logic; test coverage), working against the same spec in isolated worktrees — both finished clean on the first merge: `npx tsc -b` clean, all 5 of the test agent's tests passing against the implementation agent's `Home.tsx` with no reconciliation needed, and the full suite green (378/378) before review even started.
+
+**The `high`-effort, 8-angle code review then found a bug severe enough to invalidate the plan's own "Risk: none."** Five independent finder agents converged on it from different angles (reuse, altitude, a cross-file tracer, and two line-by-line scans):
+
+`Home.tsx` correctly calls `useGetMeQuery()` to redirect an already-authenticated visitor onward (mirroring `RequireGuest`'s pattern, as planned). But `/` is wrapped in `RootLayout`, which mounts `<UnauthenticatedRedirect />` globally — a defense-in-depth listener that force-navigates to `/login` on **any** 401, anywhere in the app, *unless* the current path is in one of two allowlists (`GUEST_PATHS`, `PUBLIC_PATHS`). `/` was in neither. So for a logged-out visitor — the exact audience this page exists for — `useGetMeQuery()`'s 401 would fire that listener and bounce them to `/login` before they ever saw a word of the landing copy. **The page this task built was unreachable by its intended audience.** `Home.test.tsx` never caught this because it renders `Home` in isolation, with no `UnauthenticatedRedirect` in the tree — the bug lived entirely in the *interaction* between two files, neither of which was wrong in isolation.
+
+**Fixed**, immediately — this is load-bearing for §7.9 itself, not a tangential drive-by: added an `EXACT_PUBLIC_PATHS = ['/']` allowlist to `web/src/components/auth/UnauthenticatedRedirect.tsx`, checked with `.includes()`, **not** `.startsWith()` like the other two lists — `'/anything'.startsWith('/')` is true for every route in the app, so adding `/` as a prefix would have silently disabled this component's entire redirect, not exempted one route. A new `UnauthenticatedRedirect.test.tsx` pins three things: `/` is exempt; a genuinely protected route (`/dashboard`) still redirects; and a route that merely *starts with* `/` (`/weird`) still redirects too — the regression a prefix-based "fix" would have caused. Confirmed the test actually catches the original bug by stashing the fix and re-running: fails as expected, passes once restored.
+
+**Four more findings came out of the same review, all real, all about already-committed §7.3 code, none fixed here** — fixing them would mean re-opening a different, already-landed commit inside this one, which these findings don't justify:
+- **`ReviewService::publish()` can permanently suppress its own notification.** `first_published_at ??= now()` stamps the column even on a zero-delta call (correctly not notifying, per §7.3's own fix) — but that stamp means the review's actual *first substantive* publish, whenever it later happens, reads `first_published_at` as already non-null and never notifies the speech owner either. A publish-nothing-then-publish-something sequence silently loses the notification for good. Neither of §7.3's two tests chains the two calls, so nothing caught it.
+- **`CoachApplicationApproved`'s link goes to a page that can't show what it promises.** Both the mail action and the `toDatabase()` `url` point at `/profile` (the private edit form); the Coach badge this notification announces only renders on the public `/u/:username` page. The §7.3 docblock asserted this destination "is correct" without checking the frontend.
+- **`NotificationBell`'s new `<Link>` rows lost keyboard-Space activation.** They render as a bare `<a>` instead of this codebase's established `<Button render={<Link to="..." />}>` idiom (the exact pattern `Home.tsx` itself uses for Register/Log in) — so Space no longer activates a notification row with a destination, where it does on every other interactive control in the app.
+- **The §7.3 fixture test never exercises the `Link` branch for 5 of the 9 notification types that actually carry a `url`** in production (`review.invited/accepted/declined/published`, `coach_application.approved`) — only `review.published` gets a dedicated url-rendering test. A future break in `toRouterPath` for any of the other four would pass the full suite.
+
+Two DRY observations, also not fixed, flagged as follow-ups: `Home.tsx`'s auth-redirect block (spinner, effect, three-branch return) is a near-line-for-line copy of `RequireGuest` in `AuthShell.tsx`, with no shared hook extracted — the two have already drifted once (`RequireGuest`'s `?verified=1` passthrough isn't in `Home.tsx`, though verified independently that this doesn't matter today since nothing ever redirects to `/?verified=1`); and `ReviewService.php` now has four near-identical lock/notify blocks across `invite`/`accept`/`decline`/`publish` with no shared helper, the same observation §7.3's own review made and deferred.
+
+Validated independently after the fix: `npx tsc -b` — clean; full `npx vitest run` — 381/381 passing (up from 378, the three new `UnauthenticatedRedirect` tests).
+
+### A second review pass (`/code-review max --fix`), and the six fixes it produced
+
+A maximum-effort, multi-angle review (9 finder agents, one lost to a session interruption) was run against everything still uncommitted at that point — §7.3's and §7.9's combined diff. RBAC came back clean across every angle that checked it (no new ability string, no cross-tenant leak, no stale-recipient risk — verified independently per-finding). Six real, well-corroborated bugs were fixed:
+
+1. **`ReviewService::publish()`'s notification-suppression bug, now actually fixed.** The `$delta > 0` gate from the first review round correctly suppressed the notification on a zero-annotation call — but still stamped `first_published_at` unconditionally, which permanently poisoned the *next* call's `$wasFirstPublish` read. A publish-nothing-then-publish-something sequence lost the notification for good. Fixed by gating the stamp itself on `$delta > 0`, not just the notification; a new test chains exactly that sequence.
+2. **`/verify` had the identical bug `/` had.** `VerifyEmail.tsx` fires `useGetMeQuery()` unconditionally and has a real, designed branch for an anonymous cross-device visitor ("you're not logged in on this device... it works cross-device") that was unreachable — `UnauthenticatedRedirect` bounced to `/login` before React ever rendered it. Added to `EXACT_PUBLIC_PATHS` alongside `/`, with its own regression test.
+3. **`CoachApplicationApproved` linked to a page that can't show what it promises.** Fixed to link to the recipient's own public profile (`/u/{username}`), where the Coach badge actually renders, falling back to `/profile` only if they have no username yet.
+4. **Four more call sites were still hand-building the frontend origin after `FrontendUrl` was introduced to centralize exactly that.** `FortifyServiceProvider`'s `ResetPassword::createUrlUsing()`, `VerifyEmailResponse`'s post-verification redirect, and two Blade views (`auth/suspended.blade.php`, `errors/403.blade.php`) — all outside `app/Notifications/`, which is why the original pass missed them. All four now route through `FrontendUrl::to()`.
+5. **`NotificationBell`'s new `<Link>` rows lost keyboard-Space activation.** Fixed with a scoped `onKeyDown` that re-fires the same click path on Space — not a swap to the `Button` primitive, whose variant classes assume a fixed-height control and would have fought this row's left-aligned, wrap-capable layout.
+6. **Three notification mail bodies silently rendered a blank reviewer name.** `reviews.reviewer_id` is nullable with `ON DELETE SET NULL` — a real, schema-designed state (account erasure), not a speculative one — and the bare `{$reviewer?->first_name}` interpolation degrades to an empty string rather than erroring. `ReviewAccepted`/`ReviewDeclined`/`ReviewPublished` now fall back to "A reviewer". Caught alongside: `speech_title`/`actor_name` in `types.ts` were still typed `string | undefined`, missing the same `| null` the `url` field had already been given for the identical reason.
+
+**Not fixed, flagged as follow-ups** — all architectural/DRY observations repeated across multiple independent agents, consistent with the scope discipline this whole plan has held to: `Home.tsx` and `RequireGuest` (`AuthShell.tsx`) still duplicate the same auth-redirect logic rather than sharing a hook; `ReviewService.php`'s four lock-and-notify methods (`invite`/`accept`/`decline`/`publish`) still have no shared helper; the 9 notification classes still have no shared base/trait for their identical `toArray()` delegation and three divergent "no `url`" conventions; and `UnauthenticatedRedirect.tsx`'s three hand-maintained allowlists are structurally disconnected from the route table in `App.tsx` — the mechanism that produced bug #2 above, and that will produce the same bug a third time for the next route that fires an unconditional session probe.
+
+Re-validated after all six fixes: `php -d memory_limit=-1 vendor/bin/pest` — 649/651 passing (2 pre-existing skips); `php -d memory_limit=-1 vendor/bin/phpstan analyse` on every touched backend file — 0 errors; `npx tsc -b` — clean; full `npx vitest run` — 382/382 passing.
 
 ---
 
@@ -762,5 +797,5 @@ Both are current defects in shipped code. Neither belongs to a plan above; both 
 | §7.6C invite by email | **here** | 1 new table, 1 service, convert at `Verified` | ⚠️ **step 7.0, production email** |
 | §7.7 keyboard + a11y | **= STEP-15, here** | 1 hook, roving tabindex, 1 one-line WCAG fix, **1 `keepMounted`**, Axe baseline **first** | Axe baseline; 2 criteria need descoping |
 | §7.8 quota | no | 3 resource fields + a meter + split one error | — |
-| §7.9 landing page | no | 1 file | — |
+| §7.9 landing page | ✅ **shipped (uncommitted)** | 1 file as planned, **plus a required fix to a second file** (`UnauthenticatedRedirect.tsx`) the review found was blocking the page's entire intended audience. 381/381 vitest, clean tsc -b. Surfaced 4 real bugs in already-committed §7.3 code, flagged not fixed | — |
 | §7.10 audit browser | no | 1 read-only Filament resource. **No migration** (C6) | — |

@@ -48,10 +48,15 @@ class ReviewPublished extends Notification implements ShouldQueue
         $reviewer = $this->review->reviewer;
         $speech = $this->review->speech;
         $title = $speech->title ?? 'a speech that has since been removed';
+        // code-review finding: see `ReviewAccepted::toMail()`'s identical
+        // comment — `reviewer_id` can be null here for the same reason
+        // (erasure sets it NULL), and the bare nullsafe interpolation
+        // silently degraded to a blank name instead of this fallback.
+        $reviewerName = $reviewer !== null ? trim("{$reviewer->first_name} {$reviewer->last_name}") : 'A reviewer';
 
         $message = (new MailMessage)
-            ->subject("{$reviewer?->first_name} published feedback on your speech")
-            ->line("{$reviewer?->first_name} {$reviewer?->last_name} published feedback on \"{$title}\".");
+            ->subject("{$reviewerName} published feedback on your speech")
+            ->line("{$reviewerName} published feedback on \"{$title}\".");
 
         return $speech === null ? $message : $message->action('View speech', FrontendUrl::to("/speeches/{$speech->id}"));
     }

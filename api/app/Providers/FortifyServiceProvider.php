@@ -7,6 +7,7 @@ use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\UpdateUserPassword;
 use App\Actions\Fortify\UpdateUserProfileInformation;
 use App\Http\Responses\Fortify as FortifyResponses;
+use App\Support\FrontendUrl;
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -90,10 +91,17 @@ class FortifyServiceProvider extends ServiceProvider
         // the React frontend instead, so the notification's link must be
         // built by hand, same as `VerifyEmailResponse` already does for the
         // verification link.
+        //
+        // code-review finding: this was still hand-building the frontend
+        // origin (`rtrim(config('app.frontend_url'), '/').…`) after
+        // `App\Support\FrontendUrl` was introduced to centralize exactly
+        // that idiom — a 10th call site the notification-layer pass missed
+        // because it only looked under `app/Notifications/`. Routed
+        // through `FrontendUrl::to()` now.
         ResetPassword::createUrlUsing(function ($notifiable, string $token) {
             $email = urlencode($notifiable->getEmailForPasswordReset());
 
-            return rtrim(config('app.frontend_url'), '/')."/reset-password/{$token}?email={$email}";
+            return FrontendUrl::to("/reset-password/{$token}?email={$email}");
         });
 
         RateLimiter::for('login', function (Request $request) {

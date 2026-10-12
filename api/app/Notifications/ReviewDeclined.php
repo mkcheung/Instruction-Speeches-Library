@@ -39,10 +39,15 @@ class ReviewDeclined extends Notification implements ShouldQueue
         $reviewer = $this->review->reviewer;
         $speech = $this->review->speech;
         $title = $speech->title ?? 'a speech that has since been removed';
+        // code-review finding: see `ReviewAccepted::toMail()`'s identical
+        // comment — `reviewer_id` can be null here for the same reason
+        // (erasure sets it NULL), and the bare nullsafe interpolation
+        // silently degraded to a blank name instead of this fallback.
+        $reviewerName = $reviewer !== null ? trim("{$reviewer->first_name} {$reviewer->last_name}") : 'A reviewer';
 
         $message = (new MailMessage)
-            ->subject("{$reviewer?->first_name} declined your review invitation")
-            ->line("{$reviewer?->first_name} {$reviewer?->last_name} declined your invitation to review \"{$title}\".");
+            ->subject("{$reviewerName} declined your review invitation")
+            ->line("{$reviewerName} declined your invitation to review \"{$title}\".");
 
         return $speech === null ? $message : $message->action('Invite someone else', FrontendUrl::to("/speeches/{$speech->id}"));
     }

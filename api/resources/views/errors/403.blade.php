@@ -205,8 +205,12 @@
                 </form>
             @endif
 
+            {{-- code-review finding: same hand-built-origin gap as
+                 suspended.blade.php — see that view's comment. $frontendUrl
+                 is kept only for the empty-config guard; the link itself
+                 goes through App\Support\FrontendUrl::to() now. --}}
             @if ($frontendUrl !== '')
-                <a class="btn btn-secondary" href="{{ $frontendUrl }}">
+                <a class="btn btn-secondary" href="{{ \App\Support\FrontendUrl::to('/') }}">
                     {{ $currentUser ? 'Back to the app' : 'Go to sign in' }}
                 </a>
             @endif

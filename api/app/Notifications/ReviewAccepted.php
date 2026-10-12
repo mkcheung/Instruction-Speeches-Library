@@ -39,10 +39,21 @@ class ReviewAccepted extends Notification implements ShouldQueue
         $reviewer = $this->review->reviewer;
         $speech = $this->review->speech;
         $title = $speech->title ?? 'a speech that has since been removed';
+        // code-review finding: `reviews.reviewer_id` is nullable with
+        // `ON DELETE SET NULL` (the reviewer erasing their account nulls
+        // it on every row they ever reviewed) — a real, schema-designed
+        // state, not a speculative edge case, and `ShouldQueue` gives it
+        // a real time window to land in before this renders. The bare
+        // `{$reviewer?->first_name}` interpolation doesn't throw on null
+        // — it silently degrades to an empty string — so without this
+        // fallback a queued send in that window mails the speech owner a
+        // subject/body with the reviewer's name missing entirely
+        // ("accepted your review invitation" with a blank leading name).
+        $reviewerName = $reviewer !== null ? trim("{$reviewer->first_name} {$reviewer->last_name}") : 'A reviewer';
 
         $message = (new MailMessage)
-            ->subject("{$reviewer?->first_name} accepted your review invitation")
-            ->line("{$reviewer?->first_name} {$reviewer?->last_name} accepted your invitation to review \"{$title}\".");
+            ->subject("{$reviewerName} accepted your review invitation")
+            ->line("{$reviewerName} accepted your invitation to review \"{$title}\".");
 
         return $speech === null ? $message : $message->action('View speech', FrontendUrl::to("/speeches/{$speech->id}"));
     }
