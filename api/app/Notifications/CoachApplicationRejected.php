@@ -11,6 +11,11 @@ use Illuminate\Notifications\Notification;
 /**
  * STEP-12-FROZEN-CONTRACT.md §9. Sibling of CoachApplicationApproved /
  * App\Notifications\ReviewInvited — same shape.
+ *
+ * No `->action()` link and no `url` key in `toDatabase()` — unlike its
+ * approved sibling, a rejection has no good destination page (there is
+ * nothing new to view), so the `url` key is omitted entirely rather than
+ * set to a page that isn't actually relevant.
  */
 class CoachApplicationRejected extends Notification implements ShouldQueue
 {

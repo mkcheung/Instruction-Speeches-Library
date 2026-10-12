@@ -42,7 +42,7 @@ Three conventions carried from the repo's own documents:
 | Phase | Items | Rationale |
 |---|---|---|
 | **1 — unblock** | ✅ §7.1 **DONE** (commit pending in this same batch) | Nothing else matters while the only discovery surface returns nothing. Shipped as three lines + a backfill, as planned — plus four review-driven fixes beyond the original plan (§7.1's own section has the detail). |
-| **2 — close the promise** | §7.2, §7.3 | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
+| **2 — close the promise** | §7.2, ✅ §7.3 **DONE (uncommitted)** | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
 | **3 — make it legible** | §7.4, §7.9 | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2** (§13 seam 1). |
 | **4 — trust and law** | §7.5 | Owner speech delete. Highest-risk item, and **specified in the plan already** (§7.5 §1) — which changes the design from the one the UX review recommended. |
 | **5 — the scheduled step** | §7.7 | This *is* STEP-15, which is next in `STEPS.md` anyway. Carries two acceptance criteria that cannot be met as written. |
@@ -51,7 +51,9 @@ Three conventions carried from the repo's own documents:
 
 **A reasonable first sitting is §7.1 + §7.3 + §7.9**: one backend action, one notification class plus a broken-link fix, one placeholder page. No shared files, no ordering constraints between them, and together they move the product from "cannot be used" to "usable end to end."
 
-**§7.1 is now done. §7.3 is next.** No shared files with the §7.1 diff, so it can start immediately.
+**§7.1 is committed. §7.3 is implemented and validated but deliberately left uncommitted**, per instruction, pending review of the working-tree diff.
+
+**Next up:** §7.9 (the landing page) is still the cheapest unstarted item from the original first-sitting trio — one file, no dependencies. §7.2 (the reviewer roster + revoke) is the next item in the phase sequencing proper, and unblocks §7.4, which cannot start until it lands (§13 seam 1).
 
 ---
 
@@ -138,7 +140,7 @@ Validated independently after every round of fixes, not just once: `php -d memor
 
 ---
 
-## §7.3 The notification layer 🟠
+## §7.3 The notification layer 🟠 ✅ **DONE (uncommitted)**
 
 Bigger than the UX review's "add one notification class." Three defects, one commit.
 
@@ -175,7 +177,29 @@ The backend emits eight `type` strings; `NotificationBell.tsx:25-48` handles fiv
 | `web/src/components/layout/NotificationBell.tsx` | Add **four** cases: `review.published`, `speech.taken_down`, `user.suspended`, `user.deleted`. Render each row as a `<Link to={notification.data.url}>` that marks read on click, keeping the `<button>` for rows with no `url`. The enumerated-switch discipline its own comment at `:37-40` asks for is currently not held — restate it |
 | `api/tests/Feature/` | Notification sent on first publish, **not** re-sent on the second. A test asserting every emitted `type` has a bell case would be better still, but crosses the PHP/TS boundary — do it as a vitest fixture listing the eight strings |
 
-**Risk:** low, all additive. ⚠️ Unverified: whether any mail-content test asserts the current (broken) URLs — grep `api/tests` for `speeches/` and `url(` before committing.
+**Risk:** low, all additive. Grepped `api/tests` for mail-content assertions against the old broken URLs before this landed — none existed, so nothing needed updating for that reason.
+
+### Shipped: what actually landed, and the review that changed three things
+
+Implemented by three parallel subagents in isolated worktrees — backend (the `FrontendUrl` helper, all 8 existing notification fixes, the new `ReviewPublished` class, the `ReviewService::publish()` wiring), frontend (the four new bell cases and the `Link`-vs-button rendering), and tests (Pest coverage for the notify-once behavior, a Vitest fixture covering all 9 `type` strings). Two of the three stalled mid-validation (a background watchdog timeout, likely a hung Docker/DB connection attempt) — rather than relaunch and wait again, their actual diffs were read and verified directly: both had finished the real implementation work before stalling, and only the final validation command had hung. All three worktrees were fully disjoint; merged cleanly as patches, no conflicts.
+
+Validating the merge myself caught one real test-design flaw before the review pass even started: the Vitest fixture test asserted every one of the 9 notification types would render text *containing* the stubbed speech title, which is wrong for the 4 types that correctly describe an account/application-level event with no speech involved at all (`coach_application.approved`/`.rejected`, `user.deleted`, `user.suspended`) — their real copy never mentions a title, and never should. The underlying assertion (rendered text differs from the bare `default`-case fallback) was right; only the query used to find the row was too strict. Fixed by querying the row directly rather than by a name containing the fake title.
+
+A `high`-effort code review then found seven things, three of them real enough to fix immediately:
+
+1. **A false-positive notification.** `publish()` is incremental and can be called with nothing actually unpublished (the delta is 0) — and `ReviewPublished` was firing regardless, telling a speech owner "feedback was published" when none was. **Fixed**: gated on `$wasFirstPublish && $delta > 0`. Re-running the suite after this fix caught a second problem one level down: both new Pest tests had been asserting the *old*, incorrect behavior — they created reviews with zero draft annotations, so their own fixtures exercised exactly the misleading zero-delta case the fix now correctly blocks. Fixed by giving both tests a real `Annotation::factory()->draft()` to publish, which in turn hit a `ck_reviews_counter_cache` CHECK constraint (`published_annotations_count <= annotations_count`) that bare factory creation doesn't satisfy automatically — fixed by setting `annotations_count` explicitly on the fixture. A third test was added alongside: the first-publish-with-nothing-to-publish case itself, asserting no notification at all.
+2. **An unconditional eager-load on the method's own common case.** `speechOwner`/`reviewer`/`speech` were being `with()`-loaded on every `publish()` call, but are only read inside the rare first-publish branch — and the method's own docblock says repeat calls (which don't need them) are what actually happens most often. **Fixed**: moved to `loadMissing()` inside the `if ($wasFirstPublish)` block. Verified this doesn't change the HTTP response shape: `ReviewResource` reads both relations via `whenLoaded()`/`relationLoaded()`, and neither was eager-loaded here before this task touched the method at all.
+3. **A type-contract mismatch.** `web/src/features/notification/types.ts` typed `url` as `string | undefined`, but `ReviewAccepted`/`ReviewDeclined`/`ReviewPublished` all send an explicit `'url' => null` once the speech is gone — a real wire value the type didn't include. **Fixed**: `url?: string | null`.
+
+Two more were fixed as free, directly-adjacent cleanup: `routes/web.php`'s `/login` route still hand-built the frontend URL with the exact idiom `FrontendUrl::to()` was extracted *from* — refactored to call the new helper, so the idiom exists in exactly one place; and the frontend's hedge comment on `speech.taken_down` ("field name is a guess, verify before merge") was resolved by actually reading `SpeechTakenDown::toDatabase()` — the guess (`speech_title`) was correct, so the comment now states that as verified fact instead of carrying the hedge forward unresolved.
+
+**Not fixed, deliberately:**
+- `ReviewService.php` now has four near-identical lock-row/capture-flag/`DB::afterCommit`-notify blocks (invite, accept, decline, publish) with no shared helper, and three notification classes (`ReviewAccepted`, `ReviewDeclined`, `ReviewPublished`) independently duplicate the same `FrontendUrl`/`$speech->id`-vs-`ulid` docblock paragraph and the same null-speech ternary. Both are real DRY observations and both are bigger refactors than this item's scope — flagged here as follow-ups, not built silently mid-task, matching the scope discipline §7.1 established.
+- There is no PHP/TS contract enforcement tying the backend's 9 `type` strings to the frontend's switch — they're kept in sync by comment convention only. A real gap, but fixing it (a shared enum, a generated type, or a contract test) is an infrastructure decision bigger than one notification feature.
+
+Validated independently after every round of fixes: `php -d memory_limit=-1 vendor/bin/pest` — 648/650 passing, 2 pre-existing skips, 0 failures; `php -d memory_limit=-1 vendor/bin/phpstan analyse` on all touched/new backend files — 0 errors; `npx tsc -b` — clean; `npx vitest run src/components/layout/NotificationBell.test.tsx` — 11/11 passing.
+
+**Left uncommitted, per instruction** — the diff is ready for review in the working tree.
 
 ---
 
@@ -732,7 +756,7 @@ Both are current defects in shipped code. Neither belongs to a plan above; both 
 |---|---|---|---|
 | §7.1 member role | ✅ **shipped** | 2 files + backfill + 1 test, plus 4 review-driven fixes (false precedent comment, transaction, audit write, lifecycle columns) and 2 hygiene fixes. 645/647 pest, 0 phpstan | — |
 | §7.2 roster + revoke | **re-scoped here** | 1 new endpoint, 1 resource, 4 audit writes, 1 notification, 2 components | — |
-| §7.3 notification layer | no | 1 new class + 1 url helper + 4 dead links + 3 missing bell cases | — |
+| §7.3 notification layer | ✅ **shipped (uncommitted)** | 1 new class + 1 url helper + 4 dead links + 3 missing bell cases, plus 3 review-driven fixes (false-positive notify, unconditional eager-load, url type mismatch) and 2 adjacent cleanups. 648/650 pest, 0 phpstan, clean tsc -b, 11/11 vitest | — |
 | §7.4 feedback visible | no | 1 default, badges, localStorage | §7.2 (seam 1) |
 | §7.5 speech edit/delete | **here; design reversed** | soft delete, 1 nullable column, 1 service, the export fix | — |
 | §7.6C invite by email | **here** | 1 new table, 1 service, convert at `Verified` | ⚠️ **step 7.0, production email** |

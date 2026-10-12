@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\CoachApplication;
+use App\Support\FrontendUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -15,6 +16,10 @@ use Illuminate\Notifications\Notification;
  * existing `review.*` dot-notation precedent; `NotificationBell.tsx`'s
  * `describe()` switch needs a matching case added in the same PR as this
  * class (frontend concern, tracked separately).
+ *
+ * The `/profile` destination itself is correct; only the host was wrong —
+ * bare `url()` resolves against the API's own origin, not the SPA's. Built
+ * with `FrontendUrl::to()` (App\Support\FrontendUrl) instead.
  */
 class CoachApplicationApproved extends Notification implements ShouldQueue
 {
@@ -36,7 +41,7 @@ class CoachApplicationApproved extends Notification implements ShouldQueue
             ->subject('Your coach application has been approved')
             ->line('An administrator has reviewed your submitted credentials and approved your coach application.')
             ->when($this->application->decision_reason, fn (MailMessage $mail) => $mail->line($this->application->decision_reason))
-            ->action('View your profile', url('/profile'))
+            ->action('View your profile', FrontendUrl::to('/profile'))
             ->line('Your Coach badge is now visible on your profile and you appear in the reviewer directory.');
     }
 
@@ -56,6 +61,7 @@ class CoachApplicationApproved extends Notification implements ShouldQueue
         return [
             'type' => 'coach_application.approved',
             'coach_application_id' => $this->application->id,
+            'url' => FrontendUrl::to('/profile'),
         ];
     }
 }

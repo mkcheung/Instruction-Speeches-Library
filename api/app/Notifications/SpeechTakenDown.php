@@ -32,7 +32,9 @@ use Illuminate\Notifications\Notification;
  * is the obvious candidate and it would be a dead link: the speech is
  * soft-deleted by the time this sends and the API 410s a trashed speech
  * (§6.3), so the one thing the recipient would click is the one page
- * guaranteed not to render.
+ * guaranteed not to render. `toDatabase()`'s payload omits `url` entirely
+ * for the same reason — there is deliberately nowhere good to send this
+ * click.
  *
  * `NotificationBell.tsx`'s `describe()` switch needs a matching
  * `speech.taken_down` case — a frontend concern tracked separately, same

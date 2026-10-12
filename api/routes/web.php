@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ApplicationDocumentDownloadController;
+use App\Support\FrontendUrl;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -17,7 +18,7 @@ Route::get('/', function () {
 // UrlGenerationException and the request 500s instead of bouncing the
 // visitor to the SPA's login page.
 Route::get('/login', function () {
-    return redirect(rtrim((string) config('app.frontend_url'), '/').'/login');
+    return redirect(FrontendUrl::to('/login'));
 })->name('login');
 
 // STEP-12-FROZEN-CONTRACT.md §5: the ONE route that ever serves an

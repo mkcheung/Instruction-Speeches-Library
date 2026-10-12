@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Notifications\ReviewAccepted;
 use App\Notifications\ReviewDeclined;
 use App\Notifications\ReviewInvited;
+use App\Notifications\ReviewPublished;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -402,13 +403,50 @@ class ReviewService
      * this method reads the delta directly off the bulk update's own
      * affected-row count rather than issuing a second query to learn it.
      *
+     * `publish()` is incremental — the same reviewer can call it repeatedly
+     * as they publish more annotations over time — so the "a coach
+     * finished feedback" notification must fire exactly once per review,
+     * not on every call. `$wasFirstPublish` captures whether
+     * `first_published_at` was still null BEFORE this call touches it;
+     * `??=` below only tells you the column is non-null AFTER, which is
+     * equally true on the first publish and every repeat call after it.
+     *
+     * Gated on `$delta > 0` as well: a `publish()` call with nothing
+     * actually unpublished (every draft already published, or none ever
+     * written) still stamps `first_published_at` under this method's
+     * existing, pre-existing semantics — that stamping is left untouched
+     * — but firing "a coach published feedback" when zero annotations
+     * were published would tell the speech owner something false.
+     *
+     * The notification itself is deferred with `DB::afterCommit`, matching
+     * `accept`/`decline`/`invite` above, for the same reason their
+     * docblocks give: `config/queue.php` sets `after_commit => false` on
+     * every connection, and `DB::transaction` nests as a SAVEPOINT, so a
+     * bare `notify()` call inside this method's transaction could fire
+     * before the commit, or inside a sub-transaction a caller later rolls
+     * back.
+     *
+     * `speechOwner`/`reviewer`/`speech` are `loadMissing()`'d below, not
+     * eager-loaded on the initial query: they are read only inside the
+     * `$wasFirstPublish` branch (by this method and by `ReviewPublished`),
+     * so loading them unconditionally would pay for an extra join on
+     * every repeat call — the common case, per this method's own first
+     * paragraph. `ReviewResource` (the only consumer of this method's
+     * return value) reads both via `whenLoaded()`/`relationLoaded()`, so
+     * omitting them when not needed changes nothing about the response
+     * shape this method had before either relation existed on it.
+     *
      * @return array{0: Review, 1: int} [$review, $publishedCountForThisCall]
      */
     public function publish(Review $review): array
     {
-        return DB::transaction(function () use ($review) {
+        $wasFirstPublish = false;
+
+        [$locked, $delta] = DB::transaction(function () use ($review, &$wasFirstPublish) {
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+
+            $wasFirstPublish = $locked->first_published_at === null;
 
             $delta = Annotation::query()
                 ->where('review_id', $locked->id)
@@ -424,6 +462,13 @@ class ReviewService
 
             return [$locked, $delta];
         });
+
+        if ($wasFirstPublish && $delta > 0) {
+            $locked->loadMissing(['speechOwner', 'reviewer', 'speech']);
+            DB::afterCommit(fn () => $locked->speechOwner->notify(new ReviewPublished($locked, $delta)));
+        }
+
+        return [$locked, $delta];
     }
 
     /**

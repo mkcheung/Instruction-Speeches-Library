@@ -13,6 +13,14 @@ export type NotificationType =
   // STEP-12-FROZEN-CONTRACT.md §9's pinned notification `type` strings.
   | 'coach_application.approved'
   | 'coach_application.rejected'
+  // STEP-15's `review.published` — a reviewer finished and published their
+  // feedback, so the author gets notified with a link to it.
+  | 'review.published'
+  // STEP-15's admin-action notifications (control panel suspensions,
+  // takedowns, deletions) — see §11.1 and CP-08's admin notice work.
+  | 'speech.taken_down'
+  | 'user.suspended'
+  | 'user.deleted'
 
 export interface Notification {
   id: string
@@ -23,6 +31,14 @@ export interface Notification {
     speech_id?: number
     speech_title?: string
     actor_name?: string
+    // STEP-15: the backend now emits a navigable `url` on every
+    // notification's payload, not just new types — optional because
+    // older rows (and any type we haven't accounted for) may lack it.
+    // `| null`, not just `| undefined`: several notification classes
+    // (ReviewAccepted, ReviewDeclined, ReviewPublished) send an explicit
+    // `'url' => null` when the speech has since been deleted — a real
+    // wire value, not an absent key.
+    url?: string | null
   }
   read_at: string | null
   created_at: string

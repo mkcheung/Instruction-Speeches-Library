@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,6 +43,21 @@ function describe(notification: Notification): string {
       return 'Your coach application was approved — your profile now shows a Coach badge.'
     case 'coach_application.rejected':
       return 'Your coach application was not approved.'
+    // STEP-15: `review.published` plus the three admin-action types
+    // (`speech.taken_down`, `user.suspended`, `user.deleted`) — these
+    // used to fall through to the generic `default` below and render as
+    // the literal placeholder "a speech", which was wrong for all four
+    // (an account-suspension notice has nothing to do with a speech).
+    case 'review.published':
+      return actor ? `${actor} published their feedback on "${speech}"` : `New feedback was published on "${speech}"`
+    // Verified against `App\Notifications\SpeechTakenDown::toDatabase()`
+    // — it sends `speech_title`, matching this switch's convention.
+    case 'speech.taken_down':
+      return `Your speech "${speech}" was taken down`
+    case 'user.suspended':
+      return 'Your account was suspended'
+    case 'user.deleted':
+      return 'Your account was deleted'
     default:
       return speech
   }
@@ -84,20 +100,36 @@ export function NotificationBell() {
               <p className="px-2 py-4 text-center text-sm text-muted-foreground">No notifications.</p>
             )}
             <ul className="flex flex-col gap-1">
-              {notifications.map((notification) => (
-                <li key={notification.id}>
-                  <button
-                    type="button"
-                    onClick={() => !notification.read_at && markRead(notification.id)}
-                    className={cn(
-                      'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
-                      !notification.read_at && 'font-medium',
+              {notifications.map((notification) => {
+                const rowClassName = cn(
+                  'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
+                  !notification.read_at && 'font-medium',
+                )
+                const onVisit = () => !notification.read_at && markRead(notification.id)
+                const url = notification.data.url
+
+                return (
+                  <li key={notification.id}>
+                    {/*
+                     * STEP-15: a notification with a `url` navigates
+                     * there (e.g. `review.published` → the review) and
+                     * marks itself read on the same click. Without a
+                     * `url` — e.g. `speech.taken_down`, whose speech
+                     * now 410s — it stays a plain mark-as-read button
+                     * with nowhere to send the user.
+                     */}
+                    {url ? (
+                      <Link to={url} onClick={onVisit} className={cn(rowClassName, 'block')}>
+                        {describe(notification)}
+                      </Link>
+                    ) : (
+                      <button type="button" onClick={onVisit} className={rowClassName}>
+                        {describe(notification)}
+                      </button>
                     )}
-                  >
-                    {describe(notification)}
-                  </button>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           </PopoverPopup>
         </PopoverPositioner>
