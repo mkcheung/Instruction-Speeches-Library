@@ -23,6 +23,23 @@ import { cn } from '@/lib/utils'
  * the header not scroll-lock the page over a playing video on
  * `SpeechWatch`.
  */
+/**
+ * `notification.data.url` is built server-side by `App\Support\FrontendUrl`,
+ * which deliberately returns an ABSOLUTE url (scheme + host) — the same
+ * string also goes into plain-text emails, where a host-relative path would
+ * be useless. react-router's `<Link to>` is the opposite: it resolves `to`
+ * against the SPA's own current route, so handing it an absolute string
+ * (`https://app.speechcoach.test/speeches/42`) does not navigate there — it
+ * gets treated as a path segment and resolves to garbage like
+ * `/https:/app.speechcoach.test/speeches/42` (verified against the
+ * installed `react-router`'s own `resolvePath`). Stripping the origin
+ * before handing the value to `Link` is what makes the two sides agree.
+ */
+function toRouterPath(absoluteUrl: string): string {
+  const parsed = new URL(absoluteUrl, window.location.origin)
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
+}
+
 function describe(notification: Notification): string {
   const { type, actor_name: actor, speech_title: title } = notification.data
   const speech = title ?? 'a speech'
@@ -107,6 +124,7 @@ export function NotificationBell() {
                 )
                 const onVisit = () => !notification.read_at && markRead(notification.id)
                 const url = notification.data.url
+                const routerPath = url ? toRouterPath(url) : null
 
                 return (
                   <li key={notification.id}>
@@ -118,8 +136,8 @@ export function NotificationBell() {
                      * now 410s — it stays a plain mark-as-read button
                      * with nowhere to send the user.
                      */}
-                    {url ? (
-                      <Link to={url} onClick={onVisit} className={cn(rowClassName, 'block')}>
+                    {routerPath ? (
+                      <Link to={routerPath} onClick={onVisit} className={cn(rowClassName, 'block')}>
                         {describe(notification)}
                       </Link>
                     ) : (

@@ -144,4 +144,52 @@ describe('NotificationBell', () => {
       expect(item.textContent).not.toBe(BARE_FALLBACK_TITLE)
     },
   )
+
+  /**
+   * Regression test: `notification.data.url` is an ABSOLUTE url built by
+   * `App\Support\FrontendUrl` (scheme + host, for email links), but the row
+   * renders it through react-router's `<Link to>`, which resolves `to`
+   * against the SPA's OWN current route. Handing it the raw absolute string
+   * produced a dead link (`/https:/app.speechcoach.test/speeches/42`
+   * instead of `/speeches/42`) that no existing test caught, because every
+   * other fixture in this file omits `url` entirely and falls into the
+   * plain-`<button>` branch below. This asserts the rendered anchor's
+   * `href` is the host-relative SPA path, not the raw absolute string.
+   */
+  it('renders a notification url as an app-relative Link, not the raw absolute backend url', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.endsWith('/api/notifications')) {
+        return jsonResponse({
+          notifications: [
+            {
+              id: 'n1',
+              type: 'review.published',
+              data: {
+                type: 'review.published',
+                speech_title: BARE_FALLBACK_TITLE,
+                actor_name: 'Alex',
+                url: 'https://app.speechcoach.test/speeches/42',
+              },
+              read_at: null,
+              created_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+          unread_count: 1,
+        })
+      }
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const user = userEvent.setup()
+    renderWithProviders(<NotificationBell />)
+
+    await user.click(screen.getByRole('button', { name: /notifications/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    const link = await within(dialog).findByRole('link')
+    expect(link).toHaveAttribute('href', '/speeches/42')
+  })
 })
