@@ -190,6 +190,16 @@ export function useCommentaryTrack(
       // Routed through `select`, not a raw `setSelected` — this keeps the
       // same cross-fade-out behavior §5.4/§8.5 already guarantees for
       // every other transition, rather than snapping the overlay away.
+      //
+      // `set-state-in-effect` deliberately disabled, not restructured:
+      // `select()` isn't a pure state derivation that could move to
+      // render — it also clears/starts the cross-fade timer (an
+      // imperative side effect, not a render-time computation), and the
+      // reset is a reaction to `reviews` (async RTK Query data) arriving,
+      // which is exactly the "synchronize with an external data source"
+      // case effects exist for, not the "state derivable from props"
+      // case the rule guards against.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       select(NO_COMMENTARY)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
