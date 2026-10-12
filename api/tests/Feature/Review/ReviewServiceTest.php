@@ -1,10 +1,12 @@
 <?php
 
 use App\Exceptions\SelfReviewNotPermittedException;
+use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
 use App\Notifications\ReviewInvited;
+use App\Notifications\ReviewPublished;
 use App\Services\ReviewService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -270,4 +272,119 @@ it('still abandons a review that is genuinely in progress', function () {
     ]);
 
     expect(app(ReviewService::class)->abandon($review)->status)->toBe('abandoned');
+});
+
+/**
+ * In-progress parallel-agent coverage: publish() must notify the speech
+ * owner the FIRST time a review's `first_published_at` transitions from
+ * null, mirroring the accept()/decline() DB::afterCommit notify pattern
+ * already used above. As of this writing ReviewService::publish() does
+ * not yet send this notification and App\Notifications\ReviewPublished
+ * may not exist yet — this test is written to the intended end state and
+ * is expected to fail until that lands.
+ */
+it('sends a ReviewPublished notification to the speech owner on first publish', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $review = Review::factory()->for($speaker, 'speechOwner')->create([
+        'speech_owner_id' => $speaker->id,
+        'status' => 'in_progress',
+        // `ck_reviews_counter_cache` requires published_annotations_count
+        // <= annotations_count; bare factory creation bypasses whatever
+        // real write path increments this, so it's set explicitly here
+        // to match the one draft annotation this test creates.
+        'annotations_count' => 1,
+    ]);
+    // A draft annotation, not just a bare review: publish() only notifies
+    // on a real `$delta > 0` — a first-ever publish with nothing to
+    // publish must NOT announce "feedback was published" to the owner.
+    Annotation::factory()->for($review)->draft()->create();
+
+    expect($review->first_published_at)->toBeNull();
+
+    app(ReviewService::class)->publish($review);
+
+    Notification::assertSentToTimes($speaker, ReviewPublished::class, 1);
+});
+
+it('does not send a ReviewPublished notification when a first publish has nothing to publish', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $review = Review::factory()->for($speaker, 'speechOwner')->create([
+        'speech_owner_id' => $speaker->id,
+        'status' => 'in_progress',
+    ]);
+    // No draft annotations at all — `first_published_at` was null, but
+    // there is nothing to announce.
+
+    app(ReviewService::class)->publish($review);
+
+    Notification::assertNothingSentTo($speaker);
+});
+
+/**
+ * Companion idempotency test: a second, incremental publish on a review
+ * whose `first_published_at` is already set must NOT send a second
+ * ReviewPublished notification — same "transitioned" guard shape as the
+ * "does not re-notify a reviewer when an already-invited reviewer is
+ * invited again" test above.
+ */
+it('does not send a second ReviewPublished notification on a subsequent incremental publish', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $review = Review::factory()->for($speaker, 'speechOwner')->create([
+        'speech_owner_id' => $speaker->id,
+        'status' => 'in_progress',
+        // Sized for both draft annotations this test creates — see the
+        // sibling test above for why this is set explicitly.
+        'annotations_count' => 2,
+    ]);
+    Annotation::factory()->for($review)->draft()->create();
+
+    $service = app(ReviewService::class);
+    $service->publish($review);
+    // A second draft, written after the first publish — genuinely
+    // incremental, matching `publish()`'s own documented common case —
+    // so the second call's own `$delta > 0` isn't what's being tested;
+    // `$wasFirstPublish` being false is.
+    Annotation::factory()->for($review)->draft()->create();
+    $service->publish($review->fresh());
+
+    Notification::assertSentToTimes($speaker, ReviewPublished::class, 1);
+});
+
+/**
+ * code-review finding: an earlier version of `publish()` stamped
+ * `first_published_at` unconditionally, even on a zero-delta call — which
+ * correctly skipped THAT call's own notification but permanently poisoned
+ * the next call's `$wasFirstPublish` read, since the column was already
+ * non-null by then. This chains exactly the two calls neither test above
+ * does: a first publish with nothing to publish, followed by a real one.
+ */
+it('sends a ReviewPublished notification on the first SUBSTANTIVE publish, even after an earlier publish had nothing to publish', function () {
+    Notification::fake();
+
+    $speaker = User::factory()->create();
+    $review = Review::factory()->for($speaker, 'speechOwner')->create([
+        'speech_owner_id' => $speaker->id,
+        'status' => 'in_progress',
+    ]);
+
+    // First call: nothing to publish yet. Must not notify — and must not
+    // foreclose the notification on the later call that actually has
+    // something to say.
+    app(ReviewService::class)->publish($review);
+    Notification::assertNothingSentTo($speaker);
+
+    // Now there's real content.
+    $review->refresh();
+    Annotation::factory()->for($review)->draft()->create();
+    $review->update(['annotations_count' => 1]);
+
+    app(ReviewService::class)->publish($review->fresh());
+
+    Notification::assertSentToTimes($speaker, ReviewPublished::class, 1);
 });

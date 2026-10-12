@@ -173,8 +173,15 @@
 
         <p class="next">{{ $notice['next'] }}</p>
 
+        {{-- code-review finding: the href used to hand-build the frontend
+             origin ($frontendUrl, derived two lines above) the same way
+             every notification class did before App\Support\FrontendUrl
+             centralized that idiom — this view and its sibling 403.blade.php
+             were two more call sites that pass missed. $frontendUrl itself
+             is kept only for the empty-config guard below; the link is
+             built through the one shared helper instead. --}}
         @if ($frontendUrl !== '')
-            <a class="btn" href="{{ $frontendUrl }}/login">Go to sign in</a>
+            <a class="btn" href="{{ \App\Support\FrontendUrl::to('/login') }}">Go to sign in</a>
         @endif
     </main>
 </body>

@@ -27,6 +27,8 @@ use Illuminate\Notifications\Notification;
  *
  * No `->action()` link: every authenticated page is precisely what the
  * recipient has just lost access to — same reasoning as its two siblings.
+ * `toDatabase()`'s payload omits `url` for the same reason — there is no
+ * good destination to send a click to.
  *
  * ⚠️ The wording draws the distinction that matters legally and
  * practically. This is NOT erasure: `AccountErasureService` /

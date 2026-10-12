@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\Review;
+use App\Support\FrontendUrl;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -13,6 +14,12 @@ use Illuminate\Notifications\Notification;
  * App\Services\ReviewService::invite to the invited reviewer. Queued
  * (`ShouldQueue`) so a slow mail transport never blocks the invite request
  * itself.
+ *
+ * The action link points at `/dashboard`, not `/reviews` — there is no
+ * `/reviews` route in the SPA at all (`web/src/App.tsx`); the reviewer's
+ * dashboard is where pending invitations actually surface. Built with
+ * `FrontendUrl::to()` (App\Support\FrontendUrl), not the bare `url()`
+ * helper, which resolves against the API's own origin.
  */
 class ReviewInvited extends Notification implements ShouldQueue
 {
@@ -38,7 +45,7 @@ class ReviewInvited extends Notification implements ShouldQueue
             ->subject("{$inviter->first_name} invited you to review a speech")
             ->line("{$inviter->first_name} {$inviter->last_name} has invited you to review \"{$title}\".")
             ->when($this->review->invitation_message, fn (MailMessage $mail) => $mail->line("\"{$this->review->invitation_message}\""))
-            ->action('View invitation', url('/reviews'))
+            ->action('View invitation', FrontendUrl::to('/dashboard'))
             ->line('You can accept or decline from your reviewer dashboard.');
     }
 
@@ -63,6 +70,7 @@ class ReviewInvited extends Notification implements ShouldQueue
             'speech_id' => $this->review->speech_id,
             'speech_title' => $this->review->speech?->title,
             'actor_name' => trim("{$inviter->first_name} {$inviter->last_name}"),
+            'url' => FrontendUrl::to('/dashboard'),
         ];
     }
 }

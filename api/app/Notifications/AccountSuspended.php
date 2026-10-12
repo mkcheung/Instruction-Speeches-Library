@@ -23,7 +23,7 @@ use Illuminate\Notifications\Notification;
  *
  * No `->action()` link, for the same reason as `SpeechTakenDown`: every
  * authenticated page is exactly what the recipient has just lost access
- * to.
+ * to. `toDatabase()`'s payload omits `url` for the same reason.
  *
  * `$reason` is required rather than nullable — see `SpeechTakenDown`'s
  * docblock for why the non-nullable type is the enforcement and the

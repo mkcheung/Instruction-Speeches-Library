@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,6 +24,23 @@ import { cn } from '@/lib/utils'
  * the header not scroll-lock the page over a playing video on
  * `SpeechWatch`.
  */
+/**
+ * `notification.data.url` is built server-side by `App\Support\FrontendUrl`,
+ * which deliberately returns an ABSOLUTE url (scheme + host) — the same
+ * string also goes into plain-text emails, where a host-relative path would
+ * be useless. react-router's `<Link to>` is the opposite: it resolves `to`
+ * against the SPA's own current route, so handing it an absolute string
+ * (`https://app.speechcoach.test/speeches/42`) does not navigate there — it
+ * gets treated as a path segment and resolves to garbage like
+ * `/https:/app.speechcoach.test/speeches/42` (verified against the
+ * installed `react-router`'s own `resolvePath`). Stripping the origin
+ * before handing the value to `Link` is what makes the two sides agree.
+ */
+function toRouterPath(absoluteUrl: string): string {
+  const parsed = new URL(absoluteUrl, window.location.origin)
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
+}
+
 function describe(notification: Notification): string {
   const { type, actor_name: actor, speech_title: title } = notification.data
   const speech = title ?? 'a speech'
@@ -42,6 +61,21 @@ function describe(notification: Notification): string {
       return 'Your coach application was approved — your profile now shows a Coach badge.'
     case 'coach_application.rejected':
       return 'Your coach application was not approved.'
+    // STEP-15: `review.published` plus the three admin-action types
+    // (`speech.taken_down`, `user.suspended`, `user.deleted`) — these
+    // used to fall through to the generic `default` below and render as
+    // the literal placeholder "a speech", which was wrong for all four
+    // (an account-suspension notice has nothing to do with a speech).
+    case 'review.published':
+      return actor ? `${actor} published their feedback on "${speech}"` : `New feedback was published on "${speech}"`
+    // Verified against `App\Notifications\SpeechTakenDown::toDatabase()`
+    // — it sends `speech_title`, matching this switch's convention.
+    case 'speech.taken_down':
+      return `Your speech "${speech}" was taken down`
+    case 'user.suspended':
+      return 'Your account was suspended'
+    case 'user.deleted':
+      return 'Your account was deleted'
     default:
       return speech
   }
@@ -84,20 +118,58 @@ export function NotificationBell() {
               <p className="px-2 py-4 text-center text-sm text-muted-foreground">No notifications.</p>
             )}
             <ul className="flex flex-col gap-1">
-              {notifications.map((notification) => (
-                <li key={notification.id}>
-                  <button
-                    type="button"
-                    onClick={() => !notification.read_at && markRead(notification.id)}
-                    className={cn(
-                      'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
-                      !notification.read_at && 'font-medium',
+              {notifications.map((notification) => {
+                const rowClassName = cn(
+                  'w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted',
+                  !notification.read_at && 'font-medium',
+                )
+                const onVisit = () => !notification.read_at && markRead(notification.id)
+                const url = notification.data.url
+                const routerPath = url ? toRouterPath(url) : null
+                // code-review finding: a native <a> only activates on
+                // Enter, not Space — every other interactive control on
+                // this row (and in this app) activates on both, via the
+                // `Button` primitive. Not swapping to `Button` here: its
+                // variant classes assume a fixed-height, centered control,
+                // which conflicts with this row's left-aligned, can-wrap
+                // text styling — would need most of them reset anyway.
+                // `.click()` re-fires the same click path (this `onClick`
+                // AND react-router's own `Link` handler), so Space and
+                // Enter end up identical without touching layout at all.
+                const activateOnSpace = (event: KeyboardEvent<HTMLAnchorElement>) => {
+                  if (event.key === ' ') {
+                    event.preventDefault()
+                    event.currentTarget.click()
+                  }
+                }
+
+                return (
+                  <li key={notification.id}>
+                    {/*
+                     * STEP-15: a notification with a `url` navigates
+                     * there (e.g. `review.published` → the review) and
+                     * marks itself read on the same click. Without a
+                     * `url` — e.g. `speech.taken_down`, whose speech
+                     * now 410s — it stays a plain mark-as-read button
+                     * with nowhere to send the user.
+                     */}
+                    {routerPath ? (
+                      <Link
+                        to={routerPath}
+                        onClick={onVisit}
+                        onKeyDown={activateOnSpace}
+                        className={cn(rowClassName, 'block')}
+                      >
+                        {describe(notification)}
+                      </Link>
+                    ) : (
+                      <button type="button" onClick={onVisit} className={rowClassName}>
+                        {describe(notification)}
+                      </button>
                     )}
-                  >
-                    {describe(notification)}
-                  </button>
-                </li>
-              ))}
+                  </li>
+                )
+              })}
             </ul>
           </PopoverPopup>
         </PopoverPositioner>
