@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
@@ -9,7 +10,7 @@ import { AnnotationList } from '@/components/annotation/AnnotationList'
 import { ClearAnnotationsDialog } from '@/components/annotation/ClearAnnotationsDialog'
 import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
 import { useGetAnnotationsQuery, useClearAnnotationsMutation } from '@/features/annotation/annotationApi'
-import { usePublishReviewMutation } from '@/features/review/reviewApi'
+import { useAbandonReviewMutation, usePublishReviewMutation } from '@/features/review/reviewApi'
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
 import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
 import { useAutoPausePreference } from '@/hooks/useAutoPausePreference'
@@ -141,7 +142,9 @@ function AnnotationComposerPanelInner({
 
   const [clearAnnotations, { isLoading: isClearing }] = useClearAnnotationsMutation()
   const [publishReview, { isLoading: isPublishing }] = usePublishReviewMutation()
+  const [abandonReview, { isLoading: isAbandoning }] = useAbandonReviewMutation()
   const toastManager = useToastManager()
+  const navigate = useNavigate()
 
   const currentId = useMemo(() => {
     let best: Annotation | null = null
@@ -176,6 +179,27 @@ function AnnotationComposerPanelInner({
       setLiveOverrides({})
     } catch {
       toastManager.add({ title: 'Could not clear notes', description: 'Try again.', timeout: 4000 })
+    }
+  }
+
+  /**
+   * IMPLEMENTATION-PLANS.md §7.2.6's traced bug, this component's own
+   * call site: a successful abandon flips this review's status, which
+   * makes `useMyReviewForSpeech` return `null` on the next refetch and
+   * unmounts `SpeechWatch`'s whole "Your feedback" tab strip — this very
+   * component included. Navigating away is not optional cosmetic polish
+   * here; staying put would mean this component keeps rendering (with
+   * now-stale props) for a split second and then the PARENT unmounts it
+   * out from under whatever it was mid-render-cycle doing. `speechId` is
+   * already a prop — no extra plumbing needed to reach the mutation's
+   * cross-slice `Speech`-tag invalidation.
+   */
+  const handleAbandon = async () => {
+    try {
+      await abandonReview({ id: reviewId, speechId }).unwrap()
+      navigate('/dashboard')
+    } catch {
+      toastManager.add({ title: 'Could not abandon this review', description: 'Try again.', timeout: 4000 })
     }
   }
 
@@ -244,11 +268,38 @@ function AnnotationComposerPanelInner({
         />
 
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-          <ClearAnnotationsDialog
-            isPublished={review.first_published_at !== null}
-            isClearing={isClearing}
-            onConfirm={handleClear}
-          />
+          <div className="flex items-center gap-2">
+            <ClearAnnotationsDialog
+              isPublished={review.first_published_at !== null}
+              isClearing={isClearing}
+              onConfirm={handleClear}
+            />
+            {/* IMPLEMENTATION-PLANS.md §7.2.4/§7.2.6: Abandon lives here
+                too, not only on the Dashboard — a reviewer who's already
+                mid-session with the speech open has no reason to leave
+                this page just to stop reviewing it. Grouped with Clear,
+                the other terminal/destructive action in this footer,
+                rather than next to Publish.
+
+                code-review finding: this used to render unconditionally.
+                `useMyReviewForSpeech`'s ACCESS_GRANTING set (and so this
+                whole panel) includes `published`, but
+                `ReviewPolicy::abandon`/`ReviewService::abandon` only ever
+                act on `accepted`/`in_progress` — a published review's
+                Abandon button was permanently dead, 403ing on every click
+                with no path to success. Gated the same way Dashboard's
+                equivalent button already is. */}
+            {['accepted', 'in_progress'].includes(review.status) && (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isAbandoning}
+                onClick={() => void handleAbandon()}
+              >
+                {isAbandoning ? 'Abandoning…' : 'Abandon'}
+              </Button>
+            )}
+          </div>
           <Button type="button" onClick={() => void handlePublish()} disabled={isPublishing}>
             {isPublishing ? 'Publishing…' : 'Publish'}
           </Button>

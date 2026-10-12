@@ -168,6 +168,33 @@ export function useCommentaryTrack(
     })),
   ]
 
+  // IMPLEMENTATION-PLANS.md §7.2.6's second, pre-existing state bug —
+  // newly reachable via this feature's own revoke action, but already
+  // live via the admin panel's revoke with zero frontend involvement.
+  // `reviews` (and thus `options`) comes from `listSpeechReviews`, which
+  // is filtered to access-granting, non-revoked rows — the instant the
+  // CURRENTLY SELECTED reviewer is revoked, that row drops out of
+  // `options` on the next refetch, but `selected` is plain `useState` and
+  // has no reason to change on its own: it would keep holding the dead
+  // id, and `TrackSelector` would keep rendering a chip for a reviewer no
+  // longer in the selector at all, with annotations frozen on whatever
+  // was last fetched (`getAnnotations` for that id is never re-requested
+  // once `fetched.review_id === selected` already matched). Resetting to
+  // `NO_COMMENTARY` here — not re-selecting some other reviewer — matches
+  // §8.5's existing error/suppression behavior: the safe state is "no
+  // commentary showing," never a silent fall-back to a different track
+  // the viewer didn't choose.
+  useEffect(() => {
+    if (selected === NO_COMMENTARY) return
+    if (!reviewsLoading && !options.some((option) => option.key === selected)) {
+      // Routed through `select`, not a raw `setSelected` — this keeps the
+      // same cross-fade-out behavior §5.4/§8.5 already guarantees for
+      // every other transition, rather than snapping the overlay away.
+      select(NO_COMMENTARY)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviews, reviewsLoading, selected])
+
   const prefetch = (key: CommentarySelection) => {
     if (typeof key === 'number') prefetchAnnotations({ speechId, reviewId: key })
   }

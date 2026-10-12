@@ -251,7 +251,7 @@ it('refuses to abandon a review that was published first', function () {
     // ReviewPolicy::abandon runs against the stale route-model-bound
     // instance, so a publish and an abandon issued near-simultaneously both
     // passed the policy at `in_progress` and whichever landed second won.
-    $result = app(ReviewService::class)->abandon($review);
+    $result = app(ReviewService::class)->abandon($review, $coach);
 
     // Abandon landing second used to overwrite `published`, dropping the
     // speech out of Speech::scopeVisibleTo and 403-ing the speaker on
@@ -271,7 +271,7 @@ it('still abandons a review that is genuinely in progress', function () {
         'status' => 'in_progress',
     ]);
 
-    expect(app(ReviewService::class)->abandon($review)->status)->toBe('abandoned');
+    expect(app(ReviewService::class)->abandon($review, $coach)->status)->toBe('abandoned');
 });
 
 /**

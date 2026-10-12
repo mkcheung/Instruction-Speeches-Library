@@ -6,14 +6,17 @@ use App\Exceptions\SelfReviewNotPermittedException;
 use App\Jobs\PurgeDeletedVoiceAnnotation;
 use App\Jobs\PurgeVoiceAsset;
 use App\Models\Annotation;
+use App\Models\AuditLog;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Notifications\ReviewAccepted;
+use App\Notifications\ReviewAccessRevoked;
 use App\Notifications\ReviewDeclined;
 use App\Notifications\ReviewInvited;
 use App\Notifications\ReviewPublished;
+use App\Support\AuditAction;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -230,9 +233,9 @@ class ReviewService
      * (`abandoned`) — withdraw is the reviewer's own version of the
      * former.
      */
-    public function withdraw(Review $review): Review
+    public function withdraw(Review $review, User $actor): Review
     {
-        return DB::transaction(function () use ($review) {
+        return DB::transaction(function () use ($review, $actor) {
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
@@ -244,6 +247,19 @@ class ReviewService
             $locked->responded_at ??= now();
             $locked->last_transition_at = now();
             $locked->save();
+
+            // Only on the real transition, not the idempotent no-op above
+            // — a retry that finds nothing to do logs nothing.
+            AuditLog::query()->create([
+                'actor_id' => $actor->id,
+                'action' => AuditAction::REVIEW_WITHDRAWN,
+                'subject_type' => Review::class,
+                'subject_id' => $locked->id,
+                'metadata' => ['speech_id' => $locked->speech_id],
+                'ip' => null,
+                'user_agent' => null,
+                'created_at' => now(),
+            ]);
 
             return $locked;
         });
@@ -264,9 +280,9 @@ class ReviewService
      */
     public function revoke(Review $review, User $revokedBy, ?string $reason): Review
     {
-        return DB::transaction(function () use ($review, $revokedBy, $reason) {
+        $locked = DB::transaction(function () use ($review, $revokedBy, $reason) {
             /** @var Review $locked */
-            $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+            $locked = Review::query()->with(['reviewer', 'speech'])->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->revoked_at !== null) {
                 return $locked;
@@ -278,8 +294,49 @@ class ReviewService
             $locked->last_transition_at = now();
             $locked->save();
 
+            // Inside the real-revoke branch only — a no-op retry (the
+            // `if` above) logs nothing and notifies nobody.
+            AuditLog::query()->create([
+                'actor_id' => $revokedBy->id,
+                'action' => AuditAction::REVIEW_ACCESS_REVOKED,
+                'subject_type' => Review::class,
+                'subject_id' => $locked->id,
+                'metadata' => ['reason' => $reason, 'speech_id' => $locked->speech_id],
+                'ip' => null,
+                'user_agent' => null,
+                'created_at' => now(),
+            ]);
+
             return $locked;
         });
+
+        // code-review finding: `wasChanged('revoked_at')` is only true on
+        // the branch above that actually called `save()` — the idempotent
+        // no-op `return $locked` never does, so this is equivalent to (and
+        // replaces) a separate `$transitioned` flag threaded out of the
+        // transaction. Scalars captured here, not `$locked` itself — the
+        // closure must never hold a reference to the full Review/Speech/
+        // User object graph, which `DB::afterCommit` can keep alive for
+        // the rest of an outer transaction if a caller wraps this method
+        // in one (see `invite()`'s docblock above). Same reasoning
+        // `revokeAndPurge` below already applies; this brings `revoke` in
+        // line with it.
+        if ($locked->wasChanged('revoked_at')) {
+            $reviewer = $locked->reviewer;
+            $reviewId = $locked->id;
+            $speechId = $locked->speech_id;
+            $speechTitle = $locked->speech?->title;
+
+            DB::afterCommit(fn () => $reviewer?->notify(new ReviewAccessRevoked(
+                reviewId: $reviewId,
+                speechId: $speechId,
+                speechTitle: $speechTitle,
+                reason: $reason,
+                purged: false,
+            )));
+        }
+
+        return $locked;
     }
 
     /**
@@ -287,29 +344,73 @@ class ReviewService
      * annotations once Step 06 introduces that table — not this method's
      * concern). Distinct from `revoke`, which tombstones in place.
      */
-    public function revokeAndPurge(Review $review, User $actor): void
+    public function revokeAndPurge(Review $review, User $actor, ?string $reason = null): void
     {
-        DB::transaction(function () use ($review) {
-            Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
-            $voiceAssets = Annotation::withTrashed()->where('review_id', $review->id)->whereNotNull('audio_asset_id')->pluck('audio_asset_id');
+        // $locked, not the caller's $review, for every read below —
+        // code-review finding: the delete at the bottom of this closure
+        // is a query-builder bulk delete (`Review::query()->whereKey(...)
+        // ->delete()`), which never touches `$locked`'s in-memory
+        // attributes, so `$locked` stays valid for the rest of this
+        // method. Reading `$review->id`/`$review->reviewer_id` instead
+        // (the pre-lock, possibly-stale instance) was the "wrong variable
+        // after lockForUpdate()" mistake pattern — currently inert only
+        // because neither column can change between resolution and lock
+        // today, but a silent trap for whenever that stops being true.
+        $locked = DB::transaction(function () use ($review, $actor, $reason) {
+            /** @var Review $locked */
+            $locked = Review::query()->with(['reviewer', 'speech'])->whereKey($review->id)->lockForUpdate()->firstOrFail();
+
+            AuditLog::query()->create([
+                'actor_id' => $actor->id,
+                'action' => AuditAction::REVIEW_ACCESS_PURGED,
+                'subject_type' => Review::class,
+                'subject_id' => $locked->id,
+                'metadata' => ['speech_id' => $locked->speech_id, 'reason' => $reason],
+                'ip' => null,
+                'user_agent' => null,
+                'created_at' => now(),
+            ]);
+
+            $voiceAssets = Annotation::withTrashed()->where('review_id', $locked->id)->whereNotNull('audio_asset_id')->pluck('audio_asset_id');
             SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->update([
-                'purge_reviewer_id' => $review->reviewer_id,
+                'purge_reviewer_id' => $locked->reviewer_id,
             ]);
             SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->where('status', 'processing')->update(['status' => 'failed', 'failure_code' => 'voice_storage_failed']);
             foreach ($voiceAssets as $assetId) {
-                PurgeVoiceAsset::dispatch((int) $assetId, $review->reviewer_id)->afterCommit();
+                PurgeVoiceAsset::dispatch((int) $assetId, $locked->reviewer_id)->afterCommit();
             }
-            Review::query()->whereKey($review->id)->delete();
+            Review::query()->whereKey($locked->id)->delete();
+
+            return $locked;
         });
+
+        // Captured as scalars (and a resolved User, never `$locked`
+        // itself) — the row is gone by the time `DB::afterCommit()`'s
+        // callback runs (and `SerializesModels` would try, and fail, to
+        // refetch it on a queue worker), so the notification constructed
+        // after this transaction must never hold a reference to the
+        // model graph, only to the handful of values it actually needs.
+        $reviewer = $locked->reviewer;
+        $reviewId = $locked->id;
+        $speechId = $locked->speech_id;
+        $speechTitle = $locked->speech?->title;
+
+        DB::afterCommit(fn () => $reviewer?->notify(new ReviewAccessRevoked(
+            reviewId: $reviewId,
+            speechId: $speechId,
+            speechTitle: $speechTitle,
+            reason: $reason,
+            purged: true,
+        )));
     }
 
     /**
      * The coach action: calling the review done without ever publishing
      * commentary.
      */
-    public function abandon(Review $review): Review
+    public function abandon(Review $review, User $actor): Review
     {
-        return DB::transaction(function () use ($review) {
+        return DB::transaction(function () use ($review, $actor) {
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
@@ -330,6 +431,19 @@ class ReviewService
             $locked->status = 'abandoned';
             $locked->last_transition_at = now();
             $locked->save();
+
+            // Only on the real transition above — a no-op retry logs
+            // nothing.
+            AuditLog::query()->create([
+                'actor_id' => $actor->id,
+                'action' => AuditAction::REVIEW_ABANDONED,
+                'subject_type' => Review::class,
+                'subject_id' => $locked->id,
+                'metadata' => ['speech_id' => $locked->speech_id],
+                'ip' => null,
+                'user_agent' => null,
+                'created_at' => now(),
+            ]);
 
             return $locked;
         });

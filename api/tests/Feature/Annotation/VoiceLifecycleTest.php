@@ -119,7 +119,7 @@ it('review hard purge commits first and queues asset-keyed cleanup', function ()
     Queue::fake();
     [$coach, $speech, $review] = makeVoiceLifecycleFixture();
     [$asset] = makeProcessingVoice($coach, $speech, $review);
-    app(ReviewService::class)->revokeAndPurge($review, User::findOrFail($speech->user_id));
+    app(ReviewService::class)->revokeAndPurge($review, User::findOrFail($speech->user_id), 'voice lifecycle test cleanup');
     expect(Review::find($review->id))->toBeNull()->and($asset->fresh()->status)->toBe('failed');
     Queue::assertPushed(PurgeVoiceAsset::class, fn ($job) => $job->assetId === $asset->id);
 });

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Review\InviteReviewerRequest;
 use App\Http\Requests\Review\RevokeReviewRequest;
 use App\Http\Resources\ReviewResource;
+use App\Http\Resources\ReviewRosterResource;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
@@ -73,7 +74,7 @@ class ReviewController extends Controller
         $this->authorize('review.withdraw', $review);
 
         return new JsonResponse([
-            'review' => new ReviewResource($reviews->withdraw($review)),
+            'review' => new ReviewResource($reviews->withdraw($review, $this->currentUser($request))),
         ]);
     }
 
@@ -86,11 +87,11 @@ class ReviewController extends Controller
         ]);
     }
 
-    public function revokeAndPurge(Request $request, Review $review, ReviewService $reviews): JsonResponse
+    public function revokeAndPurge(RevokeReviewRequest $request, Review $review, ReviewService $reviews): JsonResponse
     {
         $this->authorize('review.purge', $review);
 
-        $reviews->revokeAndPurge($review, $this->currentUser($request));
+        $reviews->revokeAndPurge($review, $this->currentUser($request), $request->validated('reason'));
 
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
     }
@@ -100,7 +101,7 @@ class ReviewController extends Controller
         $this->authorize('review.abandon', $review);
 
         return new JsonResponse([
-            'review' => new ReviewResource($reviews->abandon($review)),
+            'review' => new ReviewResource($reviews->abandon($review, $this->currentUser($request))),
         ]);
     }
 
@@ -206,6 +207,36 @@ class ReviewController extends Controller
 
         return new JsonResponse([
             'reviews' => ReviewResource::collection($reviews),
+        ]);
+    }
+
+    /**
+     * `GET /speeches/{speech}/review-roster` — §7.2.3. The speech owner's
+     * full roster: every review row regardless of status or revocation,
+     * unlike `forSpeech` above which filters to the ACCESS_GRANTING,
+     * non-revoked subset. Owner guard copied verbatim from `forSpeech` —
+     * 404, never 403, for a non-owner (pinned by
+     * `E2ESeederSharedSpeechTest`). Ordered `last_transition_at desc, id
+     * asc` — the `id asc` tiebreak is deliberately NOT backported to
+     * `forSpeech`; it exists here because `ReviewRosterResource`'s erased-
+     * reviewer label relies on a stable row order to disambiguate two
+     * "Former reviewer" rows, same reasoning as ReviewResource's own
+     * comment.
+     */
+    public function roster(Request $request, Speech $speech): JsonResponse
+    {
+        if ($speech->user_id !== $this->currentUser($request)->id) {
+            return new JsonResponse(['message' => 'No such speech.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $reviews = $speech->reviews()
+            ->with('reviewer')
+            ->orderBy('last_transition_at', 'desc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        return new JsonResponse([
+            'reviews' => ReviewRosterResource::collection($reviews),
         ]);
     }
 }

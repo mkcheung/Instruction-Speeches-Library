@@ -138,6 +138,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/speeches/{speech}/reviews', [ReviewController::class, 'forSpeech'])
         ->name('api.speeches.reviews.index');
 
+    // §7.2.3: the full roster, every status including revoked — distinct
+    // from the line above, which filters to ACCESS_GRANTING only. A
+    // separate endpoint (not a query param) so the "invited"/"revoked"
+    // reach stays structural rather than conventional. Name checked
+    // against ReviewInvitationHttpTest.php's forbidden-fragment list
+    // (`reviewable`, `review-pool`, `reviews-available`, `open-pool`) —
+    // `review-roster` violates none of them.
+    Route::get('/speeches/{speech}/review-roster', [ReviewController::class, 'roster'])
+        ->name('api.speeches.review-roster');
+
     // STEP-06-watch-commentary.md: read-only. `review_id` is a required
     // query param (FormRequest-validated), not a route segment — matches
     // the frozen backend/frontend contract exactly.

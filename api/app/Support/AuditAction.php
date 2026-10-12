@@ -76,5 +76,17 @@ final class AuditAction
     // deletion that has not happened yet.
     public const SPEECH_MEDIA_PURGED = 'speech.media_purged';
 
+    // §7.2.5: the reviewer-roster verbs. `REVIEW_WITHDRAWN`/`REVIEW_ABANDONED`
+    // are the reviewer's own acts (actor is the reviewer); `REVIEW_ACCESS_REVOKED`/
+    // `REVIEW_ACCESS_PURGED` are the speech owner's or an admin's (actor is
+    // whoever called ReviewService::revoke/revokeAndPurge).
+    public const REVIEW_WITHDRAWN = 'review.withdrawn';
+
+    public const REVIEW_ABANDONED = 'review.abandoned';
+
+    public const REVIEW_ACCESS_REVOKED = 'review.access_revoked';
+
+    public const REVIEW_ACCESS_PURGED = 'review.access_purged';
+
     private function __construct() {}
 }
