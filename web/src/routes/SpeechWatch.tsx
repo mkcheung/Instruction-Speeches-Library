@@ -15,6 +15,7 @@ import { VoiceNoteMarkers } from '@/components/annotation/VoiceNoteMarkers'
 import { useCaptionsAnchor } from '@/components/annotation/captionsAnchor'
 import { EssayEditorPanel } from '@/components/essay/EssayEditorPanel'
 import { EssayReadOnlyPanel } from '@/components/essay/EssayReadOnlyPanel'
+import { EssayReviewerPicker } from '@/components/essay/EssayReviewerPicker'
 import { CaptionEditor } from '@/components/caption/CaptionEditor'
 import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
@@ -430,6 +431,18 @@ export default function SpeechWatch() {
             />
           </TabsPanel>
           <TabsPanel value="essay">
+            {/* IMPLEMENTATION-PLANS.md §7.4: the Essay panel's content is
+                driven by the selection made in the Notes tab's
+                `TrackSelector` radiogroup — a sibling tab's state. Opening
+                Essay first, before ever visiting Notes, used to land on
+                `EssayReadOnlyPanel`'s "Pick a reviewer to see their essay"
+                with no picker in sight. This is that picker — same
+                `commentary` selection, no second query, no local state. */}
+            <EssayReviewerPicker
+              options={commentary.options}
+              selected={commentary.selected}
+              onSelect={commentary.select}
+            />
             <EssayReadOnlyPanel
               speechId={speechId}
               reviewId={typeof commentary.selected === 'number' ? commentary.selected : null}
