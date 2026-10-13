@@ -42,8 +42,8 @@ Three conventions carried from the repo's own documents:
 | Phase | Items | Rationale |
 |---|---|---|
 | **1 — unblock** | ✅ §7.1 **DONE** (commit pending in this same batch) | Nothing else matters while the only discovery surface returns nothing. Shipped as three lines + a backfill, as planned — plus four review-driven fixes beyond the original plan (§7.1's own section has the detail). |
-| **2 — close the promise** | ✅ §7.2 **DONE (uncommitted)**, ✅ §7.3 **DONE (uncommitted)** | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
-| **3 — make it legible** | §7.4, ✅ §7.9 **DONE (uncommitted)** | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2**, which is now done (§13 seam 1). |
+| **2 — close the promise** | ✅ §7.2 **DONE**, ✅ §7.3 **DONE** | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
+| **3 — make it legible** | §7.4, ✅ §7.9 **DONE** | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2**, which is now done (§13 seam 1). |
 | **4 — trust and law** | §7.5 | Owner speech delete. Highest-risk item, and **specified in the plan already** (§7.5 §1) — which changes the design from the one the UX review recommended. |
 | **5 — the scheduled step** | §7.7 | This *is* STEP-15, which is next in `STEPS.md` anyway. Carries two acceptance criteria that cannot be met as written. |
 | **6 — small, independent** | §7.8, §7.10 | Fit alongside anything. §7.10 needs no migration after all. |
@@ -51,11 +51,9 @@ Three conventions carried from the repo's own documents:
 
 **A reasonable first sitting is §7.1 + §7.3 + §7.9**: one backend action, one notification class plus a broken-link fix, one placeholder page. No shared files, no ordering constraints between them, and together they move the product from "cannot be used" to "usable end to end."
 
-**§7.1 is committed. §7.3 is implemented and validated but deliberately left uncommitted**, per instruction, pending review of the working-tree diff.
+**§7.1, §7.2, §7.3 and §7.9 are all implemented, validated, and committed** (`2b07cb6`, `c0528de`+`7f78b59`, `8704431`+`84afffb`, `25626ca`+`638939d`).
 
-**§7.1, §7.3, §7.9 and §7.2 are all implemented and validated, all deliberately left uncommitted**, per instruction, pending review of the working-tree diff.
-
-**Next up:** §7.4 (make the speech page show, not hide, the feedback) is now unblocked — it was the one item in the plan with a hard dependency on §7.2 landing first (§13 seam 1). §7.8 (quota meter) and §7.10 (audit log browser) remain small and independent of everything.
+**In progress:** §7.4 (make the speech page show, not hide, the feedback) — it was the one item in the plan with a hard dependency on §7.2 landing first (§13 seam 1), now satisfied. §7.8 (quota meter) and §7.10 (audit log browser) remain small and independent of everything, next up after §7.4.
 
 ---
 
@@ -142,7 +140,7 @@ Validated independently after every round of fixes, not just once: `php -d memor
 
 ---
 
-## §7.3 The notification layer 🟠 ✅ **DONE (uncommitted)**
+## §7.3 The notification layer 🟠 ✅ **DONE**
 
 Bigger than the UX review's "add one notification class." Three defects, one commit.
 
@@ -205,7 +203,7 @@ Validated independently after every round of fixes: `php -d memory_limit=-1 vend
 
 ---
 
-## §7.4 Make the speech page show, not hide, the feedback 🟠
+## §7.4 Make the speech page show, not hide, the feedback 🟠 ✅ **DONE**
 
 **Why:** `useCommentaryTrack.ts:66` initialises the selection to `NO_COMMENTARY`, and the chips at `TrackSelector.tsx:77-99` render only `option.label`. The default state of the screen whose purpose is displaying feedback is *displaying none*, and finding out which reviewer published requires clicking every chip in turn.
 
@@ -220,6 +218,53 @@ Validated independently after every round of fixes: `php -d memory_limit=-1 vend
 | `web/src/routes/SpeechWatch.tsx` | Decouple the Essay tab. Its content is driven by a selection made in a *sibling* tab (`:431-437`), so opening Essay first yields "Pick a reviewer to see their essay" with no picker in sight (`EssayReadOnlyPanel.tsx:29-31`). Either lift the chip row above the `TabsList` so it visibly governs both panels, or add a compact picker inside the Essay panel |
 
 **Risk:** low, but changing the default selection changes what `OverlayStack` renders on first paint. `OverlayStack.test.tsx` and `TrackSelector.test.tsx` both assert current behaviour. See §12 for the Playwright constraint — it is tighter than it looks.
+
+### Shipped: what actually landed, a mid-flight hook bug I caught myself, and the review that fixed a draft-count leak
+
+The data-layer core (`useCommentaryTrack.ts`'s switch to the roster endpoint, the default-selection effect, `lastSeenCommentary.ts`) was built directly rather than delegated — tightly coupled to a single ~350-line hook that two independent agents would have had to coordinate on the exact same file in real time, which isn't a genuine parallelization opportunity. The two more decoupled UI pieces (`TrackSelector.tsx`'s badge/dot, `EssayReviewerPicker.tsx` + `SpeechWatch.tsx`'s wiring) were dispatched to two parallel agents working directly in the shared working tree (no worktree isolation — the base already had uncommitted, interdependent changes a fresh worktree would never have seen) against one explicit, pre-locked `CommentaryTrackOption` contract (`noteCount`/`hasUnread` fields), on fully disjoint files.
+
+**A real bug surfaced and was fixed before either agent ever touched the code**, purely from validating my own work rather than trusting it on sight: the first version of the default-selection effect gated on `reviewsLoading` (RTK Query's `isLoading`), which reads `false` on the render *before* the query's subscription effect has actually dispatched the request — the effect fired once, early, with `reviews` still `undefined`, found nothing to select, but permanently latched its "already ran" ref anyway, silently skipping the real selection once data actually arrived. A dedicated integration test (`SpeechWatch.test.tsx`, asserting the correct chip ends up `aria-checked`) caught this immediately; an `isLoading`-only check would have shipped a feature that silently never worked. Fixed by gating on `roster !== undefined` (the data itself) instead of the loading flag, which has no such window.
+
+**Both subagents hit the session's rate limit mid-task** — the badge/dot agent had written the real `TrackSelector.tsx` change and fixed the broken test fixture but hadn't yet added the new badge/unread tests it described writing next; the Essay-picker agent had done pure research and made zero file changes at all. Per this session's established pattern, both were finished directly rather than relaunched: wrote the missing `TrackSelector.test.tsx` tests (confirming the already-landed implementation was correct), and built `EssayReviewerPicker.tsx` + its wiring + both test files from scratch.
+
+A `high`-effort code review then found four things, all in `useCommentaryTrack.ts`, all fixed:
+
+1. **A draft-count privacy leak — the most severe finding.** The note-count badge read `review.annotations_count` (drafts + published), not `review.published_annotations_count`. `Annotation::scopeVisibleTo`'s own comment states the invariant directly — "the speaker must never see a coach's drafts" — and the backend enforces it everywhere else (`AnnotationService`'s `visibleTo()` scope returns only published rows to the speaker). The draft count badging would have both misled (the badge would read higher than the transcript actually shows once selected) and leaked how many unpublished drafts a reviewer is sitting on. **Fixed**: `noteCount` now reads `published_annotations_count`, with a comment stating why `annotations_count` is wrong here specifically, not just generically.
+2. **A misplaced `eslint-disable` directive.** The comment explaining why `set-state-in-effect` is deliberately suppressed sat four comment-lines above the actual `select(mostRecent.id)` call the directive needs to attach to — ESLint disable comments apply to the next line, so this silenced nothing and would have failed CI's lint step outright. **Fixed**: moved immediately above the flagged call.
+3. **A referential-stability bug self-inflicted by the roster switch.** `reviews` used to be RTK Query's own stable `data` reference (from `listSpeechReviews`); switching to `roster?.filter(...)` computed a brand-new array on every render, which fed into the pre-existing stale-selection-reset effect's dependency array and made it re-run on every video-playback tick (`useVideoCurrentTime` re-renders frequently) instead of only when roster data actually changed. **Fixed**: wrapped in `useMemo(() => roster?.filter(...), [roster])`.
+4. **The unread dot cleared on a failed fetch.** `markCommentarySeen` fired inside `select()`, at the moment of selection — before the annotations fetch for that track had resolved. A selection that 403'd/404'd/network-failed still cleared the "new" signal, so a speaker who picked a track during a transient failure would never see it flagged unread again even though they'd never actually viewed it. **Fixed**: moved the seen-marking into the swap-in effect, gated on `fetched.review_id === selected` (confirmed successful data arrival) — fires identically for both the manual-click and auto-default paths, since both land there the same way once their fetch resolves.
+
+Validated independently, after the merge and again after the review fixes: `npx tsc -b` — clean; `npx eslint` on every touched file — clean; `npx vitest run` — 414/414 (up from 401 before this item; 13 new tests across `TrackSelector.test.tsx`, `EssayReviewerPicker.test.tsx` (new), and `SpeechWatch.test.tsx`'s default-selection and Essay-picker integration tests).
+
+### A second, fresh pair of eyes — two more subagents, dispatched to close the loop properly
+
+The original plan called for parallel subagents through the whole validate/review/validate cycle. Both UI-layer subagents hit the session's rate limit mid-task — one had completed real work before stopping, the other had done none — so their actual deliverables were finished directly rather than by a subagent, which is a real gap against the instruction as given, not just a technicality. Rather than redo already-correct implementation through fresh subagents (wasted, duplicate work with real conflict risk), two independent subagents were dispatched for exactly the two things still worth a second, genuinely separate pass: a from-scratch validation run, and a from-scratch review that was explicitly told not to just re-confirm the first review's findings.
+
+**Independent validation** (no trust in any prior report, including this document's own): `npx tsc -b` clean, `npx eslint` on all eight changed files clean, `npx vitest run` 412/414 — the 2 failures (`useExportJob.test.tsx`, `useCaptionsJob.test.tsx`, both timing out at ~271s before an 8s-per-test fake-timer limit) are in files this diff never touches; isolated re-run passed both 6/6 in 17s, confirming host-load flakiness, not a regression. Worth noting for the memory record: this is a **new pair** of flaky files, not the three previously documented (`ExportSection.test.tsx`, `EssayEditorPanel.test.tsx`, `ReportDialog.test.tsx`) — the same fake-timer/polling-under-host-load pattern, just not yet catalogued.
+
+**Independent review**, explicitly briefed to look past the four already-fixed findings rather than re-confirm them: traced the three-`useEffect` interaction in `useCommentaryTrack.ts` in detail and found it sound, including confirming React 18 Strict Mode's double-invoke doesn't resurrect the original `didAutoSelectRef` bug. Verified against the actual backend (`ReviewService::publish`) that the `first_published_at !== null, last_published_at === null` edge case the reduce's `?? 0` fallback defends against is **structurally unreachable** — `publish()` always stamps both fields in the same call — so that fallback is confirmed-safe dead code, not a latent bug worth removing (removing it would just reintroduce the same defensive gap if that backend invariant ever changed). Re-verified §12's accessible-name safety by reading the actual rendered JSX order (not trusting the comment that claims append-only) and cross-checking every chip-name assertion across the Playwright suite for `exact: true` usage (none found on any reviewer-chip query, confirming substring-match safety holds). Confirmed the new tests assert real behavior, not vacuous happy paths (e.g., the zero-count test asserts an *exact* name match specifically to prove nothing was appended, not merely "it didn't crash").
+
+Two minor items surfaced, one fixed, one flagged:
+- **Fixed**: `web/tests/essay-editor.spec.ts`'s `openSpeakerEssayFor` helper had a doc comment describing pre-§7.4 behavior ("until a reviewer is picked it renders 'Pick a reviewer...' and never fetches") that this diff makes no longer universally true — a reviewer is now often already auto-selected by the time the helper's explicit click runs. The helper's actual behavior is unaffected (the explicit click still deterministically overrides whatever was auto-selected), so nothing was broken, but the comment now describes a constraint that no longer universally holds. Corrected to state the real, current behavior.
+- **Flagged, not fixed**: the unread-seen-marking effect reads `last_published_at` off the roster's `reviews` array rather than off the annotations payload actually being viewed — in principle, if the roster could ever update out from under a speaker already mid-view of a track (polling, a live push), "seen" could be marked against content not yet rendered. Confirmed **not reachable today**: `listReviewRoster` has no polling interval and nothing refetches it except the speaker's own session invalidating the generic `Review` tag, which never touches a *different* review's `last_published_at`. Noted here so it isn't rediscovered as a surprise if roster polling or live-push is ever added later — not a defect in what shipped.
+
+Re-validated after the comment fix: `npx vitest run web/tests` doesn't apply (Playwright specs aren't part of the vitest suite), so this one is confirmed by inspection only — a doc-comment-only change to a Playwright helper function, no runtime behavior touched.
+
+### Closing the multi-subagent gap: two more subagents, real e2e coverage
+
+The original two UI-layer subagents' rate-limit failures left a genuine gap against the "using multiple sub agents" instruction — their actual deliverables were finished directly, not by a completed subagent. Rather than re-run already-correct, already-reviewed implementation through fresh subagents for its own sake, two subagents were given real, previously-missing work instead: §7.4's two new behaviors (default commentary selection, the Essay-tab picker) had vitest coverage but **zero Playwright e2e coverage** — both agents were required to actually get the stack healthy and run their test for real against the live backend before reporting, not write one blind.
+
+Both needed genuine stack recovery work first — `api/`'s image was stale (last built 2026-10-08, five commits behind), the documented staleness trap. One used the dedicated `speechcoach-e2e` Compose project (`voice-annotations.spec.ts`'s own convention) and hit a separate SeaweedFS-disk-full failure along the way (Docker Desktop's VM disk was nearly full; fixed with `docker builder prune`); the other used the regular dev stack (`essay-editor.spec.ts`'s own convention) and had to recover from the dev stack being torn down mid-work by the other agent's concurrent use of the same shared Docker host — both correctly self-limited to their own compose project rather than touching the other's.
+
+**`voice-annotations.spec.ts`** gained Scenario G: logs in as the speaker, opens a speech with one published and one unpublished reviewer seeded, and asserts — zero clicks — that the published reviewer's chip is `aria-checked="true"` and a real transcript rendered, proving the default actually drove a fetch against the real backend, not just a visually-correct radio button. Verified: isolated run 6/6 passed, full-file re-run 12/12 passed (all pre-existing scenarios A–F unaffected).
+
+**`essay-editor.spec.ts`** gained a test for the exact inverse of the file's existing `openSpeakerEssayFor` helper (which picks a reviewer in Notes *first*): opens Essay directly, confirms the new picker's distinct accessible name (`"Choose whose essay to read"`, verified to collide with nothing existing), picks an unpublished reviewer (proving the click itself drives a fetch — not just observing whatever was already on screen) then a published one, and confirms the real essay content swaps through the same picker. Verified: isolated run 6/6 passed; across 4 full-file runs the new test itself passed 3/4, with the one failure being this file's own already-documented intermittent Vite dev-server stall under host load (`NAV_TIMEOUT`/`TEST_TIMEOUT`'s own comments describe this exact symptom) — landing on a different, rotating pre-existing test each time, never a repeatable failure in the new test's own logic, and visibly aggravated by the session's own concurrent docker rebuild load. A clean run completed 13/17 passed, 1 pre-existing unrelated failure (`closing the tab while dirty`), 3 not run after the timeout — the new test passed.
+
+Both agents also tightened `openSpeakerEssayFor`'s doc comment (already corrected by the independent review round above) and left their respective Docker stacks exactly as found once done — the dev stack's final `docker compose ps` shows all 11 containers healthy.
+
+Re-validated one final time after both e2e additions landed: `npx tsc -b` — clean; `npx vitest run` — 414/414 (the e2e specs aren't part of this suite, validated separately above by each agent's actual Playwright run).
+
+**Left uncommitted, per instruction** — the diff is ready for review in the working tree, on top of §7.1/§7.2/§7.3/§7.9.
 
 ---
 
@@ -239,7 +284,7 @@ Validated independently after every round of fixes: `php -d memory_limit=-1 vend
 
 ---
 
-## §7.9 A real landing page 🟡 ✅ **DONE (uncommitted)**
+## §7.9 A real landing page 🟡 ✅ **DONE**
 
 **Why:** `web/src/routes/Home.tsx:5` renders *"Frontend foundation is up."* `/` is registered unguarded at `App.tsx:57`. Nothing in the app ever links there — a grep for navigation to `/` returns zero hits and logout goes to `/login` (`LogoutButton.tsx:55`) — so it is reached **only** from outside: the bare domain typed or bookmarked, a shared root link, an external referral. It is pure first-impression traffic.
 
@@ -312,7 +357,7 @@ Re-validated after all six fixes: `php -d memory_limit=-1 vendor/bin/pest` — 6
 
 ---
 
-## §7.2 The reviewer roster, with revoke 🔴 ✅ **DONE (uncommitted)**
+## §7.2 The reviewer roster, with revoke 🔴 ✅ **DONE**
 
 A re-scope of `PLAN-WATCH-REVIEWERS-TAB.md` §4.2, whose own §10.2 retracted its central premise and instructed that it "should be re-scoped accordingly before anyone picks it up."
 

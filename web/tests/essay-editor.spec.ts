@@ -674,6 +674,42 @@ test.describe('a published essay — read path', () => {
     await context.close()
   })
 
+  test('opening Essay before ever touching Notes shows its own picker, and picking a reviewer there drives the content', async ({
+    browser,
+  }) => {
+    // IMPLEMENTATION-PLANS.md §7.4: before `EssayReviewerPicker` existed, a
+    // speaker who opened Essay first — never touching Notes or its
+    // radiogroup — landed on `EssayReadOnlyPanel`'s "Pick a reviewer to see
+    // their essay" with nothing on screen to act on. `openSpeakerEssayFor`
+    // below deliberately exercises the OTHER path (pick in Notes first,
+    // then switch tabs); this test is the inverse the fix was actually for.
+    const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+    const page = await context.newPage()
+
+    await page.goto(SPEECH_URL, { waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
+    // Essay tab directly — the Notes tab and its "Choose commentary track"
+    // radiogroup are never clicked in this test.
+    await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Essay' }).click()
+
+    // Own accessible name, deliberately distinct from TrackSelector's
+    // §12-frozen "Choose commentary track" (see EssayReviewerPicker.tsx).
+    const picker = page.getByRole('radiogroup', { name: 'Choose whose essay to read' })
+    await expect(picker).toBeVisible()
+
+    // Reviewer B has no essay yet — picking them first proves the CLICK
+    // itself drives a real fetch for that reviewer, rather than merely
+    // observing whatever happened to already be on screen.
+    await picker.getByRole('radio', { name: USERS.reviewerB.name }).click()
+    await expect(page.getByText(`${USERS.reviewerB.name} hasn't published an essay yet.`)).toBeVisible()
+
+    // Switching to reviewer A brings up their published essay through the
+    // SAME picker — a second fetch, a different reviewer's content.
+    await picker.getByRole('radio', { name: USERS.reviewerA.name }).click()
+    await expect(page.getByTestId('essay-readonly-content')).toContainText(ESSAY_COACH_A_TEXT)
+
+    await context.close()
+  })
+
   test('a second reviewer on the same speech cannot reach it by any route', async ({ browser }) => {
     const context = await browser.newContext({ storageState: USERS.reviewerB.storageState })
     const page = await context.newPage()
@@ -700,10 +736,14 @@ test.describe('a published essay — read path', () => {
   })
 })
 
-/** The speaker's route to an essay is two clicks and the order is forced:
- * `EssayReadOnlyPanel` is passed the commentary track's selected review, so
- * until a reviewer is picked it renders "Pick a reviewer to see their
- * essay." and never fetches. */
+/** The speaker's route to an essay is two clicks, picking the reviewer
+ * explicitly via the Notes tab's radiogroup before switching to Essay.
+ * `EssayReadOnlyPanel` is passed the commentary track's selected review —
+ * since §7.4, that's often already auto-selected to the most recently
+ * published reviewer by the time this helper runs, but the explicit click
+ * here still overrides whatever was auto-selected, so this helper reaches
+ * the same deterministic end state regardless of the auto-selected
+ * default. */
 async function openSpeakerEssayFor(page: Page, reviewerName: string) {
   await page.goto(SPEECH_URL, { waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
   await page

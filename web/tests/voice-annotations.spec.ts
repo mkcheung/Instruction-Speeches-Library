@@ -469,3 +469,29 @@ test('Scenario F — queued erase-self removes audio while preserving Former rev
   expect(erasedAnnotation.voice).toBeNull()
   await speakerContext.close()
 })
+
+test('Scenario G — the commentary track defaults to the published reviewer with no click needed', async ({ browser }) => {
+  // §7.4: useCommentaryTrack.ts defaults `selected` to the review with the
+  // most recent `last_published_at`, falling back to NO_COMMENTARY when
+  // none has published. VOICE.coachSpeechId (E2EVoiceAnnotationSeeder)
+  // seeds exactly one such candidate — reviewerA's review 9611, published —
+  // alongside reviewerB's review 9614, which is accepted but has never
+  // published (`first_published_at`/`last_published_at` both null), so it
+  // is not a candidate for the default no matter what. This is the real
+  // backend proving the same default-selection logic SpeechWatch.test.tsx
+  // already covers against mocked fetch data ("defaults the commentary
+  // selection to the reviewer who published most recently").
+  const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+  const page = await context.newPage()
+  await openSpeech(page, VOICE.coachSpeechId)
+
+  const radiogroup = page.getByRole('radiogroup', { name: 'Choose commentary track' })
+  await expect(radiogroup.getByRole('radio', { name: USERS.reviewerA.name })).toHaveAttribute('aria-checked', 'true')
+  await expect(radiogroup.getByRole('radio', { name: 'No commentary' })).toHaveAttribute('aria-checked', 'false')
+
+  // Not just a visually-checked radio — the default actually drove a real
+  // fetch of that reviewer's published commentary.
+  await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
+
+  await context.close()
+})

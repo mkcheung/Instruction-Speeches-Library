@@ -94,6 +94,31 @@ export function TrackSelector({
                 )}
               >
                 {option.label}
+                {/* §7.4 count badge — reviewer chips only (`NO_COMMENTARY` is
+                    always `noteCount: 0`, and an empty "0 notes" badge would
+                    be noise, not information). Rendered as a sibling text
+                    node AFTER `option.label` so it extends the button's
+                    accessible name rather than replacing or interleaving it
+                    — §12's "append only" constraint on this chip's name. */}
+                {option.review !== null && option.noteCount > 0 && (
+                  <span className="ml-1 text-xs opacity-75">
+                    {` · ${option.noteCount} ${option.noteCount === 1 ? 'note' : 'notes'}`}
+                  </span>
+                )}
+                {/* §7.4 unread indicator — same append-only placement. The
+                    text equivalent (", new") carries the signal in the
+                    accessible name for a screen-reader user; the small
+                    `aria-hidden` dot is an additive, purely decorative cue
+                    for sighted users, not a substitute for it. */}
+                {option.review !== null && option.hasUnread && (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-current align-middle"
+                    />
+                    <span className="sr-only">{', new'}</span>
+                  </>
+                )}
               </button>
             )
           })}

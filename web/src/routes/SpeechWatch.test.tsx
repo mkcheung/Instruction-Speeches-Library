@@ -1,6 +1,6 @@
 import { createRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type Player from 'video.js/dist/types/player'
 import { Routes, Route } from 'react-router-dom'
@@ -311,10 +311,12 @@ describe('SpeechWatch reviewers tab', () => {
    * this screen touches are prefixes of one another once the tab strip and
    * the invite panel are both mounted: `/api/reviewers` (directory search)
    * vs `/api/reviews` (the viewer's own reviews) vs
-   * `/api/speeches/17/reviews` (the owner's commentary tracks). A loose
-   * substring match hands one endpoint's payload to another endpoint's
-   * `transformResponse`, which fails as a crash rather than as an
-   * assertion. */
+   * `/api/speeches/17/review-roster` (the owner's commentary tracks — §7.4
+   * switched `useCommentaryTrack` from `/reviews` to `/review-roster`,
+   * since §7.2 put the note-count/unread data this feature needs only on
+   * the roster resource). A loose substring match hands one endpoint's
+   * payload to another endpoint's `transformResponse`, which fails as a
+   * crash rather than as an assertion. */
   function pathOf(input: RequestInfo | URL): string {
     const raw = input instanceof Request ? input.url : input.toString()
     return new URL(raw, 'http://localhost').pathname
@@ -324,10 +326,15 @@ describe('SpeechWatch reviewers tab', () => {
     speech,
     reviewers = [],
     myReviews = {},
+    roster = [],
   }: {
     speech: unknown
     reviewers?: unknown[]
     myReviews?: unknown
+    /** §7.4: the owner's commentary-track data — `useCommentaryTrack` now
+     * reads this endpoint instead of `/reviews`. Defaults to empty, same
+     * as the old default did. */
+    roster?: unknown[]
   }) {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = pathOf(input)
@@ -346,7 +353,20 @@ describe('SpeechWatch reviewers tab', () => {
       // reviewer-side "Your feedback" strip at all.
       if (path === '/api/reviews') return json(myReviews)
       if (path === '/api/speeches/17') return json({ speech })
-      if (path === '/api/speeches/17/reviews') return json({ reviews: [] })
+      if (path === '/api/speeches/17/review-roster') return json({ reviews: roster })
+      // §7.4: a default/manual chip selection fires `getAnnotations` for
+      // that review — needed now that the default-selection tests below
+      // select a real review on load rather than staying on NO_COMMENTARY.
+      if (path === '/api/speeches/17/annotations') {
+        const reviewId = Number(new URL(urlOf(input), 'http://localhost').searchParams.get('review_id'))
+        const match = roster.find((r) => (r as { id: number }).id === reviewId) as { reviewer?: unknown } | undefined
+        return json({ review_id: reviewId, reviewer: match?.reviewer ?? null, annotations: [] })
+      }
+      // §7.4: EssayReviewerPicker's selection drives EssayReadOnlyPanel's
+      // `getEssay` fetch — needed for the Essay-tab picker integration test.
+      if (path === '/api/speeches/17/essay') {
+        return json({ essay: { essay_html: null, essay_published_at: null } })
+      }
       if (path === '/api/speeches/17/captions') {
         return json({
           captions: { vtt: null, status: 'unavailable', failure_code: null, updated_at: null, asset_id: null, revision: null },
@@ -400,6 +420,98 @@ describe('SpeechWatch reviewers tab', () => {
       { route: '/speeches/17' },
     )
   }
+
+  /** A `GET /api/speeches/17/review-roster` row, trimmed to what
+   * `useCommentaryTrack`'s default-selection logic and `TrackSelector`'s
+   * chips read. */
+  function rosterReview(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 1,
+      status: 'published',
+      invitation_message: null,
+      allow_preview: false,
+      prior_commentary_shared: false,
+      invited_at: '2026-09-01T10:00:00Z',
+      responded_at: '2026-09-01T11:00:00Z',
+      first_published_at: '2026-09-02T10:00:00Z',
+      last_published_at: '2026-09-02T10:00:00Z',
+      last_transition_at: '2026-09-02T10:00:00Z',
+      revoked_at: null,
+      revocation_reason: null,
+      annotations_count: 3,
+      published_annotations_count: 3,
+      revoked_by_is_self: false,
+      reviewer: { id: 7, username: 'coach7', name: 'Coach Seven' },
+      ...overrides,
+    }
+  }
+
+  /**
+   * IMPLEMENTATION-PLANS.md §7.4: "the default state of the screen whose
+   * purpose is displaying feedback is displaying none" — `useCommentaryTrack`
+   * now auto-selects the most recently published reviewer on load instead
+   * of leaving every speaker on `NO_COMMENTARY` until they click a chip.
+   */
+  it('defaults the commentary selection to the reviewer who published most recently', async () => {
+    stubWatchFetch({
+      speech: speechFixture(),
+      roster: [
+        rosterReview({
+          id: 1,
+          reviewer: { id: 7, name: 'Earlier Coach' },
+          first_published_at: '2026-09-01T10:00:00Z',
+          last_published_at: '2026-09-01T10:00:00Z',
+        }),
+        rosterReview({
+          id: 2,
+          reviewer: { id: 8, name: 'Later Coach' },
+          first_published_at: '2026-09-03T10:00:00Z',
+          last_published_at: '2026-09-03T10:00:00Z',
+        }),
+        // Accepted but hasn't published anything yet — not a candidate for
+        // the default, regardless of `last_transition_at`.
+        rosterReview({
+          id: 3,
+          status: 'accepted',
+          reviewer: { id: 9, name: 'Still Working Coach' },
+          first_published_at: null,
+          last_published_at: null,
+        }),
+      ],
+    })
+    renderWatch()
+
+    const radiogroup = await screen.findByRole('radiogroup', { name: 'Choose commentary track' })
+    const laterChip = await within(radiogroup).findByRole('radio', { name: /Later Coach/ })
+    const earlierChip = within(radiogroup).getByRole('radio', { name: /Earlier Coach/ })
+
+    // The radiogroup itself renders as soon as `optionsLoading` settles
+    // false, but the auto-select effect's `setSelected` flushes on a
+    // following tick — `waitFor`, not a bare assertion, gives it that
+    // room rather than racing it.
+    await waitFor(() => expect(laterChip).toHaveAttribute('aria-checked', 'true'))
+    expect(earlierChip).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('leaves the selection on No commentary when nobody has published yet', async () => {
+    stubWatchFetch({
+      speech: speechFixture(),
+      roster: [
+        rosterReview({
+          id: 1,
+          status: 'accepted',
+          reviewer: { id: 7, name: 'Still Working Coach' },
+          first_published_at: null,
+          last_published_at: null,
+        }),
+      ],
+    })
+    renderWatch()
+
+    const radiogroup = await screen.findByRole('radiogroup', { name: 'Choose commentary track' })
+    const noneChip = within(radiogroup).getByRole('radio', { name: 'No commentary' })
+    expect(noneChip).toHaveAttribute('aria-checked', 'true')
+  })
 
   it('gives the owner a Reviewers tab in the Speech tools strip', async () => {
     stubWatchFetch({ speech: speechFixture() })
@@ -504,5 +616,50 @@ describe('SpeechWatch reviewers tab', () => {
     const tab = await screen.findByRole('tab', { name: 'Reviewers' })
     await user.click(tab)
     expect(await screen.findByLabelText('Search the reviewer directory')).toBeVisible()
+  })
+
+  /**
+   * IMPLEMENTATION-PLANS.md §7.4: the Essay tab used to have no picker of
+   * its own — opening it before ever visiting Notes landed on "Pick a
+   * reviewer to see their essay" with nothing on screen to act on.
+   * `EssayReviewerPicker` fixes that; this proves the wiring end to end,
+   * not just the component in isolation (`EssayReviewerPicker.test.tsx`
+   * covers the component itself).
+   */
+  it('lets the owner pick a reviewer from inside the Essay tab, and that selection drives the essay fetch', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubWatchFetch({
+      speech: speechFixture(),
+      roster: [
+        rosterReview({ id: 1, reviewer: { id: 7, name: 'Earlier Coach' }, first_published_at: '2026-09-01T10:00:00Z', last_published_at: '2026-09-01T10:00:00Z' }),
+        rosterReview({ id: 2, reviewer: { id: 8, name: 'Later Coach' }, first_published_at: '2026-09-03T10:00:00Z', last_published_at: '2026-09-03T10:00:00Z' }),
+      ],
+    })
+    renderWatch()
+
+    const essayTab = await screen.findByRole('tab', { name: 'Essay' })
+    await user.click(essayTab)
+
+    const picker = await screen.findByRole('radiogroup', { name: 'Choose whose essay to read' })
+    const laterChip = within(picker).getByRole('radio', { name: 'Later Coach' })
+    const earlierChip = within(picker).getByRole('radio', { name: 'Earlier Coach' })
+
+    // §7.4's default-selection behaviour (tested separately above) already
+    // picks the most-recently-published reviewer, so Later Coach starts
+    // checked with no click — the real thing this test exercises is
+    // clicking the OTHER chip actually switching the selection, proving
+    // the picker drives the SAME shared state Notes' TrackSelector does,
+    // not a local copy of it.
+    await waitFor(() => expect(laterChip).toHaveAttribute('aria-checked', 'true'))
+
+    await user.click(earlierChip)
+
+    await waitFor(() => expect(earlierChip).toHaveAttribute('aria-checked', 'true'))
+    expect(laterChip).toHaveAttribute('aria-checked', 'false')
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => urlOf(input).includes('/api/speeches/17/essay?review_id=1')),
+      ).toBe(true),
+    )
   })
 })

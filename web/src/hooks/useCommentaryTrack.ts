@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { skipToken } from '@reduxjs/toolkit/query/react'
-import { useListSpeechReviewsQuery } from '@/features/review/reviewApi'
-import type { Review } from '@/features/review/types'
+import { useListReviewRosterQuery } from '@/features/review/reviewApi'
+import type { RosterReview } from '@/features/review/types'
 import { useGetAnnotationsQuery, usePrefetchAnnotations } from '@/features/annotation/annotationApi'
 import type { Annotation } from '@/features/annotation/types'
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
@@ -10,6 +10,21 @@ import { useIosFullscreenSubtitles } from '@/hooks/useIosFullscreenSubtitles'
 import { useVoiceCommentaryPreference } from '@/hooks/useVoiceCommentaryPreference'
 import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
 import { reviewerLabel } from '@/lib/reviewerLabel'
+import { hasUnseenCommentary, markCommentarySeen } from '@/lib/lastSeenCommentary'
+
+/** `Review::ACCESS_GRANTING` (`api/app/Models/Review.php`) — mirrored here
+ * rather than re-fetched, same precedent as `useMyReviewForSpeech.ts`'s
+ * identical constant: the frontend has no endpoint that returns the
+ * backend enum itself, and it's stable across this codebase's steps. This
+ * hook used to get this filtering for free from `forSpeech`/
+ * `listSpeechReviews` server-side; now that it reads the unfiltered
+ * `review-roster` endpoint (IMPLEMENTATION-PLANS.md §13 seam 1 — the
+ * roster is where §7.2 put the counts this feature needs, and
+ * `ReviewResource` deliberately does not carry them), the chip list has to
+ * apply the same access-granting-and-not-revoked filter client-side that
+ * `forSpeech` used to apply server-side, to keep the exact same set of
+ * rows selectable as before this change. */
+const ACCESS_GRANTING = new Set(['accepted', 'in_progress', 'published'])
 
 export const NO_COMMENTARY = 'none' as const
 export type CommentarySelection = number | typeof NO_COMMENTARY
@@ -37,7 +52,21 @@ function seekVideo(video: HTMLVideoElement, seconds: number): void {
 export interface CommentaryTrackOption {
   key: CommentarySelection
   label: string
-  review: Review | null
+  review: RosterReview | null
+  /** §7.4: the count badge — `review.published_annotations_count`, 0 for
+   * `NO_COMMENTARY` (there is nothing to count). Deliberately NOT
+   * `annotations_count`: that counter includes the reviewer's own
+   * unpublished drafts, which `AnnotationService::forReview`'s
+   * `visibleTo()` scope never lets the speaker see (`published_at IS NOT
+   * NULL` for anyone but the review's own author) — badging the draft
+   * total here would both mislead (the badge count would exceed what the
+   * transcript actually shows once selected) and leak how many drafts a
+   * reviewer is sitting on, which is exactly the "the speaker must never
+   * see a coach's drafts" invariant `Annotation::scopeVisibleTo`'s own
+   * comment states. */
+  noteCount: number
+  /** §7.4: the unread dot — always `false` for `NO_COMMENTARY`. */
+  hasUnread: boolean
 }
 
 /**
@@ -60,10 +89,33 @@ export function useCommentaryTrack(
   enabled = true,
   userId?: string,
 ) {
-  const { data: reviews, isLoading: reviewsLoading } = useListSpeechReviewsQuery(speechId, {
+  const { data: roster, isLoading: reviewsLoading } = useListReviewRosterQuery(speechId, {
     skip: !enabled,
   })
+  // See the `ACCESS_GRANTING` comment above — `review-roster` returns
+  // every status including revoked/declined/abandoned (that's the whole
+  // point of it for `ReviewerRoster`); this hook only ever wants the same
+  // subset `forSpeech` used to pre-filter.
+  //
+  // `useMemo`'d on `roster` itself, not recomputed as a bare `.filter()`
+  // on every render: `roster` is a stable reference from RTK Query (same
+  // object across renders unless the data actually changed), but `.filter()`
+  // always returns a brand-new array. Without memoizing, `reviews` would
+  // get a new identity on every re-render of this hook — including the
+  // frequent ones `useVideoCurrentTime` drives during playback — which
+  // feeds straight into the stale-selection-reset effect below's
+  // dependency array and made it re-run on every single tick instead of
+  // only when the roster data actually changed.
+  const reviews = useMemo(
+    () => roster?.filter((r) => r.revoked_at === null && ACCESS_GRANTING.has(r.status)),
+    [roster],
+  )
   const [selected, setSelected] = useState<CommentarySelection>(NO_COMMENTARY)
+  // §7.4: the default-selection effect below (which auto-picks the most
+  // recently published track on first load) must fire at most once per
+  // mount — never re-firing after a speaker has deliberately navigated
+  // back to "No commentary" themselves.
+  const didAutoSelectRef = useRef(false)
   const prefetchAnnotations = usePrefetchAnnotations('getAnnotations')
 
   const {
@@ -105,6 +157,11 @@ export function useCommentaryTrack(
     setFadeDone(false)
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current)
     fadeTimerRef.current = setTimeout(() => setFadeDone(true), CROSSFADE_OUT_MS)
+    // §7.4's unread dot: marking "seen" happens once the selection's data
+    // has actually arrived (see the swap-in effect below), not here at
+    // the moment of selection — selecting a track that then 403s/404s/
+    // network-fails must not clear the "new" signal for commentary the
+    // speaker never actually saw.
   }
 
   /** Is the data backing the CURRENT selection actually in hand? False
@@ -130,7 +187,15 @@ export function useCommentaryTrack(
     if (!fetched || fetched.review_id !== selected) return
     const swapIn = () => setDisplayed(fetched.annotations)
     swapIn()
-  }, [fetched, selected, fadeDone])
+
+    // §7.4's unread dot: this is the point where the selection's data is
+    // actually in hand and about to render — "seen" means THIS, not merely
+    // "a selection was attempted." Fires for both a manual click and the
+    // auto-default effect above, since both go through `select()` /
+    // `setSelected` and land here identically once their fetch resolves.
+    const target = reviews?.find((r) => r.id === fetched.review_id)
+    if (target?.last_published_at) markCommentarySeen(speechId, fetched.review_id, target.last_published_at)
+  }, [fetched, selected, fadeDone, reviews, speechId])
 
   const crossfading = !fadeDone || !dataReady
   const cues = crossfading ? EMPTY_ANNOTATIONS : displayed
@@ -160,19 +225,66 @@ export function useCommentaryTrack(
   useIosFullscreenSubtitles(videoEl, timedAnnotations)
 
   const options: CommentaryTrackOption[] = [
-    { key: NO_COMMENTARY, label: 'No commentary', review: null },
+    { key: NO_COMMENTARY, label: 'No commentary', review: null, noteCount: 0, hasUnread: false },
     ...(reviews ?? []).map((review) => ({
       key: review.id,
       label: reviewerLabel(review.reviewer) ?? 'Former reviewer',
       review,
+      noteCount: review.published_annotations_count,
+      hasUnread: hasUnseenCommentary(speechId, review.id, review.last_published_at),
     })),
   ]
+
+  // IMPLEMENTATION-PLANS.md §7.4: "the default state of the screen whose
+  // purpose is displaying feedback is displaying none" — default to the
+  // review with the most recently published commentary (highest
+  // `last_published_at` among reviews with a non-null `first_published_at`
+  // — a review can be `accepted`/`in_progress` with nothing published yet,
+  // which is not a candidate), falling back to `NO_COMMENTARY` when no
+  // reviewer has published anything. Fires at most once per mount
+  // (`didAutoSelectRef`): must never re-trigger after the speaker has
+  // deliberately navigated back to "No commentary" themselves, and must
+  // never fight the stale-selection-reset effect below (that one only
+  // acts when `selected !== NO_COMMENTARY`; this one only acts when
+  // `selected === NO_COMMENTARY` — the two conditions can't both hold).
+  useEffect(() => {
+    // `roster === undefined`, not `reviewsLoading` — RTK Query's `isLoading`
+    // reads `false` on the render BEFORE the query's own subscription
+    // effect has dispatched the request (its internal state starts
+    // `isUninitialized`/`isLoading: false`, only flipping to `isLoading:
+    // true` on a later commit). Gating on `reviewsLoading` let this effect
+    // fire once, early, with `reviews` still `undefined` — `published`
+    // came back empty, nothing got selected, but `didAutoSelectRef` latched
+    // `true` anyway, permanently skipping the real run once data actually
+    // arrived. Gating on the data itself has no such window: it simply
+    // cannot be `undefined` before the roster has actually loaded.
+    if (didAutoSelectRef.current || selected !== NO_COMMENTARY || roster === undefined) return
+    didAutoSelectRef.current = true
+
+    const published = (reviews ?? []).filter((r) => r.first_published_at !== null)
+    if (published.length === 0) return
+
+    const mostRecent = published.reduce((latest, candidate) =>
+      new Date(candidate.last_published_at ?? 0).getTime() > new Date(latest.last_published_at ?? 0).getTime()
+        ? candidate
+        : latest,
+    )
+
+    // See the identical justification on the stale-selection-reset effect
+    // below: `select()` also starts the cross-fade timer, an imperative
+    // side effect no render-time derivation could perform, and this
+    // reacts to async roster data arriving, not to state derivable from
+    // props.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    select(mostRecent.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, selected])
 
   // IMPLEMENTATION-PLANS.md §7.2.6's second, pre-existing state bug —
   // newly reachable via this feature's own revoke action, but already
   // live via the admin panel's revoke with zero frontend involvement.
-  // `reviews` (and thus `options`) comes from `listSpeechReviews`, which
-  // is filtered to access-granting, non-revoked rows — the instant the
+  // `reviews` (and thus `options`) comes from the roster, filtered above to
+  // access-granting, non-revoked rows — the instant the
   // CURRENTLY SELECTED reviewer is revoked, that row drops out of
   // `options` on the next refetch, but `selected` is plain `useState` and
   // has no reason to change on its own: it would keep holding the dead
