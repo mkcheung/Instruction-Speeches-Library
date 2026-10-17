@@ -42,6 +42,16 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
+            // §7.8: UserResource now reads these three QuotaService columns
+            // on every /api/me response. Same preventAccessingMissingAttributes
+            // reasoning as first_name/last_name/username above — a plain DB
+            // row always has these three (migration defaults), so a
+            // factory-built instance must match that explicitly rather than
+            // omitting the keys and relying on a model reload that never
+            // happens between create() and an in-memory resource read.
+            'storage_bytes_used' => 0,
+            'quota_bytes' => 5 * 1024 * 1024 * 1024,
+            'uploads_in_flight' => 0,
         ];
     }
 

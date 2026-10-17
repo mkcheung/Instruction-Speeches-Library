@@ -1,7 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { ExportSection } from '@/components/account/ExportSection'
 import { DeleteAccountDialog } from '@/components/account/DeleteAccountDialog'
+import { QuotaMeter } from '@/components/account/QuotaMeter'
 import { useExportJob, latestExportOfKind } from '@/hooks/useExportJob'
+import { useGetMeQuery } from '@/features/auth/authApi'
 import { PageShell } from '@/components/layout/PageShell'
 
 /**
@@ -11,16 +13,28 @@ import { PageShell } from '@/components/layout/PageShell'
  * its own screen," per the frontend agent's recommendation the contract
  * cites).
  *
- * Two sections, per STEP-11.md's frontend requirements: export (both
- * `kind`s — "your speeches and the commentary written about you" for
- * `'account'`, the reviewer "download my annotations" mitigation for
- * `'reviewer_annotations'`) and account deletion.
+ * Three sections: storage (§7.8 — a user who needs to free space is
+ * already standing here), export (both `kind`s — "your speeches and the
+ * commentary written about you" for `'account'`, the reviewer "download my
+ * annotations" mitigation for `'reviewer_annotations'`), and account
+ * deletion.
  */
 export default function Account() {
   const { exports } = useExportJob()
+  const { data: me } = useGetMeQuery()
 
   return (
     <PageShell width="form">
+      <Card>
+        <CardHeader>
+          <CardTitle>Storage</CardTitle>
+          <CardDescription>Your speeches and uploads count against a shared quota.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {me && <QuotaMeter usedBytes={me.user.storage_bytes_used} quotaBytes={me.user.quota_bytes} />}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>Your data</CardTitle>

@@ -41,9 +41,9 @@ Three conventions carried from the repo's own documents:
 
 | Phase | Items | Rationale |
 |---|---|---|
-| **1 — unblock** | ✅ §7.1 **DONE** (commit pending in this same batch) | Nothing else matters while the only discovery surface returns nothing. Shipped as three lines + a backfill, as planned — plus four review-driven fixes beyond the original plan (§7.1's own section has the detail). |
+| **1 — unblock** | ✅ §7.1 **DONE** | Nothing else matters while the only discovery surface returns nothing. Shipped as three lines + a backfill, as planned — plus four review-driven fixes beyond the original plan (§7.1's own section has the detail). |
 | **2 — close the promise** | ✅ §7.2 **DONE**, ✅ §7.3 **DONE** | Revoke makes the headline guarantee exercisable; the notification layer makes the payoff visible. Together they complete invite → feedback → control. |
-| **3 — make it legible** | §7.4, ✅ §7.9 **DONE** | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2**, which is now done (§13 seam 1). |
+| **3 — make it legible** | ✅ §7.4 **DONE**, ✅ §7.9 **DONE** | Feedback visible by default; a front door that explains the product. Near-pure frontend. §7.4 **must follow §7.2** (§13 seam 1) — both done. |
 | **4 — trust and law** | §7.5 | Owner speech delete. Highest-risk item, and **specified in the plan already** (§7.5 §1) — which changes the design from the one the UX review recommended. |
 | **5 — the scheduled step** | §7.7 | This *is* STEP-15, which is next in `STEPS.md` anyway. Carries two acceptance criteria that cannot be met as written. |
 | **6 — small, independent** | §7.8, §7.10 | Fit alongside anything. §7.10 needs no migration after all. |
@@ -51,9 +51,9 @@ Three conventions carried from the repo's own documents:
 
 **A reasonable first sitting is §7.1 + §7.3 + §7.9**: one backend action, one notification class plus a broken-link fix, one placeholder page. No shared files, no ordering constraints between them, and together they move the product from "cannot be used" to "usable end to end."
 
-**§7.1, §7.2, §7.3 and §7.9 are all implemented, validated, and committed** (`2b07cb6`, `c0528de`+`7f78b59`, `8704431`+`84afffb`, `25626ca`+`638939d`).
+**§7.1, §7.2, §7.3, §7.4 and §7.9 are all implemented, validated, and committed** (`2b07cb6`, `c0528de`+`7f78b59`, `8704431`+`84afffb`, `68e6e24`, `25626ca`+`638939d`).
 
-**In progress:** §7.4 (make the speech page show, not hide, the feedback) — it was the one item in the plan with a hard dependency on §7.2 landing first (§13 seam 1), now satisfied. §7.8 (quota meter) and §7.10 (audit log browser) remain small and independent of everything, next up after §7.4.
+**Next up:** §7.8 (quota meter) and §7.10 (audit log browser) are both small, fully specified, and independent of everything else — no blockers, no prerequisites. §7.5 (speaker edit/delete own speech) is higher-risk but also fully specified, including two resolved design traps (§7.5.3's `supersedes_id` slot, §7.5.7's policy-method-naming shadow) — no open design questions left, just implementation. §7.7 (= STEP-15, keyboard map + accessibility) is fully specified too, but carries a real prerequisite of its own: an Axe baseline must be captured and committed *before* any fix lands, or the step's own "before" measurement becomes permanently unrecoverable (§7.7.4). §7.6C remains blocked on production email infrastructure outside this repo (§7.6C.1) — not actionable until that lands.
 
 ---
 
@@ -268,7 +268,7 @@ Re-validated one final time after both e2e additions landed: `npx tsc -b` — cl
 
 ---
 
-## §7.8 Surface storage and upload limits 🟡
+## §7.8 Surface storage and upload limits 🟡 ✅ **DONE**
 
 **Why:** `QuotaService` enforces 5 GiB and a hard cap of 2 concurrent uploads atomically, in a single `UPDATE … WHERE storage_bytes_used + ? <= quota_bytes AND uploads_in_flight < 2` (`:77-78`) — never check-then-act, which is right. But the limits are invisible until they fire as *"This upload would exceed your storage quota, or you already have 2 uploads in progress."* That one string conflates two problems with two different remedies: one means "delete something", the other means "wait".
 
@@ -281,6 +281,33 @@ Re-validated one final time after both e2e additions landed: `npx tsc -b` — cl
 | `web/src/routes/Account.tsx` | Show the quota beside the export/delete sections, where a user who needs to free space is already standing |
 
 **Do not move the enforcement.** The atomic `UPDATE` is correct; the client check is advisory only.
+
+### Shipped: what actually landed, and the review that closed a real pre-flight/enforcement gap
+
+Implemented by two parallel subagents in isolated worktrees — backend (the three new `UserResource` fields, `QuotaService::reserve()`'s split error message) and frontend (`formatBytes.ts`, the `QuotaMeter` component, `UploadDashboard.tsx`'s pre-flight check and error toast, `Account.tsx`'s new Storage card) — briefed against one locked contract (the two exact message strings, the three field names) so neither waited on the other. Both worktrees forked from `origin/master` rather than this repo's actual `development` branch (a `worktree.baseRef: "fresh"` default, pointing at a different branch than the one all of this session's work lives on) — verified byte-identical at every file either agent would touch before merging, so the stale-base trap this session has hit before (§7.2, §7.4) didn't apply here; merged cleanly as patches, no reconciliation needed.
+
+The backend agent found one real necessity outside its stated file scope: `UserFactory.php` needed `storage_bytes_used`/`quota_bytes`/`uploads_in_flight` added to its `definition()` (matching the file's own existing precedent for `first_name`/`last_name`/`username`) — without it, three tests broke with `MissingAttributeException` the moment `UserResource` started reading the new columns, since `Model::preventAccessingMissingAttributes()` is on and a factory-built `User` that omits a column isn't equivalent to a real row. Flagged and fixed rather than silently expanding scope without mention.
+
+A `high`-effort code review then found four things, three of them real and fixed:
+
+1. **The pre-flight check and the server's enforcement could actually disagree — the exact failure mode the review was asked to check for.** `createUpload`/`completeUpload`/`abortUpload` all mutate the same `storage_bytes_used`/`uploads_in_flight` columns `/api/me` now exposes, but none of the three RTK Query mutations invalidated `authApi`'s `Me` tag — so `QuotaMeter` and the pre-flight check both kept serving the pre-upload snapshot for the rest of the session. A user could pick a second file the stale snapshot said fit, have the client-side check wave it through, and have the server's atomic `reserve()` correctly reject it — the pre-flight check's entire reason to exist, defeated by a missing cache invalidation. The codebase already had the fix for this exact cross-slice-staleness shape, documented and working: `profileApi.ts`'s `refreshMe` helper. **Fixed**: a matching `refreshMeAfter` helper added to `speechApi.ts`, wired into all three mutations' `onQueryStarted`.
+2. **The pre-flight check treated "data not loaded yet" as "zero quota left."** `quotaRef` defaulted to `{ usedBytes: 0, quotaBytes: 0 }` before `/api/me` had resolved, so any file picked in that window computed `remaining = 0` and was rejected with "you have 0 B left" against a quota that was actually untouched. **Fixed**: the ref now holds `null` until a real snapshot arrives, and the check explicitly lets a file through when it's `null` — the server's atomic `reserve()` remains the correct backstop either way, so "fail open" here costs nothing but a slightly later rejection in the rare case it's wrong.
+3. **The TypeScript port of `formatBytes` silently dropped PHP's thousands separator.** `number_format()` (PHP, the Filament admin table) and the new TS port were supposed to render identically per this file's own docblock ("never disagree") but diverged for any 4+ digit integer part — `toFixed()` has no thousands-grouping, so `1023` rendered as `"1023 B"` in TS against `"1,023 B"` in the admin panel for the same number, and a multi-TiB admin-raised quota would have shown the same mismatch. **Fixed**: switched to `toLocaleString('en-US', {...})`, verified against real PHP output (`number_format(1023,0)` → `"1,023"`) rather than assumed; two test expectations that had encoded the old, wrong output were corrected alongside it.
+
+**Not fixed, flagged as a design gap, not a bug**: `uploads_in_flight` is fetched and typed on `CurrentUser` but never rendered anywhere — a user with 2 concurrent uploads (e.g. two tabs) gets no proactive signal on `/account` or in `UploadDashboard` that a third will be rejected for the concurrency reason specifically, only the reactive 422 toast once they try. The pre-flight check deliberately and correctly doesn't predict this (per its own docblock — it's a live server fact, not derivable from a byte-count snapshot), so this isn't broken logic to repair, just a UI surface the plan didn't ask for and this round didn't add.
+
+Validated independently, twice — once after the merge, once after the review fixes: `php -d memory_limit=-1 vendor/bin/pest` — 667/669 passing, 2 pre-existing skips, 0 failures; `php -d memory_limit=-1 vendor/bin/phpstan analyse` — 0 errors; `vendor/bin/pint --test` — clean; `npx tsc -b` — clean; `npx eslint` on every touched frontend file — clean; `npx vitest run` — 429/429.
+
+### A second review round (`/code-review high --fix`, user-triggered, across the combined §7.8+§7.10 diff) — two more real findings, independently corroborated
+
+Four finder agents ran in parallel; two of them independently converged on the same bug, which is itself a signal it was real:
+
+1. **`QuotaService::describeReserveFailure()`'s two causes aren't mutually exclusive, but the method only ever named one.** A user who is simultaneously over quota *and* at the 2-upload concurrency cap got only the quota message (the `if` checked first) — so they'd free up space, retry, and be rejected again with zero indication the concurrency cap was the other, still-unresolved reason. The exact "two problems, one string" failure this whole split was built to fix, just reduced to one message instead of two. **Fixed**: a new branch returns a combined message naming both causes when both are true, checked before either single-cause branch; a new test pins it (`storage_bytes_used: 99, quota_bytes: 100, uploads_in_flight: 2` — both conditions true simultaneously).
+2. **`QuotaMeter` rendered an empty, reassuring 0% bar for a `quota_bytes === 0` user** (e.g. an admin-zeroed quota — fully blocked) — `quotaBytes > 0 ? ... : 0` treated "no quota denominator to compute a percentage from" the same as "nothing used yet," which is backwards for the one case the meter exists to warn about. **Fixed**: falls back to `100` (full bar), not `0`; a new `QuotaMeter.test.tsx` (no dedicated test file existed before) pins both the normal-rendering case and this one.
+
+Validated after both fixes: `php -d memory_limit=-1 vendor/bin/pest` — 678/680 passing, 2 pre-existing skips, 0 failures; `php -d memory_limit=-1 vendor/bin/phpstan analyse` — 0 errors; `vendor/bin/pint --test` — clean; `npx tsc -b` — clean; `npx vitest run` — 431/431.
+
+**Left uncommitted, per instruction** — the diff is ready for review in the working tree, on top of §7.1/§7.2/§7.3/§7.4/§7.9.
 
 ---
 
@@ -336,7 +363,7 @@ Re-validated after all six fixes: `php -d memory_limit=-1 vendor/bin/pest` — 6
 
 ---
 
-## §7.10 An audit log browser 🟡
+## §7.10 An audit log browser 🟡 ✅ **DONE**
 
 **Why:** `audit_log` is append-only by design and written by every destructive admin action with a mandatory reason. It is readable in exactly one place — the last 50 rows for a single user on `ViewUser` (`:365`, `limit(50)` with no pagination, deliberately a summary). There is no `AuditLogResource` in `api/app/Filament/Resources/`. So *"what happened this week?"*, *"what has admin X been doing?"* and *"when was this taken down, and by whom?"* all need database access. For the one table whose entire purpose is accountability, that is an odd stopping point — and it is what makes the super-admin role feel invisible, since overseeing other admins is precisely what distinguishes it.
 
@@ -344,12 +371,34 @@ Re-validated after all six fixes: `php -d memory_limit=-1 vendor/bin/pest` — 6
 |---|---|
 | `api/app/Filament/Resources/AuditLogResource.php` *(new)* | Read-only table: timestamp, actor, action, subject, reason. **No `recordActions`, no `toolbarActions`, no create/edit/delete** — otherwise it stops being an audit log. Filters on actor, action and date range |
 | | ⚠️ `action` is deliberately free text with no CHECK (`audit_log` migration `:17-24`), so the action filter must be a `SelectFilter` built from `AuditAction`'s constants (or a distinct-values query), not an enum cast |
-| | `canView()`/`canAccess()` gated to `Role::ADMIN_TIER`, following `ModerationQueuesWidget.php:118-123`. **Never a policy** — no `viewAny` exists in `api/app/Policies/` and Laravel's missing-method fallback is `Response::allow()`, so a policy gate here would silently allow everyone while reading like a restriction. That trap is documented; don't walk into it |
+| | `canView()`/`canAccess()` gated to `Role::ADMIN_TIER`, following `ModerationQueuesWidget.php:118-123`. **Never a policy** — no `viewAny` exists in `api/app/Policies/` and Laravel's missing-method fallback is `Response::allow()`, so a policy gate here would silently allow everyone while reading like a restriction. That trap is documented; don't walk into it. ⚠️ **Superseded during implementation — see "Shipped" below: gated to `super_admin` alone, not `ADMIN_TIER`.** |
 | `api/app/Filament/Resources/UserResource.php` | A "holds elevated access" filter, so a super-admin can see the admin roster in one view |
 
 **No migration.** C6 — the three indexes already exist (`audit_log` migration `:73-75`), including `(actor_id, created_at)` and `(action, created_at)`. The only arguably-missing one is a bare `(created_at)` for the default newest-first listing, and at this table's size it is not worth buying.
 
 **Risk:** low, provided it stays read-only.
+
+### Shipped: what actually landed, a self-contradiction this document had going in, and the review that caught it
+
+Implemented by two parallel subagents in isolated worktrees — one building the new `AuditLogResource.php` (table, filters, authorization), one adding the "holds elevated access" filter to the existing `UserResource.php` — both appending their own tests to `PanelModerationTest.php`, this codebase's established home for Filament-panel Livewire tests, each in its own clearly-delimited tail block so the two additions could be merged by concatenation rather than reconciliation. Both worktrees forked from `origin/master` rather than this repo's `development` branch (the same `worktree.baseRef: "fresh"` mismatch §7.8 hit) — verified byte-identical at every touched file before merging, so no stale-base reconciliation was needed; the only genuine merge step was combining the two independent tail-appends to the shared test file, done by literal concatenation exactly as planned.
+
+Both agents independently verified the `canAccess()` authorization trap directly against Filament's own source (`vendor/filament/filament/src/helpers.php`'s `get_authorization_response()`, `Resources/Resource/Concerns/HasAuthorization.php`) rather than taking this document's instruction on faith: with no `AuditLogPolicy` and Filament's authorization not in "strict" mode, `canAccess()`'s default path falls through to `Gate::before`, which returns `true` for admin-tier and `null` — not `false` — for everyone else, and a `null` response makes Filament fall through one further level to an unconditional `Response::allow()` for literally anyone. Currently inert only because the whole panel is already gated to admin-tier at the route level; the explicit override makes the resource correct independent of that outer wrapper.
+
+**A `high`-effort code review then caught a self-contradiction inside this very document, not just a code bug.** This section's own "Why" paragraph above states the feature's purpose is partly *"what makes the super-admin role feel invisible, since overseeing other admins is precisely what distinguishes it"* — and the change table two lines below it specified `Role::ADMIN_TIER` (both `admin` and `super_admin`) for `canAccess()`. Those two sentences disagree with each other, and the review surfaced it by cross-checking against two OTHER planning documents: `api/app/Support/Role.php`'s own `ADMIN_TIER` docblock and `PLAN-ADMIN-DASHBOARD.md` §4's role matrix both independently state that audit-log oversight is exactly the capability that distinguishes `super_admin` from plain `admin` — not something both tiers share. As originally specced and built, a plain admin could read the full, unfiltered, cross-actor audit log, including every other admin's actions — a materially larger surveillance capability than the pre-existing capped 50-row-per-user view it replaced, and one that would let an admin check whether their own conduct was being watched. **This was a real security-policy question, not a code defect, so it was put to the user rather than silently resolved either way** — confirmed: `super_admin` only. Fixed: `canAccess()` now checks `hasRole(Role::SUPER_ADMIN)` rather than `hasAnyRole(Role::ADMIN_TIER)`; the resource's docblocks were rewritten to state the reconciled decision plainly rather than just flag the conflict; every test that exercised `ManageAuditLogs` as the acting viewer was updated from a plain-admin fixture to a super-admin one, and the `canAccess()` role-matrix test was split to assert the asymmetry directly (`super_admin` → true, `admin` → false) rather than asserting both admitted.
+
+Three smaller, genuinely-code findings from the same review were fixed alongside it: the `metadata` column's cell text and its tooltip had independently reimplemented identical JSON-encoding/empty-state logic that could have silently drifted apart — collapsed into one shared helper; the `action` filter's `AuditAction`-constants reflection was being computed twice for what must always be the same list — now computed once; and the two "elevated access filter" tests (true-state, false-state) were near-identical copy-pasted arrangements — collapsed into one `->with()`-driven dataset test.
+
+### A second review round (`/code-review high --fix`, user-triggered), across the combined §7.8+§7.10 diff
+
+Four finder agents ran in parallel over everything still uncommitted at that point. One finding from this round lands here (a second, §7.8-side one is recorded in that item's own section):
+
+**The null-actor label disagreement flagged (not fixed) above turned out to have a factually correct and a factually wrong side, not just two reasonable conventions.** Two independent agents caught that `AuditLogResource.php` says `'Deleted user'` for a null `actor_id` while `ViewUser::moderationHistory()` (pre-existing, unrelated to this diff) says `'system'` for the identical condition. Rather than leave two super-admin-facing pages disagreeing, checked which one is actually true: `audit_log.actor_id` is `ON DELETE SET NULL` (migration `:33`) — the column goes null specifically when the actor's OWN account is later deleted, never because a row is "system-originated" (every writer in `app/` always passes a real `actor_id`). `ViewUser.php`'s own `'system'` label was the wrong one, attributing a real human's past moderation decision to the platform itself. **Fixed**: corrected `ViewUser.php`'s label to `'Deleted user'`, matching `AuditLogResource.php` and the column's actual documented semantics — a one-file, label-only change to pre-existing code, made because the review surfaced a factual inaccuracy, not merely a style inconsistency.
+
+**Flagged, not fixed**: `ViewUser`'s own 50-row, 6-action, per-user `moderationHistorySection()` remains visible to any admin-tier viewer, not just `super_admin` — a different, narrower capability than the new cross-actor `AuditLogResource` (bounded to one user, a fixed small action set, no filters) rather than the same thing under a different gate, so it wasn't silently folded into the `super_admin`-only restriction just decided above. Whether a plain admin's legitimate need to see "was this user previously suspended" should also require `super_admin` is a separate product question, not resolved here.
+
+Validated independently, three times now — after the merge, after the authorization-tier fix, and after this round's fix: `php -d memory_limit=-1 vendor/bin/pest` — 678/680 passing, 2 pre-existing skips, 0 failures; `php -d memory_limit=-1 vendor/bin/phpstan analyse` — 0 errors; `vendor/bin/pint --test` — clean.
+
+**Left uncommitted, per instruction** — the diff is ready for review in the working tree, on top of §7.1/§7.2/§7.3/§7.4/§7.8/§7.9.
 
 ---
 

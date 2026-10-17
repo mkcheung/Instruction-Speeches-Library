@@ -24,6 +24,16 @@ export interface CurrentUser {
   onboarding_completed: boolean
   /** 1 = name+username, 2 = bio/pronouns/location, 3 = avatar, 4 = done. */
   onboarding_step: 1 | 2 | 3 | 4
+  /** Raw byte counts `QuotaService` maintains atomically (§7.8). Never
+   * hardcode the 5 GiB default on the frontend — `quota_bytes` can be
+   * individually raised per user, so always read the wire value. The
+   * 2-concurrent-upload cap `QuotaService` also enforces is a *separate,
+   * independent* dimension from these byte counts — a user can be well
+   * under quota and still blocked from starting a third upload, and that
+   * fact isn't derivable from `storage_bytes_used`/`quota_bytes` at all. */
+  storage_bytes_used: number
+  quota_bytes: number
+  uploads_in_flight: number
 }
 
 /** `GET /api/me` — the session probe every route guard reads. */

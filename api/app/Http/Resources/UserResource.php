@@ -33,6 +33,17 @@ class UserResource extends JsonResource
             'roles' => $this->getRoleNames(),
             'onboarding_completed' => (bool) $this->profile?->onboarding_completed_at,
             'onboarding_step' => Onboarding::currentStep($this->resource),
+            // §7.8: surface the same three QuotaService columns the
+            // Filament UserResource already renders for admins
+            // (api/app/Filament/Resources/UserResource.php:155-215),
+            // so an end user (and the frontend's pre-flight check +
+            // quota meter) can see their own usage instead of only
+            // discovering the limits when reserve() throws. /api/me is
+            // already fetched on every authenticated route and RTK
+            // Query dedupes client-side, so this adds no new request.
+            'storage_bytes_used' => $this->storage_bytes_used,
+            'quota_bytes' => $this->quota_bytes,
+            'uploads_in_flight' => $this->uploads_in_flight,
         ];
     }
 }

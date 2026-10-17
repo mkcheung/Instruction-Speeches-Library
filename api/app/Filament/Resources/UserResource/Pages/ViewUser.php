@@ -459,12 +459,19 @@ class ViewUser extends ViewRecord
             $role = $metadata['role'] ?? null;
 
             // `data_get`, not `$row->actor->username`. `audit_log.actor_id`
-            // is NULLABLE — the column is there so a system-originated row
-            // can exist without inventing a user to blame — so the relation
-            // is genuinely null for such a row and a direct property read
-            // would be a fatal on exactly the rows this page is meant to
-            // survive. Every writer in `app/` passes a real `actor_id`
-            // today, which is the only reason this has never been hit.
+            // is NULLABLE with `ON DELETE SET NULL` (migration `:33`) — the
+            // column goes null specifically when the actor's OWN account is
+            // later deleted, never for a "system-originated" row (every
+            // writer in `app/` passes a real `actor_id` at write time), so
+            // the relation is genuinely null on exactly that row and a
+            // direct property read would be a fatal on it.
+            //
+            // code-review finding: this previously labeled a null actor
+            // `'system'`, which attributed a real human's moderation
+            // decision to the platform — the opposite of what the FK's
+            // `ON DELETE SET NULL` semantics actually mean, and it
+            // disagreed with `AuditLogResource.php`'s "Deleted user" label
+            // for the identical column. Corrected to match.
             $actorName = data_get($row, 'actor.username');
 
             $history[] = [
@@ -479,13 +486,13 @@ class ViewUser extends ViewRecord
                 // column is only populated during onboarding, so an
                 // administrator with no username is a real row. Collapsing
                 // "no actor" and "actor with no username" into one
-                // `'system'` fallback would attribute a human's moderation
-                // decision to the platform — the single worst thing an
+                // `'Deleted user'` fallback would attribute a human's
+                // moderation decision to no one — the single worst thing an
                 // attribution column can do, and the reason this is not
-                // just `?? 'system'`.
+                // just `?? 'Deleted user'`.
                 'actor' => is_string($actorName) && $actorName !== ''
                     ? $actorName
-                    : ($row->actor_id === null ? 'system' : 'user #'.$row->actor_id),
+                    : ($row->actor_id === null ? 'Deleted user' : 'user #'.$row->actor_id),
                 'reason' => is_string($reason) ? $reason : '—',
             ];
         }

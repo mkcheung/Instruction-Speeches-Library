@@ -24,6 +24,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Access\Response;
@@ -281,6 +282,32 @@ class UserResource extends Resource
                             default => $query,
                         };
                     }),
+                // §7.10: "show me everyone with elevated access" — the
+                // question a super-admin auditing the admin roster actually
+                // asks, answered today only by picking a single role out of
+                // the `roles` filter above. Unlike `lifecycle`, this is a
+                // genuine yes/no/either question, not a mutually-exclusive
+                // multi-state pick, so the reasoning that ruled out
+                // `TernaryFilter` there doesn't apply here — and
+                // `SpeechResource::table()`'s `taken_down` filter already
+                // establishes `TernaryFilter` as this codebase's pattern for
+                // exactly this shape.
+                TernaryFilter::make('elevated_access')
+                    ->label('Holds elevated access')
+                    ->placeholder('All users')
+                    ->trueLabel('Elevated access only')
+                    ->falseLabel('No elevated access')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereHas(
+                            'roles',
+                            fn ($q) => $q->whereIn('name', Role::ADMIN_TIER)
+                        ),
+                        false: fn (Builder $query) => $query->whereDoesntHave(
+                            'roles',
+                            fn ($q) => $q->whereIn('name', Role::ADMIN_TIER)
+                        ),
+                        blank: fn (Builder $query) => $query,
+                    ),
             ])
             ->recordActions([
                 // §6.2's detail page. Deliberately the FIRST record action
