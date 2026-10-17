@@ -17,6 +17,12 @@ use Illuminate\Validation\ValidationException;
  */
 class QuotaService
 {
+    /**
+     * Fallback only: used when the row read after a failed reserve() no
+     * longer shows either condition as failed (see describeReserveFailure).
+     */
+    private const CONFLATED_RESERVE_MESSAGE = 'This upload would exceed your storage quota, or you already have 2 uploads in progress.';
+
     /** Reserve known server-received bytes without consuming a multipart slot. */
     public function reserveDirect(User $user, int $bytes): void
     {
@@ -63,6 +69,9 @@ class QuotaService
 
     /**
      * Reserve `$declaredBytes` and one upload slot for `$user`, atomically.
+     * §7.8: on failure, the thrown message names the actual cause (quota vs
+     * concurrency cap) — see describeReserveFailure() below — rather than
+     * the single conflated string this used to always throw.
      *
      * @throws ValidationException if the reservation would exceed the quota
      *                             or the user already has 2 uploads in flight
@@ -80,10 +89,62 @@ class QuotaService
         );
 
         if ($affected === 0) {
-            throw ValidationException::withMessages([
-                'file' => ['This upload would exceed your storage quota, or you already have 2 uploads in progress.'],
-            ]);
+            throw ValidationException::withMessages(['file' => [$this->describeReserveFailure($user->id, $declaredBytes)]]);
         }
+    }
+
+    /**
+     * §7.8: the UPDATE above has already failed and the request has
+     * already been correctly denied by the time this runs — enforcement
+     * is done. This method only decides what the error MESSAGE says, which
+     * is advisory information for the client, not an enforcement decision.
+     * That is why a second read is safe here even though this class's own
+     * docblock says "never check-then-act" everywhere else: "check-then-act"
+     * is a hazard when the check gates the act, because another request can
+     * change the row in between and invalidate it. Here the act (the atomic
+     * UPDATE, which remains the sole enforcement point) has already
+     * happened and already failed; this read happens strictly after, purely
+     * to explain a decision that's already final, so a race between this
+     * read and some other request can at most make the error text slightly
+     * stale — it can never let an over-quota or over-concurrency upload
+     * through, since nothing here writes anything.
+     */
+    private function describeReserveFailure(int $userId, int $declaredBytes): string
+    {
+        $current = User::query()->whereKey($userId)->first(['storage_bytes_used', 'quota_bytes', 'uploads_in_flight']);
+
+        if ($current === null) {
+            return self::CONFLATED_RESERVE_MESSAGE;
+        }
+
+        $wouldExceedQuota = $current->storage_bytes_used + $declaredBytes > $current->quota_bytes;
+        $overConcurrencyCap = $current->uploads_in_flight >= 2;
+
+        // code-review finding: the two conditions are not mutually
+        // exclusive — a user can be over quota AND at the concurrency cap
+        // at the same time. Returning only the first one checked meant a
+        // user in that state would free up space, retry, and be rejected
+        // again with no indication the concurrency cap was the OTHER
+        // reason — the exact "two problems, one string" failure this
+        // split was built to fix, just with one message instead of two.
+        if ($wouldExceedQuota && $overConcurrencyCap) {
+            return 'This upload would exceed your storage quota, and you already have 2 uploads in progress. Free up space and wait for one to finish.';
+        }
+
+        if ($wouldExceedQuota) {
+            return 'This upload would exceed your storage quota.';
+        }
+
+        if ($overConcurrencyCap) {
+            return 'You already have 2 uploads in progress. Wait for one to finish before starting another.';
+        }
+
+        // Narrow TOCTOU: the row changed between the failed UPDATE and this
+        // read (e.g. a concurrent release freed up room/a slot right after
+        // our UPDATE lost the race) such that neither condition reads as
+        // failed anymore. Fall back to the original conflated message
+        // rather than asserting a specific cause we can no longer see.
+        return self::CONFLATED_RESERVE_MESSAGE;
     }
 
     /**

@@ -7,6 +7,11 @@ import '@uppy/dashboard/css/style.css'
 import { store } from '@/app/store'
 import { speechApi } from '@/features/speech/speechApi'
 import type { CompletedPart } from '@/features/speech/types'
+import { useGetMeQuery } from '@/features/auth/authApi'
+import { QuotaMeter } from '@/components/account/QuotaMeter'
+import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
+import { extractServerErrorMessage } from '@/lib/applyServerErrors'
+import { formatBytes } from '@/lib/formatBytes'
 
 /**
  * STEP-03-upload-and-watch.md: "Uppy Dashboard with the multipart threshold
@@ -45,8 +50,30 @@ import type { CompletedPart } from '@/features/speech/types'
  * dev. Creating fresh inside the effect means StrictMode's extra
  * mount/destroy cycle produces a second, equally valid instance instead of
  * corrupting the first one.
+ *
+ * §7.8 adds a quota meter above the Dashboard, a pre-flight client-side
+ * size check (via `onBeforeFileAdded` — the only Uppy hook that can veto a
+ * file before it's added to the upload queue, let alone before
+ * `createMultipartUpload` ever dispatches; `restrictions.maxFileSize`
+ * would also reject it but can't show OUR "you have N left" message, only
+ * a fixed one), and surfacing of the server's own 422 message when the
+ * pre-flight check passes but the atomic backend check still rejects (a
+ * stale `/api/me` snapshot, or the concurrent-uploads cap, which has no
+ * client-observable signal at all). No `ToastProvider` wraps this
+ * component from above (`SpeechCreate.tsx` renders it directly), so it
+ * provides its own — same split-component pattern as
+ * `AnnotationComposerPanel.tsx`.
  */
-export function UploadDashboard({
+export function UploadDashboard(props: { speechId: number; onAssetReady: (assetId: number) => void }) {
+  return (
+    <ToastProvider>
+      <UploadDashboardInner {...props} />
+      <Toaster />
+    </ToastProvider>
+  )
+}
+
+function UploadDashboardInner({
   speechId,
   onAssetReady,
 }: {
@@ -54,6 +81,8 @@ export function UploadDashboard({
   onAssetReady: (assetId: number) => void
 }) {
   const [uppy, setUppy] = useState<Uppy | null>(null)
+  const { data: me } = useGetMeQuery()
+  const toastManager = useToastManager()
 
   // Read the latest `onAssetReady` from inside the effect without making
   // it a dependency — the parent passes a fresh closure every render, and
@@ -62,6 +91,32 @@ export function UploadDashboard({
   const onAssetReadyRef = useRef(onAssetReady)
   useEffect(() => {
     onAssetReadyRef.current = onAssetReady
+  })
+
+  // Same pattern: the Uppy setup effect only re-runs on `[speechId]`, but
+  // the pre-flight check and the 422 toast both need the LATEST quota
+  // snapshot / toast manager at the moment a file is added or an upload
+  // fails — not a value closed over at effect-creation time. `useGetMeQuery()`'s
+  // cached data updates reactively on every render, so reading it through a
+  // ref kept current here (rather than depending on it in the effect below)
+  // is what makes the pre-flight check see a snapshot refreshed by another
+  // tab or a just-finished upload, without tearing down the Uppy instance
+  // (and any in-progress file selection) every time `/api/me` refetches.
+  // `null` means "no snapshot yet" (the query hasn't resolved, or failed) —
+  // deliberately distinct from a real 0/0 reading, which would otherwise
+  // make the pre-flight check below treat "we don't know the quota" the
+  // same as "the quota is exhausted" and reject a file during the brief
+  // window before `/api/me` first resolves on page load.
+  const quotaRef = useRef<{ usedBytes: number; quotaBytes: number } | null>(
+    me ? { usedBytes: me.user.storage_bytes_used, quotaBytes: me.user.quota_bytes } : null,
+  )
+  useEffect(() => {
+    quotaRef.current = me ? { usedBytes: me.user.storage_bytes_used, quotaBytes: me.user.quota_bytes } : null
+  })
+
+  const toastManagerRef = useRef(toastManager)
+  useEffect(() => {
+    toastManagerRef.current = toastManager
   })
 
   useEffect(() => {
@@ -73,22 +128,62 @@ export function UploadDashboard({
 
     const instance = new Uppy({
       restrictions: { maxNumberOfFiles: 1, allowedFileTypes: ['video/*'] },
+
+      // The common, preventable case: reject a file that would exceed
+      // the user's remaining quota before Uppy ever queues it, let alone
+      // before `createMultipartUpload` dispatches a network request.
+      // Returning `false` here deliberately suppresses Uppy's own info
+      // panel ("should be done by the developer", per its own source) —
+      // the toast below is that message.
+      onBeforeFileAdded: (file) => {
+        const snapshot = quotaRef.current
+        // No `/api/me` snapshot yet: let the file through rather than
+        // reject it against a fabricated zero quota — the server's atomic
+        // `reserve()` is still the enforcement backstop either way.
+        if (snapshot === null) return true
+        const { usedBytes, quotaBytes } = snapshot
+        const remaining = Math.max(quotaBytes - usedBytes, 0)
+        if (typeof file.size === 'number' && file.size > remaining) {
+          toastManagerRef.current.add({
+            title: 'Not enough storage left',
+            description: `This file is ${formatBytes(file.size)} and you have ${formatBytes(remaining)} left.`,
+            timeout: 8000,
+          })
+          return false
+        }
+        return true
+      },
     }).use(AwsS3, {
       shouldUseMultipart: true,
 
       async createMultipartUpload(file) {
-        const response = await store
-          .dispatch(
-            speechApi.endpoints.createUpload.initiate({
-              speechId,
-              body: {
-                original_filename: file.name ?? 'upload',
-                content_type: file.type ?? 'application/octet-stream',
-                byte_size: file.size ?? 0,
-              },
-            }),
-          )
-          .unwrap()
+        let response
+        try {
+          response = await store
+            .dispatch(
+              speechApi.endpoints.createUpload.initiate({
+                speechId,
+                body: {
+                  original_filename: file.name ?? 'upload',
+                  content_type: file.type ?? 'application/octet-stream',
+                  byte_size: file.size ?? 0,
+                },
+              }),
+            )
+            .unwrap()
+        } catch (error) {
+          // The fallback case: the pre-flight check above only knows the
+          // last `/api/me` snapshot (stale — another tab, another upload
+          // finishing) and can't predict the 2-concurrent-uploads cap at
+          // all (a live server-side fact, not derivable from a byte-count
+          // snapshot). Surface whatever the server actually said.
+          toastManagerRef.current.add({
+            title: 'Upload could not start',
+            description: extractServerErrorMessage(error),
+            timeout: 8000,
+          })
+          throw error
+        }
 
         pendingAssetId.current = response.asset.id
 
@@ -148,7 +243,10 @@ export function UploadDashboard({
     }
   }, [speechId])
 
-  if (!uppy) return null
-
-  return <Dashboard uppy={uppy} proudlyDisplayPoweredByUppy={false} />
+  return (
+    <div className="flex flex-col gap-3">
+      {me && <QuotaMeter usedBytes={me.user.storage_bytes_used} quotaBytes={me.user.quota_bytes} />}
+      {uppy && <Dashboard uppy={uppy} proudlyDisplayPoweredByUppy={false} />}
+    </div>
+  )
 }

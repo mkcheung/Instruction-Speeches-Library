@@ -19,6 +19,9 @@ it('returns the full /api/me contract for a fully onboarded user', function () {
         'last_name' => 'Cheung',
         'username' => 'mars',
         'email' => 'mars@example.com',
+        'storage_bytes_used' => 12_345,
+        'quota_bytes' => 5 * 1024 * 1024 * 1024,
+        'uploads_in_flight' => 1,
     ]);
     $user->assignRole('member');
     // Every User already has an empty `profiles` row via User::booted()
@@ -44,6 +47,10 @@ it('returns the full /api/me contract for a fully onboarded user', function () {
             'email_verified' => true,
             'roles' => ['member'],
             'onboarding_completed' => true,
+            // §7.8: surface storage/upload-limit visibility on /api/me.
+            'storage_bytes_used' => 12_345,
+            'quota_bytes' => 5 * 1024 * 1024 * 1024,
+            'uploads_in_flight' => 1,
         ],
     ]);
     // `id` must be a JSON string, not a number — types.ts declares `string`

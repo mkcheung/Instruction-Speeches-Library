@@ -1,5 +1,7 @@
 <?php
 
+use App\Filament\Resources\AuditLogResource;
+use App\Filament\Resources\AuditLogResource\Pages\ManageAuditLogs;
 use App\Filament\Resources\CoachApplicationResource\Pages\ManageCoachApplications;
 use App\Filament\Resources\ReportResource\Pages\ManageReports;
 use App\Filament\Resources\SpeechResource\Pages\ManageSpeeches;
@@ -890,3 +892,228 @@ it('§8.3: neither modal blade uses a Tailwind utility class, because this panel
         ->and($emptyAnnotations)->toContain('fi-empty-state')
         ->and($emptyDocuments)->toContain('fi-empty-state');
 });
+
+// =======================================================================
+// §7.10 — AuditLogResource, the audit log browser
+// =======================================================================
+//
+// Everything below is new coverage for `AuditLogResource`/`ManageAuditLogs`
+// (§7.10 of IMPLEMENTATION-PLANS.md): denial for a non-admin, that an admin
+// actually sees seeded rows, that the actor/action filters narrow the
+// table, and that the resource is read-only (no record actions at all —
+// "otherwise it stops being an audit log").
+
+it('§7.10: canAccess() refuses a non-admin, independent of the panel route guard', function () {
+    // Mirrors `DashboardPageTest`'s "refuses a member and a coach" shape
+    // (`canAccess()`/`canView()` asserted directly, not just an absent
+    // button) — the whole point of overriding `canAccess()` here rather
+    // than relying on Filament's `viewAny` auto-discovery is that it has
+    // to hold even when nothing routes through `EnsureUserIsAdmin` first.
+    $this->actingAs(panelMember());
+
+    expect(AuditLogResource::canAccess())->toBeFalse();
+});
+
+it('§7.10: canAccess() admits super_admin only, refusing plain admin', function (string $role, bool $expected) {
+    // PLAN-ADMIN-DASHBOARD.md §4's role matrix lists the audit log as
+    // exactly the capability that distinguishes super_admin from admin —
+    // a plain admin who could read it could see whether their own
+    // actions are being watched, and watch every other admin too.
+    // IMPLEMENTATION-PLANS.md §7.10's original text specified ADMIN_TIER
+    // (both roles); this pins the corrected, super_admin-only behavior —
+    // see AuditLogResource::canAccess()'s own docblock for the full
+    // reconciliation.
+    $user = User::factory()->create();
+    $user->assignRole($role);
+
+    $this->actingAs($user);
+
+    expect(AuditLogResource::canAccess())->toBe($expected);
+})->with([
+    [Role::SUPER_ADMIN, true],
+    [Role::ADMIN, false],
+]);
+
+it('§7.10: canAccess() refuses an unauthenticated visitor without erroring on a null user', function () {
+    expect(AuditLogResource::canAccess())->toBeFalse();
+});
+
+it('§7.10: a super_admin sees real seeded audit_log rows in the table', function () {
+    $superAdmin = panelSuperAdmin();
+    $actor = panelAdmin();
+
+    $row = AuditLog::query()->create([
+        'actor_id' => $actor->id,
+        'action' => AuditAction::USER_SUSPENDED,
+        'subject_type' => User::class,
+        'subject_id' => $actor->id,
+        'metadata' => ['reason' => 'Spam.'],
+        'created_at' => now(),
+    ]);
+
+    Livewire::actingAs($superAdmin)
+        ->test(ManageAuditLogs::class)
+        ->assertSuccessful()
+        ->loadTable()
+        ->assertCanSeeTableRecords([$row]);
+});
+
+it('§7.10: the actor filter narrows the table to that actor\'s rows', function () {
+    $superAdmin = panelSuperAdmin();
+    $firstActor = panelAdmin();
+    $secondActor = panelAdmin();
+
+    $byFirst = AuditLog::query()->create([
+        'actor_id' => $firstActor->id,
+        'action' => AuditAction::USER_SUSPENDED,
+        'subject_type' => User::class,
+        'subject_id' => $firstActor->id,
+        'metadata' => ['reason' => 'First.'],
+        'created_at' => now(),
+    ]);
+
+    $bySecond = AuditLog::query()->create([
+        'actor_id' => $secondActor->id,
+        'action' => AuditAction::USER_SUSPENDED,
+        'subject_type' => User::class,
+        'subject_id' => $secondActor->id,
+        'metadata' => ['reason' => 'Second.'],
+        'created_at' => now(),
+    ]);
+
+    Livewire::actingAs($superAdmin)
+        ->test(ManageAuditLogs::class)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$byFirst, $bySecond])
+        ->filterTable('actor', $firstActor->id)
+        ->assertCanSeeTableRecords([$byFirst])
+        ->assertCanNotSeeTableRecords([$bySecond]);
+});
+
+it('§7.10: the action filter (built from AuditAction constants) narrows the table to that action', function () {
+    $superAdmin = panelSuperAdmin();
+    $actor = panelAdmin();
+
+    // Two different real `AuditAction` constants, following the shape
+    // `RoleAssignmentService::audit()` actually writes.
+    $suspended = AuditLog::query()->create([
+        'actor_id' => $actor->id,
+        'action' => AuditAction::USER_SUSPENDED,
+        'subject_type' => User::class,
+        'subject_id' => $actor->id,
+        'metadata' => ['reason' => 'Harassment.'],
+        'created_at' => now(),
+    ]);
+
+    $roleAssigned = AuditLog::query()->create([
+        'actor_id' => $actor->id,
+        'action' => AuditAction::ROLE_ASSIGNED,
+        'subject_type' => User::class,
+        'subject_id' => $actor->id,
+        'metadata' => ['role' => 'coach'],
+        'created_at' => now(),
+    ]);
+
+    // The filter's own options must actually come from `AuditAction`
+    // (built via reflection, not a hand-typed list) — assert the value
+    // used to filter is a real constant on that class, not a coincidence.
+    expect(AuditAction::USER_SUSPENDED)->toBeIn((new ReflectionClass(AuditAction::class))->getConstants());
+
+    Livewire::actingAs($superAdmin)
+        ->test(ManageAuditLogs::class)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$suspended, $roleAssigned])
+        ->filterTable('action', AuditAction::USER_SUSPENDED)
+        ->assertCanSeeTableRecords([$suspended])
+        ->assertCanNotSeeTableRecords([$roleAssigned]);
+});
+
+it('§7.10: the table has no record actions at all — view, edit and delete are all absent', function () {
+    // §7.10's own instruction: "No `recordActions`, no `toolbarActions`,
+    // no create/edit/delete ... otherwise it stops being an audit log."
+    // `assertActionDoesNotExist` (via `TestAction`, this file's own idiom
+    // — see `TestAction::make('toggleSuspend')->table(...)` above) is
+    // Filament's testing primitive for proving an action is not merely
+    // hidden but not registered at all — the strongest assertion
+    // available short of reading `AuditLogResource::table()`'s
+    // configuration directly.
+    $superAdmin = panelSuperAdmin();
+
+    $row = AuditLog::query()->create([
+        'actor_id' => $superAdmin->id,
+        'action' => AuditAction::USER_SUSPENDED,
+        'subject_type' => User::class,
+        'subject_id' => $superAdmin->id,
+        'metadata' => ['reason' => 'Because.'],
+        'created_at' => now(),
+    ]);
+
+    Livewire::actingAs($superAdmin)
+        ->test(ManageAuditLogs::class)
+        ->loadTable()
+        ->assertActionDoesNotExist(TestAction::make('view')->table($row))
+        ->assertActionDoesNotExist(TestAction::make('edit')->table($row))
+        ->assertActionDoesNotExist(TestAction::make('delete')->table($row))
+        ->assertActionDoesNotExist(TestAction::make('create')->table());
+});
+
+// =====================================================================
+// §7.10 — the "holds elevated access" filter on UserResource
+//
+// Appended here, at the file's end, per IMPLEMENTATION-PLANS.md §7.10's
+// line item for UserResource.php: a parallel agent is independently
+// appending its own, larger block of AuditLogResource tests to this same
+// file's end in a separate worktree, and keeping each addition in one
+// delimited block is how that merge reconciles cleanly.
+// =====================================================================
+
+/**
+ * `ManageUsers` is the one resource `renderPanelTablesWithoutIntl()` puts
+ * behind `deferLoading()` (see that function's docblock above), precisely
+ * because it is the one table in this panel with a `BulkAction` — so
+ * `isSelectionEnabled()` is true and `loadTable()` (needed here, to see
+ * past the empty shell and actually exercise the filter) re-triggers the
+ * exact `Number::format()` crash `deferLoading()` was added to dodge, via
+ * the select-all indicator rather than pagination.
+ *
+ * Registering a second, more specific `Table::configureUsing()` callback
+ * for just these two tests — rather than touching the shared
+ * `renderPanelTablesWithoutIntl()` helper every other test here relies on
+ * — disables selection on `ManageUsers` outright. `configurations` stack
+ * (`ComponentManager::configure()` runs every registered closure for the
+ * class in registration order), so this runs after the `beforeEach` one
+ * and layers `selectable(false)` on top of it without disturbing
+ * `paginated(false)`/`deferLoading()` for the rest of the suite.
+ */
+function renderManageUsersSelectableFalseForElevatedAccessFilterTests(): void
+{
+    Table::configureUsing(function (Table $table): void {
+        if ($table->getLivewire() instanceof ManageUsers) {
+            $table->selectable(false);
+        }
+    });
+}
+
+it('§7.10: the elevated-access filter narrows the roster to exactly the expected tier', function (bool $filterValue, string $visibleKey, string $hiddenKey) {
+    renderManageUsersSelectableFalseForElevatedAccessFilterTests();
+
+    $admin = panelAdmin();
+    $superAdmin = panelSuperAdmin();
+    $member = panelMember();
+    $coach = panelCoach();
+
+    $roster = [
+        'admin_tier' => [$admin, $superAdmin],
+        'non_admin_tier' => [$member, $coach],
+    ];
+
+    Livewire::actingAs($admin)
+        ->test(ManageUsers::class)
+        ->loadTable()
+        ->filterTable('elevated_access', $filterValue)
+        ->assertCanSeeTableRecords($roster[$visibleKey])
+        ->assertCanNotSeeTableRecords($roster[$hiddenKey]);
+})->with([
+    'true shows exactly the admin and super_admin roster' => [true, 'admin_tier', 'non_admin_tier'],
+    'false shows exactly the non-admin-tier users' => [false, 'non_admin_tier', 'admin_tier'],
+]);

@@ -1,6 +1,7 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
 import { captionApi } from '@/features/caption/captionApi'
+import { authApi } from '@/features/auth/authApi'
 import type {
   CompletedPart,
   CreateSpeechPayload,
@@ -21,6 +22,27 @@ import type {
  * upload-progress API — only the presign/complete/abort/status endpoints
  * do. `UploadDashboard.tsx` drives Uppy's `@uppy/aws-s3` against these.
  */
+
+/**
+ * `speechApi` and `authApi` are separate `createApi` instances, so a tag
+ * invalidated in one is invisible to the other — same cross-slice
+ * isolation `profileApi.ts`'s own `refreshMe` docblock explains. `/api/me`
+ * (`storage_bytes_used`/`quota_bytes`/`uploads_in_flight`, §7.8) changes
+ * on every successful createUpload (reserve), completeUpload
+ * (releaseOnComplete), and abortUpload (releaseOnAbort) — without this,
+ * `QuotaMeter` and `UploadDashboard`'s pre-flight check both keep serving
+ * the pre-upload snapshot for the rest of the session, which is exactly
+ * how the pre-flight check and the server's atomic enforcement end up
+ * disagreeing about how much room is left.
+ */
+async function refreshMeAfter(dispatch: (action: unknown) => unknown, queryFulfilled: Promise<unknown>) {
+  try {
+    await queryFulfilled
+  } catch {
+    return // the mutation failed; nothing changed server-side to re-read
+  }
+  dispatch(authApi.util.invalidateTags(['Me']))
+}
 export const speechApi = createApi({
   reducerPath: 'speechApi',
   baseQuery: baseQueryWithCsrfRetry,
@@ -49,6 +71,11 @@ export const speechApi = createApi({
         method: 'POST',
         body,
       }),
+      // §7.8: a successful call means `QuotaService::reserve` just raised
+      // `storage_bytes_used`/`uploads_in_flight` server-side.
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await refreshMeAfter(dispatch, queryFulfilled)
+      },
     }),
     signPart: builder.mutation<
       SignPartResponse,
@@ -69,6 +96,11 @@ export const speechApi = createApi({
         body: { parts },
       }),
       invalidatesTags: (_result, _error, arg) => [{ type: 'Speech', id: arg.speechId }],
+      // §7.8: a successful completion means `QuotaService::releaseOnComplete`
+      // just reconciled `storage_bytes_used` and freed an in-flight slot.
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await refreshMeAfter(dispatch, queryFulfilled)
+      },
     }),
     abortUpload: builder.mutation<void, { speechId: number; assetId: number; uploadId: string }>({
       query: ({ speechId, assetId, uploadId }) => ({
@@ -76,6 +108,11 @@ export const speechApi = createApi({
         method: 'DELETE',
       }),
       invalidatesTags: (_result, _error, arg) => [{ type: 'Speech', id: arg.speechId }],
+      // §7.8: a successful abort means `QuotaService::releaseOnAbort` just
+      // gave back the declared bytes and the in-flight slot.
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await refreshMeAfter(dispatch, queryFulfilled)
+      },
     }),
     retryAsset: builder.mutation<{ asset: SpeechAsset }, { speechId: number; assetId: number }>({
       query: ({ speechId, assetId }) => ({

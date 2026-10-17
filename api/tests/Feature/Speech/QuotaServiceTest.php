@@ -31,6 +31,58 @@ it('caps concurrent uploads per user at two, in the same statement as the byte c
     expect(fn () => $service->reserve($user, 1))->toThrow(ValidationException::class);
 });
 
+/**
+ * §7.8: the conflated "quota, or you already have 2 uploads" message is
+ * split by actual cause. These two tests pin that a quota failure and a
+ * concurrency failure produce different, cause-specific text — not just
+ * that reserve() throws.
+ */
+it('names the quota as the cause when storage would be exceeded with room for another upload', function () {
+    $user = User::factory()->create(['storage_bytes_used' => 90, 'quota_bytes' => 100, 'uploads_in_flight' => 0]);
+    $service = new QuotaService;
+
+    try {
+        $service->reserve($user, 20);
+        $this->fail('Expected a ValidationException.');
+    } catch (ValidationException $e) {
+        expect($e->errors()['file'][0])->toBe('This upload would exceed your storage quota.');
+    }
+});
+
+it('names the concurrency cap as the cause when quota has room but 2 uploads are already in flight', function () {
+    $user = User::factory()->create(['storage_bytes_used' => 0, 'quota_bytes' => 1_000_000, 'uploads_in_flight' => 2]);
+    $service = new QuotaService;
+
+    try {
+        $service->reserve($user, 1);
+        $this->fail('Expected a ValidationException.');
+    } catch (ValidationException $e) {
+        expect($e->errors()['file'][0])->toBe('You already have 2 uploads in progress. Wait for one to finish before starting another.');
+    }
+});
+
+/**
+ * code-review finding: the two causes are not mutually exclusive — a user
+ * can be over quota AND at the concurrency cap simultaneously. The first
+ * version of this split only ever named whichever was checked first
+ * (quota), so a user in this state who freed up space would retry and be
+ * rejected again with no indication the concurrency cap was the OTHER
+ * reason.
+ */
+it('names both causes when the user is over quota and at the concurrency cap at the same time', function () {
+    $user = User::factory()->create(['storage_bytes_used' => 99, 'quota_bytes' => 100, 'uploads_in_flight' => 2]);
+    $service = new QuotaService;
+
+    try {
+        $service->reserve($user, 5);
+        $this->fail('Expected a ValidationException.');
+    } catch (ValidationException $e) {
+        $message = $e->errors()['file'][0];
+        expect($message)->toContain('exceed your storage quota');
+        expect($message)->toContain('2 uploads in progress');
+    }
+});
+
 it('reconciles storage_bytes_used by the delta between the declared and real byte_size on completion', function () {
     // The acceptance item: "a client declaring a 1-byte size for a 40 MB
     // file does not evade the quota."
