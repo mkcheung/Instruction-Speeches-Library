@@ -104,6 +104,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/speeches/{speech}', [SpeechController::class, 'show'])->name('api.speeches.show');
 
+    // IMPLEMENTATION-PLANS.md §7.5.6: a speaker editing/deleting their own
+    // speech. `string $speech` on the controller side, deliberately NOT an
+    // implicitly-bound `Speech $speech` — see SpeechController::resolveSpeech.
+    Route::patch('/speeches/{speech}', [SpeechController::class, 'update'])->name('api.speeches.update');
+    Route::delete('/speeches/{speech}', [SpeechController::class, 'destroy'])->name('api.speeches.destroy');
+
     Route::post('/speeches/{speech}/assets/uploads', [SpeechUploadController::class, 'createUpload'])
         ->middleware('throttle:video-upload')
         ->name('api.speeches.assets.uploads.create');

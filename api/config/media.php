@@ -56,4 +56,25 @@ return [
     */
     'takedown_quarantine_days' => (int) env('MEDIA_TAKEDOWN_QUARANTINE_DAYS', 30),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Owner-delete media quarantine (IMPLEMENTATION-PLANS.md §7.5.3(i))
+    |--------------------------------------------------------------------------
+    |
+    | The window App\Jobs\PurgeSpeechMedia uses when a SPEAKER deletes their
+    | own speech — a distinct, much shorter window than
+    | `takedown_quarantine_days` above, which is sized for a wrongful-takedown
+    | appeal process that an owner delete has no analogue for.
+    |
+    | Default 1 day, NOT 0: `PurgeSpeechMedia::quarantineHasExpired()` uses
+    | `lessThanOrEqualTo(now()->subDays($days))`, so 0 would purge
+    | immediately on an eager dispatch and turn a misclick into irreversible
+    | loss with no operator recovery window at all. One day keeps the
+    | deletion dialog's "permanent" copy nearly true ("Removed now. The
+    | video file is erased within 24 hours.") while leaving a same-day
+    | rescue path.
+    |
+    */
+    'owner_delete_quarantine_days' => (int) env('MEDIA_OWNER_DELETE_QUARANTINE_DAYS', 1),
+
 ];

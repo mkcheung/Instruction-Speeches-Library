@@ -105,6 +105,18 @@ export interface CreateSpeechPayload {
   change_note?: string | null
 }
 
+/** `PATCH /api/speeches/{speech}` (`UpdateSpeechRequest`, §7.5.6) — every
+ * field is `sometimes` server-side, so only changed fields should be sent
+ * (`updateSpeech` in `speechApi.ts`). Deliberately excludes
+ * `captions_enabled` (own route, `updateCaptionSettings`) and
+ * `supersedes_id` (not editable post-create at all, §7.5.6). */
+export interface UpdateSpeechPayload {
+  title?: string
+  description?: string | null
+  delivered_on?: string | null
+  change_note?: string | null
+}
+
 /** `POST /api/speeches/{speech}/assets/uploads` (`CreateUploadRequest`) —
  * `byte_size` is the client's declared, untrusted size (§9.1); the server
  * reconciles against the real size at `complete`. */

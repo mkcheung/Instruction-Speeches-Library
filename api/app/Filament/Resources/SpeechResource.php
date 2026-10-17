@@ -15,6 +15,7 @@ use App\Services\EssayService;
 use App\Services\MediaUrlSigner;
 use App\Support\AuditAction;
 use App\Support\Role;
+use App\Support\SpeechDeletionReason;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
@@ -456,7 +457,27 @@ class SpeechResource extends Resource
                 // title and nothing else to find the row by.
                 TextColumn::make('title')->searchable(),
                 TextColumn::make('user.username')->label('Speaker'),
-                TextColumn::make('deleted_at')->label('Taken down')->dateTime(),
+                // IMPLEMENTATION-PLANS.md §7.5.6: relabelled from "Taken
+                // down" — that label called EVERY soft-deleted speech a
+                // moderation action, which stopped being true the moment a
+                // speaker could delete their own speech (§7.5). "Removed"
+                // is reason-agnostic; the column immediately after it is
+                // what tells a moderator which kind happened.
+                TextColumn::make('deleted_at')->label('Removed')->dateTime(),
+                // `deleted_reason IS NULL` reads as "Admin" — the
+                // no-backfill convention (§7.5.5): every speech
+                // soft-deleted before this feature existed was an admin
+                // takedown by construction.
+                TextColumn::make('deleted_reason')
+                    ->label('Removed by')
+                    ->formatStateUsing(fn (?string $state) => $state === SpeechDeletionReason::OWNER ? 'Owner' : 'Admin')
+                    // Column `visible()` closures are also evaluated
+                    // without a record in some Filament code paths (e.g.
+                    // header/export rendering) — unlike the record Actions
+                    // further down this table, `$record` here must be
+                    // nullable or this throws instead of just always
+                    // showing the column.
+                    ->visible(fn (?Speech $record) => $record !== null && $record->trashed()),
                 TextColumn::make('reviews_count')->counts('reviews')->label('Reviews'),
             ])
             // §6.3's "state filter". There is no `status` column on
@@ -825,7 +846,24 @@ class SpeechResource extends Resource
                 Action::make('restore')
                     ->label('Restore')
                     ->requiresConfirmation()
-                    ->visible(fn (Speech $record) => $record->trashed())
+                    // IMPLEMENTATION-PLANS.md §7.5.6: narrowed from a bare
+                    // `$record->trashed()`. Without this, a moderator would
+                    // be OFFERED a Restore button on a speech its OWNER
+                    // deleted — undoing a user's own privacy decision.
+                    // `!== OWNER` is correct for both the legacy-null and
+                    // new-explicit-TAKEDOWN cases: null also reads as
+                    // takedown (§7.5.5's no-backfill convention).
+                    //
+                    // code-review finding: this `visible()` check is NOT
+                    // itself the enforcement — per this file's own
+                    // `playableVideo()` docblock, `mountAction()` checks
+                    // `isDisabled()` and never `isVisible()`, so a hidden
+                    // action is still mountable via a crafted request. The
+                    // real guard is `SpeechPolicy::restore()`, which now
+                    // denies `deleted_reason === OWNER` outright — this
+                    // `visible()` only keeps the button from being offered
+                    // in the first place.
+                    ->visible(fn (Speech $record) => $record->trashed() && $record->deleted_reason !== SpeechDeletionReason::OWNER)
                     ->action(function (Speech $record) {
                         $actor = auth()->user();
                         abort_if($actor === null, 403);

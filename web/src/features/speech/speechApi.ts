@@ -14,6 +14,7 @@ import type {
   SpeechListResponse,
   SignPartResponse,
   TranscodeDepthResponse,
+  UpdateSpeechPayload,
 } from '@/features/speech/types'
 
 /**
@@ -64,6 +65,30 @@ export const speechApi = createApi({
       query: (body) => ({ url: '/api/speeches', method: 'POST', body }),
       transformResponse: (response: { speech: Speech }) => response.speech,
       invalidatesTags: ['Speech'],
+    }),
+    /** §7.5 (frontend half of "let a speaker edit and delete their own
+     * speech"): `PATCH /api/speeches/{speech}`, a subset of
+     * title/description/delivered_on/change_note — send only the fields
+     * that changed. Reuses the existing `Speech` wire shape; nothing new
+     * on the response. 422 (validation), 404 (no review row at all —
+     * mirrors `show`'s stranger-404), 403 (a reviewer who isn't the
+     * owner) and 410 (already deleted) all surface as the ordinary RTK
+     * Query error for the caller to handle via `applyServerErrors`/
+     * `getErrorStatus`. */
+    updateSpeech: builder.mutation<Speech, { speechId: number; body: UpdateSpeechPayload }>({
+      query: ({ speechId, body }) => ({ url: `/api/speeches/${speechId}`, method: 'PATCH', body }),
+      transformResponse: (response: { speech: Speech }) => response.speech,
+      invalidatesTags: (_result, _error, arg) => [{ type: 'Speech', id: arg.speechId }],
+    }),
+    /** §7.5: `DELETE /api/speeches/{speech}` — soft delete; **204 No
+     * Content**, so this is typed `void` and there is nothing to
+     * `transformResponse`. Invalidates the bare `'Speech'` tag (not just
+     * the per-id one) so `listSpeeches` refetches and the removed speech
+     * actually disappears from `MySpeeches.tsx`'s grid, not just has its
+     * now-410ing detail cache invalidated. */
+    deleteSpeech: builder.mutation<void, number>({
+      query: (speechId) => ({ url: `/api/speeches/${speechId}`, method: 'DELETE' }),
+      invalidatesTags: (_result, _error, speechId) => [{ type: 'Speech', id: speechId }, 'Speech'],
     }),
     createUpload: builder.mutation<CreateUploadResponse, { speechId: number; body: CreateUploadPayload }>({
       query: ({ speechId, body }) => ({
@@ -185,6 +210,8 @@ export const {
   useListSpeechesQuery,
   useGetSpeechQuery,
   useCreateSpeechMutation,
+  useUpdateSpeechMutation,
+  useDeleteSpeechMutation,
   useCreateUploadMutation,
   useSignPartMutation,
   useCompleteUploadMutation,

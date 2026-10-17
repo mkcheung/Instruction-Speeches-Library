@@ -156,7 +156,15 @@ class GenerateDataExport implements ShouldQueue
     {
         $reviews = Review::query()->where('reviewer_id', $user->id)
             ->where('speech_owner_id', '!=', $user->id)
-            ->with('speech')
+            // IMPLEMENTATION-PLANS.md §7.5.6: the single highest-value line
+            // in that plan item. Without `withTrashed()` here, a
+            // reviewer's own "download my annotations" export silently
+            // renders `"speech": null` for any speech whose owner later
+            // deleted it — the coach keeps their written work but loses
+            // all record of which speech it was about. The entire ethical
+            // case for allowing owner-initiated deletion rests on this
+            // export staying usable afterward.
+            ->with(['speech' => fn ($q) => $q->withTrashed()])
             ->get();
 
         // Same batching as buildAccountExport, minus the published-only

@@ -1,9 +1,22 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  DropdownMenuRoot,
+  DropdownMenuTrigger,
+  DropdownMenuPortal,
+  DropdownMenuPositioner,
+  DropdownMenuPopup,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { SpeechPoster } from '@/components/speech/SpeechPoster'
 import { StatusBadge, SupersedesBadge } from '@/components/speech/StatusBadge'
+import { SpeechEditDialog } from '@/components/speech/SpeechEditDialog'
+import { SpeechDeleteDialog } from '@/components/speech/SpeechDeleteDialog'
 import { useListSpeechesQuery } from '@/features/speech/speechApi'
+import type { Speech } from '@/features/speech/types'
 import { CardGrid, PageHeader, PageShell } from '@/components/layout/PageShell'
 
 /**
@@ -52,25 +65,71 @@ export default function MySpeeches() {
 
       <CardGrid>
         {speeches.map((speech) => (
-          <Card key={speech.id}>
-            <SpeechPoster speech={speech} className="rounded-b-none" />
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                {speech.title}
-                <SupersedesBadge speech={speech} />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex items-center justify-between">
-              <StatusBadge speech={speech} />
-              {speech.primary_video?.status === 'ready' && (
-                <Button size="sm" variant="outline" render={<Link to={`/speeches/${speech.id}`} />}>
-                  Watch
-                </Button>
-              )}
-            </CardContent>
-          </Card>
+          <SpeechCard key={speech.id} speech={speech} />
         ))}
       </CardGrid>
     </PageShell>
+  )
+}
+
+/**
+ * §7.5 frontend: the owner menu lives in `CardHeader` via `CardAction` —
+ * the slot `card.tsx` already builds for exactly this ("top-right of the
+ * header, alongside the title"), so it introduces no second
+ * `data-slot="card"` and leaves `Watch`'s own markup/position in
+ * `CardContent` untouched. §12's frozen contract pins `Watch` as a link
+ * scoped inside `[data-slot="card"]` (`captions.spec.ts:489-490`) — that
+ * scoping still holds here, since `SpeechCard` renders exactly one `Card`.
+ *
+ * `SpeechEditDialog`/`SpeechDeleteDialog` are standalone and controlled
+ * (not menu-item triggers) for the same reason `ProfileConnectionAction`'s
+ * block dialog is standalone: a dialog trigger rendered as a menu item
+ * fights the menu's own close-on-select behavior. The menu items here
+ * only flip this card's own `editOpen`/`deleteOpen` state.
+ */
+function SpeechCard({ speech }: { speech: Speech }) {
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+
+  return (
+    <Card>
+      <SpeechPoster speech={speech} className="rounded-b-none" />
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {speech.title}
+          <SupersedesBadge speech={speech} />
+        </CardTitle>
+        <CardAction>
+          <DropdownMenuRoot modal={false}>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Speech options">
+                  <MoreHorizontal />
+                </Button>
+              }
+            />
+            <DropdownMenuPortal>
+              <DropdownMenuPositioner align="end">
+                <DropdownMenuPopup>
+                  <DropdownMenuItem onClick={() => setEditOpen(true)}>Edit details</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setDeleteOpen(true)}>Remove speech</DropdownMenuItem>
+                </DropdownMenuPopup>
+              </DropdownMenuPositioner>
+            </DropdownMenuPortal>
+          </DropdownMenuRoot>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex items-center justify-between">
+        <StatusBadge speech={speech} />
+        {speech.primary_video?.status === 'ready' && (
+          <Button size="sm" variant="outline" render={<Link to={`/speeches/${speech.id}`} />}>
+            Watch
+          </Button>
+        )}
+      </CardContent>
+
+      <SpeechEditDialog speech={speech} open={editOpen} onOpenChange={setEditOpen} />
+      <SpeechDeleteDialog speech={speech} open={deleteOpen} onOpenChange={setDeleteOpen} />
+    </Card>
   )
 }

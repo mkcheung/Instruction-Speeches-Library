@@ -10,6 +10,7 @@ use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Captions\CaptionAttemptTracker;
 use App\Services\QuotaService;
+use App\Support\SpeechDeletionReason;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -209,23 +210,30 @@ class MediaReconcileCommand extends Command
             }
         }
 
-        $purgedTakedowns = $this->purgeQuarantinedTakedowns($quota);
+        $purgedRemovals = $this->purgeQuarantinedRemovals($quota);
 
         $prunedOriginals = $this->pruneRetainedOriginals((int) $this->option('source-retention-hours'));
 
-        $this->info("Reconciled {$staleUploads->count()} abandoned upload(s), {$hungTranscodes->count()} hung transcode(s), {$staleVoice->count()} stale voice note(s), {$reconciledCaptions} stale caption attempt(s), {$purgedTombstones} voice tombstone(s), {$purgedOrphans} orphan voice asset(s), {$purgedTakedowns} taken-down speech(es) purged, and {$prunedOriginals} retained original(s) pruned.");
+        $this->info("Reconciled {$staleUploads->count()} abandoned upload(s), {$hungTranscodes->count()} hung transcode(s), {$staleVoice->count()} stale voice note(s), {$reconciledCaptions} stale caption attempt(s), {$purgedTombstones} voice tombstone(s), {$purgedOrphans} orphan voice asset(s), {$purgedRemovals} removed speech(es) purged, and {$prunedOriginals} retained original(s) pruned.");
 
         return self::SUCCESS;
     }
 
     /**
-     * PLAN-ADMIN-DASHBOARD.md §5.6/§11.2: purge the media of speeches whose
-     * takedown quarantine has run out. Before this, `media:reconcile` had
-     * ZERO speech soft-delete awareness — §1.3's finding — so every byte of
-     * every taken-down speech survived forever (see PurgeSpeechMedia's
-     * docblock for why no other sweep reclaims them either, including the
-     * retained-originals prune directly below, which cannot see a trashed
-     * speech at all).
+     * PLAN-ADMIN-DASHBOARD.md §5.6/§11.2, widened by
+     * IMPLEMENTATION-PLANS.md §7.5.6 to purge the media of EVERY removed
+     * speech whose own quarantine window has run out — not only admin
+     * takedowns. Before this, `media:reconcile` had ZERO speech soft-delete
+     * awareness — §1.3's finding — so every byte of every taken-down speech
+     * survived forever (see PurgeSpeechMedia's docblock for why no other
+     * sweep reclaims them either, including the retained-originals prune
+     * directly below, which cannot see a trashed speech at all).
+     *
+     * Renamed from `purgeQuarantinedTakedowns` — §7.5's owner-delete path
+     * gets its own, much shorter window
+     * (`config('media.owner_delete_quarantine_days')`), so a method name
+     * naming only "takedowns" would be misleading once this also purges
+     * `deleted_reason = 'owner'` rows.
      *
      * Modelled on the voice-tombstone loop in handle() rather than on a new
      * pattern, down to the per-item try/catch: a `deleted_at` old enough to
@@ -245,19 +253,30 @@ class MediaReconcileCommand extends Command
      * speech has no rows of these kinds left and drops out of this query, so
      * the sweep does not re-visit it nightly.
      *
-     * The window is passed down explicitly: the job re-checks it (no
-     * dispatch site is trusted to have honoured it), and if it re-read the
-     * config while this query used a `--takedown-quarantine-days` override,
-     * the override would select speeches the job then silently refused.
+     * ⚠️ Two different quarantine windows now apply to this one query, and
+     * getting the SQL pre-filter wrong in either direction is a real bug:
+     * too narrow EXCLUDES a row that should have been purged, too wide is
+     * harmless (PurgeSpeechMedia::handle() self-refuses a row whose own
+     * window hasn't elapsed — "counted on the job's own answer, not on
+     * having called it"). So the initial SQL filter uses the SMALLER of the
+     * two configured windows (computed, not hardcoded, in case the config
+     * values ever change) — today that's always `owner_delete_quarantine_days`
+     * since 1 < 30 — to guarantee it never wrongly excludes anything. The
+     * RIGHT window for each row is then resolved per-row, inside the loop,
+     * from that row's own `deleted_reason`: deliberately NOT pushed into the
+     * SQL `WHERE` clause itself — two different thresholds for two different
+     * row-subsets in one query is more complexity than this sweep needs.
      */
-    private function purgeQuarantinedTakedowns(QuotaService $quota): int
+    private function purgeQuarantinedRemovals(QuotaService $quota): int
     {
-        $quarantineDays = (int) ($this->option('takedown-quarantine-days') ?? config('media.takedown_quarantine_days'));
+        $takedownQuarantineDays = (int) ($this->option('takedown-quarantine-days') ?? config('media.takedown_quarantine_days'));
+        $ownerDeleteQuarantineDays = (int) config('media.owner_delete_quarantine_days');
+        $broadestWindow = min($takedownQuarantineDays, $ownerDeleteQuarantineDays);
 
         $purged = 0;
 
         $quarantined = Speech::onlyTrashed()
-            ->where('deleted_at', '<', now()->subDays($quarantineDays))
+            ->where('deleted_at', '<', now()->subDays($broadestWindow))
             ->whereExists(fn ($query) => $query->selectRaw('1')->from('speech_assets')
                 ->whereColumn('speech_assets.speech_id', 'speeches.id')
                 ->whereIn('speech_assets.kind', PurgeSpeechMedia::PURGED_KINDS))
@@ -265,13 +284,23 @@ class MediaReconcileCommand extends Command
 
         foreach ($quarantined as $speech) {
             try {
+                // `deleted_reason` IS NULL reads as TAKEDOWN — the
+                // no-backfill convention (IMPLEMENTATION-PLANS.md §7.5.5):
+                // every speech soft-deleted before this feature existed was
+                // an admin takedown by construction.
+                $window = $speech->deleted_reason === SpeechDeletionReason::OWNER
+                    ? $ownerDeleteQuarantineDays
+                    : $takedownQuarantineDays;
+
                 // Counted on the job's own answer, not on having called it:
                 // `handle()` returns false for a run that removed nothing
-                // (another runner holds the `purge_claim_id`, or the rows
-                // went away between this SELECT and the row lock), and a
-                // summary line that counted those would over-report every
-                // night a sweep raced an eager dispatch.
-                if ((new PurgeSpeechMedia($speech, $quarantineDays))->handle($quota)) {
+                // (another runner holds the `purge_claim_id`, the rows went
+                // away between this SELECT and the row lock, OR — now that
+                // the SQL pre-filter is intentionally broader than any one
+                // row's real window — that row's own window simply hasn't
+                // elapsed yet), and a summary line that counted those would
+                // over-report every night a sweep raced an eager dispatch.
+                if ((new PurgeSpeechMedia($speech, $window))->handle($quota)) {
                     $purged++;
                 }
             } catch (\Throwable $exception) {
@@ -364,7 +393,7 @@ class MediaReconcileCommand extends Command
             //    is simply absent here and its source falls through this
             //    `continue` — retained, not pruned. That is deliberate;
             //    purging a taken-down speech's media is
-            //    purgeQuarantinedTakedowns()'s job, under the §11.2
+            //    purgeQuarantinedRemovals()'s job, under the §11.2
             //    quarantine window this sweep's retention hours know nothing
             //    about. Do NOT "fix" this by switching to `withTrashed()`:
             //    it would delete the source hours after a takedown and break
