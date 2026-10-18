@@ -29,7 +29,17 @@ function TabsTab({ className, ...props }: TabsPrimitive.Tab.Props) {
     <TabsPrimitive.Tab
       data-slot="tabs-tab"
       className={cn(
-        'rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors',
+        // Scoped override, not the global `--muted-foreground` token:
+        // axe measured the token's resolved color at 4.34:1 against this
+        // tab strip's `bg-muted` background (needs 4.5:1) — a near-miss
+        // real-rendering contrast finding (accessibility-baseline/2026-10-
+        // 17-baseline-summary.md). `--muted-foreground` backs many other
+        // surfaces across the app that weren't flagged, so darkening it
+        // globally risks regressions nothing here would catch. `text-
+        // neutral-600` (measured ~7:1 against this background) only
+        // darkens the inactive-tab-label state; dark mode keeps the
+        // original token, which wasn't measured/flagged here.
+        'rounded-md px-3 py-1.5 text-sm font-medium text-neutral-600 dark:text-muted-foreground transition-colors',
         'hover:text-foreground',
         'data-[active]:bg-background data-[active]:text-foreground data-[active]:shadow-sm',
         'focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50',

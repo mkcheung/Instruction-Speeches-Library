@@ -42,7 +42,10 @@ export function AnnotationRow({
   const [isOpen, setIsOpen] = useState(false)
 
   return (
-    <li className={cn('rounded-lg border border-border p-2', isCurrent && 'border-primary')}>
+    <li
+      aria-current={isCurrent ? 'true' : undefined}
+      className={cn('rounded-lg border border-border p-2', isCurrent && 'border-primary')}
+    >
       <div className="flex items-center justify-between gap-2">
         <button
           type="button"

@@ -6,6 +6,7 @@ import type { UseAnnotationEditorResult } from '@/hooks/useAnnotationEditor'
 import type { AnnotationKind } from '@/features/annotation/types'
 import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { AUTOSAVE_SAVED_TEXT_CLASS } from '@/lib/autosaveStyles'
 
 const KINDS: AnnotationKind[] = ['praise', 'correction', 'observation']
 const NUDGE_STEP_SECONDS = 0.5
@@ -41,7 +42,7 @@ export function AnnotationEditor({
             'text-xs',
             autosaveState === 'conflict' && 'text-[var(--color-danger)]',
             autosaveState === 'offline' && 'text-[var(--color-danger)]',
-            autosaveState === 'saved' && 'text-[var(--color-success)]',
+            autosaveState === 'saved' && AUTOSAVE_SAVED_TEXT_CLASS,
             (autosaveState === 'idle' || autosaveState === 'dirty' || autosaveState === 'saving') &&
               'text-muted-foreground',
           )}

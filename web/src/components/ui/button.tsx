@@ -15,8 +15,24 @@ const buttonVariants = cva(
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+        // axe measured this variant's light-mode text/bg pairing
+        // (text-destructive on bg-destructive/10) at 4.0:1, needing 4.5:1
+        // (accessibility-baseline/2026-10-17-baseline-summary.md). Raising
+        // the background opacity instead (e.g. /10 -> /20) makes this
+        // WORSE, not better — verified by computing the actual blended
+        // backgrounds: a more saturated same-hue background moves toward
+        // the foreground's own luminance, shrinking contrast (measured
+        // ~4.0:1 at /10 down to ~3.3:1 at /20). Darkening the foreground is
+        // the correct direction. Scoped to this variant only (`text-red-
+        // 700`, ~5.4:1 against the unchanged bg-destructive/10) rather
+        // than the global `--destructive` token, which many other
+        // surfaces (aria-invalid borders/rings, other variants) key off
+        // and weren't flagged here. Dark mode keeps the original token —
+        // not measured/flagged in the baseline, and its bg-destructive/20
+        // against a dark page background is a different contrast
+        // computation entirely.
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+          "bg-destructive/10 text-red-700 dark:text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

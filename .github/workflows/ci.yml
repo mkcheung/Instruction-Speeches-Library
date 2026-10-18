@@ -292,7 +292,7 @@ jobs:
       - name: Verify caption concurrency invariants
         run: ./scripts/verify-caption-concurrency.sh
 
-      - name: Run Playwright (speech-create, app-shell, essay-editor, captions, voice)
+      - name: Run Playwright (speech-create, app-shell, essay-editor, captions, voice, accessibility, keyboard-shortcuts)
         working-directory: web
         # R3 (PLAN-APP-HEADER.md): a new spec only runs in CI if it's
         # listed here — `testDir` alone isn't enough, this command names
@@ -316,7 +316,7 @@ jobs:
         # named accordingly.
         env:
           E2E_POSTGRES_CONTAINER: speechcoach-e2e-postgres-1
-        run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts tests/captions.spec.ts tests/voice-annotations.spec.ts --project=chromium
+        run: npx playwright test tests/speech-create.spec.ts tests/app-shell.spec.ts tests/essay-editor.spec.ts tests/captions.spec.ts tests/voice-annotations.spec.ts tests/accessibility.spec.ts tests/keyboard-shortcuts.spec.ts --project=chromium
 
       # Deterministic MediaRecorder regression only: first supported MIME
       # constructs then throws from start(), the second emits committed M4A
