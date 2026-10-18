@@ -10,8 +10,13 @@ use Database\Seeders\RoleSeeder;
  * the printed order matches §11.2 exactly." This test IS the acceptance
  * check — it asserts the printed order line-by-line against
  * STEP-11-FROZEN-CONTRACT.md §6's 8 steps.
+ *
+ * Step 6 is now printed as two sub-steps (6a/6b, matching the existing
+ * 3a/3b convention), since STEP-13's `connections` table landed and the
+ * erasure plan must purge it explicitly alongside the profile row — see
+ * AccountErasureService::plan()'s own doc comment.
  */
-it('prints the 8-step erasure plan in the frozen contract\'s exact order and does not execute anything', function () {
+it('prints the erasure plan in the frozen contract\'s exact order (with 6a/6b for STEP-13 connections) and does not execute anything', function () {
     $this->seed(RoleSeeder::class);
     $user = User::factory()->create();
     $user->assignRole('member');
@@ -24,7 +29,8 @@ it('prints the 8-step erasure plan in the frozen contract\'s exact order and doe
         ->expectsOutputToContain('3b. Delete voice-note audio left by other reviewers on owned speeches')
         ->expectsOutputToContain('4. Delete speeches, assets, transcripts, reviews')
         ->expectsOutputToContain('5. Null authorship on surviving reviews')
-        ->expectsOutputToContain('6. Hard-delete profile')
+        ->expectsOutputToContain('6a. Hard-delete profile')
+        ->expectsOutputToContain('6b. Hard-delete connections rows')
         ->expectsOutputToContain('7. Anonymize the user row')
         ->expectsOutputToContain('8. Write the audit entry')
         ->assertExitCode(0);
