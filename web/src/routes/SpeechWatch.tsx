@@ -24,6 +24,7 @@ import { ReportDialog } from '@/components/report/ReportDialog'
 import { getErrorStatus } from '@/lib/errorStatus'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { canRecordVoiceForRoles } from '@/lib/voiceRoles'
 import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
 import { useCaptionsJob, useCaptionsBlobUrl } from '@/hooks/useCaptionsJob'
@@ -208,6 +209,29 @@ export default function SpeechWatch() {
   // read-only TrackSelector — `enabled: !isOwner` keeps this skipped for
   // the owner and for a still-loading `speech`.
   const { review: myReview } = useMyReviewForSpeech(speechId, !isOwner && !!speech)
+
+  // IMPLEMENTATION-PLANS.md §7.7.6: the keyboard map's owner/plain-viewer
+  // mount point. Covers the owner's watch screen (`commentary`'s own
+  // annotations/seek — the same §8.6 surface `TrackSelector`/`Transcript`
+  // show) and a non-owner viewer who isn't themselves an authoring
+  // reviewer (no commentary selector renders for them at all, so this
+  // just gets an empty annotation list — `[`/`]` no-op, `Space`/`J`/`L`/
+  // `,`/`.` still work on the video itself). No `setToPlayhead` here —
+  // neither case has an `AnnotationEditor` to stamp.
+  //
+  // Disabled exactly when `AnnotationComposerPanel` below mounts its OWN
+  // instance instead (the `!isOwner && myReview` branch) — that instance
+  // has the richer authoring-side data (the merged draft+saved set, and
+  // `setToPlayhead`), and running both at once would double-fire every
+  // key.
+  useKeyboardShortcuts({
+    videoEl,
+    annotations: isOwner ? commentary.annotations : [],
+    onSeek: isOwner ? commentary.seek : (seconds: number) => {
+      if (videoEl) seekVideo(videoEl, seconds)
+    },
+    enabled: isOwner || !myReview,
+  })
 
   // PLAN-ACCESS-DENIED-STATES.md §0.1/§3.2. This used to be a single
   // `isLoading || !speech` guard, which conflated "still fetching" with
@@ -411,7 +435,16 @@ export default function SpeechWatch() {
             <TabsTab value="transcript">Transcript</TabsTab>
             <TabsTab value="reviewers">Reviewers</TabsTab>
           </TabsList>
-          <TabsPanel value="notes">
+          {/* `keepMounted`: §7.7.1 of IMPLEMENTATION-PLANS.md — Base UI
+              unmounts an inactive panel by default (`shouldRender =
+              keepMounted || mounted`, else `return null`), which would
+              otherwise remove `TrackSelector`'s `Transcript` (the
+              speaker-side accessible commentary surface, §8.6) from the
+              DOM the instant the owner switches to Essay or Transcript.
+              Lower priority than the reviewer's `notes` panel below (this
+              isn't the path STEP-15's demo script walks), but the fix is
+              one word, so it's included here too. */}
+          <TabsPanel value="notes" keepMounted>
             <TrackSelector
               options={commentary.options}
               optionsLoading={commentary.optionsLoading}
@@ -513,7 +546,24 @@ export default function SpeechWatch() {
             <TabsTab value="essay">Essay</TabsTab>
             <TabsTab value="transcript">Transcript</TabsTab>
           </TabsList>
-          <TabsPanel value="notes">
+          {/* `keepMounted`: §7.7.1 of IMPLEMENTATION-PLANS.md — DECIDED:
+              `AnnotationList` (inside `AnnotationComposerPanel` below) is
+              the coach-side AUTHORITATIVE ACCESSIBLE SURFACE for this
+              authoring screen (§8.6's "always available, <ol>,
+              chronological, timecoded, aria-current, click-to-seek" list),
+              not a gap where a second `Transcript` instance belongs —
+              `Transcript.tsx`'s own `<ol aria-label="Commentary
+              transcript">` is the SPEAKER-side surface (mounted above via
+              `TrackSelector`, owner-only) and intentionally has no
+              coach-side counterpart; rendering one here would duplicate
+              the coach's own notes into two lists on one screen and create
+              a Playwright strict-mode `aria-label` collision. Without
+              `keepMounted`, Base UI's default `TabsPanel` behaviour
+              unmounts this panel — and `AnnotationList` with it — the
+              instant the reviewer switches to Essay or Transcript, which
+              is what made the surface fail §8.6's "always available"
+              property until this was added. */}
+          <TabsPanel value="notes" keepMounted>
             <AnnotationComposerPanel
               speechId={speechId}
               review={myReview}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnnotationEditor } from '@/components/annotation/AnnotationEditor'
 import { useAnnotationEditor } from '@/hooks/useAnnotationEditor'
 import { tmpAnnotationId } from '@/lib/uuid'
@@ -23,6 +23,7 @@ export function Composer({
   onLiveRemove,
   onSaved,
   onSilentAdopt,
+  onEditorReady,
 }: {
   speechId: number
   reviewId: number
@@ -34,6 +35,15 @@ export function Composer({
   onLiveRemove: (id: string) => void
   onSaved?: (annotation: Annotation) => void
   onSilentAdopt?: (annotation: Annotation) => void
+  /** IMPLEMENTATION-PLANS.md §7.7.6: hands the panel this draft's
+   * `setToPlayhead` so `useKeyboardShortcuts`' global `C`/`Alt+C` can call
+   * the SAME function the visible "Set to playhead" button
+   * (`AnnotationEditor.tsx:145`) already calls — a keyboard trigger for
+   * existing behaviour, not new state. Re-fires on every regeneration
+   * (a fresh draft after a save gets a fresh `useAnnotationEditor`
+   * instance, per this component's own docblock), so the shortcut always
+   * targets the CURRENT draft, never a stale one. */
+  onEditorReady?: (setToPlayhead: () => void) => void
 }) {
   const [generation, setGeneration] = useState(0)
 
@@ -51,6 +61,7 @@ export function Composer({
         setGeneration((g) => g + 1)
       }}
       onLiveRemove={onLiveRemove}
+      onEditorReady={onEditorReady}
     />
   )
 }
@@ -65,6 +76,7 @@ function ComposerInstance({
   onSaved,
   onSilentAdopt,
   onCreated,
+  onEditorReady,
 }: {
   speechId: number
   reviewId: number
@@ -75,6 +87,7 @@ function ComposerInstance({
   onSaved?: (annotation: Annotation) => void
   onSilentAdopt?: (annotation: Annotation) => void
   onCreated: () => void
+  onEditorReady?: (setToPlayhead: () => void) => void
 }) {
   const editor = useAnnotationEditor({
     speechId,
@@ -93,6 +106,11 @@ function ComposerInstance({
       onCreated()
     },
   })
+
+  useEffect(() => {
+    onEditorReady?.(editor.setToPlayhead)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor.setToPlayhead])
 
   return <AnnotationEditor editor={editor} label="New note" />
 }

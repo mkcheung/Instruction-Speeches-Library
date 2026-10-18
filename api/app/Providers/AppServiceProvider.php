@@ -166,6 +166,15 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('review.purge', [ReviewPolicy::class, 'purge']);
         Gate::define('speech.invite', [SpeechPolicy::class, 'invite']);
 
+        // IMPLEMENTATION-PLANS.md §7.5.6/§7.5.7(a): the speaker's own
+        // edit/delete surface. Dotted ability names registered against the
+        // non-conventionally-named `updateDetails`/`destroyOwn` policy
+        // methods specifically so neither shadows Laravel's bare
+        // conventional `update`/`delete` ability strings — see each
+        // method's own docblock in SpeechPolicy.
+        Gate::define('speech.update', [SpeechPolicy::class, 'updateDetails']);
+        Gate::define('speech.delete', [SpeechPolicy::class, 'destroyOwn']);
+
         // STEP-06: bare (undotted) ability name, matching the exact
         // literal `Gate::authorize('readAnnotations', [$review])` call the
         // frozen backend/frontend contract specifies. Registered explicitly
@@ -314,6 +323,17 @@ class AppServiceProvider extends ServiceProvider
                 // mandatory reason) moves into the policy itself.
                 'review.revoke', 'review.purge',
                 'speech.invite',                                       // ownership, not an admin power
+
+                // IMPLEMENTATION-PLANS.md §7.5.6: the speaker's own
+                // edit/delete surface — same categorical reasoning as
+                // 'speech.invite' immediately above, not the
+                // 'speech.takedown'/'speech.restore' admin-tier group
+                // further below. These are abilities an admin should NEVER
+                // get via the blanket bypass, full stop: an admin removing
+                // content is 'speech.takedown', a structurally different
+                // capability with its own mandatory reason and
+                // notification.
+                'speech.update', 'speech.delete',
                 'annotation.create', 'voice.create', 'voice.retryTranscript', 'voice.updateTranscript', 'voice.restore', 'voice.delete', 'annotation.update', 'annotation.delete',
                 'review.clearAnnotations',                             // STEP-07: never an admin power either
                 'readAnnotations',                                     // AnnotationPolicy's own admin branch runs the dual-role assert

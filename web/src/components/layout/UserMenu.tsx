@@ -50,10 +50,33 @@ export function UserMenu() {
 
   return (
     <DropdownMenuRoot modal={false}>
-      <DropdownMenuTrigger
-        className="flex items-center gap-2 rounded-lg border border-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-        aria-label={name}
-      >
+      {/* No `aria-label` here (there used to be one, `aria-label={name}`).
+          axe's real baseline scan flagged this trigger for
+          `label-content-name-mismatch` (WCAG 2.5.3) — confirmed by
+          reproducing it in an isolated harness (fetch-mocked UserMenu,
+          real axe-core/playwright scan) and bisecting: at the default
+          1280px viewport the name span below IS visually rendered (well
+          above the `sm` breakpoint), so the mismatch was never about the
+          span being display:none — it was that an `aria-label` makes the
+          browser's accessible-name algorithm skip the element's content
+          entirely, so axe's "does the visible text appear in the
+          accessible name" check fails even though the aria-label string
+          and the visible text were identical; the `aria-hidden` avatar
+          initials below are correctly excluded from both computations,
+          confirmed by removing `aria-label` alone making the violation
+          disappear at 1280px.
+          But removing `aria-label` alone is NOT the full fix: at a real
+          mobile viewport (375px) the name span used to be `hidden ...
+          sm:inline` (display:none below `sm`), and the avatar is
+          `aria-hidden` — so a narrow viewport then has NO accessible name
+          at all, a CRITICAL `button-name` violation axe's default-viewport
+          CI run would never catch (confirmed by re-scanning at 375px
+          before this second fix). `sr-only sm:not-sr-only` replaces the
+          `hidden sm:inline` toggle: the name text stays in the DOM and in
+          the accessibility tree at every viewport (screen readers always
+          get "Cora Coach"), it is only visually clipped below `sm` for
+          layout, same pattern already used by AppLayout's skip link. */}
+      <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg border border-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
         <span
           className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
           style={{ backgroundColor: background, color: foreground }}
@@ -61,7 +84,7 @@ export function UserMenu() {
         >
           {initials}
         </span>
-        <span className="hidden max-w-32 truncate sm:inline">{name}</span>
+        <span className="sr-only max-w-32 truncate sm:not-sr-only sm:inline">{name}</span>
       </DropdownMenuTrigger>
       <DropdownMenuPortal>
         <DropdownMenuPositioner align="end">

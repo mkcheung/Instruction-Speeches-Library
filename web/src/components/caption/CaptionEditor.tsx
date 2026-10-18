@@ -4,6 +4,7 @@ import { useRetryAssetMutation } from '@/features/speech/speechApi'
 import { useCaptionEditor } from '@/hooks/useCaptionEditor'
 import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { AUTOSAVE_SAVED_TEXT_CLASS } from '@/lib/autosaveStyles'
 
 /**
  * STEP-09-FROZEN-CONTRACT.md §5: "the caption editor is reached from the
@@ -101,7 +102,7 @@ function CaptionEditorInner({
           className={cn(
             'text-xs',
             autosaveState === 'offline' && 'text-[var(--color-danger)]',
-            autosaveState === 'saved' && 'text-[var(--color-success)]',
+            autosaveState === 'saved' && AUTOSAVE_SAVED_TEXT_CLASS,
             (autosaveState === 'idle' || autosaveState === 'dirty' || autosaveState === 'saving') &&
               'text-muted-foreground',
           )}

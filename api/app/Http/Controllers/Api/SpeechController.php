@@ -3,11 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Exceptions\SpeechAccessDeniedException;
+use App\Exceptions\SpeechDeletedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Speech\CreateSpeechRequest;
+use App\Http\Requests\Speech\UpdateSpeechRequest;
 use App\Http\Resources\SpeechResource;
 use App\Models\Review;
 use App\Models\Speech;
+use App\Models\User;
+use App\Services\SpeechDeletionService;
 use App\Services\SpeechService;
 use Closure;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -139,6 +143,137 @@ class SpeechController extends Controller
                 'review_status' => $review->status,
             ],
         ]);
+    }
+
+    /**
+     * `PATCH /speeches/{speech}`. IMPLEMENTATION-PLANS.md §7.5.6/§7.5.7(b).
+     *
+     * ⚠️ The information-leak trap: this ability (`speech.update`) is PURE
+     * ownership — there is no reviewer-tier branch that ever passes, unlike
+     * `show()`'s four tiers above. But the same two-way split `show()`
+     * applies to a non-owner still has to apply here, or a write reveals
+     * existence where the read does not:
+     *
+     *  - A caller who is not the owner AND has never had any review row at
+     *    all on this speech (regardless of that row's status/revoked
+     *    state) gets the same 404 a genuine stranger gets from `show()` —
+     *    `$this->authorize()` must NOT run first for this case, since
+     *    Laravel's default 403 would leak existence to a stranger.
+     *  - Anyone else (the owner, or a non-owner who holds ANY review row,
+     *    even a revoked/declined one — they already structurally know this
+     *    speech exists) goes through `$this->authorize('speech.update', ...)`
+     *    normally, which correctly 403s any non-owner since the ability is
+     *    ownership-only.
+     */
+    public function update(UpdateSpeechRequest $request, string $speech): JsonResponse
+    {
+        $speechModel = $this->resolveSpeechForWriter($speech, $this->currentUser($request));
+
+        if ($speechModel === null) {
+            return new JsonResponse(['message' => 'No such speech.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $this->authorize('speech.update', $speechModel);
+
+        $validated = $request->validated();
+        $attributes = [];
+        if (array_key_exists('title', $validated)) {
+            $attributes['title'] = (string) $validated['title'];
+        }
+        if (array_key_exists('description', $validated)) {
+            $attributes['description'] = $validated['description'] === null ? null : (string) $validated['description'];
+        }
+        if (array_key_exists('delivered_on', $validated)) {
+            $attributes['delivered_on'] = $validated['delivered_on'] === null ? null : (string) $validated['delivered_on'];
+        }
+        if (array_key_exists('change_note', $validated)) {
+            $attributes['change_note'] = $validated['change_note'] === null ? null : (string) $validated['change_note'];
+        }
+
+        $speechModel->update($attributes);
+
+        // refresh() (`static`, non-nullable), not fresh() (`static|null` —
+        // phpstan correctly refuses chaining ->load() off a nullable
+        // return): this is the same row this method just updated, so there
+        // is no "deleted out from under us" case fresh() exists to answer.
+        return new JsonResponse([
+            'speech' => new SpeechResource($speechModel->refresh()->load(self::eagerLoads())),
+        ]);
+    }
+
+    /**
+     * `DELETE /speeches/{speech}`. IMPLEMENTATION-PLANS.md §7.5.6/§7.5.7(b).
+     * Same stranger-vs-structurally-aware split as `update()` above, same
+     * reasoning — see that method's docblock.
+     */
+    public function destroy(Request $request, string $speech, SpeechDeletionService $deletions): JsonResponse
+    {
+        $speechModel = $this->resolveSpeechForWriter($speech, $this->currentUser($request));
+
+        if ($speechModel === null) {
+            return new JsonResponse(['message' => 'No such speech.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $this->authorize('speech.delete', $speechModel);
+
+        $deletions->deleteOwn($speechModel);
+
+        return new JsonResponse(null, Response::HTTP_NO_CONTENT);
+    }
+
+    /**
+     * Shared by `update()`/`destroy()` — factored out of what was
+     * previously two verbatim copies of the same stranger-vs-known-caller
+     * split (a code-review finding: a future change to the tiering rule
+     * applied to one copy and not the other would silently reopen the
+     * existence leak this method exists to close).
+     *
+     * code-review finding, fixed here: the original version called
+     * `CaptionController::resolveSpeech()`'s 410-Gone check FIRST and the
+     * stranger-tier check second — so a genuine stranger probing a speech
+     * id that had since been deleted got 410 (not the documented 404),
+     * distinguishably different from a never-existed id's 404 and from a
+     * live speech they have no relation to's "No such speech" 404. That
+     * let any authenticated user enumerate which speech ids used to exist
+     * and were deleted — exactly the leak `update()`'s own docblock says
+     * `$this->authorize()` must not cause, just via a different code path.
+     * The ordering now is: resolve the row (still 404 for a truly
+     * nonexistent id, via `findOrFail()`), THEN decide the caller's tier,
+     * THEN — only for a caller who already structurally knows the speech
+     * exists (the owner, or anyone who ever held a review on it) — decide
+     * whether a trashed row reads as 410. A genuine stranger gets the same
+     * 404 regardless of whether the row is live or trashed, so trashed
+     * state is never observable to them.
+     *
+     * Returns `null` for a stranger (caller returns the generic 404);
+     * throws `SpeechDeletedException` (410) for a known caller hitting an
+     * already-deleted speech; returns the live `Speech` otherwise. The
+     * route parameter must stay typed `string $speech`, NOT an implicitly
+     * route-model-bound `Speech $speech`: implicit binding applies the
+     * `SoftDeletes` global scope and would 404 a trashed speech before
+     * this method ever ran, which is the wrong status code for the
+     * known-caller case.
+     */
+    private function resolveSpeechForWriter(string $speech, User $user): ?Speech
+    {
+        /** @var Speech $speechModel */
+        $speechModel = Speech::withTrashed()->findOrFail($speech);
+
+        $isOwner = $speechModel->user_id === $user->id;
+        $hasReviewRow = ! $isOwner && Review::query()
+            ->where('speech_id', $speechModel->id)
+            ->where('reviewer_id', $user->id)
+            ->exists();
+
+        if (! $isOwner && ! $hasReviewRow) {
+            return null;
+        }
+
+        if ($speechModel->trashed()) {
+            throw new SpeechDeletedException;
+        }
+
+        return $speechModel;
     }
 
     /**

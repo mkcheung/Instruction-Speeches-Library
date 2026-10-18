@@ -7,6 +7,7 @@ use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\User;
+use App\Services\SpeechDeletionService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Storage;
 
@@ -83,6 +84,39 @@ it('generates a reviewer_annotations export scoped to speeches the reviewer does
     $payload = json_decode(Storage::disk('media')->get($export->path), true);
     expect($payload['reviews'])->toHaveCount(1)
         ->and($payload['reviews'][0]['annotations'][0]['body'])->toBe('My in-progress note.');
+});
+
+/**
+ * IMPLEMENTATION-PLANS.md §7.5.6: "the single highest-value line in this
+ * whole plan item". Without `->with(['speech' => fn ($q) =>
+ * $q->withTrashed()])` in GenerateDataExport::buildReviewerAnnotationsExport,
+ * this export would render `"speech": null` for a speech the owner later
+ * deleted — the coach keeps their written work but loses all record of
+ * which speech it was about.
+ */
+it('still includes the speech (with its title) in a reviewer export after the owner deletes it', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $reviewer = User::factory()->create();
+    $reviewer->assignRole('coach');
+    $speech = Speech::factory()->for($speaker)->create(['title' => 'A Deleted Speech']);
+    $review = Review::factory()->accepted()->create([
+        'speech_id' => $speech->id, 'reviewer_id' => $reviewer->id, 'speech_owner_id' => $speaker->id, 'status' => 'in_progress',
+    ]);
+    Annotation::factory()->for($review)->draft()->create(['body' => 'My in-progress note.']);
+
+    app(SpeechDeletionService::class)->deleteOwn($speech);
+
+    $requested = $this->actingAs($reviewer)->postJson('/api/privacy/exports', ['kind' => 'reviewer_annotations']);
+    $requested->assertCreated();
+    $export = DataExport::find($requested->json('export.id'));
+
+    $payload = json_decode(Storage::disk('media')->get($export->path), true);
+    expect($payload['reviews'][0]['speech'])->not->toBeNull()
+        ->and($payload['reviews'][0]['speech']['title'])->toBe('A Deleted Speech');
 });
 
 it('forbids downloading someone else\'s export', function () {

@@ -88,5 +88,12 @@ final class AuditAction
 
     public const REVIEW_ACCESS_PURGED = 'review.access_purged';
 
+    // IMPLEMENTATION-PLANS.md §7.5: a speaker deleting their OWN speech.
+    // Deliberately NOT `speech.deleted` — a bare value sitting beside
+    // SPEECH_TAKEN_DOWN above would invite exactly the conflation
+    // (owner-initiated vs. admin-moderation) this plan item exists to keep
+    // apart.
+    public const SPEECH_DELETED_BY_OWNER = 'speech.deleted_by_owner';
+
     private function __construct() {}
 }

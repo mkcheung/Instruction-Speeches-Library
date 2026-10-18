@@ -6,6 +6,7 @@ use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
 use App\Support\Role;
+use App\Support\SpeechDeletionReason;
 
 /**
  * MODERNIZATION_PLAN §7.1/§7.3/§7.4. `invite` is ownership-only — per §7.1
@@ -74,6 +75,44 @@ class SpeechPolicy
     }
 
     /**
+     * IMPLEMENTATION-PLANS.md §7.5.6/§7.5.7(a). Ownership-only — same shape
+     * as `invite()`/`updateCaptions()` above, NOT `takedown()`/`restore()`
+     * below: an admin removing content is `speech.takedown`, which already
+     * has its own mandatory reason and notification, so there is
+     * deliberately no admin branch here.
+     *
+     * ⚠️ Named `updateDetails`, not `update`: `Gate::policy(Speech::class,
+     * SpeechPolicy::class)` is registered, so a method literally named
+     * `update` would also become reachable as Laravel's bare conventional
+     * ability string `'update'` — and `$mustFallThrough` matches on the
+     * ability string only, never the model, so an admin would get the
+     * `Gate::before` blanket bypass on that bare string even though only
+     * the dotted `speech.update` is in the list. See §7.5.7(a) and
+     * `updateCaptions()`'s identical precedent above.
+     */
+    public function updateDetails(User $user, Speech $speech): bool
+    {
+        return $speech->user_id === $user->id;
+    }
+
+    /**
+     * IMPLEMENTATION-PLANS.md §7.5.6/§7.5.7(a). Ownership-only, same
+     * reasoning as `updateDetails()` immediately above — this is the
+     * speaker's own power to remove their own speech, never a moderation
+     * power. `takedown()` below is the admin equivalent and stays entirely
+     * separate: different actor, different audit action
+     * (AuditAction::SPEECH_DELETED_BY_OWNER vs SPEECH_TAKEN_DOWN), different
+     * (much shorter) byte-purge quarantine window.
+     *
+     * ⚠️ Named `destroyOwn`, not `delete`, for the exact same shadowing
+     * reason `updateDetails` above is not named `update` — see §7.5.7(a).
+     */
+    public function destroyOwn(User $user, Speech $speech): bool
+    {
+        return $speech->user_id === $user->id;
+    }
+
+    /**
      * PLAN-ADMIN-DASHBOARD.md §5.4 — the second row of the eight-hole
      * table, and the one it calls out hardest: "`takedown` has no
      * `Gate::authorize` and no `speech.takedown` ability exists anywhere
@@ -117,8 +156,28 @@ class SpeechPolicy
      * every other dotted ability, so Laravel's conventional `restore`
      * policy ability never has to be guessed at here.
      */
+    /**
+     * code-review finding (§7.5): `SpeechResource.php` (Filament) narrowed
+     * its `restore` action's `->visible()` to exclude owner-deleted
+     * speeches, but that file's own pre-existing docblock (on
+     * `playableVideo()`) documents that `Filament\Actions\Concerns\
+     * InteractsWithActions::mountAction()` checks `isDisabled()` and
+     * NEVER `isVisible()` — a hidden action is still mountable via a
+     * crafted Livewire request. `visible()` removes the button; it does
+     * not refuse the call. The actual enforcement has to live here, in
+     * the ability this method grants, not only in the UI layer that
+     * merely decides whether to render a button for it. §7.5.2: "No
+     * restore affordance for the owner in v1" means owner-initiated
+     * deletions get no restore path AT ALL, not even an admin one — only
+     * a `TAKEDOWN` (or legacy-null, which reads as `TAKEDOWN` under
+     * §7.5.5's no-backfill convention) deletion is restorable.
+     */
     public function restore(User $user, Speech $speech): bool
     {
+        if ($speech->deleted_reason === SpeechDeletionReason::OWNER) {
+            return false;
+        }
+
         return $user->hasAnyRole(Role::ADMIN_TIER);
     }
 }

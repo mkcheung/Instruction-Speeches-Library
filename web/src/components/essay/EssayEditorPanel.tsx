@@ -18,6 +18,7 @@ import { useGetEssayQuery, usePublishEssayMutation } from '@/features/essay/essa
 import type { Essay } from '@/features/essay/types'
 import type { Review } from '@/features/review/types'
 import { cn } from '@/lib/utils'
+import { AUTOSAVE_SAVED_TEXT_CLASS } from '@/lib/autosaveStyles'
 
 /**
  * STEP-08-FROZEN-CONTRACT.md's `EssayEditorPanel` — the Essay tab's
@@ -126,7 +127,7 @@ function EssayEditorPanelInner({
             'text-xs',
             editorState.autosaveState === 'conflict' && 'text-[var(--color-danger)]',
             editorState.autosaveState === 'offline' && 'text-[var(--color-danger)]',
-            editorState.autosaveState === 'saved' && 'text-[var(--color-success)]',
+            editorState.autosaveState === 'saved' && AUTOSAVE_SAVED_TEXT_CLASS,
             (editorState.autosaveState === 'idle' ||
               editorState.autosaveState === 'dirty' ||
               editorState.autosaveState === 'saving') &&

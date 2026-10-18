@@ -14,6 +14,7 @@ import { useAbandonReviewMutation, usePublishReviewMutation } from '@/features/r
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
 import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
 import { useAutoPausePreference } from '@/hooks/useAutoPausePreference'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { isTmpAnnotationId } from '@/lib/uuid'
 import { annotationFieldsEqual } from '@/lib/annotationFields'
 import { compareByStartThenId } from '@/lib/annotationOrder'
@@ -146,6 +147,31 @@ function AnnotationComposerPanelInner({
   const toastManager = useToastManager()
   const navigate = useNavigate()
 
+  // IMPLEMENTATION-PLANS.md §7.7.6: the ALWAYS-mounted new-draft
+  // `Composer` below hands up its current `useAnnotationEditor` instance's
+  // `setToPlayhead` via `onEditorReady` — re-fired every time the composer
+  // regenerates into a fresh draft (its own docblock), so this always
+  // targets the CURRENT draft, never a stale/completed one. This is the
+  // function the keyboard map's global `C`/`Alt+C` calls below — the same
+  // one the visible "Set to playhead" button (`AnnotationEditor.tsx:145`)
+  // already calls for this draft. Deliberately scoped to the new-draft
+  // composer only, not to whichever existing row happens to be open for
+  // in-place editing (`AnnotationRow`'s per-row editors) — those already
+  // have their own visible "Set to playhead" button right next to the
+  // field being edited, and STEP-07's demo script ("watch, type at a
+  // timestamp") is about composing a NEW note, not re-stamping a saved
+  // one.
+  const [composerSetToPlayhead, setComposerSetToPlayhead] = useState<(() => void) | undefined>(undefined)
+  // `setComposerSetToPlayhead(fn)` would be wrong here: a function passed
+  // directly to a useState setter is treated as an updater and CALLED
+  // immediately with the previous state, not stored — which silently
+  // invoked `setToPlayhead()` on every mount (stamping `start_seconds` to
+  // the then-current playhead, usually 0, before the user ever pressed
+  // anything). The `() => fn` wrapper is the standard escape hatch: React
+  // calls the wrapper (ignoring its unused prevState arg) and stores ITS
+  // return value, `fn`, instead of invoking `fn` itself.
+  const handleComposerEditorReady = useCallback((fn: () => void) => setComposerSetToPlayhead(() => fn), [])
+
   const currentId = useMemo(() => {
     let best: Annotation | null = null
     for (const a of merged) {
@@ -203,6 +229,18 @@ function AnnotationComposerPanelInner({
     }
   }
 
+  // IMPLEMENTATION-PLANS.md §7.7.6: the reviewer-authoring half of the
+  // keyboard map. `merged`, not `serverRows` — §7.7.6's `[`/`]` seek
+  // relative to the playhead within the SAME set the live preview shows,
+  // drafts included, same reasoning as every other call site in this
+  // component that reads `merged` rather than re-deriving its own ordering.
+  useKeyboardShortcuts({
+    videoEl,
+    annotations: merged,
+    onSeek,
+    setToPlayhead: composerSetToPlayhead,
+  })
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
@@ -243,6 +281,7 @@ function AnnotationComposerPanelInner({
           autoPause={autoPause}
           onLiveChange={handleLiveChange}
           onLiveRemove={handleLiveRemove}
+          onEditorReady={handleComposerEditorReady}
         />
 
         {canRecordVoice && (
@@ -255,6 +294,23 @@ function AnnotationComposerPanelInner({
           </p>
         )}
 
+        {/* IMPLEMENTATION-PLANS.md §7.7.1: DECIDED — this list is the
+            coach-side AUTHORITATIVE ACCESSIBLE SURFACE for the authoring
+            screen (§8.6's "always available, <ol>, chronological,
+            timecoded, aria-current on the playing row, click-to-seek"),
+            not a gap where a second `Transcript` instance belongs.
+            `Transcript.tsx`'s own `<ol aria-label="Commentary
+            transcript">` is the SPEAKER-side surface (mounted via
+            `TrackSelector`, inside `SpeechWatch.tsx`'s owner-only branch)
+            and intentionally has no coach-side counterpart here — adding
+            one would duplicate the coach's own notes into two lists on one
+            screen and collide with that same `aria-label` under
+            Playwright's strict mode. The "always available" property
+            depends on the `keepMounted` added to this panel's `TabsPanel`
+            in `SpeechWatch.tsx` (Base UI unmounts an inactive panel, and
+            `AnnotationList`, by default) — without it this list, like
+            `Transcript`'s, is removed from the DOM the instant the coach
+            switches to Essay or Transcript. */}
         <AnnotationList
           annotations={serverRows}
           speechId={speechId}

@@ -47,6 +47,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
+ * @property string|null $deleted_reason
  *
  * STEP-14-deploy-hardening.md phpstan level 8: `user_id` is `NOT NULL`
  * (every speech has an owner), but Larastan infers `BelongsTo` as

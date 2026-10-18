@@ -9,6 +9,7 @@ use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
 use App\Support\AuditAction;
+use App\Support\SpeechDeletionReason;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Storage;
 
@@ -76,6 +77,30 @@ function takenDownSpeechWithMedia(int $daysAgo, int $sourceBytes = 10_000_000): 
 function purge(Speech $speech, ?int $quarantineDays = null): void
 {
     (new PurgeSpeechMedia($speech, $quarantineDays))->handle(app(QuotaService::class));
+}
+
+/**
+ * IMPLEMENTATION-PLANS.md §7.5.6: the owner-delete variant of
+ * takenDownSpeechWithMedia() above — a speaker's own delete, with
+ * `deleted_reason = 'owner'` stamped (see App\Support\SpeechDeletionReason),
+ * rather than an admin takedown (which leaves `deleted_reason` NULL by the
+ * no-backfill convention).
+ *
+ * @return array{speech: Speech, speaker: User, assets: array<string, SpeechAsset>}
+ */
+function ownerDeletedSpeechWithMedia(int $daysAgo): array
+{
+    $speaker = User::factory()->create(['storage_bytes_used' => 1_000_000, 'quota_bytes' => 100_000_000]);
+    $speech = Speech::factory()->for($speaker)->create();
+
+    $video = SpeechAsset::factory()->for($speech)->video()->ready()->create(['byte_size' => 500_000]);
+    Storage::disk('media')->put($video->path, 'video-bytes');
+
+    $speech->forceFill(['deleted_reason' => SpeechDeletionReason::OWNER])->save();
+    $speech->delete();
+    Speech::withTrashed()->whereKey($speech->id)->update(['deleted_at' => now()->subDays($daysAgo)]);
+
+    return ['speech' => $speech, 'speaker' => $speaker, 'assets' => ['video' => $video]];
 }
 
 it('purges every speaker-owned kind once the quarantine window has passed, and spares the reviewer voice note', function () {
@@ -311,4 +336,44 @@ it('honours a --takedown-quarantine-days override end to end', function () {
     expect(SpeechAsset::query()->whereKey($assets['source']->id)->exists())->toBeFalse();
     expect(Storage::disk('media')->exists($assets['source']->path))->toBeFalse();
     expect(AuditLog::query()->where('action', AuditAction::SPEECH_MEDIA_PURGED)->sole()->metadata['quarantine_days'])->toBe(1);
+});
+
+/**
+ * IMPLEMENTATION-PLANS.md §7.5.6: `MediaReconcileCommand::purgeQuarantinedRemovals`
+ * (renamed from `purgeQuarantinedTakedowns`) must read each row's OWN
+ * `deleted_reason` and apply the matching window, not one blanket window for
+ * every soft-deleted speech. This is the regression test for the bug §7.5
+ * fixes: an owner-deleted speech 2 days old must be purged under the 1-day
+ * `owner_delete_quarantine_days` window — the OLD code, which applied the
+ * 30-day `takedown_quarantine_days` window to every trashed speech
+ * regardless of reason, would NOT have purged it yet.
+ */
+it('purges an owner-deleted speech past its own 1-day window, proving the per-row window is used', function () {
+    Storage::fake('media');
+    $this->seed(RoleSeeder::class);
+
+    ['assets' => $assets] = ownerDeletedSpeechWithMedia(daysAgo: 2);
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($assets['video']->id)->exists())->toBeFalse();
+    expect(Storage::disk('media')->exists($assets['video']->path))->toBeFalse();
+});
+
+/**
+ * The control for the test immediately above: an admin-taken-down speech of
+ * the SAME age (2 days) must NOT be purged — it is still well within its own
+ * 30-day `takedown_quarantine_days` window. Proves the fix did not simply
+ * shorten the window for everyone.
+ */
+it('does not purge an admin-taken-down speech of the same age, still within its own 30-day window', function () {
+    Storage::fake('media');
+    $this->seed(RoleSeeder::class);
+
+    ['assets' => $assets] = takenDownSpeechWithMedia(daysAgo: 2);
+
+    $this->artisan('media:reconcile')->assertSuccessful();
+
+    expect(SpeechAsset::query()->whereKey($assets['video']->id)->exists())->toBeTrue();
+    expect(Storage::disk('media')->exists($assets['video']->path))->toBeTrue();
 });
