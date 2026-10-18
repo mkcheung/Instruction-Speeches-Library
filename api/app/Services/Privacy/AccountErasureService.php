@@ -5,6 +5,7 @@ namespace App\Services\Privacy;
 use App\Exceptions\LastAdministratorException;
 use App\Models\Annotation;
 use App\Models\AuditLog;
+use App\Models\Connection;
 use App\Models\Profile;
 use App\Models\Review;
 use App\Models\Speech;
@@ -36,7 +37,8 @@ use Illuminate\Support\Str;
  *      CASCADE, safe now that 2-3 emptied the storage bytes those rows
  *      pointed at)
  *   5. Null authorship (reviewer_id -> null on surviving reviews)
- *   6. Hard-delete profile; connections is a no-op (STEP-13 dependency)
+ *   6. Hard-delete profile (6a) and every connections row naming this
+ *      user, in EITHER mirrored-pair column (6b)
  *   7. Anonymize the user row (never delete it)
  *   8. Write the audit entry
  */
@@ -93,8 +95,19 @@ class AccountErasureService
         // the same number.
         $reviewsToNull = Review::query()->where('reviewer_id', $user->id)->where('speech_owner_id', '!=', $user->id)->count();
 
-        // Step 6: profile (0 or 1 row) + connections (no-op, see below).
+        // Step 6a: profile (0 or 1 row).
         $profileCount = Profile::query()->where('user_id', $user->id)->count();
+
+        // Step 6b: connections — the mirrored two-row-per-pair schema
+        // (2026_08_30_100001_create_connections_table.php) means this user
+        // can appear as EITHER `owner_id` OR `peer_id` on a given pair's
+        // row; both must be counted (and, in execute(), deleted), or half
+        // of every mirrored pair survives as an orphaned row still naming
+        // this user from the other party's own roster. The FK's own
+        // ON DELETE CASCADE never fires here — the `users` row is
+        // anonymized in step 7, never hard-deleted — so this purge must be
+        // explicit, exactly like `profile_deleted` above.
+        $connectionsCount = Connection::query()->where('owner_id', $user->id)->orWhere('peer_id', $user->id)->count();
 
         return new ErasurePlan([
             ['key' => 'sessions_revoked', 'label' => '1. Revoke sessions', 'count' => $sessionsCount, 'bytes' => 0],
@@ -103,7 +116,8 @@ class AccountErasureService
             ['key' => 'owned_speech_voice_notes_deleted', 'label' => '3b. Delete voice-note audio left by other reviewers on owned speeches', 'count' => $ownedSpeechVoiceAssets->count(), 'bytes' => $ownedSpeechVoiceBytes],
             ['key' => 'speeches_deleted', 'label' => '4. Delete speeches, assets, transcripts, reviews (cascade)', 'count' => $speechesCount, 'bytes' => 0],
             ['key' => 'reviews_authorship_nulled', 'label' => '5. Null authorship on surviving reviews', 'count' => $reviewsToNull, 'bytes' => 0],
-            ['key' => 'profile_deleted', 'label' => '6. Hard-delete profile (connections: no-op, STEP-13 not shipped)', 'count' => $profileCount, 'bytes' => 0],
+            ['key' => 'profile_deleted', 'label' => '6a. Hard-delete profile', 'count' => $profileCount, 'bytes' => 0],
+            ['key' => 'connections_deleted', 'label' => '6b. Hard-delete connections rows (owner_id or peer_id)', 'count' => $connectionsCount, 'bytes' => 0],
             ['key' => 'user_anonymized', 'label' => '7. Anonymize the user row', 'count' => 1, 'bytes' => 0],
             ['key' => 'audit_entry_written', 'label' => '8. Write the audit entry', 'count' => 1, 'bytes' => 0],
         ]);
@@ -201,14 +215,19 @@ class AccountErasureService
         // steps are ever reordered or a partial-retry path is added later.
         $reviewsNulled = Review::where('reviewer_id', $user->id)->where('speech_owner_id', '!=', $user->id)->update(['reviewer_id' => null]);
 
-        // Step 6: hard-delete the profile row explicitly — the FK's own
+        // Step 6a: hard-delete the profile row explicitly — the FK's own
         // CASCADE never fires this, because the `users` row itself is
         // never hard-deleted (see step 7).
         $profileDeleted = Profile::where('user_id', $user->id)->delete();
 
-        // connections: STEP-13 (social layer) has not shipped yet, so
-        // there is no `connections` table to purge. When STEP-13 lands,
-        // add the hard-delete here — do not silently forget it.
+        // Step 6b: hard-delete every connections row naming this user, in
+        // EITHER mirrored-pair column. Deleting only `owner_id = $user->id`
+        // would purge just one row of each mirrored pair and leave the
+        // other half (where this user is `peer_id`) behind as an
+        // orphaned, erased-looking row still visible from the other
+        // party's own roster. Same "FK CASCADE never fires" reasoning as
+        // 6a — the users row survives (anonymized, not deleted) in step 7.
+        $connectionsDeleted = Connection::query()->where('owner_id', $user->id)->orWhere('peer_id', $user->id)->delete();
 
         // Step 7: anonymize the user row. Never delete it — it must
         // survive to hold FK targets other rows still reference
@@ -242,7 +261,8 @@ class AccountErasureService
             ['key' => 'owned_speech_voice_notes_deleted', 'label' => '3b. Delete voice-note audio left by other reviewers on owned speeches', 'count' => $ownedVoiceCount, 'bytes' => $ownedVoiceBytes],
             ['key' => 'speeches_deleted', 'label' => '4. Delete speeches, assets, transcripts, reviews (cascade)', 'count' => $speechesDeleted, 'bytes' => 0],
             ['key' => 'reviews_authorship_nulled', 'label' => '5. Null authorship on surviving reviews', 'count' => $reviewsNulled, 'bytes' => 0],
-            ['key' => 'profile_deleted', 'label' => '6. Hard-delete profile (connections: no-op, STEP-13 not shipped)', 'count' => $profileDeleted, 'bytes' => 0],
+            ['key' => 'profile_deleted', 'label' => '6a. Hard-delete profile', 'count' => $profileDeleted, 'bytes' => 0],
+            ['key' => 'connections_deleted', 'label' => '6b. Hard-delete connections rows (owner_id or peer_id)', 'count' => $connectionsDeleted, 'bytes' => 0],
             ['key' => 'user_anonymized', 'label' => '7. Anonymize the user row', 'count' => 1, 'bytes' => 0],
             // Step 8 (write the audit entry) is filled in below, once the
             // metadata to write IS this plan itself.

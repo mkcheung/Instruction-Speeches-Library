@@ -2,12 +2,14 @@
 
 use App\Models\Annotation;
 use App\Models\AuditLog;
+use App\Models\Connection;
 use App\Models\Profile;
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
 use App\Models\User;
+use App\Services\ConnectionService;
 use App\Services\Privacy\AccountErasureService;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Support\Facades\Storage;
@@ -171,4 +173,55 @@ it('rejects a user erasing someone else\'s account via the self-service endpoint
     expect($victim->fresh()->anonymized_at)->toBeNull()
         ->and(Speech::find($victimSpeech->id))->not->toBeNull()
         ->and($attacker->fresh()->anonymized_at)->not->toBeNull();
+});
+
+it('purges both mirrored rows of a connection when either party is erased, and plan() matches execute()', function () {
+    $this->seed(RoleSeeder::class);
+
+    $speaker = erasureSpeaker();
+    $other = erasureSpeaker();
+    $thirdParty = erasureSpeaker();
+
+    // Build a real accepted connection through the service, not the raw
+    // factory, so both mirrored rows (owner_id/peer_id swapped) exist
+    // exactly as a genuine accept writes them.
+    $connections = app(ConnectionService::class);
+    $connections->request($speaker, $other, null);
+    $connections->accept($other, Connection::where('owner_id', $other->id)->where('peer_id', $speaker->id)->first()->id);
+
+    // A second, unrelated connection naming neither erased party on
+    // either side — the control group for the "not a blanket wipe"
+    // assertion below.
+    $connections->request($other, $thirdParty, null);
+    $connections->accept($thirdParty, Connection::where('owner_id', $thirdParty->id)->where('peer_id', $other->id)->first()->id);
+
+    // Sanity: both mirrored rows exist before erasure, one per direction.
+    $asOwner = Connection::where('owner_id', $speaker->id)->where('peer_id', $other->id)->first();
+    $asPeer = Connection::where('owner_id', $other->id)->where('peer_id', $speaker->id)->first();
+    expect($asOwner)->not->toBeNull()->and($asPeer)->not->toBeNull();
+
+    // plan()'s dry-run count must match the row count execute() actually
+    // deletes for this step — the same drift guard this file already
+    // applies to every other step.
+    $plannedCount = app(AccountErasureService::class)->plan($speaker->fresh())->step('connections_deleted')['count'];
+
+    $result = app(AccountErasureService::class)->execute($speaker->fresh());
+
+    expect($plannedCount)->toBe(2);
+    expect($result->step('connections_deleted')['count'])->toBe(2);
+
+    // The mirrored-pair proof: BOTH rows are gone — the one where the
+    // erased user is owner_id, AND the one where they're peer_id. A fix
+    // that only purged `owner_id = $user->id` would leave $asPeer behind,
+    // visible from $other's own roster, forever.
+    expect(Connection::find($asOwner->id))->toBeNull()
+        ->and(Connection::find($asPeer->id))->toBeNull();
+
+    // The other party's own connection to a THIRD, non-erased user is
+    // untouched — this isn't a blanket wipe of the connections table.
+    // Re-queried from the DB (not a stale in-memory object from before
+    // erasure ran), so a regression to a blanket `Connection::truncate()`
+    // or an unscoped delete would actually fail this.
+    expect(Connection::where('owner_id', $other->id)->where('peer_id', $thirdParty->id)->exists())->toBeTrue()
+        ->and(Connection::where('owner_id', $thirdParty->id)->where('peer_id', $other->id)->exists())->toBeTrue();
 });
