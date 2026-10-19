@@ -50,6 +50,57 @@ it('accepts a bounded direct voice upload and is idempotent without multipart bo
     Queue::assertPushed(NormalizeVoiceNote::class, 1);
 });
 
+it('accepts real audio-only WebM bytes detected as video webm', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech] = voiceReview();
+    $audio = new UploadedFile(
+        __DIR__.'/../../fixtures/voice/opus-audio.webm',
+        'voice-note.webm',
+        'audio/webm;codecs=opus',
+        UPLOAD_ERR_OK,
+        true,
+    );
+
+    // Exercise content sniffing; UploadedFile::fake() overrides getMimeType().
+    expect($audio->getClientMimeType())->toBe('audio/webm;codecs=opus')
+        ->and($audio->getMimeType())->toBe('video/webm');
+
+    $this->actingAs($coach)->withHeader('Accept', 'application/json')->post("/api/speeches/{$speech->id}/voice-notes", [
+        'audio' => $audio,
+        'client_uuid' => (string) Str::uuid(),
+        'start_seconds' => 2.5,
+    ])->assertAccepted()->assertJsonPath('annotation.voice.audio_status', 'processing');
+
+    Queue::assertPushed(NormalizeVoiceNote::class, 1);
+});
+
+it('rejects plain text claiming to be a WebM voice recording', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $temporary = tmpfile();
+    fwrite($temporary, "This is plain text, not an audio recording.\n");
+
+    try {
+        $audio = new UploadedFile(stream_get_meta_data($temporary)['uri'], 'voice-note.webm', 'audio/webm;codecs=opus', UPLOAD_ERR_OK, true);
+        expect($audio->getMimeType())->toBe('text/plain');
+
+        $this->actingAs($coach)->withHeader('Accept', 'application/json')->post("/api/speeches/{$speech->id}/voice-notes", [
+            'audio' => $audio,
+            'client_uuid' => (string) Str::uuid(),
+            'start_seconds' => 2.5,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['audio']);
+
+        expect(Annotation::where('review_id', $review->id)->exists())->toBeFalse();
+        Queue::assertNothingPushed();
+    } finally {
+        fclose($temporary);
+    }
+});
+
 it('fails and cleans a committed voice reservation when after-commit dispatch fails', function () {
     $this->seed(RoleSeeder::class);
     Storage::fake('media');
