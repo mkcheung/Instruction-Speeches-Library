@@ -18,7 +18,8 @@ class CreateVoiceAnnotationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'audio' => ['required', 'file', 'max:16384', 'mimetypes:audio/webm,audio/mp4,audio/x-m4a,audio/m4a,video/mp4,audio/ogg,audio/wav,audio/x-wav,audio/mpeg'],
+            // Fileinfo can identify audio-only browser WebM recordings as video/webm.
+            'audio' => ['required', 'file', 'max:16384', 'mimetypes:audio/webm,video/webm,audio/mp4,audio/x-m4a,audio/m4a,video/mp4,audio/ogg,audio/wav,audio/x-wav,audio/mpeg'],
             'client_uuid' => ['required', 'uuid'],
             'start_seconds' => ['required', 'numeric', 'min:0'],
             'kind' => ['sometimes', Rule::in(['praise', 'correction', 'observation'])],

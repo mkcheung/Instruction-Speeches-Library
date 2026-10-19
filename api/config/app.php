@@ -170,4 +170,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Skip admin-panel MFA (local only)
+    |--------------------------------------------------------------------------
+    |
+    | Dev convenience: RequireFilamentMfaChallenge lets admins through without
+    | a TOTP challenge or enrollment. Honoured ONLY when APP_ENV=local.
+    |
+    */
+
+    'disable_admin_mfa' => (bool) env('DISABLE_ADMIN_MFA', false),
+
 ];

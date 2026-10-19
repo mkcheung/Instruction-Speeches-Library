@@ -43,6 +43,10 @@ class RequireFilamentMfaChallenge
 {
     public function handle(Request $request, Closure $next): Response
     {
+        if (app()->environment('local') && config('app.disable_admin_mfa')) {
+            return $next($request);
+        }
+
         $user = Filament::auth()->user();
 
         if ($user === null || (! $user->hasAnyRole(Role::ADMIN_TIER))) {
