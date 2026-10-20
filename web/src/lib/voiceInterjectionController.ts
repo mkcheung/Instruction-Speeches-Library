@@ -167,7 +167,10 @@ export class VoiceInterjectionController {
 
   private onSeeking = (): void => {
     // Seeking never starts the video, including during a loading or paused note.
-    this.finish(false)
+    // With nothing active there's nothing to cancel, and finish() would also
+    // wipe the "commentary ahead" hint the timeupdate just computed for the
+    // new position (the paused-seek `seeked` event arrives after it).
+    if (this.active || this.queue.length || this.request) this.finish(false)
     this.previousTime = this.video.currentTime
     this.started = true
   }
