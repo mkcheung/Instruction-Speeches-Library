@@ -6,12 +6,12 @@ use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
+use App\Support\AnnotationTransactions;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -32,7 +32,7 @@ class PurgeDeletedVoiceAnnotation implements ShouldQueue
         if ($snapshot === null || ! $snapshot->trashed() || $snapshot->audio_asset_id === null) {
             return;
         }
-        $claim = DB::transaction(function () use ($snapshot): ?array {
+        $claim = AnnotationTransactions::run(function () use ($snapshot): ?array {
             $asset = SpeechAsset::query()->whereKey($snapshot->audio_asset_id)->lockForUpdate()->first();
             $annotation = Annotation::withTrashed()->whereKey($snapshot->id)->lockForUpdate()->first();
             if ($asset === null || $annotation === null || ! $annotation->trashed() || $annotation->audio_asset_id !== $asset->id) {
@@ -51,7 +51,7 @@ class PurgeDeletedVoiceAnnotation implements ShouldQueue
                 throw new \RuntimeException('Voice-note object deletion failed.');
             }
         }
-        DB::transaction(function () use ($claim, $quota): void {
+        AnnotationTransactions::run(function () use ($claim, $quota): void {
             $asset = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();
             $annotation = Annotation::withTrashed()->whereKey($this->annotationId)->lockForUpdate()->first();
             if ($asset === null || $annotation === null || ! $annotation->trashed() || $annotation->audio_asset_id !== $asset->id) {

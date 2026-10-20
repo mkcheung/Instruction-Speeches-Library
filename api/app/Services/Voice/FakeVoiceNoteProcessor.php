@@ -4,7 +4,7 @@ namespace App\Services\Voice;
 
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
-use Illuminate\Support\Facades\DB;
+use App\Support\AnnotationTransactions;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -27,7 +27,7 @@ class FakeVoiceNoteProcessor implements VoiceNoteProcessorContract
             return false;
         }
         Storage::disk($asset->disk)->put($candidate, 'fake-m4a');
-        $won = DB::transaction(function () use ($asset, $temporaryPath, $candidate): bool {
+        $won = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $candidate): bool {
             $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->whereNull('purge_claim_id')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
             if ($fresh === null || $fresh->normalization_candidate_path !== $candidate) {
                 return false;
@@ -44,13 +44,13 @@ class FakeVoiceNoteProcessor implements VoiceNoteProcessorContract
 
             return false;
         }
-        $reviewer = $asset->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
         if (Storage::disk($asset->disk)->delete($temporaryPath)) {
-            DB::transaction(function () use ($asset, $temporaryPath, $reviewer, $reserved): void {
+            AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved): void {
                 $fresh = SpeechAsset::query()->whereKey($asset->id)->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                 if ($fresh === null || $fresh->temporary_byte_size === null) {
                     return;
                 }
+                $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
                 if ($reviewer !== null) {
                     $this->quota->reconcileDirect($reviewer, $reserved, 8);
                 }

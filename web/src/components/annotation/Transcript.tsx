@@ -27,11 +27,15 @@ export function Transcript({
   activeIds,
   currentTime,
   onSeek,
+  hideBody = false,
+  label = 'Commentary transcript',
 }: {
   annotations: readonly Annotation[]
   activeIds: ReadonlySet<string>
   currentTime: number
   onSeek: (seconds: number) => void
+  hideBody?: boolean
+  label?: string
 }) {
   const sorted = useMemo(
     () => [...annotations].sort((a, b) => a.start_seconds - b.start_seconds || a.id.localeCompare(b.id)),
@@ -115,7 +119,7 @@ export function Transcript({
     <ol
       ref={listRef}
       onScroll={handleScroll}
-      aria-label="Commentary transcript"
+      aria-label={label}
       className="flex max-h-80 flex-col gap-1 overflow-y-auto"
     >
       {sorted.map((a) => (
@@ -139,7 +143,7 @@ export function Transcript({
               {formatTimecode(a.start_seconds)}
             </span>
             <span className="sr-only">Annotation at {formatSpokenTimecode(a.start_seconds)}</span>
-            <span>{annotationDisplayBody(a)}</span>
+            <span>{hideBody ? `Voice commentary · ${a.voice?.audio_status === 'ready' ? 'Ready' : a.voice?.audio_status === 'failed' ? 'Unavailable' : 'Processing'}` : annotationDisplayBody(a)}</span>
           </button>
         </li>
       ))}

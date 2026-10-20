@@ -1,0 +1,144 @@
+/*
+ * Styles for the landing-page art in this folder, ported from the approved
+ * "Curtain Up" mockup. Every class here is prefixed `land-art-` and only
+ * appears inside these SVGs, so none of it reaches the page around them.
+ * Imported by each art component, so it ships in the art's lazy chunk.
+ */
+
+/* Comic-strip ink: the outline on every filled shape. */
+.land-art-ink {
+  stroke: #1F1A17;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Bare strokes: brows, mouths, shake and motion lines. */
+.land-art-lineonly {
+  fill: none;
+  stroke: #1F1A17;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Crowd eyes glance toward the stage; a row's look class sets which way. */
+.land-art-eyes {
+  transform: translateX(var(--land-art-look, 0px));
+}
+.land-art-look-r {
+  --land-art-look: 2px;
+}
+.land-art-look-l {
+  --land-art-look: -2px;
+}
+
+/* Crowd palettes: hair, skin and shirt for the symbol drawn by a <use>. */
+.land-art-p0 {
+  --land-art-hair: #2B2118;
+  --land-art-skin: #F6D3B3;
+  --land-art-shirt: #3D7DCA;
+}
+.land-art-p1 {
+  --land-art-hair: #6B3E26;
+  --land-art-skin: #8A5636;
+  --land-art-shirt: #C8553D;
+}
+.land-art-p2 {
+  --land-art-hair: #E8C15A;
+  --land-art-skin: #E3A87C;
+  --land-art-shirt: #7B5EA7;
+}
+.land-art-p3 {
+  --land-art-hair: #2B2118;
+  --land-art-skin: #5A3825;
+  --land-art-shirt: #D9A93A;
+}
+.land-art-p4 {
+  --land-art-hair: #C2571A;
+  --land-art-skin: #F6D3B3;
+  --land-art-shirt: #7D8F3A;
+}
+.land-art-p5 {
+  --land-art-hair: #8E8E8E;
+  --land-art-skin: #C17F59;
+  --land-art-shirt: #D16B8F;
+}
+.land-art-p6 {
+  --land-art-hair: #4A3426;
+  --land-art-skin: #E3A87C;
+  --land-art-shirt: #5468B8;
+}
+.land-art-p7 {
+  --land-art-hair: #2B2118;
+  --land-art-skin: #8A5636;
+  --land-art-shirt: #E08A3C;
+}
+.land-art-p8 {
+  --land-art-hair: #A0522D;
+  --land-art-skin: #C17F59;
+  --land-art-shirt: #3D7DCA;
+}
+.land-art-p9 {
+  --land-art-hair: #1C1410;
+  --land-art-skin: #5A3825;
+  --land-art-shirt: #B85C9E;
+}
+
+/*
+ * Act I's nervous jitter. It plays only under `no-preference`, so reduced
+ * motion (and anything that can't answer the query) gets the still
+ * drawing, whose shake lines and sweat drops carry the nerves on their own.
+ * 25 runs of 0.14s stop it after 3.5s, inside WCAG 2.2.2's five seconds.
+ * Hovering the scene ADDS an identical keyframes rule under a second name
+ * alongside the first, which plays it once more. Leaving only removes that
+ * second entry, and the first keeps its name and list position, so it never
+ * restarts. (Swapping animation-name instead would replay on hover-out too.)
+ */
+.land-art-jitter {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes land-art-jitter {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(-1.5px, 0.5px) rotate(-1deg);
+  }
+  50% {
+    transform: translate(1.5px, -0.5px) rotate(0.8deg);
+  }
+  75% {
+    transform: translate(-1px, -0.5px) rotate(-0.6deg);
+  }
+}
+
+@keyframes land-art-jitter-again {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(-1.5px, 0.5px) rotate(-1deg);
+  }
+  50% {
+    transform: translate(1.5px, -0.5px) rotate(0.8deg);
+  }
+  75% {
+    transform: translate(-1px, -0.5px) rotate(-0.6deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .land-art-jitter {
+    animation: land-art-jitter 0.14s linear 25;
+  }
+  .land-art-stage-nervous:hover .land-art-jitter {
+    animation:
+      land-art-jitter 0.14s linear 25,
+      land-art-jitter-again 0.14s linear 25;
+  }
+}

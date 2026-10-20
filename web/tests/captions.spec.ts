@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { API_URL, APP_URL, CAPTIONS, USERS } from './fixtures.js'
+import { selectPlaybackMode } from './commentary-test-helpers.js'
 
 /**
  * STEP-09-VERIFICATION-PLAN.md §5 — the real-browser captions spec.
@@ -200,6 +201,7 @@ test('Scenario A — native captions and annotations toggle independently', asyn
   const context = await browser.newContext({ storageState: USERS.speaker.storageState })
   const page = await context.newPage()
   await openSpeech(page, CAPTIONS.displaySpeechId)
+  await selectPlaybackMode(page, 'Text + audio')
 
   const video = await waitForVideo(page)
 
@@ -263,7 +265,7 @@ test('Scenario A — native captions and annotations toggle independently', asyn
   await page
     .getByRole('radiogroup', { name: 'Choose commentary track' })
     .getByRole('radio', { name: USERS.reviewerA.name })
-    .click()
+    .press('Space')
   await video.evaluate((el) => {
     ;(el as unknown as BrowserVideoElement).currentTime = 1.2
   })
@@ -310,13 +312,10 @@ test('Scenario A — native captions and annotations toggle independently', asyn
     stageMidYBottom,
   )
 
-  // Step 7: captions on, then "No commentary" — annotation disappears,
+  // Step 7: captions on, then commentary Off — annotation disappears,
   // caption track stays showing.
   await setCaptionsShowing(page, true)
-  await page
-    .getByRole('radiogroup', { name: 'Choose commentary track' })
-    .getByRole('radio', { name: 'No commentary' })
-    .click()
+  await selectPlaybackMode(page, 'Off')
   await expect(overlay).toBeHidden()
   expect(await readCaptionMode()).toBe('showing')
 

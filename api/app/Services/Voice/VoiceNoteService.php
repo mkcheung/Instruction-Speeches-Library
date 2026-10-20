@@ -6,12 +6,13 @@ use App\Exceptions\AnnotationCapExceededException;
 use App\Jobs\NormalizeVoiceNote;
 use App\Models\Annotation;
 use App\Models\Review;
-use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
 use App\Services\ReviewService;
+use App\Support\AnnotationTiming;
+use App\Support\AnnotationTransactions;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Throwable;
@@ -26,25 +27,27 @@ class VoiceNoteService
      */
     public function create(Review $review, UploadedFile $audio, array $data): array
     {
-        $storedPath = null;
+        $result = null;
         $contents = $audio->getContent();
 
         try {
-            $result = DB::transaction(function () use ($review, $audio, $data, &$storedPath): array {
+            $result = AnnotationTransactions::run(function () use ($review, $audio, $data): array {
                 // Global voice-write lock order is identity -> review ->
                 // asset/annotation. EraseSelfAccount uses the same order,
                 // preventing a PostgreSQL create-vs-erasure deadlock.
                 User::query()->whereKey($review->reviewer_id)->lockForUpdate()->firstOrFail();
                 $locked = Review::query()->with(['reviewer', 'speech'])->whereKey($review->id)->lockForUpdate()->firstOrFail();
+                Gate::authorize('voice.create', $locked);
                 abort_if($locked->voice_erasure_started_at !== null || $locked->reviewer?->erasure_started_at !== null, 409, 'Account erasure is in progress.');
                 $existing = Annotation::query()->with('audioAsset')
                     ->where('review_id', $locked->id)->where('client_uuid', $data['client_uuid'])->first();
                 if ($existing !== null) {
-                    return [$existing, false];
+                    return [$existing, false, null];
                 }
                 if ($locked->annotations_count >= 200) {
                     throw new AnnotationCapExceededException;
                 }
+                $start = app(AnnotationTiming::class)->point($locked, $data['start_seconds']);
 
                 $bytes = (int) $audio->getSize();
                 $reviewer = $locked->reviewer;
@@ -81,7 +84,7 @@ class VoiceNoteService
 
                 $annotation = Annotation::query()->create([
                     'review_id' => $locked->id, 'client_uuid' => $data['client_uuid'],
-                    'body' => '', 'start_seconds' => $data['start_seconds'],
+                    'body' => '', 'start_seconds' => $start, 'timing_type' => 'point',
                     'duration_seconds' => 1.0, 'kind' => $data['kind'] ?? 'observation',
                     'topic' => $data['topic'] ?? null, 'audio_asset_id' => $asset->id,
                     'transcript_status' => 'pending',
@@ -89,30 +92,21 @@ class VoiceNoteService
                 ]);
                 $this->reviews->recordAnnotationActivity($locked);
 
-                return [$annotation->load('audioAsset'), true];
+                return [$annotation->load('audioAsset'), true, $storedPath];
             });
             if ($result[1] === true) {
-                if (! Storage::disk('media')->put((string) $storedPath, $contents)) {
+                if (! Storage::disk('media')->put((string) $result[2], $contents)) {
                     throw new \RuntimeException('Unable to store voice-note upload.');
                 }
-                NormalizeVoiceNote::dispatch((int) $result[0]->audio_asset_id, (string) $storedPath);
+                NormalizeVoiceNote::dispatch((int) $result[0]->audio_asset_id, (string) $result[2]);
             }
 
-            return $result;
+            return [$result[0], $result[1]];
         } catch (Throwable $e) {
-            if ($storedPath !== null) {
-                // An after-commit queue dispatch can throw after the rows and
-                // quota reservation are already durable. In that case the
-                // normal job backstop owns the exact same CAS/accounting and
-                // object cleanup as a worker-side failure. Only a genuinely
-                // rolled-back transaction has no asset row and may delete the
-                // object directly without touching quota a second time.
-                $committedAsset = SpeechAsset::query()->where('temporary_path', $storedPath)->first();
-                if ($committedAsset !== null) {
-                    (new NormalizeVoiceNote($committedAsset->id, $storedPath))->failed($e);
-                } else {
-                    Storage::disk('media')->delete($storedPath);
-                }
+            // Only this successful attempt's committed creation is ours. Never
+            // find/clean up a sibling upload by deterministic path after rollback.
+            if ($result !== null) {
+                (new NormalizeVoiceNote((int) $result[0]->audio_asset_id, (string) $result[2]))->failed($e);
             }
             throw $e;
         }

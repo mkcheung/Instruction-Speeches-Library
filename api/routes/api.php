@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AnnotationController;
 use App\Http\Controllers\Api\AvatarController;
 use App\Http\Controllers\Api\CaptionController;
 use App\Http\Controllers\Api\CoachApplicationController;
+use App\Http\Controllers\Api\CommentaryPlaybackPreferenceController;
 use App\Http\Controllers\Api\ConnectionController;
 use App\Http\Controllers\Api\DebugThrowController;
 use App\Http\Controllers\Api\EraseSelfController;
@@ -86,6 +87,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/me/preferences/voice-commentary/{speech}', [VoicePreferenceController::class, 'update'])
         ->middleware('verified.api')
         ->name('api.me.preferences.voice-commentary.update');
+    Route::get('/me/preferences/commentary-playback/{speech}', [CommentaryPlaybackPreferenceController::class, 'show'])
+        ->middleware('verified.api')
+        ->name('api.me.preferences.commentary-playback.show');
+    Route::patch('/me/preferences/commentary-playback/{speech}', [CommentaryPlaybackPreferenceController::class, 'update'])
+        ->middleware('verified.api')
+        ->name('api.me.preferences.commentary-playback.update');
 
     // STEP-03-upload-and-watch.md (§9, §6.11): upload and watch. Ownership
     // is checked inline in each controller method, not via a Policy — no
@@ -179,6 +186,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/speeches/{speech}/annotations/{annotation}/restore', [VoiceAnnotationController::class, 'restore'])
         ->middleware('verified.api')
         ->name('api.speeches.annotations.restore');
+    Route::post('/speeches/{speech}/annotations/{annotation}/restore-point', [AnnotationController::class, 'restorePoint'])
+        ->name('api.speeches.annotations.restore-point');
     Route::patch('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'update'])
         ->name('api.speeches.annotations.update');
     Route::delete('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'destroy'])

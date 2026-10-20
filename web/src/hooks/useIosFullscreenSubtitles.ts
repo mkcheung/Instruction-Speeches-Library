@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { normalize } from '@/lib/engine'
-import type { Annotation } from '@/features/annotation/types'
+import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
 
 const SUBTITLE_TRACK_LABEL = 'Commentary'
 
@@ -64,9 +64,11 @@ function rebuildSubtitleCues(track: TextTrack, annotations: readonly Annotation[
  */
 export function useIosFullscreenSubtitles(
   videoEl: HTMLVideoElement | null,
-  annotations: readonly Annotation[],
+  source: readonly Annotation[],
 ): void {
+  const annotations = useMemo(() => source.filter((note) => !isPointAnnotation(note)), [source])
   const annotationsRef = useRef(annotations)
+  const nativeFullscreenRef = useRef(false)
   useEffect(() => {
     annotationsRef.current = annotations
   })
@@ -77,10 +79,12 @@ export function useIosFullscreenSubtitles(
     const track = getOrCreateSubtitleTrack(videoEl)
 
     const onBeginFullscreen = () => {
+      nativeFullscreenRef.current = true
       rebuildSubtitleCues(track, annotationsRef.current)
-      track.mode = 'showing'
+      track.mode = annotationsRef.current.length ? 'showing' : 'disabled'
     }
     const onEndFullscreen = () => {
+      nativeFullscreenRef.current = false
       track.mode = 'disabled'
     }
 
@@ -88,6 +92,9 @@ export function useIosFullscreenSubtitles(
     videoEl.addEventListener('webkitendfullscreen', onEndFullscreen)
 
     return () => {
+      nativeFullscreenRef.current = false
+      rebuildSubtitleCues(track, [])
+      track.mode = 'disabled'
       videoEl.removeEventListener('webkitbeginfullscreen', onBeginFullscreen)
       videoEl.removeEventListener('webkitendfullscreen', onEndFullscreen)
     }
@@ -99,8 +106,9 @@ export function useIosFullscreenSubtitles(
   useEffect(() => {
     if (!videoEl) return
     const track = subtitleTrackCache.get(videoEl)
-    if (track && track.mode === 'showing') {
+    if (track && nativeFullscreenRef.current) {
       rebuildSubtitleCues(track, annotations)
+      track.mode = annotations.length ? 'showing' : 'disabled'
     }
   }, [videoEl, annotations])
 }

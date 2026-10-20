@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Response } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { API_URL, APP_URL, POSTGRES_CONTAINER, USERS, VOICE } from './fixtures.js'
+import { selectPlaybackMode } from './commentary-test-helpers.js'
 import {
   deterministicAudioEvents,
   finishDeterministicAudio,
@@ -50,17 +51,11 @@ interface BrowserVideo {
   addEventListener: (type: 'play', listener: () => void) => void
 }
 
-async function prepareSpeakerInterjection(page: Page, explicitlySelectPlay = true): Promise<void> {
+async function prepareSpeakerInterjection(page: Page): Promise<void> {
   await openSpeech(page, VOICE.coachSpeechId)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).click()
+  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).press('Space')
+  await selectPlaybackMode(page, 'Text + audio')
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
-  if (!explicitlySelectPlay) return
-  const playMode = page.getByRole('radiogroup', { name: 'Voice commentary' }).getByRole('radio', { name: 'Play commentary' })
-  const persisted = page.waitForResponse(
-    (response) => response.request().method() === 'PATCH' && response.url().includes('/preferences/voice-commentary/'),
-  )
-  await playMode.click()
-  expect((await persisted).status()).toBe(200)
 }
 
 async function startNaturalCrossing(page: Page) {
@@ -175,6 +170,8 @@ test('Scenario B — fallback/rerecord posts once; real FFmpeg reaches ready wit
 
   await openSpeech(page, VOICE.coachSpeechId)
   const recorder = page.getByRole('region', { name: 'Record a voice note' })
+  // Before the legacy 0.1–5.1 written span: an unoccupied point.
+  await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('0')
 
   await recorder.getByRole('button', { name: /^Record/ }).click()
   await recorder.getByRole('button', { name: 'Stop' }).click()
@@ -236,10 +233,11 @@ test('Scenario C — a natural crossing fetches signed audio, pauses, shows tran
   const context = await browser.newContext({ storageState: USERS.speaker.storageState })
   const page = await context.newPage()
   await installDeterministicVoiceAudio(page, 'natural')
-  await prepareSpeakerInterjection(page, false)
-  const automaticPreference = page.waitForResponse(
-    (response) => response.request().method() === 'PATCH' && response.url().includes('/preferences/voice-commentary/'),
-  )
+  await prepareSpeakerInterjection(page)
+  const playbackWrites: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'PATCH' && /\/preferences\/(?:voice-commentary|commentary-playback)\//.test(request.url())) playbackWrites.push(request.url())
+  })
   const video = await startNaturalCrossing(page)
 
   await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
@@ -267,16 +265,16 @@ test('Scenario C — a natural crossing fetches signed audio, pauses, shows tran
     .poll(async () => (await deterministicAudioEvents(page)).find((event) => event.phase === 'range'))
     .toMatchObject({ status: 206, bytes: 32 })
   await expectVideoToAdvance(video)
-  expect((await automaticPreference).status()).toBe(200)
+  expect(playbackWrites, 'listening must not silently change the playback preference').toEqual([])
   await context.close()
 
   const nextVisitContext = await browser.newContext({ storageState: USERS.speaker.storageState })
   const nextVisitPage = await nextVisitContext.newPage()
   await openSpeech(nextVisitPage, VOICE.coachSpeechId)
   await nextVisitPage.getByRole('radiogroup', { name: 'Choose commentary track' })
-    .getByRole('radio', { name: USERS.reviewerA.name }).click()
-  await expect(nextVisitPage.getByRole('radiogroup', { name: 'Voice commentary' }).getByRole('radio', { name: 'Text only' }))
-    .toHaveAttribute('aria-checked', 'true')
+    .getByRole('radio', { name: USERS.reviewerA.name }).press('Space')
+  await expect(nextVisitPage.getByRole('radiogroup', { name: 'Commentary playback' }).getByRole('radio', { name: 'Text + audio', exact: true }))
+    .toBeChecked()
   await nextVisitContext.close()
 })
 
@@ -362,14 +360,16 @@ test('Scenario E — warning, signed Range audio, modes, and per-speech preferen
   const speakerContext = await browser.newContext({ storageState: USERS.speaker.storageState })
   const page = await speakerContext.newPage()
   await openSpeech(page, VOICE.coachSpeechId)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).click()
+  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).press('Space')
+  await selectPlaybackMode(page, 'Text + audio')
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
 
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: 'No commentary' }).click()
-  const emptyTranscript = page.getByRole('list', { name: 'Commentary transcript' })
-  await expect(emptyTranscript.getByText('No commentary on this track.')).toBeVisible()
-  await expect(emptyTranscript.getByRole('button')).toHaveCount(0)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).click()
+  await selectPlaybackMode(page, 'Off')
+  await expect(page.getByText('Commentary is off.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Commentary transcript' })).toHaveCount(0)
+  await expect(page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name })).toBeChecked()
+  await expect(page.getByRole('button', { name: 'Report', exact: true })).toBeVisible()
+  await selectPlaybackMode(page, 'Text + audio')
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
 
   const rows = await annotations(page)
@@ -387,26 +387,25 @@ test('Scenario E — warning, signed Range audio, modes, and per-speech preferen
   }, signedUrl)
   expect(range).toEqual({ status: 206, bytes: 32 })
 
-  const voiceModes = page.getByRole('radiogroup', { name: 'Voice commentary' })
-  const selectVoiceMode = async (name: 'Text only' | 'None') => {
-    const preferenceResponse = page.waitForResponse(
-      (response) => response.request().method() === 'PATCH' && response.url().includes('/preferences/voice-commentary/'),
-    )
-    await voiceModes.getByRole('radio', { name }).click()
-    expect((await preferenceResponse).status()).toBe(200)
-  }
-  await selectVoiceMode('Text only')
+  await selectPlaybackMode(page, 'Written notes only')
   const commentaryTranscript = page.getByRole('list', { name: 'Commentary transcript' })
-  await expect(commentaryTranscript.getByText(VOICE.pendingTranscript)).toBeVisible()
-
-  await selectVoiceMode('None')
   await expect(commentaryTranscript.getByText(VOICE.pendingTranscript)).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
+  await page.getByText('Read all feedback', { exact: true }).click()
+  await expect(page.getByRole('list', { name: 'All feedback' }).getByText(VOICE.pendingTranscript)).toBeVisible()
 
-  await selectVoiceMode('Text only')
+  await selectPlaybackMode(page, 'Audio only')
+  await expect(page.getByRole('list', { name: 'All feedback' })).toHaveCount(0)
+  await expect(commentaryTranscript.getByText(VOICE.pendingTranscript)).toHaveCount(0)
+  await expect(commentaryTranscript.getByText('Voice commentary · Ready').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /Ordinary text remains visible/ })).toHaveCount(0)
+
+  await selectPlaybackMode(page, 'Off')
+  await expect(commentaryTranscript).toHaveCount(0)
+  await selectPlaybackMode(page, 'Written notes only')
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('radiogroup', { name: 'Voice commentary' }).getByRole('radio', { name: 'Text only' }))
-    .toHaveAttribute('aria-checked', 'true')
+  await expect(page.getByRole('radiogroup', { name: 'Commentary playback' }).getByRole('radio', { name: 'Written notes only' }))
+    .toBeChecked()
   await speakerContext.close()
 })
 
@@ -455,7 +454,7 @@ test('Scenario F — queued erase-self removes audio while preserving Former rev
   const speakerContext = await browser.newContext({ storageState: USERS.speaker.storageState })
   const page = await speakerContext.newPage()
   await openSpeech(page, VOICE.erasureSpeechId)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: 'Former reviewer' }).click()
+  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: 'Former reviewer' }).press('Space')
   await expect(
     page.getByRole('list', { name: 'Commentary transcript' }).getByText('This transcript survives reviewer erasure.'),
   ).toBeVisible()
@@ -486,12 +485,54 @@ test('Scenario G — the commentary track defaults to the published reviewer wit
   await openSpeech(page, VOICE.coachSpeechId)
 
   const radiogroup = page.getByRole('radiogroup', { name: 'Choose commentary track' })
-  await expect(radiogroup.getByRole('radio', { name: USERS.reviewerA.name })).toHaveAttribute('aria-checked', 'true')
-  await expect(radiogroup.getByRole('radio', { name: 'No commentary' })).toHaveAttribute('aria-checked', 'false')
+  await expect(radiogroup.getByRole('radio', { name: USERS.reviewerA.name })).toBeChecked()
+  await expect(radiogroup.getByRole('radio', { name: 'No commentary' })).toHaveCount(0)
+  await selectPlaybackMode(page, 'Text + audio')
 
   // Not just a visually-checked radio — the default actually drove a real
   // fetch of that reviewer's published commentary.
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
 
+  await context.close()
+})
+
+test('Scenario H — fullscreen owns one usable control surface and preserves paused audio across modes', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+  const page = await context.newPage()
+  await installDeterministicVoiceAudio(page, 'hold')
+  await prepareSpeakerInterjection(page)
+  const video = await startNaturalCrossing(page)
+  await expect(page.getByText('Playing voice commentary', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Pause commentary', exact: true }).click()
+  await page.getByRole('region', { name: 'Video Player' }).hover()
+  await page.getByRole('button', { name: 'Fullscreen', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Exit Fullscreen', exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement?.contains(
+    document.querySelector('[data-testid="owner-commentary-host"]'),
+  ) ?? false)).toBe(true)
+
+  await page.getByText('Commentary controls', { exact: true }).click()
+  await expect(page.getByRole('radiogroup', { name: 'Commentary playback' })).toHaveCount(1)
+  const host = page.getByTestId('owner-commentary-host')
+  await expect(host.getByRole('list', { name: 'Commentary transcript' }).getByRole('button').first()).toHaveCSS('display', 'flex')
+  const visibleOverlay = host.locator('.annotation-overlay[data-visible="true"]').first()
+  await expect(visibleOverlay).toBeVisible()
+  expect(await visibleOverlay.evaluate((node) => getComputedStyle(node).color)).toBe(
+    await host.getByRole('radiogroup', { name: 'Commentary playback' }).evaluate((node) => getComputedStyle(node).color),
+  )
+
+  await selectPlaybackMode(page, 'Audio only')
+  await expect(host.getByRole('button', { name: 'Resume commentary', exact: true })).toBeVisible()
+  await expect(host.locator('.annotation-overlay')).toHaveCount(0)
+  await selectPlaybackMode(page, 'Text + audio')
+  await expect(host.getByRole('button', { name: 'Resume commentary', exact: true })).toBeVisible()
+  await selectPlaybackMode(page, 'Off')
+  await expect(host.getByRole('button', { name: 'Resume commentary', exact: true })).toHaveCount(0)
+  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  await page.getByRole('region', { name: 'Video Player' }).hover()
+  await page.getByRole('button', { name: 'Exit Fullscreen', exact: true }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true)
+  await expect(page.getByRole('radiogroup', { name: 'Commentary playback' })).toHaveCount(1)
+  await expect(page.getByRole('radio', { name: 'Off', exact: true })).toBeChecked()
   await context.close()
 })

@@ -31,6 +31,11 @@ class SeedAnnotationsCommand extends Command
 
     public function handle(): int
     {
+        if (! app()->environment(['local', 'testing'])) {
+            $this->error('Overlapping playback fixtures are restricted to local/testing environments.');
+
+            return self::FAILURE;
+        }
         $reviewId = $this->argument('review');
 
         $review = Review::query()->find($reviewId);
@@ -81,7 +86,7 @@ class SeedAnnotationsCommand extends Command
 
             Annotation::query()->updateOrCreate(
                 ['review_id' => $review->id, 'client_uuid' => $clientUuid],
-                [...$fixture, 'published_at' => $now]
+                [...$fixture, 'timing_type' => 'range', 'published_at' => $now]
             );
         }
 

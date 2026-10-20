@@ -180,6 +180,7 @@ class E2ECaptionsSeeder extends Seeder
             ['review_id' => $review->id, 'client_uuid' => '0e2e0000-0000-4000-8000-000000009401'],
             [
                 'body' => self::DISPLAY_ANNOTATION_BODY,
+                'timing_type' => 'range',
                 'start_seconds' => 1.0,
                 'duration_seconds' => 1.5,
                 'kind' => 'observation',

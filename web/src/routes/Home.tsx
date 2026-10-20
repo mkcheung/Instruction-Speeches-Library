@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
-import { Link, Navigate } from 'react-router-dom'
-import { PageShell } from '@/components/layout/PageShell'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Suspense, lazy, useEffect } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { getPostLoginDestination } from '@/lib/roles'
+
+// Lazy, because `Home` is imported eagerly by `App.tsx`: this keeps the
+// landing page's components and CSS out of the main bundle, so signed-in
+// visitors (redirected below before this renders) never download them.
+const Landing = lazy(() => import('@/components/landing/Landing').then((m) => ({ default: m.Landing })))
 
 function FullPageSpinner() {
   return (
@@ -27,6 +29,9 @@ function FullPageSpinner() {
  * already handles (an in-app dashboard, or the cross-origin admin panel)
  * even though it isn't wrapped in that guard — `/` has to work whether or
  * not a session exists, not just for guests.
+ *
+ * Logged-out visitors get `<Landing />`, which is full-bleed (its own
+ * curtains and background), so it doesn't sit inside a `PageShell`.
  */
 export default function Home() {
   const { data, isLoading } = useGetMeQuery()
@@ -58,34 +63,8 @@ export default function Home() {
   }
 
   return (
-    <PageShell width="form" className="mx-auto items-center text-center">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Instruction Speeches Library</h1>
-        <p className="text-muted-foreground">
-          Upload a video of yourself giving a speech. Invite the specific people whose feedback
-          you actually want. They watch, and leave notes.
-        </p>
-      </div>
-
-      <Card>
-        <CardContent className="py-5 text-base font-medium">
-          Nobody sees your speech unless you personally invited them. No public list, no way to
-          volunteer.
-        </CardContent>
-      </Card>
-
-      <p className="text-sm text-muted-foreground">
-        Upload your speech, invite your reviewers, and as it plays back their notes fade in at the
-        exact second they apply — and fade out again once the moment's passed — so feedback lines
-        up with the part of the speech it's actually about.
-      </p>
-
-      <div className="flex items-center justify-center gap-3">
-        <Button render={<Link to="/register" />}>Register</Button>
-        <Button variant="outline" render={<Link to="/login" />}>
-          Log in
-        </Button>
-      </div>
-    </PageShell>
+    <Suspense fallback={<FullPageSpinner />}>
+      <Landing />
+    </Suspense>
   )
 }

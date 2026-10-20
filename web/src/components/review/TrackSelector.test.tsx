@@ -1,189 +1,132 @@
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { TrackSelector } from '@/components/review/TrackSelector'
-import type { Annotation } from '@/features/annotation/types'
-import type { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
-import { NO_COMMENTARY, type CommentaryTrackOption } from '@/hooks/useCommentaryTrack'
+import { TrackSelector, type TrackSelectorProps } from './TrackSelector'
+import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/types'
 import type { RosterReview } from '@/features/review/types'
+import { projectCommentary } from '@/lib/commentaryPlayback'
 
-const noCommentaryOption: CommentaryTrackOption = {
-  key: NO_COMMENTARY,
-  label: 'No commentary',
-  review: null,
-  noteCount: 0,
-  hasUnread: false,
-}
+vi.mock('@/components/report/ReportDialog', () => ({ ReportDialog: () => <button>Report review</button> }))
+const written: Annotation = { id: 'written', start_seconds: 2, duration_seconds: 4, kind: 'praise', topic: null,
+  body: 'Written feedback', lock_version: 0, client_uuid: 'w', voice: null }
+const voice: Annotation = { ...written, id: 'voice', body: 'Voice transcript', start_seconds: 10,
+  voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }
 
-function reviewerOption(overrides: Partial<CommentaryTrackOption> = {}): CommentaryTrackOption {
+function props(mode: CommentaryPlaybackMode = 'all'): TrackSelectorProps {
+  const projection = projectCommentary([written, voice], mode)
   return {
-    key: 1,
-    label: 'Coach Seven',
-    review: { id: 1 } as RosterReview,
-    noteCount: 0,
-    hasUnread: false,
-    ...overrides,
+    options: [{ key: 1, label: 'Cora Coach', review: { id: 1 } as RosterReview, noteCount: 2, hasUnread: true }],
+    optionsLoading: false, selected: 1, onSelect: vi.fn(), onPrefetch: vi.fn(), error: undefined,
+    isFetching: false, fetchedReviewerName: 'Cora Coach', annotations: projection.readable,
+    activeIds: new Set(), currentTime: 0, onSeek: vi.fn(), mode, onModeChange: vi.fn(),
+    preference: { mode, ready: true, loading: false, saving: false, loadError: false, saveError: false,
+      accessDenied: false, preference: { speech_id: 8, mode, source: 'saved' }, select: vi.fn(), retry: vi.fn() },
+    voicePlayback: { state: 'idle', current: null, hint: null, error: null, skip: vi.fn(), pauseCommentary: vi.fn(), resumeCommentary: vi.fn() },
+    disabled: false, allAnnotations: [written, voice], hideReadableBody: projection.hideReadableBody,
+    readingKey: `owner:8:1:${mode}`, visible: true, onReadAll: vi.fn(),
   }
 }
 
-const note: Annotation = {
-  id: '1', start_seconds: 10, duration_seconds: 2, kind: 'observation', topic: null,
-  body: 'Spoken note', lock_version: 0, client_uuid: 'voice-1',
-  voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
-}
-
-function playback(overrides: Partial<ReturnType<typeof useVoiceInterjections>> = {}) {
-  return {
-    state: 'idle', current: null, hint: null, skip: vi.fn(), pauseCommentary: vi.fn(), resumeCommentary: vi.fn(),
-    ...overrides,
-  } as ReturnType<typeof useVoiceInterjections>
-}
-
-describe('TrackSelector voice controls', () => {
-  it('keeps reviewer selection and voice mode as independent radiogroups', async () => {
+describe('four-mode commentary controls', () => {
+  it('shows reviewer names and exactly four independent playback choices with total published counts', async () => {
     const user = userEvent.setup()
-    const selectTrack = vi.fn()
-    const selectMode = vi.fn()
-    render(
-      <TrackSelector
-        options={[noCommentaryOption]}
-        optionsLoading={false}
-        selected="none"
-        onSelect={selectTrack}
-        onPrefetch={vi.fn()}
-        error={undefined}
-        isFetching={false}
-        fetchedReviewerName={undefined}
-        annotations={[]}
-        activeIds={new Set()}
-        currentTime={0}
-        onSeek={vi.fn()}
-        voiceMode="play"
-        onVoiceModeChange={selectMode}
-        voicePlayback={playback()}
-      />,
-    )
-
+    const p = props()
+    p.options.unshift({ key: 'none', label: 'No commentary', review: null, noteCount: 9, hasUnread: true })
+    render(<TrackSelector {...p} />)
     expect(screen.getAllByRole('radiogroup')).toHaveLength(2)
-    await user.click(screen.getByRole('radio', { name: 'Text only' }))
-    expect(selectMode).toHaveBeenCalledWith('text')
-    expect(selectTrack).not.toHaveBeenCalled()
+    expect(screen.queryByRole('radio', { name: 'No commentary' })).not.toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Cora Coach.*2 notes total.*new/ })).toBeChecked()
+    const modes = within(screen.getByRole('radiogroup', { name: 'Commentary playback' }))
+    expect(modes.getAllByRole('radio').map((radio) => radio.textContent || radio.getAttribute('value'))).toHaveLength(4)
+    await user.click(modes.getByRole('radio', { name: 'Written notes only' }))
+    expect(p.onModeChange).toHaveBeenCalledWith('written')
+    expect(p.onSelect).not.toHaveBeenCalled()
   })
 
-  it('shows the approaching hint and exposes Pause and Skip for the active note', async () => {
+  it('supports native radio arrow navigation and a single tab stop in the mode group', async () => {
     const user = userEvent.setup()
-    const controls = playback({ state: 'playing', current: note, hint: note })
-    const rendered = render(
-      <TrackSelector
-        options={[]}
-        optionsLoading={false}
-        selected="none"
-        onSelect={vi.fn()}
-        onPrefetch={vi.fn()}
-        error={undefined}
-        isFetching={false}
-        fetchedReviewerName={undefined}
-        annotations={[note]}
-        activeIds={new Set(['1'])}
-        currentTime={10}
-        onSeek={vi.fn()}
-        voiceMode="play"
-        onVoiceModeChange={vi.fn()}
-        voicePlayback={playback({ hint: note })}
-      />,
-    )
-    expect(screen.getByRole('status')).toHaveTextContent('Commentary ahead')
+    function Harness() {
+      const [mode, setMode] = useState<CommentaryPlaybackMode>('all')
+      return <TrackSelector {...props(mode)} onModeChange={setMode} />
+    }
+    render(<Harness />)
+    screen.getByRole('radio', { name: 'Text + audio' }).focus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('radio', { name: 'Written notes only' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Written notes only' })).toHaveFocus()
+    await user.tab()
+    expect(screen.getByRole('radio', { name: 'Audio only' })).not.toHaveFocus()
+  })
 
-    rendered.rerender(
-      <TrackSelector
-        options={[]}
-        optionsLoading={false}
-        selected="none"
-        onSelect={vi.fn()}
-        onPrefetch={vi.fn()}
-        error={undefined}
-        isFetching={false}
-        fetchedReviewerName={undefined}
-        annotations={[note]}
-        activeIds={new Set(['1'])}
-        currentTime={10}
-        onSeek={vi.fn()}
-        voiceMode="play"
-        onVoiceModeChange={vi.fn()}
-        voicePlayback={controls}
-      />,
-    )
+  it('renders the complete readable list once in Text + audio', () => {
+    render(<TrackSelector {...props()} />)
+    expect(screen.getByText('Written feedback')).toBeInTheDocument()
+    expect(screen.getByText('Voice transcript')).toBeInTheDocument()
+    expect(screen.getAllByRole('list', { name: 'Commentary transcript' })).toHaveLength(1)
+    expect(screen.queryByText('Read all feedback')).not.toBeInTheDocument()
+  })
+
+  it('keeps voice bodies out of Written and Audio only until deliberately expanded', async () => {
+    const user = userEvent.setup()
+    const p = props('voice')
+    const view = render(<TrackSelector {...p} />)
+    expect(screen.queryByText('Written feedback')).not.toBeInTheDocument()
+    expect(screen.queryByText('Voice transcript')).not.toBeInTheDocument()
+    expect(screen.getByText('Voice commentary · Ready')).toBeInTheDocument()
+    await user.click(screen.getByText('Read all feedback'))
+    await waitFor(() => expect(screen.getByRole('list', { name: 'All feedback' })).toBeInTheDocument())
+    expect(screen.getByText('Voice transcript')).toBeInTheDocument()
+    expect(p.onReadAll).toHaveBeenCalledOnce()
+    expect(p.onModeChange).not.toHaveBeenCalled()
+    view.rerender(<TrackSelector {...props('written')} />)
+    expect(screen.queryByRole('list', { name: 'All feedback' })).not.toBeInTheDocument()
+    expect(screen.getByText('Written feedback')).toBeInTheDocument()
+    expect(screen.queryByText('Voice transcript')).not.toBeInTheDocument()
+    view.rerender(<TrackSelector {...p} />)
+    expect(screen.queryByRole('list', { name: 'All feedback' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Report and deliberate reading available in Off, without a default notes list', async () => {
+    const user = userEvent.setup()
+    const p = props('off')
+    render(<TrackSelector {...p} />)
+    expect(screen.getByRole('button', { name: 'Report review' })).toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    await user.click(screen.getByText('Read all feedback'))
+    await waitFor(() => expect(screen.getByRole('list', { name: 'All feedback' })).toBeInTheDocument())
+    expect(p.onModeChange).not.toHaveBeenCalled()
+  })
+
+  it('uses honest filtered empty states and disables playback when no reviewer is available', () => {
+    const p = props('written')
+    const view = render(<TrackSelector {...p} annotations={[]} />)
+    expect(screen.getByText('No written notes from this reviewer.')).toBeInTheDocument()
+    expect(screen.queryByText(/hasn't left/)).not.toBeInTheDocument()
+    view.rerender(<TrackSelector {...props('voice')} annotations={[]} />)
+    expect(screen.getByText('No audio commentary from this reviewer.')).toBeInTheDocument()
+    view.rerender(<TrackSelector {...p} selected="none" options={[]} disabled />)
+    expect(screen.getByText('No reviewers available.')).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Text + audio' })).toBeDisabled()
+  })
+
+  it('shows load/save failures with Retry and generic accessible playback controls', async () => {
+    const user = userEvent.setup()
+    const p = props()
+    p.preference.saveError = true
+    p.voicePlayback.current = voice
+    p.voicePlayback.state = 'playing'
+    const view = render(<TrackSelector {...p} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not save setting.')
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
     await user.click(screen.getByRole('button', { name: 'Pause commentary' }))
-    await user.click(screen.getByRole('button', { name: /Skip/ }))
-    expect(controls.pauseCommentary).toHaveBeenCalled()
-    expect(controls.skip).toHaveBeenCalled()
-  })
-})
-
-/**
- * IMPLEMENTATION-PLANS.md §7.4: a note-count badge and an unread indicator
- * on each reviewer chip. §12's accessible-name contract pins "the chip's
- * name = the reviewer's name" as append-only — both additions render AFTER
- * `option.label`, so the reviewer's name stays an intact leading substring
- * of the chip's full accessible name (Playwright's `getByRole(name:)`
- * defaults to substring matching, which is what makes this safe).
- */
-describe('TrackSelector badges', () => {
-  function renderWithOptions(options: CommentaryTrackOption[]) {
-    return render(
-      <TrackSelector
-        options={options}
-        optionsLoading={false}
-        selected="none"
-        onSelect={vi.fn()}
-        onPrefetch={vi.fn()}
-        error={undefined}
-        isFetching={false}
-        fetchedReviewerName={undefined}
-        annotations={[]}
-        activeIds={new Set()}
-        currentTime={0}
-        onSeek={vi.fn()}
-        voiceMode="play"
-        onVoiceModeChange={vi.fn()}
-        voicePlayback={playback()}
-      />,
-    )
-  }
-
-  it('shows the note count in the chip\'s accessible name when noteCount > 0', () => {
-    renderWithOptions([noCommentaryOption, reviewerOption({ noteCount: 3 })])
-    expect(screen.getByRole('radio', { name: /Coach Seven.*3 notes/ })).toBeInTheDocument()
-  })
-
-  it('shows no count badge when noteCount is 0', () => {
-    renderWithOptions([noCommentaryOption, reviewerOption({ noteCount: 0 })])
-    // The chip is still findable by its bare name (no " · N notes" suffix) —
-    // an exact match here is what proves nothing was appended.
-    expect(screen.getByRole('radio', { name: 'Coach Seven' })).toBeInTheDocument()
-  })
-
-  it('uses singular "note" for a count of exactly 1', () => {
-    renderWithOptions([noCommentaryOption, reviewerOption({ noteCount: 1 })])
-    expect(screen.getByRole('radio', { name: /Coach Seven.*1 note\b/ })).toBeInTheDocument()
-    expect(screen.queryByRole('radio', { name: /1 notes/ })).not.toBeInTheDocument()
-  })
-
-  it('carries the unread signal in the accessible name, not just a decorative dot', () => {
-    renderWithOptions([noCommentaryOption, reviewerOption({ hasUnread: true })])
-    expect(screen.getByRole('radio', { name: /Coach Seven.*new/ })).toBeInTheDocument()
-  })
-
-  it('never shows a count badge or unread indicator on the No commentary chip, even if it somehow carried non-zero values', () => {
-    // `useCommentaryTrack` always gives NO_COMMENTARY `noteCount: 0,
-    // hasUnread: false` — but `TrackSelector`'s own render guard also
-    // explicitly checks `option.review !== null`, not just the field
-    // values, so this pins that second, independent guard rather than
-    // only re-asserting the hook's fixture-level invariant.
-    renderWithOptions([
-      { ...noCommentaryOption, noteCount: 5, hasUnread: true },
-      reviewerOption(),
-    ])
-    expect(screen.getByRole('radio', { name: 'No commentary' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Skip commentary' }))
+    expect(p.preference.retry).toHaveBeenCalledOnce()
+    expect(p.voicePlayback.pauseCommentary).toHaveBeenCalledOnce()
+    expect(p.voicePlayback.skip).toHaveBeenCalledOnce()
+    view.rerender(<TrackSelector {...p} voicePlayback={{ ...p.voicePlayback, state: 'paused' }} />)
+    expect(screen.getByRole('status')).toHaveTextContent('Voice commentary paused')
+    await user.click(screen.getByRole('button', { name: 'Resume commentary' }))
+    expect(p.voicePlayback.resumeCommentary).toHaveBeenCalledOnce()
   })
 })

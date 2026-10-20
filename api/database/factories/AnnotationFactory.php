@@ -25,6 +25,8 @@ class AnnotationFactory extends Factory
             'body' => fake()->sentence(),
             'start_seconds' => fake()->randomFloat(3, 0, 120),
             'duration_seconds' => 6.0,
+            'timing_type' => fn (array $attributes) => ($attributes['audio_asset_id'] ?? null) !== null
+                || ($attributes['transcript_status'] ?? 'not_applicable') !== 'not_applicable' ? 'point' : 'range',
             'kind' => fake()->randomElement(['praise', 'correction', 'observation']),
             'topic' => fake()->randomElement(['delivery', 'structure', 'vocal', 'body', 'content']),
             'published_at' => now(),

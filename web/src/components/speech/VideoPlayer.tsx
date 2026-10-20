@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import 'video.js/dist/video-js.css'
 import { createVideoJsPlayer } from '@/shared/media/videojs-adapter'
 
@@ -29,6 +30,8 @@ export function VideoPlayer({
   poster,
   onPlayerReady,
   onSourceRefreshed,
+  presentation,
+  onHtmlFullscreenChange,
 }: {
   initialUrl: string
   refreshUrl: () => Promise<string>
@@ -44,8 +47,19 @@ export function VideoPlayer({
    * remote text tracks (captions) on every `src` reassignment, so the
    * caller needs this to know when to re-attach the caption track. */
   onSourceRefreshed?: () => void
+  /** React owns this detached host; video.js only owns the surrounding root. */
+  presentation?: ReactNode
+  onHtmlFullscreenChange?: (fullscreen: boolean) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const [presentationHost] = useState(() => {
+    const host = document.createElement('div')
+    host.className = 'owner-commentary-host'
+    host.setAttribute('data-testid', 'owner-commentary-host')
+    return host
+  })
+  const fullscreenChangeRef = useRef(onHtmlFullscreenChange)
+  useEffect(() => { fullscreenChangeRef.current = onHtmlFullscreenChange })
 
   // Read the latest `refreshUrl` from inside the effect without making it
   // a dependency — the caller's `refreshUrl` closure identity can change on
@@ -95,6 +109,13 @@ export function VideoPlayer({
     // asks for it "on the real video", not this wrapper). Strip it from the
     // wrapper only; `videoEl` keeps its own copy untouched.
     player.el().removeAttribute('data-testid')
+    player.el().appendChild(presentationHost)
+    const fullscreenChanged = () => {
+      const fullscreenElement = document.fullscreenElement
+        ?? (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement
+      fullscreenChangeRef.current?.(fullscreenElement === player.el())
+    }
+    player.on('fullscreenchange', fullscreenChanged)
 
     // `player.tech()` (what `getVideoElement` reads) is not guaranteed
     // attached synchronously right after `videojs()` returns — video.js's
@@ -103,10 +124,14 @@ export function VideoPlayer({
     // `videoEl` stuck `null` for STEP-06's annotation engine (and anything
     // else downstream of `onPlayerReady`), since it's never retried.
     player.ready(() => {
-      onPlayerReadyRef.current?.(player)
+      if (!player.isDisposed()) onPlayerReadyRef.current?.(player)
     })
 
     return () => {
+      // Detach React's complete portal subtree before video.js disposes its
+      // root. React can then reconcile/unmount its nodes on its own schedule.
+      presentationHost.remove()
+      player.off('fullscreenchange', fullscreenChanged)
       player.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -125,6 +150,7 @@ export function VideoPlayer({
     // already establishes the positioning context.
     <div data-vjs-player className="absolute inset-0">
       <div ref={containerRef} className="absolute inset-0" />
+      {createPortal(presentation, presentationHost)}
     </div>
   )
 }

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useBlocker, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
@@ -7,18 +7,19 @@ import { TimelineStrip } from '@/components/annotation/TimelineStrip'
 import { Composer } from '@/components/annotation/Composer'
 import { VoiceRecorder } from '@/components/annotation/VoiceRecorder'
 import { AnnotationList } from '@/components/annotation/AnnotationList'
+import { RemovedAnnotationDrafts } from '@/components/annotation/RemovedAnnotationDrafts'
 import { ClearAnnotationsDialog } from '@/components/annotation/ClearAnnotationsDialog'
 import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
 import { useGetAnnotationsQuery, useClearAnnotationsMutation } from '@/features/annotation/annotationApi'
 import { useAbandonReviewMutation, usePublishReviewMutation } from '@/features/review/reviewApi'
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
 import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
-import { useAutoPausePreference } from '@/hooks/useAutoPausePreference'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { isTmpAnnotationId } from '@/lib/uuid'
 import { annotationFieldsEqual } from '@/lib/annotationFields'
 import { compareByStartThenId } from '@/lib/annotationOrder'
-import type { Annotation } from '@/features/annotation/types'
+import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
+import { annotationGeometry, geometriesOverlap } from '@/lib/annotationTiming'
 import type { Review } from '@/features/review/types'
 
 /**
@@ -56,6 +57,7 @@ export function AnnotationComposerPanel({
   return (
     <ToastProvider>
       <AnnotationComposerPanelInner
+        key={`${userId}:${speechId}:${review.id}`}
         speechId={speechId}
         review={review}
         videoEl={videoEl}
@@ -87,11 +89,37 @@ function AnnotationComposerPanelInner({
   onSeek: (seconds: number) => void
 }) {
   const reviewId = review.id
-  const { data } = useGetAnnotationsQuery(
+  const { data, isError, refetch } = useGetAnnotationsQuery(
     { speechId, reviewId },
     { pollingInterval: 3000, skipPollingIfUnfocused: true },
   )
   const serverRows = useMemo(() => data?.annotations ?? [], [data])
+  const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null
+  const writable = ['accepted', 'in_progress', 'published'].includes(review.status) && !review.revoked_at
+  const [pendingWork, setPendingWork] = useState<Record<string, boolean>>({})
+  const pendingWorkRef = useRef<Record<string, boolean>>({})
+  const handlePendingChange = useCallback((id: string, pending: boolean) => {
+    if (Boolean(pendingWorkRef.current[id]) === pending) return
+    const next = { ...pendingWorkRef.current }
+    if (pending) next[id] = true; else delete next[id]
+    pendingWorkRef.current = next
+    setPendingWork(next)
+  }, [])
+  const pending = Object.keys(pendingWork).length > 0
+  const blocker = useBlocker(pending)
+  useEffect(() => {
+    if (!pending) return
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [pending])
+  const legacyConflict = useMemo(() => serverRows.some((row, index) => {
+    const geometry = annotationGeometry(row)
+    return !geometry || row.timing_type === null || serverRows.slice(index + 1).some((other) => {
+      const otherGeometry = annotationGeometry(other)
+      return otherGeometry !== null && geometriesOverlap(geometry, otherGeometry)
+    })
+  }), [serverRows])
 
   const [liveOverrides, setLiveOverrides] = useState<Record<string, Annotation>>({})
 
@@ -132,9 +160,9 @@ function AnnotationComposerPanelInner({
 
   // The ONE useTimedAnnotations instance for this authoring session — fed
   // the merged saved+draft set, never a second parallel instance.
-  const activeIds = useTimedAnnotations(videoEl, merged)
+  const timedRows = useMemo(() => merged.filter((row) => !isPointAnnotation(row)), [merged])
+  const activeIds = useTimedAnnotations(videoEl, timedRows)
   const currentTime = useVideoCurrentTime(videoEl)
-  const [autoPause, setAutoPause] = useAutoPausePreference(userId)
   const voiceRows = useMemo(() => serverRows.filter((row) => row.voice !== null), [serverRows])
   const voiceDuration = useMemo(
     () => voiceRows.reduce((total, row) => total + row.duration_seconds, 0),
@@ -186,6 +214,7 @@ function AnnotationComposerPanelInner({
   }, [merged, activeIds, currentTime])
 
   const handlePublish = async () => {
+    if (Object.keys(pendingWorkRef.current).length > 0 || !data || !writable) return
     try {
       const result = await publishReview(reviewId).unwrap()
       toastManager.add({
@@ -200,6 +229,7 @@ function AnnotationComposerPanelInner({
   }
 
   const handleClear = async () => {
+    if (Object.keys(pendingWorkRef.current).length > 0 || !data || !writable) return
     try {
       await clearAnnotations({ speechId, reviewId }).unwrap()
       setLiveOverrides({})
@@ -221,6 +251,7 @@ function AnnotationComposerPanelInner({
    * cross-slice `Speech`-tag invalidation.
    */
   const handleAbandon = async () => {
+    if (Object.keys(pendingWorkRef.current).length > 0 || !data || !writable) return
     try {
       await abandonReview({ id: reviewId, speechId }).unwrap()
       navigate('/dashboard')
@@ -246,19 +277,12 @@ function AnnotationComposerPanelInner({
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle>Your commentary</CardTitle>
-          <CardDescription>Watch, type at a timestamp, nudge it, publish when ready.</CardDescription>
+          <CardDescription>Choose Start and End, enter commentary, then add the annotation. Publish when your feedback is ready.</CardDescription>
         </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            className="size-4 rounded border border-input"
-            checked={autoPause}
-            onChange={(e) => setAutoPause(e.target.checked)}
-          />
-          Pause on first keystroke
-        </label>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {isError && <div role="alert" className="text-sm">Could not refresh your feedback. Your draft is retained. <Button type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
+        {legacyConflict && <p role="status" className="text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
         <div className="pointer-events-none relative flex min-h-16 flex-col justify-end">
           <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} />
         </div>
@@ -270,22 +294,24 @@ function AnnotationComposerPanelInner({
           videoEl={videoEl}
           durationSeconds={durationSeconds}
           onSeek={onSeek}
-          onLiveRetime={handleLiveChange}
-          onRetimeError={(message) => toastManager.add({ title: message, timeout: 4000 })}
         />
 
         <Composer
           speechId={speechId}
           reviewId={reviewId}
           videoEl={videoEl}
-          autoPause={autoPause}
+          userId={userId}
+          durationMs={durationMs}
+          annotations={data?.annotations}
+          writable={writable}
+          onPendingChange={handlePendingChange}
           onLiveChange={handleLiveChange}
           onLiveRemove={handleLiveRemove}
           onEditorReady={handleComposerEditorReady}
         />
 
         {canRecordVoice && (
-          <VoiceRecorder speechId={speechId} reviewId={reviewId} videoEl={videoEl} />
+          <VoiceRecorder speechId={speechId} reviewId={reviewId} videoEl={videoEl} durationMs={durationMs} annotations={data?.annotations} writable={writable} onPendingChange={handlePendingChange} />
         )}
 
         {voiceRows.length > 6 && (
@@ -316,18 +342,23 @@ function AnnotationComposerPanelInner({
           speechId={speechId}
           reviewId={reviewId}
           videoEl={videoEl}
-          autoPause={autoPause}
+          userId={userId}
+          durationMs={durationMs}
+          onPendingChange={handlePendingChange}
           currentId={currentId}
           onSeek={onSeek}
           onLiveChange={handleLiveChange}
           onLiveRemove={handleLiveRemove}
         />
 
+        <RemovedAnnotationDrafts userId={userId} speechId={speechId} reviewId={reviewId} annotations={data?.annotations} />
+
         <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
           <div className="flex items-center gap-2">
             <ClearAnnotationsDialog
               isPublished={review.first_published_at !== null}
               isClearing={isClearing}
+              disabled={pending || isPublishing || isAbandoning || !data || !writable}
               onConfirm={handleClear}
             />
             {/* IMPLEMENTATION-PLANS.md §7.2.4/§7.2.6: Abandon lives here
@@ -349,17 +380,23 @@ function AnnotationComposerPanelInner({
               <Button
                 type="button"
                 variant="destructive"
-                disabled={isAbandoning}
+                disabled={pending || isAbandoning || isClearing || isPublishing || !data || !writable}
                 onClick={() => void handleAbandon()}
               >
                 {isAbandoning ? 'Abandoning…' : 'Abandon'}
               </Button>
             )}
           </div>
-          <Button type="button" onClick={() => void handlePublish()} disabled={isPublishing}>
-            {isPublishing ? 'Publishing…' : 'Publish'}
+          <Button type="button" onClick={() => void handlePublish()} disabled={pending || isPublishing || isClearing || isAbandoning || !data || !writable}>
+            {isPublishing ? 'Publishing…' : 'Publish feedback'}
           </Button>
         </div>
+        {pending && <p role="status" className="text-sm text-muted-foreground">Add, save, or discard your pending feedback before publishing, clearing notes or abandoning this review.</p>}
+        {blocker.state === 'blocked' && <div role="dialog" aria-modal="true" aria-label="Unsaved feedback" className="space-y-2 rounded border border-border p-3">
+          <p>You have pending feedback. Keep editing to save it. Text drafts are kept locally when storage is available; unsaved recordings will be lost if you leave.</p>
+          <Button type="button" onClick={() => blocker.reset()}>Keep editing</Button>{' '}
+          <Button type="button" variant="outline" onClick={() => blocker.proceed()}>Leave page</Button>
+        </div>}
       </CardContent>
     </Card>
   )

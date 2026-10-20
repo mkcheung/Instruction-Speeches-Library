@@ -1,116 +1,22 @@
 import { useEffect, useState } from 'react'
 import { AnnotationEditor } from '@/components/annotation/AnnotationEditor'
-import { useAnnotationEditor } from '@/hooks/useAnnotationEditor'
+import { useAnnotationEditor, type UseAnnotationEditorOptions } from '@/hooks/useAnnotationEditor'
 import { tmpAnnotationId } from '@/lib/uuid'
-import type { Annotation } from '@/features/annotation/types'
 
-/**
- * The "type at a timestamp" surface (STEP-07's demo script steps 2-3).
- * Each draft gets a FRESH `useAnnotationEditor` instance, keyed by an
- * incrementing counter — the moment one draft gets its first real server
- * id (`onCreated`), the composer remounts with a brand-new key rather than
- * reusing the same hook instance for the next note. This is what makes
- * "never reload a row back into the composer" true by construction: a
- * saved row's state and the composer's create-form state can never be the
- * same React state, because they're never the same component instance.
- */
-export function Composer({
-  speechId,
-  reviewId,
-  videoEl,
-  autoPause,
-  onLiveChange,
-  onLiveRemove,
-  onSaved,
-  onSilentAdopt,
-  onEditorReady,
-}: {
-  speechId: number
-  reviewId: number
-  videoEl: HTMLVideoElement | null
-  autoPause: boolean
-  onLiveChange: (live: Annotation) => void
-  /** Called with the OUTGOING draft's id right before the composer resets
-   * to a fresh one, so the panel can drop the stale `tmp_…` override. */
+type ComposerProps = Omit<UseAnnotationEditorOptions, 'initial' | 'onCreated'> & {
   onLiveRemove: (id: string) => void
-  onSaved?: (annotation: Annotation) => void
-  onSilentAdopt?: (annotation: Annotation) => void
-  /** IMPLEMENTATION-PLANS.md §7.7.6: hands the panel this draft's
-   * `setToPlayhead` so `useKeyboardShortcuts`' global `C`/`Alt+C` can call
-   * the SAME function the visible "Set to playhead" button
-   * (`AnnotationEditor.tsx:145`) already calls — a keyboard trigger for
-   * existing behaviour, not new state. Re-fires on every regeneration
-   * (a fresh draft after a save gets a fresh `useAnnotationEditor`
-   * instance, per this component's own docblock), so the shortcut always
-   * targets the CURRENT draft, never a stale one. */
-  onEditorReady?: (setToPlayhead: () => void) => void
-}) {
-  const [generation, setGeneration] = useState(0)
-
-  return (
-    <ComposerInstance
-      key={generation}
-      speechId={speechId}
-      reviewId={reviewId}
-      videoEl={videoEl}
-      autoPause={autoPause}
-      onLiveChange={onLiveChange}
-      onSaved={onSaved}
-      onSilentAdopt={onSilentAdopt}
-      onCreated={() => {
-        setGeneration((g) => g + 1)
-      }}
-      onLiveRemove={onLiveRemove}
-      onEditorReady={onEditorReady}
-    />
-  )
+  onEditorReady?: (captureStart: () => void) => void
 }
 
-function ComposerInstance({
-  speechId,
-  reviewId,
-  videoEl,
-  autoPause,
-  onLiveChange,
-  onLiveRemove,
-  onSaved,
-  onSilentAdopt,
-  onCreated,
-  onEditorReady,
-}: {
-  speechId: number
-  reviewId: number
-  videoEl: HTMLVideoElement | null
-  autoPause: boolean
-  onLiveChange: (live: Annotation) => void
-  onLiveRemove: (id: string) => void
-  onSaved?: (annotation: Annotation) => void
-  onSilentAdopt?: (annotation: Annotation) => void
-  onCreated: () => void
-  onEditorReady?: (setToPlayhead: () => void) => void
-}) {
-  const editor = useAnnotationEditor({
-    speechId,
-    reviewId,
-    initial: null,
-    videoEl,
-    autoPause,
-    onLiveChange,
-    onSaved,
-    onSilentAdopt,
-    onCreated: (created) => {
-      // The tmp id is deterministic from the client_uuid this same draft
-      // minted, so there's no need to read it back off `editor` — avoids
-      // any doubt about which render's closure is live when this fires.
-      onLiveRemove(tmpAnnotationId(created.client_uuid))
-      onCreated()
-    },
-  })
-
-  useEffect(() => {
-    onEditorReady?.(editor.setToPlayhead)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor.setToPlayhead])
-
-  return <AnnotationEditor editor={editor} label="New note" />
+/** Each acknowledged creation gets a fresh UUID and form instance. */
+export function Composer(props: ComposerProps) {
+  const [generation, setGeneration] = useState(0)
+  return <ComposerInstance key={generation} {...props} onCreated={() => setGeneration((value) => value + 1)} />
+}
+function ComposerInstance({ onEditorReady, onCreated, ...props }: ComposerProps & { onCreated: () => void }) {
+  const editor = useAnnotationEditor({ ...props, initial: null, onCreated: (created) => {
+    props.onLiveRemove(tmpAnnotationId(created.client_uuid)); onCreated()
+  } })
+  useEffect(() => { onEditorReady?.(editor.setToPlayhead) }, [onEditorReady, editor.setToPlayhead])
+  return <AnnotationEditor editor={editor} label="New annotation" />
 }

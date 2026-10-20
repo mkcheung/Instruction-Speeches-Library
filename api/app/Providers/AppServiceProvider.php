@@ -188,6 +188,7 @@ class AppServiceProvider extends ServiceProvider
         // below by whoever built S05/S06 — this is where they finally get
         // a Gate::define and a policy method behind them.
         Gate::define('annotation.create', [AnnotationPolicy::class, 'create']);
+        Gate::define('annotation.restorePoint', [AnnotationPolicy::class, 'restorePoint']);
         Gate::define('voice.create', [AnnotationPolicy::class, 'createVoice']);
         Gate::define('voice.retryTranscript', [AnnotationPolicy::class, 'retryVoiceTranscript']);
         Gate::define('voice.updateTranscript', [AnnotationPolicy::class, 'updateVoiceTranscript']);
@@ -334,7 +335,7 @@ class AppServiceProvider extends ServiceProvider
                 // capability with its own mandatory reason and
                 // notification.
                 'speech.update', 'speech.delete',
-                'annotation.create', 'voice.create', 'voice.retryTranscript', 'voice.updateTranscript', 'voice.restore', 'voice.delete', 'annotation.update', 'annotation.delete',
+                'annotation.create', 'annotation.restorePoint', 'voice.create', 'voice.retryTranscript', 'voice.updateTranscript', 'voice.restore', 'voice.delete', 'annotation.update', 'annotation.delete',
                 'review.clearAnnotations',                             // STEP-07: never an admin power either
                 'readAnnotations',                                     // AnnotationPolicy's own admin branch runs the dual-role assert
 

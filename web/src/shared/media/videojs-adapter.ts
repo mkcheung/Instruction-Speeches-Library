@@ -106,6 +106,7 @@ export function createVideoJsPlayer(element: HTMLVideoElement, options: VideoJsA
     (async () => {
       try {
         const freshUrl = await options.refreshUrl()
+        if (player.isDisposed()) return
 
         // Both outcomes of the reassigned `src` must clear `refreshing`,
         // not just the success one — a fresh URL that ALSO errors (e.g.

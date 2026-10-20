@@ -15,7 +15,6 @@ use App\Services\AnnotationService;
 use App\Services\ReviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -139,13 +138,6 @@ class AnnotationController extends Controller
         $annotation->setRelation('review', $review);
 
         $data = $request->validated();
-        if ($annotation->audio_asset_id !== null) {
-            $forbidden = array_intersect(['start_seconds', 'duration_seconds', 'kind', 'topic'], array_keys($data));
-            if ($forbidden !== []) {
-                throw ValidationException::withMessages(array_fill_keys($forbidden, ['Voice-note timing and metadata are immutable.']));
-            }
-        }
-
         $this->authorize($annotation->audio_asset_id === null ? 'annotation.update' : 'voice.updateTranscript', $annotation);
 
         $payload = ['lock_version' => (int) $data['lock_version']];
@@ -153,10 +145,10 @@ class AnnotationController extends Controller
             $payload['body'] = (string) $data['body'];
         }
         if (array_key_exists('start_seconds', $data)) {
-            $payload['start_seconds'] = (float) $data['start_seconds'];
+            $payload['start_seconds'] = $data['start_seconds'];
         }
         if (array_key_exists('duration_seconds', $data)) {
-            $payload['duration_seconds'] = (float) $data['duration_seconds'];
+            $payload['duration_seconds'] = $data['duration_seconds'];
         }
         if (array_key_exists('kind', $data)) {
             $payload['kind'] = (string) $data['kind'];
@@ -205,6 +197,17 @@ class AnnotationController extends Controller
         $annotations->delete($annotation);
 
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
+    }
+
+    public function restorePoint(Request $request, string $speech, string $annotation, AnnotationService $annotations, ReviewService $reviews): JsonResponse
+    {
+        $speechModel = $this->resolveSpeech($speech);
+        $review = $reviews->findOwnReview($speechModel, $this->currentUser($request));
+        // Scope the tombstone before type/status errors, including for admins.
+        abort_unless(Annotation::withTrashed()->where('review_id', $review->id)->whereKey($annotation)->exists(), 404);
+        $this->authorize('annotation.restorePoint', $review);
+
+        return new JsonResponse(['annotation' => new AnnotationResource($annotations->restorePoint($review, $annotation))]);
     }
 
     /**

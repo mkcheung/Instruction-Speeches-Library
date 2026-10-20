@@ -35,6 +35,7 @@ class AnnotationResource extends JsonResource
             'id' => (string) $this->id,
             'start_seconds' => (float) $this->start_seconds,
             'duration_seconds' => (float) $this->duration_seconds,
+            'timing_type' => $this->timing_type,
             'kind' => $this->kind,
             'topic' => $this->topic,
             'body' => $this->body,

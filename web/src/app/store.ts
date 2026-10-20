@@ -12,6 +12,7 @@ import { reportApi } from '@/features/report/reportApi'
 import { privacyApi } from '@/features/privacy/privacyApi'
 import { coachApplicationApi } from '@/features/coachApplication/coachApplicationApi'
 import { connectionApi } from '@/features/connection/connectionApi'
+import { commentaryPreferenceSession } from '@/features/annotation/commentaryPreferenceSession'
 
 export const store = configureStore({
   reducer: {
@@ -31,6 +32,7 @@ export const store = configureStore({
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
+      commentaryPreferenceSession,
       authApi.middleware,
       profileApi.middleware,
       speechApi.middleware,
