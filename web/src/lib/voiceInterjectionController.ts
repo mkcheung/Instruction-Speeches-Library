@@ -174,12 +174,16 @@ export class VoiceInterjectionController {
 
   private onTime = (): void => {
     const now = this.video.currentTime
-    if (!this.enabled || this.active || this.video.seeking || this.video.paused) {
+    if (!this.enabled || this.active) {
       this.previousTime = now
       return
     }
     const playable = this.notes.filter((note) => note.voice?.audio_status === 'ready')
-    const crossed = crossedNotes(playable, this.previousTime, now, this.started)
+    // A paused or seeking video never starts a note, but the "commentary
+    // ahead" hint still tracks the playhead (seeking while paused updates it).
+    const crossed = this.video.seeking || this.video.paused
+      ? []
+      : crossedNotes(playable, this.previousTime, now, this.started)
     this.previousTime = now
     this.started = true
     if (crossed.length) {
