@@ -6,12 +6,12 @@ use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
 use App\Services\Voice\VoiceNoteProcessorContract;
+use App\Support\AnnotationTransactions;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
 
@@ -74,11 +74,10 @@ class NormalizeVoiceNote implements ShouldQueue
             return;
         }
         $reserved = (int) ($asset->temporary_byte_size ?? $asset->byte_size);
-        $candidatePath = null;
-        $won = DB::transaction(function () use ($asset, $reserved, &$candidatePath): bool {
+        $outcome = AnnotationTransactions::run(function () use ($asset, $reserved): ?array {
             $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->whereNull('purge_claim_id')->where('temporary_path', $this->temporaryPath)->lockForUpdate()->first();
             if ($fresh === null || $fresh->temporary_byte_size === null) {
-                return false;
+                return null;
             }
             // Resolved under this same lock, not from the pre-transaction
             // $asset snapshot: the annotation/review this reservation
@@ -98,13 +97,13 @@ class NormalizeVoiceNote implements ShouldQueue
                 app(QuotaService::class)->releaseDirect($reviewer, $reserved);
             }
 
-            return true;
+            return ['candidate_path' => $candidatePath];
         });
-        if (! $won) {
+        if ($outcome === null) {
             return;
         }
         $clean = true;
-        foreach (SpeechAsset::voiceAssetCandidatePaths($this->temporaryPath, $candidatePath) as $path) {
+        foreach (SpeechAsset::voiceAssetCandidatePaths($this->temporaryPath, $outcome['candidate_path']) as $path) {
             $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;
         }
         if ($clean) {

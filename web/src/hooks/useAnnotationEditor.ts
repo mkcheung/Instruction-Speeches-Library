@@ -1,648 +1,287 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { API_URL } from '@/lib/api'
-import { readXsrfCookie } from '@/lib/csrf'
-import { newClientUuid, tmpAnnotationId, isTmpAnnotationId } from '@/lib/uuid'
-import {
-  backupDiscardedDraft,
-  clearDraftMirror,
-  writeDraftMirror,
-} from '@/lib/annotationDraftStorage'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAnnotationChannel } from '@/hooks/useAnnotationChannel'
 import { useCreateAnnotationMutation, useUpdateAnnotationMutation } from '@/features/annotation/annotationApi'
-import { isAnnotationConflict, type Annotation, type AnnotationKind } from '@/features/annotation/types'
-import { annotationFieldsEqual as fieldsEqual } from '@/lib/annotationFields'
+import { isAnnotationConflict, isPointAnnotation, type Annotation } from '@/features/annotation/types'
+import { newClientUuid, tmpAnnotationId } from '@/lib/uuid'
+import { captureAnnotationTime, formatAnnotationTime, parseAnnotationTime, validateAnnotationSelection } from '@/lib/annotationTiming'
+import {
+  clearAnnotationRecovery, discoverAnnotationRecovery, writeAnnotationRecovery,
+  type AnnotationDraftFields, type AnnotationDraftScope, type AnnotationRecoveryRecord, type AnnotationSubmission,
+} from '@/lib/annotationRecovery'
 
-/** MODERNIZATION_PLAN.md §10.2: "Render the autosave state… as ONE WORD
- * near the textarea… and that attribute is also the primary E2E test
- * hook." */
+/** Retained for the caption/essay editors, whose own autosave contract is unchanged. */
 export type AutosaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'conflict' | 'offline'
-
-interface EditorFields {
-  body: string
-  /** `null` until the timestamp is stamped (§8.4's `onBeforeInput` rule) —
-   * a brand-new draft has no start time until the coach actually types. */
-  start_seconds: number | null
-  duration_seconds: number
-  kind: AnnotationKind
-  topic: string | null
-}
-
-const DEFAULT_DURATION_SECONDS = 6
-/** §8.4: "Debounced autosave (750 ms) as a draft." */
-const BODY_DEBOUNCE_MS = 750
-/** §8.4: "Debounce the mutation at 300 ms so a held arrow key doesn't emit
- * twenty PATCHes." */
-const NUDGE_DEBOUNCE_MS = 300
-/** Backend's own CHECK constraint (STEP-06-RETROSPECTIVE.md: `duration_seconds
- * NUMERIC(6,3)`, `CHECK duration_seconds > 0 AND duration_seconds <= 120`). */
-const MAX_DURATION_SECONDS = 120
-const MIN_DURATION_SECONDS = 0.5
-
-function fieldsFromAnnotation(a: Annotation): EditorFields {
-  return {
-    body: a.body,
-    start_seconds: a.start_seconds,
-    duration_seconds: a.duration_seconds,
-    kind: a.kind,
-    topic: a.topic,
-  }
-}
-
-function round3(n: number): number {
-  return Math.round(n * 1000) / 1000
-}
+export type AnnotationSaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'conflict' | 'error' | 'uncertain'
 
 export interface UseAnnotationEditorOptions {
   speechId: number
   reviewId: number
-  /** `null` starts a brand-new draft; an existing row edits it in place —
-   * per-row local state, never the composer's create-form state (§8.4:
-   * "never loading a row back into the composer… where the legacy
-   * `legacy/editNote.php` went wrong"). */
+  userId?: string
   initial: Annotation | null
   videoEl: HTMLVideoElement | null
-  /** Per-user preference (§8.4) — pauses the instant the timestamp
-   * stamps, not on every keystroke after. */
-  autoPause: boolean
-  /** Fires on every LIVE (not-yet-flushed) field change so the panel can
-   * merge this row's current state into the ONE shared
-   * `useTimedAnnotations` cues array for the live preview — never a
-   * second engine instance (the frozen contract is explicit about this). */
+  durationMs?: number | null
+  annotations?: readonly Annotation[]
+  writable?: boolean
+  autoPause?: boolean
   onLiveChange?: (live: Annotation) => void
-  /** Fires once, the moment a brand-new draft gets its first real server
-   * id — lets the composer swap to a fresh blank draft for the next note. */
+  onLiveRemove?: (id: string) => void
   onCreated?: (annotation: Annotation) => void
-  /** Fires on every successful save (create or update). */
   onSaved?: (annotation: Annotation) => void
-  /** A conflict resolved without the user ever seeing a banner (the ~90%
-   * case) — small toast, never a modal. */
   onSilentAdopt?: (annotation: Annotation) => void
+  onPendingChange?: (instanceId: string, pending: boolean) => void
+  onCancel?: () => void
 }
 
-export interface UseAnnotationEditorResult {
-  id: string
-  clientUuid: string
-  isNew: boolean
-  fields: EditorFields
-  autosaveState: AutosaveState
-  /** The OTHER side's current row, only set while a dirty-editor conflict
-   * is unresolved. §10.2: "never a blocking modal" — this is a banner, not
-   * a dialog, by construction (it's just data the caller renders inline). */
-  conflict: Annotation | null
-  /** True once a save has come back 410 Gone — the speech was deleted
-   * mid-annotation. The local text is unaffected; this only drives the
-   * "your draft is preserved below" messaging. */
-  speechDeleted: boolean
-  showBoth: boolean
-  toggleShowBoth: () => void
-  setBody: (body: string) => void
-  setKind: (kind: AnnotationKind) => void
-  setTopic: (topic: string | null) => void
-  setStart: (seconds: number) => void
-  nudgeStart: (deltaSeconds: number) => void
-  setDuration: (seconds: number) => void
-  nudgeDuration: (deltaSeconds: number) => void
-  setToPlayhead: () => void
-  /** Guarded on `inputType.startsWith('insert')` — §8.4's `onBeforeInput`
-   * rule. Covers IME/paste, not Tab/arrows/deletions. */
-  handleBeforeInput: (inputType: string | null | undefined) => void
-  keepMine: () => void
-  useTheirs: () => void
+function fieldsFromAnnotation(row: Annotation | null): AnnotationDraftFields {
+  return row ? { start: formatAnnotationTime(Math.round(row.start_seconds * 1000)),
+    end: formatAnnotationTime(Math.round(row.start_seconds * 1000) + Math.round(row.duration_seconds * 1000)), body: row.body }
+    : { start: '', end: '', body: '' }
+}
+function equalFields(a: AnnotationDraftFields, b: AnnotationDraftFields): boolean {
+  return a.start === b.start && a.end === b.end && a.body === b.body
+}
+function sameTiming(a: AnnotationDraftFields, b: AnnotationDraftFields): boolean {
+  return parseAnnotationTime(a.start) === parseAnnotationTime(b.start) && parseAnnotationTime(a.end) === parseAnnotationTime(b.end)
+}
+function errorMessage(error: unknown): string {
+  const failure = error as { status?: number | string; data?: { code?: string; message?: string; errors?: Record<string, string[]> } }
+  if (failure.data?.code === 'annotation_overlap') return 'This time overlaps feedback in your review. Refresh the notes and choose a free segment.'
+  if (failure.data?.code === 'annotation_busy') return 'Another change is in progress. Your draft is safe; retry the save.'
+  if (failure.status === 401 || failure.status === 403) return 'Your review is no longer writable. Your draft remains available here.'
+  if (failure.status === 410) return 'This speech has been deleted. Your draft remains available here.'
+  if (failure.status === 404) return 'This note or review is unavailable. Your draft remains available here.'
+  if (failure.status === 422) return Object.values(failure.data?.errors ?? {}).flat().join(' ') || failure.data?.message || 'Check the annotation fields and try again.'
+  return 'The save outcome is uncertain. Retry the original save before changing or discarding this draft.'
 }
 
-/**
- * The composer's per-row state machine (MODERNIZATION_PLAN.md §8.4/§10.1
- * /§10.2). One instance per row being authored — the brand-new draft in
- * `Composer`, and each existing row's in-place editor in `AnnotationRow` —
- * never shared, so two edits in flight never fight over one piece of
- * state.
- */
-export function useAnnotationEditor(options: UseAnnotationEditorOptions): UseAnnotationEditorResult {
-  const { speechId, reviewId, initial, videoEl, autoPause } = options
-
-  // `clientUuid` is genuinely-needed AT RENDER time (the returned result,
-  // JSX keys, etc.), so it's real state seeded once from a lazy
-  // initializer — never a ref. The React Compiler's lint forbids reading
-  // or writing a ref's `.current` anywhere in the render body (only inside
-  // effects/callbacks is allowed), which a ref here would violate on
-  // every render via the final `return`.
-  const [clientUuid] = useState(() => initial?.client_uuid ?? newClientUuid())
-  const [currentId, setCurrentId] = useState(() => initial?.id ?? tmpAnnotationId(clientUuid))
-  const [lockVersion, setLockVersion] = useState<number | undefined>(initial?.lock_version)
-  const [fields, setFields] = useState<EditorFields>(
-    initial ? fieldsFromAnnotation(initial) : {
-      body: '',
-      start_seconds: null,
-      duration_seconds: DEFAULT_DURATION_SECONDS,
-      kind: 'observation',
-      topic: null,
-    },
-  )
-  const [autosaveState, setAutosaveState] = useState<AutosaveState>(initial ? 'saved' : 'idle')
+/** Deliberate, local-first authoring. No debounce, implicit stamp or unload HTTP. */
+export function useAnnotationEditor(options: UseAnnotationEditorOptions) {
+  const { speechId, reviewId, userId, initial, durationMs = null, annotations, writable = true } = options
+  const [instanceId] = useState(newClientUuid)
+  const [clientUuid, setClientUuid] = useState(() => initial?.client_uuid ?? newClientUuid())
+  const [fields, setFields] = useState(() => fieldsFromAnnotation(initial))
+  const [baseline, setBaseline] = useState(() => fieldsFromAnnotation(initial))
+  const [lockVersion, setLockVersion] = useState(initial?.lock_version ?? 0)
+  const [saveState, setSaveState] = useState<AnnotationSaveState>(initial ? 'saved' : 'idle')
   const [conflict, setConflict] = useState<Annotation | null>(null)
   const [showBoth, setShowBoth] = useState(false)
-  // STEP-07 acceptance list: "Deleting a speech mid-annotation returns 410
-  // Gone, not 404, and the client shows 'your draft is preserved below.'"
-  // A separate flag rather than a 7th `autosaveState` word — the plan's
-  // one-word vocabulary (idle/dirty/saving/saved/conflict/offline) is
-  // itself the E2E test hook, so this is additive UI, not a new state.
-  const [speechDeleted, setSpeechDeleted] = useState(false)
-
-  const savedSnapshotRef = useRef<EditorFields>(fields)
-  const stampedRef = useRef(initial !== null)
-  const pausedOnceRef = useRef(false)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // `flush` (below) needs to re-schedule itself when a newer edit races an
-  // in-flight save, but `scheduleSave` is declared AFTER `flush` and itself
-  // closes over `flush` — a direct reference either hits the temporal dead
-  // zone (if named in `flush`'s dependency array, evaluated eagerly at
-  // render time) or goes stale (if omitted). A ref sidesteps both, matching
-  // every other latest-value read in this hook.
-  const scheduleSaveRef = useRef<(delayMs: number) => void>(() => {})
-
-  // Refs mirroring the latest render's values so the debounced
-  // `flush`/unload handler always reads current data without needing to
-  // be re-created (and re-armed) on every keystroke. Every WRITE happens
-  // inside this one effect (never directly in the render body) — reads
-  // happen only inside callbacks/handlers, both required by the React
-  // Compiler's ref-usage rules.
+  const [message, setMessage] = useState<string | null>(null)
+  const [uncertain, setUncertain] = useState<AnnotationSubmission | null>(null)
+  const [storageAvailable, setStorageAvailable] = useState(true)
+  const [recoveries, setRecoveries] = useState<AnnotationRecoveryRecord[]>([])
+  const onPendingChange = options.onPendingChange
+  const scope = useMemo<AnnotationDraftScope | null>(() => userId ? { userId, speechId, reviewId, rowId: initial?.id ?? null } : null,
+    [userId, speechId, reviewId, initial?.id])
+  const optionsRef = useRef(options)
   const fieldsRef = useRef(fields)
-  const currentIdRef = useRef(currentId)
-  const lockVersionRef = useRef(lockVersion)
-  const autosaveStateRef = useRef(autosaveState)
-  const videoElRef = useRef(videoEl)
-  const autoPauseRef = useRef(autoPause)
-  const onCreatedRef = useRef(options.onCreated)
-  const onSavedRef = useRef(options.onSaved)
-  const onSilentAdoptRef = useRef(options.onSilentAdopt)
-  const onLiveChangeRef = useRef(options.onLiveChange)
+  const baselineRef = useRef(baseline)
+  const uuidRef = useRef(clientUuid)
+  const versionRef = useRef(lockVersion)
+  const revisionRef = useRef(0)
+  const recoveryRef = useRef<AnnotationRecoveryRecord | null>(null)
+  const uncertainRef = useRef<AnnotationSubmission | null>(null)
+  const busyRef = useRef(false)
+  const mountedRef = useRef(true)
+  useEffect(() => { optionsRef.current = options })
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false } }, [])
+
+  const persist = useCallback((next: AnnotationDraftFields, submission: AnnotationSubmission | null = null) => {
+    if (!scope) { setStorageAvailable(false); return }
+    const record: AnnotationRecoveryRecord = { version: 2, scope, instanceId, clientUuid: uuidRef.current,
+      revision: ++revisionRef.current, updatedAt: Date.now(), fields: next, lockVersion: versionRef.current, uncertain: submission }
+    recoveryRef.current = record
+    setStorageAvailable(writeAnnotationRecovery(record))
+  }, [scope, instanceId])
+  const clearOwnRecovery = useCallback(() => {
+    if (recoveryRef.current) clearAnnotationRecovery(recoveryRef.current)
+    recoveryRef.current = null
+  }, [])
+  const refreshRecoveries = useCallback(() => {
+    setRecoveries(scope ? discoverAnnotationRecovery(scope).filter((record) => record.instanceId !== instanceId) : [])
+  }, [scope, instanceId])
   useEffect(() => {
-    fieldsRef.current = fields
-    currentIdRef.current = currentId
-    lockVersionRef.current = lockVersion
-    autosaveStateRef.current = autosaveState
-    videoElRef.current = videoEl
-    autoPauseRef.current = autoPause
-    onCreatedRef.current = options.onCreated
-    onSavedRef.current = options.onSaved
-    onSilentAdoptRef.current = options.onSilentAdopt
-    onLiveChangeRef.current = options.onLiveChange
-  })
+    // Synchronize the externally stored recovery index on mount/context change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshRecoveries()
+    window.addEventListener('storage', refreshRecoveries)
+    return () => window.removeEventListener('storage', refreshRecoveries)
+  }, [refreshRecoveries])
+
+  const dirty = !equalFields(fields, baseline)
+  const pending = dirty || saveState === 'saving' || uncertain !== null || conflict !== null
+  useEffect(() => { onPendingChange?.(instanceId, pending) }, [instanceId, pending, onPendingChange])
+  useEffect(() => () => { optionsRef.current.onPendingChange?.(instanceId, false) }, [instanceId])
+  useEffect(() => {
+    if (!pending) return
+    const guard = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [pending])
+
+  const validation = validateAnnotationSelection({ ...fields, durationMs, annotations, excludeId: initial?.id })
+  const timingChanged = !sameTiming(fields, baseline)
+  const bodyOnly = initial !== null && !timingChanged
+  const canSubmit = Boolean(userId && writable && !conflict && saveState !== 'saving'
+    && (uncertain || (dirty && (bodyOnly ? fields.body.trim() !== '' : validation.valid))))
+  const id = initial?.id ?? tmpAnnotationId(clientUuid)
+
+  const change = useCallback((field: keyof AnnotationDraftFields, value: string) => {
+    if (busyRef.current || uncertainRef.current) return
+    const next = { ...fieldsRef.current, [field]: value }
+    fieldsRef.current = next
+    setFields(next)
+    setMessage(null)
+    setSaveState('dirty')
+    persist(next)
+  }, [persist])
+  const capture = useCallback((field: 'start' | 'end') => {
+    const latest = optionsRef.current
+    if (!latest.videoEl || busyRef.current || uncertainRef.current) return
+    const time = captureAnnotationTime(latest.videoEl.currentTime, latest.durationMs ?? null, latest.videoEl.ended)
+    if (time === null) { setMessage('The current video position is unavailable or outside the speech.'); return }
+    latest.videoEl.pause()
+    change(field, formatAnnotationTime(time))
+  }, [change])
+  const setToPlayhead = useCallback(() => capture('start'), [capture])
+
+  const adopt = useCallback((remote: Annotation) => {
+    const next = fieldsFromAnnotation(remote)
+    fieldsRef.current = next; baselineRef.current = next; versionRef.current = remote.lock_version
+    setFields(next); setBaseline(next); setLockVersion(remote.lock_version)
+    setConflict(null); setSaveState('saved'); setMessage(null)
+    clearOwnRecovery()
+    optionsRef.current.onLiveRemove?.(remote.id)
+    optionsRef.current.onSilentAdopt?.(remote)
+  }, [clearOwnRecovery])
+  const applyExternal = useCallback((remote: Annotation) => {
+    if (remote.id !== optionsRef.current.initial?.id || busyRef.current || uncertainRef.current) return
+    if (equalFields(fieldsRef.current, baselineRef.current)) adopt(remote)
+    else { setConflict(remote); setSaveState('conflict') }
+  }, [adopt])
+  const broadcastSaved = useAnnotationChannel(reviewId, applyExternal)
+  useEffect(() => {
+    if (initial && initial.lock_version !== versionRef.current) applyExternal(initial)
+  }, [initial, applyExternal])
+
+  // Only valid selections enter the single shared preview. Invalid edits restore
+  // the saved row instead of leaving a stale optimistic geometry behind.
+  const previewStartMs = validation.geometry?.startMs
+  const previewEndMs = validation.geometry?.endMs
+  useEffect(() => {
+    if (previewStartMs === undefined || previewEndMs === undefined || (!bodyOnly && !validation.valid) || !fields.body.trim() || (initial && isPointAnnotation(initial))) {
+      optionsRef.current.onLiveRemove?.(id)
+      return
+    }
+    optionsRef.current.onLiveChange?.({ ...(initial ?? { kind: 'observation', topic: null, voice: null }), id,
+      timing_type: 'range', client_uuid: clientUuid, lock_version: lockVersion, body: fields.body,
+      start_seconds: previewStartMs / 1000, duration_seconds: (previewEndMs - previewStartMs) / 1000 })
+  }, [fields, validation.valid, previewStartMs, previewEndMs, bodyOnly, id, initial, clientUuid, lockVersion])
 
   const [createAnnotation] = useCreateAnnotationMutation()
   const [updateAnnotation] = useUpdateAnnotationMutation()
-
-  const mirror = useCallback(
-    (f: EditorFields) => {
-      writeDraftMirror(clientUuid, { ...f, updated_at: Date.now() })
-    },
-    [clientUuid],
-  )
-
-  // Shared by the BroadcastChannel handler below AND the `initial`-prop
-  // resync effect further down: both are "this row changed somewhere other
-  // than this editor instance" events, and both get the same three-tier
-  // treatment (§10.2) — a clean editor silently adopts, a dirty one banners.
-  const applyExternalUpdate = useCallback(
-    (remote: Annotation) => {
-      const isClean = fieldsEqual(fieldsRef.current, savedSnapshotRef.current)
-      if (isClean) {
-        const next = fieldsFromAnnotation(remote)
-        setFields(next)
-        savedSnapshotRef.current = next
-        setLockVersion(remote.lock_version)
-        setCurrentId(remote.id)
-        setAutosaveState('saved')
-        clearDraftMirror(clientUuid)
-        onSilentAdoptRef.current?.(remote)
+  const submit = useCallback(async () => {
+    if (busyRef.current || !canSubmit) return
+    const current = fieldsRef.current
+    const unchanged = initial !== null && sameTiming(current, baselineRef.current)
+    const startMs = parseAnnotationTime(current.start) ?? (unchanged ? Math.round(initial.start_seconds * 1000) : null)
+    const endMs = parseAnnotationTime(current.end) ?? (unchanged ? Math.round(initial.start_seconds * 1000) + Math.round(initial.duration_seconds * 1000) : null)
+    if (!uncertainRef.current && (startMs === null || endMs === null)) return
+    const submission: AnnotationSubmission = uncertainRef.current ?? { clientUuid: uuidRef.current,
+      annotationId: initial?.id ?? null, lockVersion: versionRef.current, fields: { ...current },
+      startMs: startMs!, endMs: endMs!, timingChanged: !sameTiming(current, baselineRef.current) }
+    const wasUncertain = uncertainRef.current !== null
+    busyRef.current = true
+    setSaveState('saving'); setMessage(null)
+    persist(submission.fields, submission) // A reload during the request must reconcile this exact snapshot.
+    const context = scope
+    try {
+      const saved = submission.annotationId === null
+        ? await createAnnotation({ speechId, reviewId, body: { client_uuid: submission.clientUuid, body: submission.fields.body,
+          start_seconds: submission.startMs / 1000, duration_seconds: (submission.endMs - submission.startMs) / 1000 } }).unwrap()
+        : await updateAnnotation({ speechId, reviewId, annotationId: submission.annotationId,
+          body: { lock_version: submission.lockVersion, body: submission.fields.body,
+            ...(submission.timingChanged ? { start_seconds: submission.startMs / 1000,
+              duration_seconds: (submission.endMs - submission.startMs) / 1000 } : {}) } }).unwrap()
+      if (!mountedRef.current || optionsRef.current.userId !== context?.userId || optionsRef.current.reviewId !== reviewId
+        || optionsRef.current.speechId !== speechId || (optionsRef.current.initial?.id ?? null) !== submission.annotationId) return
+      if (saved.client_uuid !== submission.clientUuid || (submission.annotationId !== null && saved.id !== submission.annotationId)
+        || saved.body !== submission.fields.body.trim() || Math.round(saved.start_seconds * 1000) !== submission.startMs
+        || Math.round(saved.duration_seconds * 1000) !== submission.endMs - submission.startMs) {
+        throw { status: 'ACK_MISMATCH' }
+      }
+      uncertainRef.current = null; setUncertain(null)
+      versionRef.current = saved.lock_version; setLockVersion(saved.lock_version)
+      // Laravel trims surrounding body whitespace. Adopt that acknowledged
+      // canonical representation rather than treating it as an unknown save.
+      const acknowledgedFields = fieldsFromAnnotation(saved)
+      fieldsRef.current = acknowledgedFields; setFields(acknowledgedFields)
+      baselineRef.current = acknowledgedFields; setBaseline(acknowledgedFields)
+      setSaveState('saved'); clearOwnRecovery(); broadcastSaved(saved)
+      optionsRef.current.onLiveRemove?.(id)
+      optionsRef.current.onSaved?.(saved)
+      if (submission.annotationId === null) optionsRef.current.onCreated?.(saved)
+    } catch (error) {
+      if (!mountedRef.current || optionsRef.current.userId !== context?.userId || optionsRef.current.reviewId !== reviewId
+        || optionsRef.current.speechId !== speechId) return
+      const failure = error as { status?: number | string; data?: unknown }
+      if (failure.status === 409 && isAnnotationConflict(failure.data)) {
+        uncertainRef.current = null; setUncertain(null)
+        setConflict(failure.data.current); setSaveState('conflict'); persist(submission.fields)
+      } else if ((!wasUncertain && ((typeof failure.status === 'number' && failure.status >= 400 && failure.status < 500)
+        || (failure.data as { code?: string } | undefined)?.code === 'annotation_busy'))
+        || (failure.status === 422 && (failure.data as { code?: string } | undefined)?.code === 'annotation_overlap')) {
+        uncertainRef.current = null; setUncertain(null)
+        setSaveState('error'); setMessage(errorMessage(error)); persist(submission.fields)
       } else {
-        setConflict(remote)
-        setAutosaveState('conflict')
+        uncertainRef.current = submission; setUncertain(submission)
+        setSaveState('uncertain'); setMessage('The original save is still unresolved. Retry that same save when access is available; your draft is frozen to preserve its identity.'); persist(submission.fields, submission)
       }
-    },
-    [clientUuid],
-  )
+    } finally { busyRef.current = false }
+  }, [canSubmit, initial, scope, speechId, reviewId, createAnnotation, updateAnnotation, persist, clearOwnRecovery, broadcastSaved, id])
 
-  const broadcastSaved = useAnnotationChannel(
-    reviewId,
-    useCallback(
-      (remote: Annotation) => {
-        if (remote.client_uuid !== clientUuid) return
-        applyExternalUpdate(remote)
-      },
-      [clientUuid, applyExternalUpdate],
-    ),
-  )
-
-  // Resyncs against a SECOND write path for the same row — e.g.
-  // TimelineStrip's drag-to-retime, which PATCHes directly rather than
-  // through this hook. Without this, an open row editor's `lockVersion`
-  // stays frozen at whatever it was on mount; the next autosave from THIS
-  // editor then submits a stale version, 409s, and shows a "changed
-  // elsewhere" conflict banner for a change the user just made themselves
-  // in the same tab. Keyed on `lock_version` (not object identity) so a
-  // `serverRows` refetch that returns an equivalent row doesn't re-fire
-  // this on every render, and skipped on the very first render (the ref
-  // starts seeded with the same value `useState`'s initializer already
-  // used) so mounting doesn't immediately treat its own initial value as
-  // an external change.
-  const lastKnownLockVersionRef = useRef(initial?.lock_version)
-  useEffect(() => {
-    if (initial === null) return
-    if (initial.lock_version === lastKnownLockVersionRef.current) return
-    lastKnownLockVersionRef.current = initial.lock_version
-    applyExternalUpdate(initial)
-  }, [initial, applyExternalUpdate])
-
-  const flush = useCallback(
-    async (opts?: { forcedLockVersion?: number }) => {
-      const f = fieldsRef.current
-      if (!f.body.trim() || f.start_seconds === null) return
-
-      setAutosaveState('saving')
-      const isNew = isTmpAnnotationId(currentIdRef.current)
-
-      try {
-        if (isNew) {
-          const created = await createAnnotation({
-            speechId,
-            reviewId,
-            body: {
-              client_uuid: clientUuid,
-              body: f.body,
-              start_seconds: f.start_seconds,
-              duration_seconds: f.duration_seconds,
-              kind: f.kind,
-              topic: f.topic,
-            },
-          }).unwrap()
-          setCurrentId(created.id)
-          setLockVersion(created.lock_version)
-          broadcastSaved(created)
-          onSavedRef.current?.(created)
-
-          // The row now exists server-side either way, but if the coach
-          // kept typing while the create was in flight, `f` (what THIS
-          // request sent) no longer matches the live fields. Finalizing to
-          // 'saved' here would clear the localStorage backup — which
-          // `mirror()` has already overwritten with the newer text — and
-          // `onCreated` would remount the composer into a fresh blank
-          // draft, discarding the unsent keystrokes with no recoverable
-          // copy. Re-flush instead (now via the UPDATE branch, since
-          // `currentId` is no longer a tmp id) and defer the "this draft
-          // is done" signal until nothing is left unsent.
-          if (fieldsEqual(f, fieldsRef.current)) {
-            savedSnapshotRef.current = f
-            setAutosaveState('saved')
-            clearDraftMirror(clientUuid)
-            onCreatedRef.current?.(created)
-          } else {
-            setAutosaveState('dirty')
-            scheduleSaveRef.current(0)
-          }
-        } else {
-          const updated = await updateAnnotation({
-            speechId,
-            reviewId,
-            annotationId: currentIdRef.current,
-            body: {
-              lock_version: opts?.forcedLockVersion ?? lockVersionRef.current ?? 0,
-              body: f.body,
-              start_seconds: f.start_seconds,
-              duration_seconds: f.duration_seconds,
-              kind: f.kind,
-              topic: f.topic,
-            },
-          }).unwrap()
-          setLockVersion(updated.lock_version)
-          broadcastSaved(updated)
-          onSavedRef.current?.(updated)
-
-          if (fieldsEqual(f, fieldsRef.current)) {
-            savedSnapshotRef.current = f
-            setAutosaveState('saved')
-            clearDraftMirror(clientUuid)
-          } else {
-            // Same race as the create branch above: newer edits arrived
-            // while this PATCH was in flight. Don't clear the backup or
-            // report 'saved' for text that's no longer current — send the
-            // newer version immediately instead.
-            setAutosaveState('dirty')
-            scheduleSaveRef.current(0)
-          }
-        }
-      } catch (err) {
-        const status = (err as { status?: number } | undefined)?.status
-        const data = (err as { data?: unknown } | undefined)?.data
-        if (status === 409 && isAnnotationConflict(data)) {
-          const isClean = fieldsEqual(f, savedSnapshotRef.current)
-          if (isClean) {
-            // Silent-adopt (§10.2's ~90% case) — nothing local was typed
-            // since the last successful save, so adopting the server's
-            // current row is indistinguishable from "nothing happened" to
-            // the user, minus a small toast.
-            const c = data.current
-            const next = fieldsFromAnnotation(c)
-            setFields(next)
-            savedSnapshotRef.current = next
-            setLockVersion(c.lock_version)
-            setCurrentId(c.id)
-            setAutosaveState('saved')
-            clearDraftMirror(clientUuid)
-            onSilentAdoptRef.current?.(c)
-          } else {
-            // Dirty editor: inline banner, never a modal, and the local
-            // text is left completely untouched here.
-            setConflict(data.current)
-            setAutosaveState('conflict')
-          }
-        } else if (status === 410) {
-          // The speech was deleted mid-annotation (`SpeechDeletedException`,
-          // 410 Gone — distinct from a plain 404). The local text is
-          // already safe: the synchronous localStorage mirror and `fields`
-          // state are both untouched by this branch.
-          setSpeechDeleted(true)
-          setAutosaveState('offline')
-        } else {
-          // Any other failure (network down, 5xx, etc.) — the local text
-          // stays exactly as typed; nothing here mutates `fields`.
-          setAutosaveState('offline')
-        }
-      }
-    },
-    [speechId, reviewId, clientUuid, createAnnotation, updateAnnotation, broadcastSaved],
-  )
-
-  const scheduleSave = useCallback(
-    (delayMs: number) => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => {
-        timerRef.current = null
-        void flush()
-      }, delayMs)
-    },
-    [flush],
-  )
-
-  useEffect(() => {
-    scheduleSaveRef.current = scheduleSave
-  }, [scheduleSave])
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [])
-
-  // Live-preview merge point: every field change is reported upward
-  // (id/body/timing/kind/topic), NOT gated on the save debounce — the
-  // preview must reflect what's on screen right now, not what's persisted.
-  useEffect(() => {
-    if (fields.start_seconds === null) return
-    onLiveChangeRef.current?.({
-      id: currentId,
-      body: fields.body,
-      start_seconds: fields.start_seconds,
-      duration_seconds: fields.duration_seconds,
-      kind: fields.kind,
-      topic: fields.topic,
-      lock_version: lockVersion ?? 0,
-      client_uuid: clientUuid,
-      voice: null,
-    })
-  }, [currentId, fields, lockVersion, clientUuid])
-
-  const markDirty = useCallback(() => {
-    setAutosaveState((s) => (s === 'conflict' ? s : 'dirty'))
-  }, [])
-
-  const setBody = useCallback(
-    (body: string) => {
-      setFields((prev) => {
-        const next = { ...prev, body }
-        mirror(next)
-        return next
-      })
-      markDirty()
-      scheduleSave(BODY_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const setKind = useCallback(
-    (kind: AnnotationKind) => {
-      setFields((prev) => {
-        const next = { ...prev, kind }
-        mirror(next)
-        return next
-      })
-      markDirty()
-      scheduleSave(BODY_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const setTopic = useCallback(
-    (topic: string | null) => {
-      setFields((prev) => {
-        const next = { ...prev, topic }
-        mirror(next)
-        return next
-      })
-      markDirty()
-      scheduleSave(BODY_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const setStart = useCallback(
-    (seconds: number) => {
-      stampedRef.current = true
-      setFields((prev) => {
-        const next = { ...prev, start_seconds: round3(Math.max(0, seconds)) }
-        mirror(next)
-        return next
-      })
-      markDirty()
-      scheduleSave(NUDGE_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const nudgeStart = useCallback(
-    (deltaSeconds: number) => {
-      setFields((prev) => {
-        const base = prev.start_seconds ?? videoElRef.current?.currentTime ?? 0
-        const next = { ...prev, start_seconds: round3(Math.max(0, base + deltaSeconds)) }
-        mirror(next)
-        return next
-      })
-      stampedRef.current = true
-      markDirty()
-      scheduleSave(NUDGE_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const setDuration = useCallback(
-    (seconds: number) => {
-      const clamped = Math.min(MAX_DURATION_SECONDS, Math.max(MIN_DURATION_SECONDS, seconds))
-      setFields((prev) => {
-        const next = { ...prev, duration_seconds: round3(clamped) }
-        mirror(next)
-        return next
-      })
-      markDirty()
-      scheduleSave(NUDGE_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const nudgeDuration = useCallback(
-    (deltaSeconds: number) => {
-      setFields((prev) => {
-        const clamped = Math.min(
-          MAX_DURATION_SECONDS,
-          Math.max(MIN_DURATION_SECONDS, prev.duration_seconds + deltaSeconds),
-        )
-        const next = { ...prev, duration_seconds: round3(clamped) }
-        mirror(next)
-        return next
-      })
-      markDirty()
-      scheduleSave(NUDGE_DEBOUNCE_MS)
-    },
-    [mirror, markDirty, scheduleSave],
-  )
-
-  const setToPlayhead = useCallback(() => {
-    setStart(videoElRef.current?.currentTime ?? 0)
-  }, [setStart])
-
-  /**
-   * §8.4: "Use `onBeforeInput`, not `onKeyDown`… Guard on
-   * `inputType.startsWith('insert')` so deletions don't stamp." The
-   * component wires the raw DOM event; this function is the guarded,
-   * unit-testable half of that rule.
-   */
-  const handleBeforeInput = useCallback(
-    (inputType: string | null | undefined) => {
-      if (!inputType?.startsWith('insert')) return
-      if (stampedRef.current) return
-      stampedRef.current = true
-      const seconds = videoElRef.current?.currentTime ?? 0
-      setFields((prev) => {
-        const next = { ...prev, start_seconds: round3(Math.max(0, seconds)) }
-        mirror(next)
-        return next
-      })
-      if (autoPauseRef.current && videoElRef.current && !pausedOnceRef.current) {
-        pausedOnceRef.current = true
-        videoElRef.current.pause()
-      }
-    },
-    [mirror],
-  )
-
+  const discard = useCallback(() => {
+    if (busyRef.current || uncertainRef.current) return
+    const next = fieldsFromAnnotation(optionsRef.current.initial)
+    fieldsRef.current = next; baselineRef.current = next
+    setFields(next); setBaseline(next); setConflict(null); setMessage(null)
+    setSaveState(optionsRef.current.initial ? 'saved' : 'idle')
+    clearOwnRecovery(); optionsRef.current.onLiveRemove?.(id); optionsRef.current.onCancel?.()
+  }, [id, clearOwnRecovery])
   const keepMine = useCallback(() => {
-    if (!conflict) return
-    const forced = conflict.lock_version
-    setLockVersion(forced)
-    setConflict(null)
-    setAutosaveState('dirty')
-    void flush({ forcedLockVersion: forced })
-  }, [conflict, flush])
-
+    if (!conflict || busyRef.current) return
+    versionRef.current = conflict.lock_version; setLockVersion(conflict.lock_version)
+    baselineRef.current = fieldsFromAnnotation(conflict); setBaseline(baselineRef.current)
+    setConflict(null); setSaveState('dirty'); persist(fieldsRef.current)
+    setMessage('Your changes are ready for review. Click Save changes to submit them.')
+  }, [conflict, persist])
   const useTheirs = useCallback(() => {
-    if (!conflict) return
-    // §10.2's "never discard the local text": back the local fields up
-    // before switching, so even this explicit "replace mine" action keeps
-    // a recoverable copy rather than destroying it.
-    backupDiscardedDraft(clientUuid, { ...fieldsRef.current, updated_at: Date.now() })
-    const next = fieldsFromAnnotation(conflict)
-    setFields(next)
-    savedSnapshotRef.current = next
-    setLockVersion(conflict.lock_version)
-    setCurrentId(conflict.id)
-    setConflict(null)
-    setAutosaveState('saved')
-    clearDraftMirror(clientUuid)
-  }, [conflict, clientUuid])
+    if (!conflict || busyRef.current) return
+    // Preserve the current record as a discoverable backup; create a new
+    // revision only on a subsequent edit. Never remove a sibling tab's record.
+    if (recoveryRef.current) writeAnnotationRecovery({ ...recoveryRef.current, instanceId: newClientUuid() })
+    clearOwnRecovery()
+    adopt(conflict); refreshRecoveries()
+  }, [conflict, adopt, refreshRecoveries, clearOwnRecovery])
+  const restore = useCallback((record: AnnotationRecoveryRecord) => {
+    if (busyRef.current || uncertainRef.current || !equalFields(fieldsRef.current, baselineRef.current)) return
+    uuidRef.current = record.clientUuid; setClientUuid(record.clientUuid)
+    fieldsRef.current = record.fields; setFields(record.fields)
+    versionRef.current = record.lockVersion; setLockVersion(record.lockVersion)
+    uncertainRef.current = record.uncertain; setUncertain(record.uncertain)
+    setSaveState(record.uncertain ? 'uncertain' : 'dirty'); setMessage(record.uncertain ? 'Retry the original save to resolve its outcome.' : null)
+    persist(record.fields, record.uncertain)
+  }, [persist])
+  const discardRecovery = useCallback((record: AnnotationRecoveryRecord) => {
+    clearAnnotationRecovery(record); refreshRecoveries()
+  }, [refreshRecoveries])
 
-  const toggleShowBoth = useCallback(() => setShowBoth((s) => !s), [])
-
-  // Best-effort flush on tab close (§10.2: "Flush on unload with
-  // `fetch(url, { keepalive: true })`; `sendBeacon` cannot set the CSRF
-  // header"). A raw `fetch` (not the RTK Query mutation, which can't
-  // guarantee completion once the page starts unloading) carrying the
-  // same body/headers the debounced save would have sent.
-  useEffect(() => {
-    const handler = () => {
-      if (autosaveStateRef.current !== 'dirty') return
-      const f = fieldsRef.current
-      if (!f.body.trim() || f.start_seconds === null) return
-      const isNew = isTmpAnnotationId(currentIdRef.current)
-      const url = isNew
-        ? `${API_URL}/api/speeches/${speechId}/annotations`
-        : `${API_URL}/api/speeches/${speechId}/annotations/${currentIdRef.current}`
-      const token = readXsrfCookie()
-      const payload = isNew
-        ? {
-            client_uuid: clientUuid,
-            body: f.body,
-            start_seconds: f.start_seconds,
-            duration_seconds: f.duration_seconds,
-            kind: f.kind,
-            topic: f.topic,
-          }
-        : {
-            lock_version: lockVersionRef.current ?? 0,
-            body: f.body,
-            start_seconds: f.start_seconds,
-            duration_seconds: f.duration_seconds,
-            kind: f.kind,
-            topic: f.topic,
-          }
-      try {
-        void fetch(url, {
-          method: isNew ? 'POST' : 'PATCH',
-          credentials: 'include',
-          keepalive: true,
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            ...(token ? { 'X-XSRF-TOKEN': token } : {}),
-          },
-          body: JSON.stringify(payload),
-        })
-      } catch {
-        // Best-effort on the way out — nothing more to do.
-      }
-    }
-    window.addEventListener('pagehide', handler)
-    return () => window.removeEventListener('pagehide', handler)
-  }, [speechId, clientUuid])
-
-  return {
-    id: currentId,
-    clientUuid,
-    isNew: isTmpAnnotationId(currentId),
-    fields,
-    autosaveState,
-    conflict,
-    speechDeleted,
-    showBoth,
-    toggleShowBoth,
-    setBody,
-    setKind,
-    setTopic,
-    setStart,
-    nudgeStart,
-    setDuration,
-    nudgeDuration,
-    setToPlayhead,
-    handleBeforeInput,
-    keepMine,
-    useTheirs,
-  }
+  return { id, clientUuid, instanceId, fields, saveState, conflict, showBoth, message, dirty, pending,
+    frozen: saveState === 'saving' || uncertain !== null, canSubmit, storageAvailable, recoveries,
+    validation: bodyOnly ? { ...validation, valid: fields.body.trim() !== '', errors: {}, conflicts: [] } : validation,
+    point: initial !== null && isPointAnnotation(initial),
+    setBody: (body: string) => change('body', body), setStart: (start: string) => change('start', start),
+    setEnd: (end: string) => change('end', end), captureStart: setToPlayhead,
+    captureEnd: () => capture('end'), setToPlayhead, submit, discard, keepMine, useTheirs,
+    toggleShowBoth: () => setShowBoth((value) => !value), restore, discardRecovery }
 }
+export type UseAnnotationEditorResult = ReturnType<typeof useAnnotationEditor>

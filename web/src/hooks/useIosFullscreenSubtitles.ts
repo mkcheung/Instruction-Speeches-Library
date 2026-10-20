@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { normalize } from '@/lib/engine'
-import type { Annotation } from '@/features/annotation/types'
+import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
 
 const SUBTITLE_TRACK_LABEL = 'Commentary'
 
@@ -64,8 +64,9 @@ function rebuildSubtitleCues(track: TextTrack, annotations: readonly Annotation[
  */
 export function useIosFullscreenSubtitles(
   videoEl: HTMLVideoElement | null,
-  annotations: readonly Annotation[],
+  source: readonly Annotation[],
 ): void {
+  const annotations = useMemo(() => source.filter((note) => !isPointAnnotation(note)), [source])
   const annotationsRef = useRef(annotations)
   const nativeFullscreenRef = useRef(false)
   useEffect(() => {

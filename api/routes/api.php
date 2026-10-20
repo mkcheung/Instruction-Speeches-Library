@@ -186,6 +186,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/speeches/{speech}/annotations/{annotation}/restore', [VoiceAnnotationController::class, 'restore'])
         ->middleware('verified.api')
         ->name('api.speeches.annotations.restore');
+    Route::post('/speeches/{speech}/annotations/{annotation}/restore-point', [AnnotationController::class, 'restorePoint'])
+        ->name('api.speeches.annotations.restore-point');
     Route::patch('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'update'])
         ->name('api.speeches.annotations.update');
     Route::delete('/speeches/{speech}/annotations/{annotation}', [AnnotationController::class, 'destroy'])

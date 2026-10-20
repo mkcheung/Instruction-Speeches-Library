@@ -34,6 +34,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $transcript_attempt_id
  * @property string $start_seconds
  * @property string $duration_seconds
+ * @property string|null $timing_type
  * @property string $kind
  * @property string|null $topic
  * @property Carbon|null $published_at
@@ -50,10 +51,17 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'review_id', 'client_uuid', 'body', 'start_seconds', 'duration_seconds',
     'kind', 'topic', 'published_at', 'lock_version', 'audio_asset_id',
-    'transcript_status', 'transcript_failure_code', 'transcript_attempt_id',
+    'transcript_status', 'transcript_failure_code', 'transcript_attempt_id', 'timing_type',
 ])]
 class Annotation extends Model
 {
+    /** Geometry survives audio erasure; fallback only for unclassified history. */
+    public function isPoint(): bool
+    {
+        return $this->timing_type === 'point'
+            || ($this->timing_type === null && ($this->audio_asset_id !== null || $this->transcript_status !== 'not_applicable'));
+    }
+
     /** @use HasFactory<AnnotationFactory> */
     use HasFactory, SoftDeletes;
 

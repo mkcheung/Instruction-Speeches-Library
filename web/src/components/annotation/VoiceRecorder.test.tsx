@@ -60,14 +60,14 @@ describe('VoiceRecorder', () => {
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
     const video = pausedVideo()
-    renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={video} />)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={video} />)
 
     await user.click(screen.getByRole('button', { name: /record/i }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeVisible())
     video.currentTime = 44
     await user.click(screen.getByRole('button', { name: 'Stop' }))
     expect(await screen.findByTestId('waveform-preview')).toBeVisible()
-    expect(screen.getByText(/voice note at 12\.3 seconds/i)).toBeVisible()
+    expect(screen.getByText(/voice note at 0:12\.300/i)).toBeVisible()
     await user.click(screen.getByRole('button', { name: 'Re-record' }))
     expect(screen.queryByTestId('waveform-preview')).not.toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
@@ -76,13 +76,73 @@ describe('VoiceRecorder', () => {
 
   it('stops the microphone stream when unmounted during recording', async () => {
     const user = userEvent.setup()
-    const rendered = renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    const rendered = renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
 
     await user.click(screen.getByRole('button', { name: /record/i }))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeVisible())
     rendered.unmount()
 
     expect(stopTrack).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the visible anchor when microphone permission is delayed', async () => {
+    let grant!: (stream: MediaStream) => void
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => { grant = resolve })),
+    } })
+    const user = userEvent.setup()
+    const video = pausedVideo(12.3)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={video} />)
+    await user.click(screen.getByRole('button', { name: /^Record/ }))
+    video.currentTime = 45
+    await act(async () => { grant({ getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream) })
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
+    expect(screen.getByRole('textbox', { name: 'Voice note position' })).toHaveValue('0:12.300')
+  })
+
+  it('releases a microphone granted after the requesting component was unmounted', async () => {
+    let grant!: (stream: MediaStream) => void
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+      getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => { grant = resolve })),
+    } })
+    const user = userEvent.setup()
+    const view = renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    await user.click(screen.getByRole('button', { name: /^Record/ }))
+    view.unmount()
+    await act(async () => { grant({ getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream) })
+    expect(stopTrack).toHaveBeenCalledOnce()
+    expect(FakeRecorder.instance).toBeNull()
+  })
+
+  it('retains a rejected recording and lets its anchor be corrected without recording again', async () => {
+    const attempts: { uuid: string; position: number; bytes: number }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input)
+      if (request.url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      const form = await request.formData()
+      const sent = { uuid: String(form.get('client_uuid')), position: Number(form.get('start_seconds')), bytes: (form.get('audio') as File).size }
+      attempts.push(sent)
+      return new Response(JSON.stringify(attempts.length === 1 ? { code: 'annotation_overlap' }
+        : { annotation: { id: '1', client_uuid: sent.uuid, timing_type: 'point', start_seconds: sent.position } }),
+      { status: attempts.length === 1 ? 422 : 202, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    await user.click(screen.getByRole('button', { name: /^Record/ }))
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
+    const recorder = FakeRecorder.instance
+    await user.click(screen.getByRole('button', { name: 'Save voice note' }))
+    await screen.findByText(/position is occupied/i)
+    expect(screen.getByTestId('waveform-preview')).toBeVisible()
+    const position = screen.getByRole('textbox', { name: 'Voice note position' })
+    expect(position).toBeEnabled()
+    await user.clear(position); await user.type(position, '30')
+    await user.click(screen.getByRole('button', { name: 'Save voice note' }))
+    await waitFor(() => expect(screen.queryByTestId('waveform-preview')).not.toBeInTheDocument())
+    expect(FakeRecorder.instance).toBe(recorder)
+    expect(attempts[0].uuid).toBe(attempts[1].uuid)
+    expect(attempts[0].bytes).toBe(attempts[1].bytes)
+    expect(attempts.map((attempt) => attempt.position)).toEqual([12.3, 30])
   })
 
   it('reuses one client UUID when Save is retried', async () => {
@@ -97,18 +157,18 @@ describe('VoiceRecorder', () => {
         uuids.push(String(form.get('client_uuid')))
         expect(form.has('duration_seconds')).toBe(false)
         if (attempts === 1) return new Response('{}', { status: 500, headers: { 'Content-Type': 'application/json' } })
-        return new Response(JSON.stringify({ annotation: { id: '1' } }), { status: 202, headers: { 'Content-Type': 'application/json' } })
+        return new Response(JSON.stringify({ annotation: { id: '1', client_uuid: String(form.get('client_uuid')), start_seconds: Number(form.get('start_seconds')), timing_type: 'point' } }), { status: 202, headers: { 'Content-Type': 'application/json' } })
       }
       return new Response(JSON.stringify({ annotations: [], review_id: 2, reviewer: null }), { headers: { 'Content-Type': 'application/json' } })
     }))
 
     const user = userEvent.setup()
-    renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
     await user.click(screen.getByRole('button', { name: /record/i }))
     await user.click(await screen.findByRole('button', { name: 'Stop' }))
     await user.click(await screen.findByRole('button', { name: 'Save voice note' }))
-    await screen.findByText(/could not record or save/i)
-    await user.click(screen.getByRole('button', { name: 'Save voice note' }))
+    await screen.findByText(/upload outcome is uncertain/i)
+    await user.click(screen.getByRole('button', { name: 'Retry original upload' }))
     await waitFor(() => expect(uuids).toHaveLength(2))
     expect(uuids[0]).toBe(uuids[1])
   })
@@ -120,7 +180,7 @@ describe('VoiceRecorder', () => {
       configurable: true,
       value: { getUserMedia: vi.fn(async () => Promise.reject(new DOMException('denied', 'NotAllowedError'))) },
     })
-    const rendered = renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={video} />)
+    const rendered = renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={video} />)
     await user.click(screen.getByRole('button', { name: /record/i }))
     expect(await screen.findByText(/microphone access is blocked/i)).toBeVisible()
     rendered.unmount()
@@ -129,14 +189,14 @@ describe('VoiceRecorder', () => {
       configurable: true,
       value: { getUserMedia: vi.fn(async () => Promise.reject(new DOMException('missing', 'NotFoundError'))) },
     })
-    renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={video} />)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={video} />)
     await user.click(screen.getByRole('button', { name: /record/i }))
     expect(await screen.findByText(/no microphone was found/i)).toBeVisible()
   })
 
   it('auto-stops at ninety seconds', async () => {
     vi.useFakeTimers()
-    renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
     fireEvent.click(screen.getByRole('button', { name: /record/i }))
     await act(async () => {
       await Promise.resolve()
@@ -150,7 +210,7 @@ describe('VoiceRecorder', () => {
   it('does not render a dead Record button when recording APIs are unavailable', () => {
     vi.stubGlobal('MediaRecorder', undefined)
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: undefined })
-    renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
 
     expect(screen.queryByRole('button', { name: /record/i })).not.toBeInTheDocument()
     expect(screen.getByText(/voice recording is not supported/i)).toBeVisible()
@@ -164,7 +224,7 @@ describe('VoiceRecorder', () => {
     }
     vi.stubGlobal('MediaRecorder', NeverStartsRecorder)
     const user = userEvent.setup()
-    renderWithProviders(<VoiceRecorder speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
 
     await user.click(screen.getByRole('button', { name: /record/i }))
     expect(await screen.findByText(/voice recording is not supported/i)).toBeVisible()

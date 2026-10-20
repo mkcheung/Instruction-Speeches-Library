@@ -10,9 +10,9 @@ use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Captions\CaptionAttemptTracker;
 use App\Services\QuotaService;
+use App\Support\AnnotationTransactions;
 use App\Support\SpeechDeletionReason;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 /**
@@ -115,7 +115,7 @@ class MediaReconcileCommand extends Command
                 if (Storage::disk($asset->disk)->exists($temporaryPath) && ! Storage::disk($asset->disk)->delete($temporaryPath)) {
                     continue;
                 }
-                DB::transaction(function () use ($asset, $temporaryPath, $reserved, $quota): void {
+                AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved, $quota): void {
                     $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'ready')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                     if ($fresh === null || $fresh->temporary_byte_size === null) {
                         return;
@@ -136,7 +136,7 @@ class MediaReconcileCommand extends Command
                     $fresh->update(['temporary_path' => null, 'temporary_byte_size' => null]);
                 });
             } elseif ($asset->status === 'processing') {
-                $won = DB::transaction(function () use ($asset, $temporaryPath, $reserved, $quota): bool {
+                $won = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved, $quota): bool {
                     $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                     if ($fresh === null || $fresh->temporary_byte_size === null) {
                         return false;

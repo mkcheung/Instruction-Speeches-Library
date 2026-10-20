@@ -25,6 +25,7 @@ function voiceReview(string $role = 'coach'): array
     $reviewer = User::factory()->create();
     $reviewer->assignRole($role);
     $speech = Speech::factory()->for($speaker)->create();
+    SpeechAsset::factory()->video()->ready()->for($speech)->create(['duration_seconds' => 200]);
     $review = Review::factory()->accepted()->create(['speech_id' => $speech->id, 'speech_owner_id' => $speaker->id, 'reviewer_id' => $reviewer->id, 'status' => 'in_progress']);
 
     return [$speaker, $reviewer, $speech, $review];

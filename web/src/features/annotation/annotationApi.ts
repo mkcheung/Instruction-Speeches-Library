@@ -121,6 +121,18 @@ export const annotationApi = createApi({
       invalidatesTags: (_result, _error, { reviewId }) => [{ type: 'Annotations', id: reviewId }],
     }),
 
+    restorePointAnnotation: builder.mutation<
+      Annotation,
+      { speechId: number; reviewId: number; annotationId: string }
+    >({
+      query: ({ speechId, annotationId }) => ({
+        url: `/api/speeches/${speechId}/annotations/${annotationId}/restore-point`,
+        method: 'POST',
+      }),
+      transformResponse: (response: { annotation: Annotation }) => response.annotation,
+      invalidatesTags: (_result, _error, { reviewId }) => [{ type: 'Annotations', id: reviewId }],
+    }),
+
     updateVoiceCommentaryPreference: builder.mutation<
       VoiceCommentaryPreferenceResponse,
       { speechId: number; mode: VoiceCommentaryMode; experienced: boolean }
@@ -232,6 +244,7 @@ export const {
   useLazyGetVoiceAudioUrlQuery,
   useRetryVoiceTranscriptMutation,
   useRestoreVoiceAnnotationMutation,
+  useRestorePointAnnotationMutation,
   useUpdateVoiceCommentaryPreferenceMutation,
   useGetVoiceCommentaryPreferenceQuery,
   useUpdateAnnotationMutation,

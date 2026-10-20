@@ -22,18 +22,9 @@ import { openSpeech } from './voice-test-helpers.js'
  * annotations spread across that 6s — enough to exercise `[`/`]` without
  * creating any.
  *
- * Deliberately never types real text into the "New note" composer's
- * textarea or the essay editor: `useAnnotationEditor.ts`'s own
- * `onBeforeInput` auto-stamps `start_seconds` on the FIRST inserted
- * character (§8.4, pre-existing behaviour, nothing to do with this step),
- * and once both `body` and `start_seconds` are non-empty the 750ms
- * autosave debounce POSTs a real annotation — this file has no reset
- * mechanism for that (unlike `voice-annotations.spec.ts`'s
- * `resetVoiceFixtures`), so it would permanently grow the shared fixture
- * on every run. Every test below either types a character and backspaces
- * it out again before any debounce can fire, or never types at all
- * (`Alt+C` alone never touches `body`, so `flush()`'s `!f.body.trim()`
- * guard always bails regardless of how many times it's pressed).
+ * The explicit composer never sends HTTP on typing/capture. These checks
+ * exercise native typing/navigation guards and C/Alt+C Start capture without
+ * clicking Add annotation. They leave End blank and discard local drafts.
  */
 
 async function expectCloseTo(actual: number, expected: number, tolerance = 0.2) {
@@ -215,8 +206,8 @@ test.describe('keyboard shortcuts (§7.7.6)', () => {
     const page = await context.newPage()
     await openNotesTab(page)
 
-    const composer = page.getByTestId('annotation-editor').filter({ hasText: 'New note' })
-    const textarea = composer.getByPlaceholder(/Start typing/)
+    const composer = page.getByTestId('annotation-editor').filter({ hasText: 'New annotation' })
+    const textarea = composer.getByRole('textbox', { name: 'Commentary' })
     await textarea.click()
 
     await setVideoCurrentTime(page, 2.0)
@@ -239,35 +230,34 @@ test.describe('keyboard shortcuts (§7.7.6)', () => {
     await textarea.fill('')
     await page.keyboard.press('c')
     await expect(textarea).toHaveValue('c')
-    // Clean up before the 750ms body-autosave debounce can fire — see the
-    // file docblock. `handleBeforeInput`'s auto-stamp already latched
-    // `stampedRef` on that first character and cannot be un-stamped by
-    // clearing the text, but `flush()` independently bails on an empty
-    // body regardless, so this is still safe.
+    // Typing remains local until Add annotation is clicked.
     await page.keyboard.press('Backspace')
     await expect(textarea).toHaveValue('')
 
     await context.close()
   })
 
-  test('Alt+C inside the annotation composer textarea stamps the timestamp at the playhead', async ({ browser }) => {
+  test('Alt+C inside the composer captures Start without choosing End or submitting', async ({ browser }) => {
     const context = await browser.newContext({ storageState: USERS.reviewerA.storageState })
     const page = await context.newPage()
     await openNotesTab(page)
 
-    const composer = page.getByTestId('annotation-editor').filter({ hasText: 'New note' })
-    const startTimeInput = composer.getByRole('spinbutton', { name: 'Start time in seconds' })
-    await expect(startTimeInput).toBeDisabled() // null start_seconds — nothing stamped yet
+    const composer = page.getByTestId('annotation-editor').filter({ hasText: 'New annotation' })
+    const startTimeInput = composer.getByRole('textbox', { name: 'Start', exact: true })
+    await expect(startTimeInput).toHaveValue('')
 
     await setVideoCurrentTime(page, 3.3)
-    const textarea = composer.getByPlaceholder(/Start typing/)
+    const textarea = composer.getByRole('textbox', { name: 'Commentary' })
     await textarea.click()
 
     await page.keyboard.press('Alt+C')
 
     await expect(startTimeInput).toBeEnabled()
     const stamped = await startTimeInput.inputValue()
-    await expectCloseTo(Number(stamped), 3.3, 0.3)
+    expect(stamped).toMatch(/^0:03\.\d{3}$/)
+    await expect(composer.getByRole('textbox', { name: 'End', exact: true })).toHaveValue('')
+    await expect(composer.getByRole('button', { name: 'Add annotation' })).toBeDisabled()
+    await composer.getByRole('button', { name: 'Discard new note' }).click()
 
     await context.close()
   })

@@ -1,5 +1,13 @@
 # Step 07 — Write the commentary
 
+**2026-10-20 authoring amendment:** [PLAN-ANNOTATION-RANGE-AUTHORING.md](PLAN-ANNOTATION-RANGE-AUTHORING.md)
+supersedes the implicit timestamp/autosave/nudge/drag workflow below. Written
+annotations use explicit Start/End/Commentary and Add/Save actions; Kind/Topic
+remain stored for compatibility but disappear from authoring controls. New
+geometry is checked atomically within each review: disjoint half-open written
+ranges and voice points outside those ranges and other points. Legacy overlaps
+remain readable; provenance, recovery, concurrency and rollout rules follow the plan.
+
 **Duration:** 2–2.5 weeks · **Depends on:** [06](STEP-06-watch-commentary.md) · **Unblocks:** [10](STEP-10-voice-annotation.md), [11](STEP-11-privacy-erasure.md)
 **Plan:** [§12 S7](MODERNIZATION_PLAN.md) · [§8.4 authoring](MODERNIZATION_PLAN.md) · [§10.2 optimistic locking](MODERNIZATION_PLAN.md)
 

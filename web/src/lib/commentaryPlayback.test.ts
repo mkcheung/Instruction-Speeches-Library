@@ -32,10 +32,17 @@ describe('commentary playback projection', () => {
     expect(source).toHaveLength(2)
   })
 
-  it('treats preserved text after audio erasure as written feedback', () => {
-    const preserved = { ...voice, id: 'preserved', body: 'Former reviewer feedback', voice: null }
+  it('keeps erased point text readable and seekable without a fabricated duration cue', () => {
+    const preserved: Annotation = { ...voice, timing_type: 'point', id: 'preserved', body: 'Former reviewer feedback', voice: null }
     expect(ids(projectCommentary([preserved], 'written').readable)).toEqual(['preserved'])
     expect(projectCommentary([preserved], 'voice').readable).toEqual([])
+    for (const mode of ['all', 'written'] as const) {
+      const projection = projectCommentary([preserved], mode)
+      expect(ids(projection.navigation)).toEqual(['preserved'])
+      expect(projection.timedWritten).toEqual([])
+      expect(projection.voices).toEqual([])
+      expect(projection.markers).toEqual([])
+    }
   })
 
   it('does not accept legacy or malformed modes as canonical settings', () => {

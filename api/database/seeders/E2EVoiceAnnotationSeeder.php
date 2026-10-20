@@ -123,6 +123,7 @@ class E2EVoiceAnnotationSeeder extends Seeder
 
             DB::table('annotations')->insert([
                 'id' => $annotationId,
+                'timing_type' => 'point',
                 'review_id' => $coachReview->id,
                 'client_uuid' => sprintf('0e2e0000-0000-4000-8000-%012d', $annotationId),
                 'body' => $offset === 0 ? '' : 'Seeded voice transcript '.($offset + 1),
@@ -143,6 +144,7 @@ class E2EVoiceAnnotationSeeder extends Seeder
 
         DB::table('annotations')->insert([
             'id' => 9808,
+            'timing_type' => 'range',
             'review_id' => $coachReview->id,
             'client_uuid' => '0e2e0000-0000-4000-8000-000000009808',
             'body' => 'Ordinary text remains visible.',
@@ -163,6 +165,7 @@ class E2EVoiceAnnotationSeeder extends Seeder
         $this->voiceAsset($coachSpeech, 9722, 8, $timestamp);
         DB::table('annotations')->insert([
             'id' => 9822,
+            'timing_type' => 'point',
             'review_id' => self::PEER_DRAFT_REVIEW_ID,
             'client_uuid' => '0e2e0000-0000-4000-8000-000000009822',
             'body' => 'A private draft voice transcript.',
@@ -183,6 +186,7 @@ class E2EVoiceAnnotationSeeder extends Seeder
         $this->voiceAsset($erasureSpeech, 9721, 9, $timestamp);
         DB::table('annotations')->insert([
             'id' => 9821,
+            'timing_type' => 'point',
             'review_id' => $erasureReview->id,
             'client_uuid' => '0e2e0000-0000-4000-8000-000000009821',
             'body' => 'This transcript survives reviewer erasure.',

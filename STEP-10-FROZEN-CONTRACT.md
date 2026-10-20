@@ -7,6 +7,15 @@ resolves every implementation choice that would otherwise make the API, workers,
 state machine diverge. Product code must follow this contract; changing it requires updating this
 document and its verification plan first.
 
+**2026-10-20 authoring amendment:** [PLAN-ANNOTATION-RANGE-AUTHORING.md](PLAN-ANNOTATION-RANGE-AUTHORING.md)
+adds immutable server-owned `timing_type` (range/point), preserved through audio
+erasure. Voice duration remains recording length, never speech occupancy.
+New/retimed written ranges and new/restored points cannot overlap within a
+review, including private drafts. Existing point timing remains immutable;
+audio-null points use a separate ownership-scoped restore operation. The plan
+also defines explicit authoring saves, legacy-data gates and bounded transaction
+recovery; it supersedes conflicting authoring behavior described below.
+
 **2026-10-19 amendment:** The owner playback controls, preferences, and lifecycle
 in sections 1.2, 2.3, 3.5, 7, and 8 below describe the original voice-only UI.
 The new owner UI follows [PLAN-COMMENTARY-PLAYBACK.md](PLAN-COMMENTARY-PLAYBACK.md)

@@ -4,6 +4,13 @@
 **Date:** 2026-10-19
 **Location:** Repository root, following the existing `PLAN-*.md` convention.
 
+**2026-10-20 timing amendment:** `PLAN-ANNOTATION-RANGE-AUTHORING.md` adds
+durable `timing_type` provenance. An erased voice point remains readable and
+seekable in Text + audio/Written notes only, but its former recording length
+does not create a written overlay/native subtitle cue or range marker. Actual
+audio scheduling still requires an audio asset. The four mode choices and
+ordinary written-note behavior remain unchanged.
+
 ## 1. Request and scope
 
 Replace the confusing combination of reviewer selection, `No commentary`, and

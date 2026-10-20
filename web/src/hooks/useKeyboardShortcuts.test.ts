@@ -115,6 +115,22 @@ describe('useKeyboardShortcuts', () => {
     expect(video.pause).not.toHaveBeenCalled()
   })
 
+  it('Space does NOT toggle play/pause when a radio or checkbox is focused', () => {
+    const video = makeVideo({ paused: true } as Partial<HTMLVideoElement>)
+    renderHook(() => useKeyboardShortcuts({ videoEl: video, annotations: [], onSeek: vi.fn() }))
+
+    for (const type of ['radio', 'checkbox']) {
+      const input = document.createElement('input')
+      input.type = type
+      container.appendChild(input)
+      input.focus()
+      const event = dispatchKeyDown(input, { code: 'Space', key: ' ' })
+      expect(event?.defaultPrevented ?? false).toBe(false)
+    }
+    expect(video.play).not.toHaveBeenCalled()
+    expect(video.pause).not.toHaveBeenCalled()
+  })
+
   it('Space does NOT fire when focus is on an <a href> or role=button element', () => {
     const link = document.createElement('a')
     link.href = '#'

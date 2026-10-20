@@ -1,226 +1,82 @@
+import { useId } from 'react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { UseAnnotationEditorResult } from '@/hooks/useAnnotationEditor'
-import type { AnnotationKind } from '@/features/annotation/types'
-import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
-import { cn } from '@/lib/utils'
-import { AUTOSAVE_SAVED_TEXT_CLASS } from '@/lib/autosaveStyles'
+import { formatAnnotationTime } from '@/lib/annotationTiming'
 
-const KINDS: AnnotationKind[] = ['praise', 'correction', 'observation']
-const NUDGE_STEP_SECONDS = 0.5
-
-/**
- * The shared textarea + nudge/duration controls + autosave-state word +
- * three-tier conflict banner (MODERNIZATION_PLAN.md §8.4/§10.2). Bound to
- * one `useAnnotationEditor` instance — `Composer` mounts one for a new
- * draft, `AnnotationRow` mounts one PER ROW when expanded in place. Never
- * shared state between the two, which is the whole point of §8.4's "never
- * loading a row back into the composer" rule.
- */
-export function AnnotationEditor({
-  editor,
-  autoFocus,
-  label,
-}: {
+/** Shared explicit form. Neither typing nor capture submits a request. */
+export function AnnotationEditor({ editor, autoFocus, label, existing = false }: {
   editor: UseAnnotationEditorResult
   autoFocus?: boolean
-  /** e.g. "New note" vs. "Editing note" — purely a heading, no state. */
   label: string
+  existing?: boolean
 }) {
-  const { fields, autosaveState, conflict } = editor
-
+  const formId = useId()
+  const { fields, validation, frozen } = editor
+  const showValidation = editor.dirty || editor.saveState === 'error' || editor.saveState === 'conflict'
+  const length = validation.geometry ? validation.geometry.endMs - validation.geometry.startMs : null
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border p-3" data-testid="annotation-editor">
+    <section className="flex flex-col gap-3 rounded-lg border border-border p-3" aria-label={label} data-testid="annotation-editor">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
-        <span
-          data-testid="autosave-state"
-          data-state={autosaveState}
-          className={cn(
-            'text-xs',
-            autosaveState === 'conflict' && 'text-[var(--color-danger)]',
-            autosaveState === 'offline' && 'text-[var(--color-danger)]',
-            autosaveState === 'saved' && AUTOSAVE_SAVED_TEXT_CLASS,
-            (autosaveState === 'idle' || autosaveState === 'dirty' || autosaveState === 'saving') &&
-              'text-muted-foreground',
-          )}
-        >
-          {autosaveState}
+        <span role="status" className="text-xs text-muted-foreground" data-testid="annotation-save-state" data-state={editor.saveState}>
+          {editor.saveState === 'dirty' ? 'Not added or saved' : editor.saveState}
         </span>
       </div>
-
-      {editor.speechDeleted && (
-        <div
-          role="alert"
-          data-testid="speech-deleted-banner"
-          className="rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-2 text-sm"
-        >
-          This speech has been deleted. Your draft is preserved below.
-        </div>
-      )}
-
-      {conflict && (
-        <div
-          role="alert"
-          data-testid="conflict-banner"
-          className="flex flex-col gap-2 rounded-md border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 p-2 text-sm"
-        >
-          <p>This note changed elsewhere. Your text is safe — pick how to continue.</p>
+      {!editor.storageAvailable && <p role="alert" className="text-sm">Local recovery is unavailable. Keep this page open until you save or discard your draft.</p>}
+      {editor.conflict && (
+        <div role="alert" data-testid="conflict-banner" className="space-y-2 rounded-md border border-border p-2 text-sm">
+          <p>This note changed elsewhere. Review both versions before saving.</p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" variant="outline" onClick={editor.keepMine}>
-              Keep mine
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={editor.useTheirs}>
-              Use theirs
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={editor.toggleShowBoth}>
-              {editor.showBoth ? 'Hide' : 'Show both'}
-            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={editor.keepMine}>Keep mine</Button>
+            <Button type="button" size="sm" variant="outline" onClick={editor.useTheirs}>Use theirs</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={editor.toggleShowBoth}>{editor.showBoth ? 'Hide' : 'Show both'}</Button>
           </div>
-          {editor.showBoth && (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <div className="rounded border border-border p-2">
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Yours</p>
-                <p className="text-sm">{fields.body}</p>
-              </div>
-              <div className="rounded border border-border p-2">
-                <p className="mb-1 text-xs font-medium text-muted-foreground">Theirs</p>
-                <p className="text-sm">{conflict.body}</p>
-              </div>
-            </div>
-          )}
+          {editor.showBoth && <div className="grid gap-2 sm:grid-cols-2"><p>Yours: {fields.start}–{fields.end} {fields.body}</p><p>Theirs: {formatAnnotationTime(Math.round(editor.conflict.start_seconds * 1000))} {editor.conflict.body}</p></div>}
         </div>
       )}
-
-      <Textarea
-        autoFocus={autoFocus}
-        placeholder="Start typing — the timestamp stamps itself…"
-        value={fields.body}
-        rows={3}
-        onBeforeInput={(e) => {
-          const inputType = (e.nativeEvent as InputEvent).inputType
-          editor.handleBeforeInput(inputType)
-        }}
-        onChange={(e) => editor.setBody(e.target.value)}
-      />
-
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <Label>Timestamp</Label>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="outline"
-              aria-label="Nudge start back half a second"
-              disabled={fields.start_seconds === null}
-              onClick={() => editor.nudgeStart(-NUDGE_STEP_SECONDS)}
-            >
-              ⟨
-            </Button>
-            <Input
-              type="number"
-              step={0.1}
-              min={0}
-              className="w-24"
-              aria-label="Start time in seconds"
-              value={fields.start_seconds ?? ''}
-              disabled={fields.start_seconds === null}
-              onChange={(e) => {
-                const next = Number(e.target.value)
-                if (Number.isFinite(next)) editor.setStart(next)
-              }}
-            />
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="outline"
-              aria-label="Nudge start forward half a second"
-              disabled={fields.start_seconds === null}
-              onClick={() => editor.nudgeStart(NUDGE_STEP_SECONDS)}
-            >
-              ⟩
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={editor.setToPlayhead}>
-              Set to playhead
-            </Button>
+      {!editor.point && <div className="grid gap-3 sm:grid-cols-2">
+        {(['start', 'end'] as const).map((endpoint) => (
+          <div key={endpoint} className="space-y-1">
+            <Label htmlFor={`${formId}-${endpoint}`}>{endpoint === 'start' ? 'Start' : 'End'}</Label>
+            <div className="flex flex-wrap gap-2">
+              <Input id={`${formId}-${endpoint}`} type="text" inputMode="decimal" className="min-w-28 flex-1" placeholder={endpoint === 'start' ? '0:12.500' : '0:18.000'}
+                value={fields[endpoint]} disabled={frozen} aria-invalid={showValidation && Boolean(validation.errors[endpoint])}
+                aria-describedby={`${formId}-${endpoint}-help`} onChange={(event) => (endpoint === 'start' ? editor.setStart : editor.setEnd)(event.target.value)} />
+              <Button type="button" variant="outline" disabled={frozen} aria-label={`Use current time for ${endpoint}`} onClick={endpoint === 'start' ? editor.captureStart : editor.captureEnd}>Use current time</Button>
+            </div>
+            <p id={`${formId}-${endpoint}-help`} className="text-xs text-muted-foreground">{(showValidation ? validation.errors[endpoint] : undefined) ?? 'Seconds or M:SS.mmm'}</p>
           </div>
-          {fields.start_seconds !== null && (
-            <span className="sr-only">Annotation at {formatSpokenTimecode(fields.start_seconds)}</span>
-          )}
-          {fields.start_seconds !== null && (
-            <span aria-hidden="true" className="text-xs text-muted-foreground">
-              {formatTimecode(fields.start_seconds)}
-            </span>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <Label>Duration</Label>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="outline"
-              aria-label="Shorten duration by half a second"
-              onClick={() => editor.nudgeDuration(-NUDGE_STEP_SECONDS)}
-            >
-              ⟨
-            </Button>
-            <Input
-              type="number"
-              step={0.1}
-              min={0.5}
-              max={120}
-              className="w-20"
-              aria-label="Duration in seconds"
-              value={fields.duration_seconds}
-              onChange={(e) => {
-                const next = Number(e.target.value)
-                if (Number.isFinite(next)) editor.setDuration(next)
-              }}
-            />
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="outline"
-              aria-label="Extend duration by half a second"
-              onClick={() => editor.nudgeDuration(NUDGE_STEP_SECONDS)}
-            >
-              ⟩
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`kind-${editor.id}`}>Kind</Label>
-          <select
-            id={`kind-${editor.id}`}
-            className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
-            value={fields.kind}
-            onChange={(e) => editor.setKind(e.target.value as AnnotationKind)}
-          >
-            {KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={`topic-${editor.id}`}>Topic</Label>
-          <Input
-            id={`topic-${editor.id}`}
-            className="w-32"
-            placeholder="optional"
-            value={fields.topic ?? ''}
-            onChange={(e) => editor.setTopic(e.target.value || null)}
-          />
-        </div>
+        ))}
+      </div>}
+      {!editor.point && length !== null && <p className="text-xs text-muted-foreground">Length: {(length / 1000).toFixed(3)} seconds</p>}
+      <Label htmlFor={`${formId}-body`}>{editor.point ? 'Transcript' : 'Commentary'}</Label>
+      <Textarea id={`${formId}-body`} autoFocus={autoFocus} placeholder="Enter your commentary about this segment…" value={fields.body} rows={3}
+        disabled={frozen} aria-invalid={showValidation && Boolean(validation.errors.body)} onChange={(event) => editor.setBody(event.target.value)} />
+      {showValidation && validation.errors.body && <p className="text-sm text-muted-foreground">{validation.errors.body}</p>}
+      {validation.errors.general && <p role="status" className="text-sm text-muted-foreground">{validation.errors.general}</p>}
+      {validation.conflicts.length > 0 && <ul aria-label="Conflicting feedback" className="text-sm">
+        {validation.conflicts.map((note) => <li key={note.id}>Feedback at {formatAnnotationTime(Math.round(note.start_seconds * 1000))}</li>)}
+      </ul>}
+      {editor.message && <p role="alert" className="text-sm text-[var(--color-danger)]">{editor.message}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" disabled={!editor.canSubmit} onClick={() => void editor.submit()}>
+          {editor.saveState === 'saving' ? 'Saving…' : editor.saveState === 'uncertain' ? 'Retry original save' : existing ? 'Save changes' : 'Add annotation'}
+        </Button>
+        <Button type="button" variant="outline" disabled={frozen} onClick={editor.discard}>{existing ? 'Cancel' : 'Discard new note'}</Button>
       </div>
-    </div>
+      <p className="text-xs text-muted-foreground">{existing ? 'Saved changes to published feedback are visible to the speaker immediately.' : 'Only you can see added notes until you publish your feedback.'}</p>
+      {editor.recoveries.length > 0 && <div className="space-y-2 border-t border-border pt-2" aria-label="Recoverable drafts">
+        <p className="text-sm font-medium">Recoverable drafts</p>
+        {editor.recoveries.map((record) => <div key={`${record.instanceId}:${record.clientUuid}:${record.revision}`} className="space-y-1 text-sm">
+          <p>{new Date(record.updatedAt).toLocaleString()} · {record.fields.start || 'No start'}–{record.fields.end || 'No end'} · {record.fields.body.slice(0, 100)}</p>
+          <Button type="button" size="sm" variant="outline" disabled={editor.pending || frozen} onClick={() => editor.restore(record)}>Restore draft</Button>{' '}
+          <Button type="button" size="sm" variant="ghost" disabled={frozen || record.uncertain !== null} onClick={() => editor.discardRecovery(record)}>Discard recovered draft</Button>
+        </div>)}
+        <p className="text-xs text-muted-foreground">Restore a draft explicitly, then review its times before saving. Drafts from another tab are kept separately.</p>
+      </div>}
+    </section>
   )
 }

@@ -4,8 +4,8 @@ namespace App\Services\Voice;
 
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
+use App\Support\AnnotationTransactions;
 use Illuminate\Contracts\Process\ProcessResult;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -57,7 +57,7 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             }
 
             $finalPath = preg_replace('/\.m4a$/', '', $asset->path).'.'.Str::uuid().'.m4a';
-            $claimed = DB::transaction(function () use ($asset, $temporaryPath, $finalPath): bool {
+            $claimed = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $finalPath): bool {
                 $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')
                     ->whereNull('purge_claim_id')->whereNull('normalization_candidate_path')
                     ->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
@@ -77,7 +77,7 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             }
 
             try {
-                $written = DB::transaction(function () use ($asset, $temporaryPath, $finalPath, $duration, $normalized): bool {
+                $written = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $finalPath, $duration, $normalized): bool {
                     $fresh = SpeechAsset::query()->whereKey($asset->id)->lockForUpdate()->first();
                     if ($fresh === null || $fresh->status !== 'processing' || $fresh->kind !== 'voice_note' || $fresh->temporary_path !== $temporaryPath || $fresh->normalization_candidate_path !== $finalPath || $fresh->purge_claim_id !== null) {
                         return false;
@@ -116,7 +116,7 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             if (! Storage::disk($asset->disk)->delete($temporaryPath)) {
                 return true;
             }
-            DB::transaction(function () use ($asset, $temporaryPath, $reserved, $normalized): void {
+            AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved, $normalized): void {
                 $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'ready')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                 if ($fresh === null || $fresh->temporary_byte_size === null) {
                     return;
@@ -162,11 +162,10 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
 
     private function fail(SpeechAsset $asset, string $temporaryPath, int $reserved, string $code): bool
     {
-        $candidatePath = null;
-        $won = DB::transaction(function () use ($asset, $temporaryPath, $reserved, $code, &$candidatePath): bool {
+        $outcome = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved, $code): ?array {
             $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->whereNull('purge_claim_id')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
             if ($fresh === null || $fresh->temporary_byte_size === null) {
-                return false;
+                return null;
             }
             $candidatePath = $fresh->normalization_candidate_path;
             $fresh->update([
@@ -190,12 +189,12 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
                 $this->quota->releaseDirect($reviewer, $reserved);
             }
 
-            return true;
+            return ['candidate_path' => $candidatePath];
         });
-        if (! $won) {
+        if ($outcome === null) {
             return false;
         }
-        $paths = SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $candidatePath);
+        $paths = SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $outcome['candidate_path']);
         $clean = true;
         foreach ($paths as $path) {
             $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;

@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, RouterProvider, createMemoryRouter } from 'react-router-dom'
+import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
+import type { ReactNode } from 'react'
 import type { Annotation } from '@/features/annotation/types'
 import type { Review } from '@/features/review/types'
 
@@ -35,10 +36,14 @@ vi.mock('@/hooks/useVideoCurrentTime', () => ({ useVideoCurrentTime: () => 0 }))
 vi.mock('@/hooks/useAutoPausePreference', () => ({ useAutoPausePreference: () => [false, vi.fn()] }))
 vi.mock('@/components/annotation/OverlayStack', () => ({ OverlayStack: () => null }))
 vi.mock('@/components/annotation/TimelineStrip', () => ({ TimelineStrip: () => null }))
-vi.mock('@/components/annotation/Composer', () => ({ Composer: () => null }))
+vi.mock('@/components/annotation/Composer', () => ({ Composer: ({ onPendingChange }: { onPendingChange: (id: string, pending: boolean) => void }) => <input aria-label="Draft commentary" onChange={(event) => onPendingChange('composer-test', event.target.value !== '')} /> }))
 vi.mock('@/components/annotation/AnnotationList', () => ({ AnnotationList: () => null }))
-vi.mock('@/components/annotation/ClearAnnotationsDialog', () => ({ ClearAnnotationsDialog: () => null }))
+vi.mock('@/components/annotation/ClearAnnotationsDialog', () => ({ ClearAnnotationsDialog: ({ disabled }: { disabled: boolean }) => <button disabled={disabled}>Clear all notes</button> }))
 vi.mock('@/components/annotation/VoiceRecorder', () => ({ VoiceRecorder: () => <div data-testid="voice-recorder" /> }))
+
+function TestRouter({ children }: { children: ReactNode }) {
+  return <RouterProvider router={createMemoryRouter([{ path: '*', element: children }])} />
+}
 
 const review = { id: 9, status: 'in_progress', first_published_at: null } as unknown as Review
 
@@ -49,9 +54,9 @@ describe('AnnotationComposerPanel voice authoring', () => {
 
   it('warns after six notes and sums their full added duration', () => {
     render(
-      <MemoryRouter>
+      <TestRouter>
         <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} />
-      </MemoryRouter>,
+      </TestRouter>,
     )
     expect(screen.getByRole('status')).toHaveTextContent('7 voice notes')
     expect(screen.getByRole('status')).toHaveTextContent('28 seconds')
@@ -61,18 +66,18 @@ describe('AnnotationComposerPanel voice authoring', () => {
   it('does not warn at exactly six voice notes', () => {
     voiceRows = makeVoiceRows(6)
     render(
-      <MemoryRouter>
+      <TestRouter>
         <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} />
-      </MemoryRouter>,
+      </TestRouter>,
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('does not mount the recorder for a Member', () => {
     render(
-      <MemoryRouter>
+      <TestRouter>
         <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} />
-      </MemoryRouter>,
+      </TestRouter>,
     )
     expect(screen.queryByTestId('voice-recorder')).not.toBeInTheDocument()
   })
@@ -128,5 +133,38 @@ describe('AnnotationComposerPanel Abandon button', () => {
 
     await waitFor(() => expect(abandonSpy).toHaveBeenCalled())
     expect(router.state.location.pathname).toBe('/speeches/1')
+  })
+})
+
+
+describe('pending feedback coordination', () => {
+  beforeEach(() => { voiceRows = []; abandonSpy.mockClear() })
+  it('blocks Publish, Clear and Abandon until pending text is explicitly resolved', async () => {
+    const user = userEvent.setup()
+    render(<TestRouter><AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /></TestRouter>)
+    const publish = screen.getByRole('button', { name: 'Publish feedback' })
+    expect(publish).toBeEnabled()
+    await user.type(screen.getByRole('textbox', { name: 'Draft commentary' }), 'Unsaved')
+    expect(publish).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Clear all notes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Abandon' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Abandon' }))
+    expect(abandonSpy).not.toHaveBeenCalled()
+    await user.clear(screen.getByRole('textbox', { name: 'Draft commentary' }))
+    expect(publish).toBeEnabled()
+  })
+  it('protects route navigation and keeps the pending editor visible when staying', async () => {
+    const user = userEvent.setup()
+    const router = createMemoryRouter([
+      { path: '/speeches/1', element: <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /> },
+      { path: '/dashboard', element: <p>Dashboard</p> },
+    ], { initialEntries: ['/speeches/1'] })
+    render(<RouterProvider router={router} />)
+    await user.type(screen.getByRole('textbox', { name: 'Draft commentary' }), 'Keep this text')
+    await act(async () => { void router.navigate('/dashboard') })
+    expect(await screen.findByRole('dialog', { name: 'Unsaved feedback' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Keep editing' }))
+    expect(router.state.location.pathname).toBe('/speeches/1')
+    expect(screen.getByRole('textbox', { name: 'Draft commentary' })).toHaveValue('Keep this text')
   })
 })

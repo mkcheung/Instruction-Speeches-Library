@@ -30,10 +30,12 @@ export function ClearAnnotationsDialog({
   isPublished,
   isClearing,
   onConfirm,
+  disabled = false,
 }: {
   isPublished: boolean
   isClearing: boolean
   onConfirm: () => void
+  disabled?: boolean
 }) {
   const [typed, setTyped] = useState('')
   const [open, setOpen] = useState(false)
@@ -48,7 +50,7 @@ export function ClearAnnotationsDialog({
         if (!next) setTyped('')
       }}
     >
-      <AlertDialogTrigger render={<Button type="button" variant="destructive" size="sm" />}>
+      <AlertDialogTrigger disabled={disabled || isClearing} render={<Button type="button" variant="destructive" size="sm" />}>
         Clear all notes
       </AlertDialogTrigger>
       <AlertDialogPortal>
@@ -82,7 +84,7 @@ export function ClearAnnotationsDialog({
             <Button
               type="button"
               variant="destructive"
-              disabled={!canConfirm || isClearing}
+              disabled={!canConfirm || isClearing || disabled}
               onClick={() => {
                 onConfirm()
                 setOpen(false)

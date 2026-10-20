@@ -170,6 +170,8 @@ test('Scenario B — fallback/rerecord posts once; real FFmpeg reaches ready wit
 
   await openSpeech(page, VOICE.coachSpeechId)
   const recorder = page.getByRole('region', { name: 'Record a voice note' })
+  // Before the legacy 0.1–5.1 written span: an unoccupied point.
+  await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('0')
 
   await recorder.getByRole('button', { name: /^Record/ }).click()
   await recorder.getByRole('button', { name: 'Stop' }).click()

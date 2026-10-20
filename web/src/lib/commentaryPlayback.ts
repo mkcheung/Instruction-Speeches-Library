@@ -1,4 +1,5 @@
 import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/types'
+import { isPointAnnotation } from '@/features/annotation/types'
 
 export const COMMENTARY_PLAYBACK_MODES = [
   { value: 'all', label: 'Text + audio' },
@@ -23,7 +24,7 @@ export function projectCommentary(annotations: readonly Annotation[], mode: Comm
     voices,
     playAudio,
     showVoiceTranscript: mode === 'all',
-    timedWritten: showWritten ? written : [],
+    timedWritten: showWritten ? written.filter((note) => !isPointAnnotation(note)) : [],
     readable,
     markers: playAudio ? voices : [],
     navigation: readable,

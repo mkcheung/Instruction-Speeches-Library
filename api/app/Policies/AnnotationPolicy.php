@@ -96,6 +96,11 @@ class AnnotationPolicy
         return $this->reviewerOwnsActiveReview($user, $review);
     }
 
+    public function restorePoint(User $user, Review $review): bool
+    {
+        return $this->reviewerOwnsActiveReview($user, $review);
+    }
+
     public function createVoice(User $user, Review $review): bool
     {
         return $user->hasRole('coach') && $this->reviewerOwnsActiveReview($user, $review);

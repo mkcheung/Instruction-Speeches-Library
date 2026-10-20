@@ -6,7 +6,7 @@ use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
-use Illuminate\Support\Facades\DB;
+use App\Support\AnnotationTransactions;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -22,7 +22,7 @@ class EraseReviewerVoiceNotes
             ->whereHas('review', fn ($query) => $query->where('reviewer_id', $reviewer->id))->pluck('id');
 
         foreach ($ids as $id) {
-            $claimed = DB::transaction(function () use ($id): ?array {
+            $claimed = AnnotationTransactions::run(function () use ($id): ?array {
                 $snapshot = Annotation::withTrashed()->whereKey($id)->first(['id', 'audio_asset_id']);
                 if ($snapshot === null || $snapshot->audio_asset_id === null) {
                     return null;
@@ -48,11 +48,11 @@ class EraseReviewerVoiceNotes
                     throw new \RuntimeException('Voice-note erasure failed; reviewer identity was retained.');
                 }
             }
-            DB::transaction(function () use ($id, $claimed, $reviewer, &$counts): void {
+            $released = AnnotationTransactions::run(function () use ($id, $claimed, $reviewer): ?int {
                 $asset = SpeechAsset::query()->whereKey($claimed['asset_id'])->where('purge_claim_id', $claimed['claim_id'])->lockForUpdate()->first();
                 $annotation = Annotation::withTrashed()->whereKey($id)->lockForUpdate()->first();
                 if ($asset === null || $annotation === null || $annotation->audio_asset_id !== $asset->id) {
-                    return;
+                    return null;
                 }
                 $charged = (int) ($asset->temporary_byte_size ?? $asset->byte_size ?? 0);
                 $annotation->update([
@@ -65,10 +65,14 @@ class EraseReviewerVoiceNotes
                 if ($charged > 0) {
                     $this->quota->releaseDirect($reviewer, $charged);
                 }
+
+                return $charged;
+            });
+            if ($released !== null) {
                 $counts['voice_notes_deleted']++;
                 $counts['annotations_preserved']++;
-                $counts['bytes_released'] += $charged;
-            });
+                $counts['bytes_released'] += $released;
+            }
         }
 
         return $counts;

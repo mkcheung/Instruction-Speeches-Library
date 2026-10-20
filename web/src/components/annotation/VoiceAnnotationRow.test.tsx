@@ -14,6 +14,7 @@ vi.mock('@/features/annotation/annotationApi', () => ({
   useLazyGetVoiceAudioUrlQuery: () => [api.loadAudio, { isFetching: false }],
   useRetryVoiceTranscriptMutation: () => [api.retryTranscript, { isLoading: false }],
   useUpdateAnnotationMutation: () => [api.updateAnnotation, { isLoading: false }],
+  useCreateAnnotationMutation: () => [vi.fn(), { isLoading: false }],
 }))
 
 function voice(overrides: Partial<Annotation> = {}): Annotation {
@@ -37,6 +38,7 @@ function row(annotation: Annotation) {
       annotation={annotation}
       speechId={1}
       reviewId={2}
+      userId="3"
       isCurrent={false}
       onSeek={vi.fn()}
       onDelete={vi.fn(async () => undefined)}
@@ -51,9 +53,10 @@ function renderRow(annotation: Annotation) {
 describe('VoiceAnnotationRow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     api.retryTranscript.mockReturnValue({ unwrap: () => Promise.resolve({}) })
-    api.updateAnnotation.mockImplementation(({ body }: { body: { body: string } }) => ({
-      unwrap: () => Promise.resolve(voice({ body: body.body, lock_version: 5 })),
+    api.updateAnnotation.mockImplementation(({ body }: { body: { body: string; lock_version: number } }) => ({
+      unwrap: () => Promise.resolve(voice({ body: body.body, lock_version: body.lock_version + 1 })),
     }))
     api.loadAudio.mockReturnValue({ unwrap: () => Promise.resolve({ audio: { url: 'blob:voice', expires_at: '' } }) })
   })
@@ -66,7 +69,7 @@ describe('VoiceAnnotationRow', () => {
     const editor = screen.getByRole('textbox', { name: 'Transcript' })
     await user.clear(editor)
     await user.type(editor, 'Coach corrected transcript')
-    await user.click(screen.getByRole('button', { name: 'Save transcript' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
 
     expect(api.updateAnnotation).toHaveBeenCalledWith({
       speechId: 1,
@@ -80,7 +83,7 @@ describe('VoiceAnnotationRow', () => {
     const user = userEvent.setup()
     api.updateAnnotation
       .mockReturnValueOnce({
-        unwrap: () => Promise.reject({ data: { message: 'Conflict', conflictSource: 'self', current: voice({ body: 'Server text', lock_version: 9 }) } }),
+        unwrap: () => Promise.reject({ status: 409, data: { message: 'Conflict', conflictSource: 'self', current: voice({ body: 'Server text', lock_version: 9 }) } }),
       })
       .mockReturnValueOnce({ unwrap: () => Promise.resolve(voice({ body: 'My unsaved text', lock_version: 10 })) })
     renderRow(voice())
@@ -89,11 +92,14 @@ describe('VoiceAnnotationRow', () => {
     const editor = screen.getByRole('textbox', { name: 'Transcript' })
     await user.clear(editor)
     await user.type(editor, 'My unsaved text')
-    await user.click(screen.getByRole('button', { name: 'Save transcript' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/text is still here/i)
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/changed elsewhere/i)
     expect(editor).toHaveValue('My unsaved text')
+    expect(api.updateAnnotation).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Keep mine' }))
+    expect(api.updateAnnotation).toHaveBeenCalledTimes(1)
 
-    await user.click(screen.getByRole('button', { name: 'Save transcript' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
     expect(api.updateAnnotation).toHaveBeenLastCalledWith(expect.objectContaining({
       body: { lock_version: 9, body: 'My unsaved text' },
     }))
@@ -119,14 +125,14 @@ describe('VoiceAnnotationRow', () => {
     expect(editor).toHaveValue('Whisper result')
     await user.clear(editor)
     await user.type(editor, 'First edit')
-    await user.click(screen.getByRole('button', { name: 'Save transcript' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
     await user.click(screen.getByRole('button', { name: 'Edit transcript' }))
     await user.clear(screen.getByRole('textbox', { name: 'Transcript' }))
     await user.type(screen.getByRole('textbox', { name: 'Transcript' }), 'Second edit')
-    await user.click(screen.getByRole('button', { name: 'Save transcript' }))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
 
     expect(api.updateAnnotation).toHaveBeenNthCalledWith(1, expect.objectContaining({ body: { lock_version: 7, body: 'First edit' } }))
-    expect(api.updateAnnotation).toHaveBeenNthCalledWith(2, expect.objectContaining({ body: { lock_version: 5, body: 'Second edit' } }))
+    expect(api.updateAnnotation).toHaveBeenNthCalledWith(2, expect.objectContaining({ body: { lock_version: 8, body: 'Second edit' } }))
   })
 
   it('recovers from an expired presigned preview URL by re-fetching on the next click', async () => {

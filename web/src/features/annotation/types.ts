@@ -33,6 +33,8 @@ export interface AnnotationVoice {
  */
 export interface Annotation {
   id: string
+  /** Null is historical provenance awaiting explicit classification. */
+  timing_type?: 'range' | 'point' | null
   start_seconds: number
   duration_seconds: number
   kind: AnnotationKind
@@ -45,6 +47,11 @@ export interface Annotation {
 
 export function isVoiceAnnotation(annotation: Annotation): boolean {
   return annotation.voice !== null
+}
+
+/** Geometry survives audio erasure; playable audio still requires voice. */
+export function isPointAnnotation(annotation: Annotation): boolean {
+  return annotation.timing_type === 'point' || (annotation.timing_type == null && annotation.voice !== null)
 }
 
 export function annotationDisplayBody(annotation: Annotation): string {

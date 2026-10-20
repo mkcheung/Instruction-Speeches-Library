@@ -5,12 +5,12 @@ namespace App\Jobs;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
+use App\Support\AnnotationTransactions;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -37,7 +37,7 @@ class PurgeVoiceAsset implements ShouldQueue
         // normalized copy of the reviewer's audio into storage *after* the
         // hard purge — where no row-driven sweep (`media:reconcile`) can
         // ever find it again.
-        $claim = DB::transaction(function (): ?array {
+        $claim = AnnotationTransactions::run(function (): ?array {
             $asset = SpeechAsset::query()->whereKey($this->assetId)->lockForUpdate()->first();
             if ($asset === null || $asset->kind !== 'voice_note') {
                 return null;
@@ -61,7 +61,7 @@ class PurgeVoiceAsset implements ShouldQueue
                 throw new \RuntimeException('Voice asset purge failed.');
             }
         }
-        DB::transaction(function () use ($claim, $quota): void {
+        AnnotationTransactions::run(function () use ($claim, $quota): void {
             $fresh = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();
             if ($fresh === null) {
                 return;

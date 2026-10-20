@@ -74,6 +74,9 @@ function isActivationTarget(el: Element | null): boolean {
   if (el.tagName === 'BUTTON') return true
   if (el.tagName === 'A' && el.hasAttribute('href')) return true
   if (el.getAttribute('role') === 'button') return true
+  // Radios and checkboxes are also toggled by Space; claiming it for
+  // play/pause would preventDefault() and stop them from ever checking.
+  if (el.tagName === 'INPUT') return true
   return false
 }
 

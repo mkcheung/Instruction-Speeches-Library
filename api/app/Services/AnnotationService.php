@@ -8,8 +8,11 @@ use App\Jobs\PurgeDeletedVoiceAnnotation;
 use App\Models\Annotation;
 use App\Models\Review;
 use App\Models\User;
+use App\Support\AnnotationTiming;
+use App\Support\AnnotationTransactions;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 /**
  * MODERNIZATION_PLAN §8.5: "The speaker must never see a coach's drafts,
@@ -23,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  */
 class AnnotationService
 {
-    public function __construct(private readonly ReviewService $reviews) {}
+    public function __construct(private readonly ReviewService $reviews, private readonly AnnotationTiming $timing) {}
 
     /**
      * The exact set of rows visible to $user for $review, sorted
@@ -70,9 +73,10 @@ class AnnotationService
      */
     public function create(Review $review, array $data): array
     {
-        return DB::transaction(function () use ($review, $data) {
+        return AnnotationTransactions::run(function () use ($review, $data) {
             /** @var Review $locked */
             $locked = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+            Gate::authorize('annotation.create', $locked);
 
             /** @var Annotation|null $existing */
             $existing = Annotation::query()
@@ -96,12 +100,14 @@ class AnnotationService
                 throw new AnnotationCapExceededException;
             }
 
+            $range = $this->timing->range($locked, $data['start_seconds'], $data['duration_seconds'] ?? 6);
+
             $annotation = Annotation::query()->create([
                 'review_id' => $locked->id,
                 'client_uuid' => $data['client_uuid'],
                 'body' => $data['body'],
-                'start_seconds' => $data['start_seconds'],
-                'duration_seconds' => $data['duration_seconds'] ?? 6.0,
+                ...$range,
+                'timing_type' => 'range',
                 'kind' => $data['kind'] ?? 'observation',
                 'topic' => $data['topic'] ?? null,
             ]);
@@ -125,7 +131,8 @@ class AnnotationService
      */
     public function update(Annotation $annotation, array $data): Annotation
     {
-        return DB::transaction(function () use ($annotation, $data) {
+        return AnnotationTransactions::run(function () use ($annotation, $data) {
+            $review = Review::query()->whereKey($annotation->review_id)->lockForUpdate()->firstOrFail();
             /** @var Annotation $locked */
             // Eager-loaded here, before the lock_version check, not just on
             // the success path below — AnnotationConflictException carries
@@ -135,13 +142,33 @@ class AnnotationService
             // annotation got back a 409 whose `current.voice` was null,
             // silently mislabeling it as a text annotation.
             $locked = Annotation::query()->whereKey($annotation->id)->lockForUpdate()->with('audioAsset')->firstOrFail();
+            $locked->setRelation('review', $review);
+            Gate::authorize($locked->audio_asset_id === null ? 'annotation.update' : 'voice.updateTranscript', $locked);
 
             if ($locked->lock_version !== (int) $data['lock_version']) {
                 throw new AnnotationConflictException($locked);
             }
 
-            if ($locked->audio_asset_id !== null && array_intersect(['start_seconds', 'duration_seconds', 'kind', 'topic'], array_keys($data)) !== []) {
-                abort(422, 'Voice-note timing and metadata are immutable.');
+            $forbidden = array_intersect(['start_seconds', 'duration_seconds', 'kind', 'topic'], array_keys($data));
+            if ($locked->isPoint() && $forbidden !== []) {
+                throw ValidationException::withMessages(array_fill_keys($forbidden, ['Voice-note timing and metadata are immutable.']));
+            }
+
+            $start = $data['start_seconds'] ?? $locked->start_seconds;
+            $duration = $data['duration_seconds'] ?? $locked->duration_seconds;
+            $timingChanged = AnnotationTiming::milliseconds($start) !== AnnotationTiming::milliseconds($locked->start_seconds)
+                || AnnotationTiming::milliseconds($duration, 'duration_seconds') !== AnnotationTiming::milliseconds($locked->duration_seconds);
+            if (array_key_exists('start_seconds', $data)) {
+                $data['start_seconds'] = AnnotationTiming::seconds(AnnotationTiming::milliseconds($start));
+            }
+            if (array_key_exists('duration_seconds', $data)) {
+                $data['duration_seconds'] = AnnotationTiming::seconds(AnnotationTiming::milliseconds($duration, 'duration_seconds'));
+            }
+            if ($timingChanged) {
+                if ($locked->timing_type === null) {
+                    throw ValidationException::withMessages(['start_seconds' => ['This legacy annotation needs timing-origin review before it can be retimed.']]);
+                }
+                $data = [...$data, ...$this->timing->range($review, $start, $duration, $locked->id)];
             }
 
             $locked->fill(array_intersect_key($data, array_flip([
@@ -171,11 +198,42 @@ class AnnotationService
      */
     public function delete(Annotation $annotation): void
     {
-        DB::transaction(function () use ($annotation) {
-            $annotation->delete();
-            if ($annotation->audio_asset_id !== null) {
-                PurgeDeletedVoiceAnnotation::dispatch($annotation->id)->delay(now()->addSeconds(10));
+        AnnotationTransactions::run(function () use ($annotation) {
+            $review = Review::query()->whereKey($annotation->review_id)->lockForUpdate()->firstOrFail();
+            $locked = Annotation::withTrashed()->whereKey($annotation->id)->lockForUpdate()->firstOrFail();
+            $locked->setRelation('review', $review);
+            Gate::authorize($locked->audio_asset_id === null ? 'annotation.delete' : 'voice.delete', $locked);
+            if ($locked->trashed()) {
+                return;
             }
+            $locked->delete();
+            if ($locked->audio_asset_id !== null) {
+                PurgeDeletedVoiceAnnotation::dispatch($locked->id)->delay(now()->addSeconds(10));
+            }
+        });
+    }
+
+    public function restorePoint(Review $review, string $id): Annotation
+    {
+        return AnnotationTransactions::run(function () use ($review, $id) {
+            $lockedReview = Review::query()->whereKey($review->id)->lockForUpdate()->firstOrFail();
+            Gate::authorize('annotation.restorePoint', $lockedReview);
+            $row = Annotation::withTrashed()->where('review_id', $lockedReview->id)->whereKey($id)->lockForUpdate()->firstOrFail();
+            abort_unless($row->timing_type === 'point' && $row->audio_asset_id === null, 404);
+            if (! $row->trashed()) {
+                return $row->load('audioAsset');
+            }
+            if ($lockedReview->annotations_count >= 200) {
+                throw new AnnotationCapExceededException;
+            }
+            $this->timing->point($lockedReview, $row->start_seconds, $row->id);
+            $row->restore();
+            $lockedReview->increment('annotations_count');
+            if ($row->published_at !== null) {
+                $lockedReview->increment('published_annotations_count');
+            }
+
+            return $row->load('audioAsset');
         });
     }
 }

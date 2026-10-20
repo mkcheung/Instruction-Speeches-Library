@@ -1,6 +1,6 @@
 # Plan: explicit annotation ranges and no overlapping feedback
 
-**Status:** Reviewed implementation plan; planning only. No implementation is authorized by this document.
+**Status:** Implemented and deployed locally on 2026-10-20. Automated acceptance and desktop Chrome smoke checks passed. The user explicitly left real-microphone and physical iPhone checks as documented manual follow-ups. See section 12 for evidence and recovery details.
 **Date:** 2026-10-19
 **Scope:** Reviewer annotation authoring, validation, and the related timing contract.
 **Review cycle:** Source validation → independent/adversarial review → revision → final validation completed (ledger below).
@@ -578,3 +578,207 @@ visible exception; some existing API clients receive new validation errors.
 - This plan does not certify future code or all browser/device behavior. No
   implementation, schema change, deployment, fixture mutation or commit is part
   of this planning task.
+
+## 12. Implementation progress and evidence
+
+### 2026-10-20 — implementation started
+
+- Rechecked the current worktree: clean at the start of this implementation.
+  Previous playback and unrelated work are part of the existing checkout and
+  will be preserved. The full plan, including concurrency/recovery and rollout
+  gates, remains the objective.
+- Starting with durable geometry, canonical timing and atomic backend admission,
+  followed by explicit authoring and the remaining integration/acceptance work.
+- No development database migration, reset, deployment or recording disruption
+  has occurred. Initial tests will use explicitly isolated test databases.
+- Previous goal turn completed the reviewed planning artifact; this turn begins
+  implementation. Completion is not yet claimed.
+
+### 2026-10-20 — server admission and concurrency checkpoint
+
+- Implemented immutable timing provenance, exact millisecond normalization,
+  per-review range/point admission, review-locked edits/deletion/restoration,
+  overlap/busy responses, and erased-point restoration. Historical ambiguous
+  provenance remains nullable and requires the reviewed rollout inventory.
+- Added bounded retries for known rolled-back PostgreSQL concurrency failures.
+  Commit callbacks and attempt-local upload ownership are protected against
+  replay; unrelated/uncertain database errors are not retried.
+- Targeted API checks passed: 148 tests / 538 assertions before the final
+  transaction regression addition; the transaction suite now passes 7 tests /
+  23 assertions. The existing counter-cache suite passes 7 tests / 31 assertions
+  after authenticating its direct service-delete caller.
+- The initial full API run (512 MB) reported 789 passed, 2 skipped, 1 error
+  out of 792. Its sole error was that unauthenticated service-delete fixture,
+  corrected above; a final full rerun remains required.
+- Real PostgreSQL proof passed on **only** the newly created isolated database
+  `annotation_range_verify_20261020_1627_c`: ten two-connection cases observed
+  actual lock waits (range/range, both range/point orders, point/point,
+  adjacency, retime/retime, retime/create, restore/create, delete/restore,
+  revoke/write). Three forced three-connection purge/create/restore cycles
+  passed, with each actor detecting first; counters, quota and the winning
+  upload were verified. Earlier harness-only failures used separate retained
+  test databases; no development data was reset or migrated.
+- Reproducible proof harness: `scripts/verify-annotation-range-concurrency.php`.
+  It refuses existing/non-test targets and retains evidence/media. Successful
+  evidence: `/var/folders/94/480l7jvs29b4jvkkwvvyv9800000gn/T/annotation_range_verify_20261020_1627_c_61878353`.
+- Frontend timing/parser utility: 37 tests passed; TypeScript check passed.
+  Explicit forms, recovery, orchestration, playback integration and acceptance
+  checks are still pending. The feature is not yet ready for deployment.
+- Two concurrent keyboard-shortcut file changes were observed and preserved;
+  they were not authored as part of this implementation.
+
+### 2026-10-20 — explicit forms and integration checkpoint
+
+- Replaced implicit stamping, debounce/unload HTTP saves and timeline drag
+  writes with explicit Start/End/Commentary and Add annotation/Save changes.
+  Captures pause playback and affect only the chosen endpoint. Kind/Topic are
+  absent from the controls and omitted on ordinary create/edit payloads.
+- Added account/speech/review/row/UUID/instance/revision-scoped text recovery,
+  discoverable Restore/Discard choices, exact-snapshot uncertain retries,
+  frozen in-flight fields, explicit Keep mine retry preparation, and safe
+  external updates. Legacy mirrors are retained. Transcript editing shares
+  this recovery/submission mechanism; unsaved recordings remain page-local.
+- Added pending-work coordination for Publish feedback, Clear and Abandon,
+  protected navigation, explicit row Cancel, point-aware Undo routing and
+  recovery of written text when a reused slot prevents Undo. The voice recorder
+  exposes an editable point, captures before delayed microphone permission,
+  preserves rejected recordings, and freezes uncertain uploads for exact retry.
+- Erased point text remains readable/seekable in existing modes but is excluded
+  from duration overlays/native subtitle projections. Timeline points use
+  durable geometry even without an audio asset.
+- Full API rerun passed: **790 passed / 2 skipped / 4,344 assertions** (792 total).
+  PHPStan passed for the changed core services/controllers/accounting paths.
+- Full frontend suite passed: **600 tests across 89 files**. TypeScript and
+  targeted ESLint checks passed. Focused form/recovery/voice/list checks passed;
+  additional integration/edge-case tests and browser verification remain.
+- New read-only `annotations:timing-audit` command works before/after migration.
+  Development inventory (no writes): timing column absent; 9 known ranges,
+  11 known points, **0 ambiguous live and 0 ambiguous deleted rows**. This is
+  a point-in-time inventory and must be repeated while writers are quiesced
+  before migration. Existing overlapping fixtures are restricted to local/tests.
+- No development migration or API deployment has occurred. Full browser flow,
+  final review/checks, coordinated rollout and device acceptance remain open;
+  this checkpoint does not claim completion.
+
+### 2026-10-20 — adversarial implementation review and isolated browser evidence
+
+- Reviewed failure/retry and recovery boundaries against the plan. Fixed a
+  successful-save false alarm caused by Laravel trimming body whitespace;
+  added a regression and exercised that trim through the real browser/API.
+  A later authorization/rate-limit/busy response now cannot unfreeze an
+  earlier uncertain submission. Removed-row drafts remain discoverable as
+  preserved text instead of being stranded behind a vanished editor.
+- Added microphone lifecycle checks: delayed permission cannot change the
+  visible anchor, and a stream granted after unmount is stopped. A confirmed
+  overlap rejection keeps the same recording/UUID while permitting correction.
+- Strengthened the PostgreSQL proof: **12** two-connection cases now include
+  duplicate text/voice UUIDs with changed retry anchors. All passed. Each of
+  the three forced deadlock victims demonstrably retried **twice**; quota,
+  counters and the winning input object remained correct. Evidence:
+  `/var/folders/94/480l7jvs29b4jvkkwvvyv9800000gn/T/annotation_range_verify_20261020_1634_d_e9497c82`.
+- Dedicated isolated browser lane added on **127.0.0.1:5180/8180** with its own
+  PostgreSQL database, accounts and speeches. No development reset/port takeover.
+  `web/playwright.annotation-range.config.ts` runs real Laravel/PostgreSQL
+  admission/publication behind the UI. Fixed harness-only profile setup and
+  explicitly named Redis queues; every queue is confined to its test database.
+- **9 browser scenarios passed** across Chromium, desktop WebKit and mobile
+  WebKit (database `annotation_range_browser_20261020_e`): explicit captures and
+  no implicit POST, private drafts versus owner visibility, overlap/adjacency,
+  Cancel, publication, independent-tab drafts/reload Restore, and frozen exact
+  voice retry after a dropped connection plus an absent-row poll.
+- Browser boundary: video is a real local six-second fixture; recording uses
+  the existing deterministic MediaRecorder seam with actual fixture audio bytes.
+  These checks do not claim real-microphone, worker/Whisper, SigV4, physical
+  iPhone or native fullscreen evidence. Existing lifecycle/API tests remain.
+- Latest full API result: **794 passed, 2 skipped, 4,361 assertions** (796 total).
+  Changed-core PHPStan passed. Frontend production build passed (existing bundle
+  size warning); full lint has zero errors and five pre-existing warnings.
+- Preparing the local coordinated rollout. App/worker images built; nginx
+  build and final frontend checks are being verified. Connected Chrome has no
+  open tabs. Default/transcode/captions queues each report zero pending and zero
+  reserved work. Recovery directory created:
+  `/private/tmp/annotation-range-rollout.8fEXTJ` (old service image identities
+  recorded there). Development migration has not yet been run at this checkpoint.
+
+### 2026-10-20 — local rollout, preservation and final acceptance
+
+- Quiesced the local API and gracefully terminated the idle default, FFmpeg,
+  Whisper and scheduler services. Before migration, every relevant queue had
+  zero pending/reserved jobs; repeated provenance inventory had zero ambiguity.
+- Created `speechcoach-quiesced.dump` under
+  `/private/tmp/annotation-range-rollout.8fEXTJ/`, verified its archive catalog,
+  and successfully restored it into the **new, separate** database
+  `annotation_range_backup_check_20261020_a` without a clean/drop operation.
+- Applied the annotation migration and one reviewed existing prerequisite:
+  `2026_09_02_100001_add_deleted_reason_to_speeches_table`. That earlier committed
+  nullable column was still pending but is used by the current scheduler.
+  No other migration was introduced. Neither migration deletes existing data.
+- Compared whole-row PostgreSQL fingerprints with the restored backup, excluding
+  only the two newly added fields. Existing rows match exactly: **20 annotations,
+  12 reviews, 15 speeches, 6 users, 45 assets and 8 speech transcripts**. Timing
+  classification is **9 ranges / 11 points / 0 ambiguous rows**; no note body,
+  timing, metadata, publication, quota or counter was rewritten by migration.
+- Rebuilt/restarted app, frontend/nginx, queue-worker, ffmpeg-worker,
+  whisper-worker and scheduler on matching source. App/nginx are healthy, all
+  workers run, API health is HTTP 200, and no migrations remain pending.
+- Live Chrome smoke on `/speeches/8` as Cora Coach: explicit Start capture and
+  local End/body edits enable Add and disable Publish/Clear. Discard clears
+  only that temporary local draft, restores the saved timeline and enables
+  Publish again. No new saved feedback was created; final inventory remains 20.
+- Visual review improved the initial form: empty fields show timecode hints,
+  with error styling after interaction. A focused regression verifies initial
+  hints, invalid endpoints and Discard. Kind/Topic are absent from controls.
+- Final automated evidence before that presentation-only adjustment: **611
+  frontend tests / 90 files**, **794 API tests passed / 2 skipped / 4,361
+  assertions**, **9 isolated browser scenarios** across Chromium, desktop and
+  mobile WebKit, **12 PostgreSQL races plus 3 proven deadlock retries**,
+  successful build, changed-core PHPStan and Pint. Full lint: zero errors;
+  five existing warnings outside this change. The production bundle retains
+  its existing size warning. Focused verification of the final visual change
+  is recorded in the final checkpoint below.
+- The user explicitly chose **“Leave as documented manual follow-up”** for
+  real-microphone and physical iPhone acceptance. These remain unverified;
+  mobile WebKit emulation is not physical iPhone/native-fullscreen evidence.
+  The older full shared E2E suite was not run against/reset onto development;
+  the new isolated lane uses alternate ports and dedicated accounts/data.
+- Recovery: the directory above contains the verified backup, migration/audit
+  output, old service image identities, preservation fingerprints and restart
+  log. Prefer rolling application images back while retaining the additive
+  columns; do not drop provenance or overwrite the development database as an
+  automatic rollback. Any destructive restore requires separate exact-target
+  confirmation. Test databases/media and the restored backup database were
+  retained for inspection. No git commit/staging was performed.
+
+### Using the new interface
+
+1. Refresh the speech page as its reviewer. In Notes, choose Start with its
+   **Use current time** button; scrub to the end and use End's capture button.
+   Or type seconds/timecodes into either field.
+2. Enter Commentary and click **Add annotation**. It remains private. Use
+   **Edit → Save changes/Cancel** on an existing written row.
+3. Choose a free **Voice note position**, or capture it, before **Record →
+   Stop → Save voice note**. A confirmed position rejection lets you correct
+   that position and reuse the recording. Resolve an uncertain upload through
+   **Retry original upload**; keep that page open until its outcome is known.
+4. Add/save/discard all pending work, then click **Publish feedback**. Existing
+   historical overlap is preserved; new/moved feedback cannot overlap within
+   your track. Voice notes reserve points rather than their recording lengths.
+
+### Final checkpoint
+
+- Final presentation regressions passed: **28 focused tests across 3 files**,
+  including both new initial-hint/Discard checks. Final TypeScript/production
+  build and targeted lint passed. The frontend image build caught a test-only
+  unsupported Testing Library option; it was corrected and the image rebuilt
+  successfully. The running frontend was then updated to that final image.
+- Full earlier frontend suite: 611 passing tests; API: 794 passing / 2 skipped;
+  isolated browser acceptance: 9 passing; PostgreSQL concurrency: all 15 cases
+  passing. No new source behavior was added after these acceptance results
+  except the final initial-validation presentation adjustment above.
+- Verified successful Horizon startup in default, FFmpeg and Whisper workers;
+  scheduler resumed. Existing API health, backup restoration, row-preservation
+  evidence and unchanged annotation inventory are recorded above.
+- Implementation, local rollout and the agreed automated validation are
+  complete. Real microphone and physical iPhone/native fullscreen checks remain
+  explicit manual follow-ups by the user's choice. No existing feedback was
+  edited, deleted, reclassified ambiguously or republished for smoke testing.

@@ -25,6 +25,7 @@ use Illuminate\Support\Str;
 function acceptedInProgressReview(User $speaker, User $reviewer, ?Speech $speech = null): Review
 {
     $speech ??= Speech::factory()->for($speaker)->create();
+    readyAnnotationTestVideo($speech);
 
     return Review::factory()->accepted()->create([
         'speech_id' => $speech->id,
@@ -37,12 +38,20 @@ function acceptedInProgressReview(User $speaker, User $reviewer, ?Speech $speech
 function acceptedReview(User $speaker, User $reviewer, ?Speech $speech = null): Review
 {
     $speech ??= Speech::factory()->for($speaker)->create();
+    readyAnnotationTestVideo($speech);
 
     return Review::factory()->accepted()->create([
         'speech_id' => $speech->id,
         'reviewer_id' => $reviewer->id,
         'speech_owner_id' => $speaker->id,
     ]);
+}
+
+function readyAnnotationTestVideo(Speech $speech): void
+{
+    if (! $speech->primaryVideo()->exists()) {
+        SpeechAsset::factory()->video()->ready()->for($speech)->create(['duration_seconds' => 200]);
+    }
 }
 
 function speakerAndCoach(): array
@@ -383,7 +392,7 @@ it('transitions accepted to in_progress on the first annotation only', function 
     $this->actingAs($reviewer)->postJson("/api/speeches/{$review->speech_id}/annotations", [
         'client_uuid' => (string) Str::uuid(),
         'body' => 'Second note.',
-        'start_seconds' => 2.0,
+        'start_seconds' => 7.0,
     ])->assertCreated();
 
     // Still in_progress, not bounced back or transitioned again.

@@ -136,6 +136,7 @@ it('clearAnnotations resets both counters to zero and leaves status, the access 
 it('AnnotationService::delete decrements the counter cache and never underflows below zero', function () {
     $speaker = User::factory()->create();
     $reviewer = User::factory()->create();
+    $this->actingAs($reviewer);
     $review = Review::factory()->accepted()->create([
         'speech_id' => Speech::factory()->for($speaker)->create()->id,
         'reviewer_id' => $reviewer->id,

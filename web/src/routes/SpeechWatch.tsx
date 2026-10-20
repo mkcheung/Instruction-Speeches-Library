@@ -611,7 +611,7 @@ export default function SpeechWatch() {
               review={myReview}
               videoEl={videoEl}
               durationSeconds={
-                asset.duration_seconds !== null ? Number(asset.duration_seconds) : (videoEl?.duration ?? 0)
+                asset.duration_seconds !== null ? Number(asset.duration_seconds) : 0
               }
               userId={me?.user.id}
               canRecordVoice={canRecordVoice}

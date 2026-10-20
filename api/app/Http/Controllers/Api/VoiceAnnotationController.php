@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\AnnotationCapExceededException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Annotation\CreateVoiceAnnotationRequest;
 use App\Http\Resources\AnnotationResource;
@@ -13,6 +14,8 @@ use App\Models\SpeechAsset;
 use App\Services\MediaUrlSigner;
 use App\Services\ReviewService;
 use App\Services\Voice\VoiceNoteService;
+use App\Support\AnnotationTiming;
+use App\Support\AnnotationTransactions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +32,7 @@ class VoiceAnnotationController extends Controller
         $validated = $request->validated();
         $data = [
             'client_uuid' => (string) $validated['client_uuid'],
-            'start_seconds' => (float) $validated['start_seconds'],
+            'start_seconds' => $validated['start_seconds'],
             'topic' => isset($validated['topic']) ? (string) $validated['topic'] : null,
         ];
         if (array_key_exists('kind', $validated)) {
@@ -112,7 +115,7 @@ class VoiceAnnotationController extends Controller
         $snapshot = Annotation::withTrashed()->whereKey($annotation)->firstOrFail(['id', 'review_id', 'audio_asset_id']);
         abort_unless($snapshot->audio_asset_id !== null, Response::HTTP_NOT_FOUND);
         $reviewerId = $this->currentUser($request)->id;
-        $restored = DB::transaction(function () use ($speech, $annotation, $snapshot, $reviewerId): Annotation {
+        $restored = AnnotationTransactions::run(function () use ($speech, $annotation, $snapshot, $reviewerId): Annotation {
             // Match revokeAndPurge's review -> asset -> annotation order so
             // Undo cannot deadlock a concurrent hard purge on PostgreSQL.
             $review = Review::query()->whereKey($snapshot->review_id)->lockForUpdate()->firstOrFail();
@@ -128,6 +131,10 @@ class VoiceAnnotationController extends Controller
             $this->authorize('voice.restore', $locked);
             abort_unless($locked->trashed(), Response::HTTP_CONFLICT, 'Voice note is not deleted.');
             abort_unless($asset->purge_claim_id === null, Response::HTTP_CONFLICT, 'Voice note deletion is already being finalized.');
+            if ($review->annotations_count >= 200) {
+                throw new AnnotationCapExceededException;
+            }
+            app(AnnotationTiming::class)->point($review, $locked->start_seconds, $locked->id);
             $locked->restore();
             $review->increment('annotations_count');
             if ($locked->published_at !== null) {

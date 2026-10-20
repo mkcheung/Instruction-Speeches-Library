@@ -1,128 +1,41 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { AnnotationEditor } from '@/components/annotation/AnnotationEditor'
-import { useAnnotationEditor } from '@/hooks/useAnnotationEditor'
-import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
-import type { Annotation } from '@/features/annotation/types'
+import { useAnnotationEditor, type UseAnnotationEditorOptions } from '@/hooks/useAnnotationEditor'
+import { formatSpokenTimecode } from '@/lib/time'
+import { formatAnnotationTime } from '@/lib/annotationTiming'
+import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
 import { cn } from '@/lib/utils'
 
-/**
- * One row of the linear, readable-without-video list (§8.4/§8.6). Clicking
- * it opens editing controls IN PLACE — a per-row `useAnnotationEditor`
- * instance mounted only while `isOpen`, never the composer's create-form
- * state. This is the direct fix for the named legacy bug
- * (`legacy/editNote.php` loaded a row back into one shared edit form,
- * conflating two drafts).
- */
-export function AnnotationRow({
-  annotation,
-  speechId,
-  reviewId,
-  videoEl,
-  autoPause,
-  isCurrent,
-  onSeek,
-  onDelete,
-  onLiveChange,
-  onSaved,
-  onSilentAdopt,
-}: {
+type RowProps = Omit<UseAnnotationEditorOptions, 'initial'> & {
   annotation: Annotation
-  speechId: number
-  reviewId: number
-  videoEl: HTMLVideoElement | null
-  autoPause: boolean
   isCurrent: boolean
   onSeek: (seconds: number) => void
   onDelete: (annotation: Annotation) => void
-  onLiveChange: (live: Annotation) => void
-  onSaved?: (annotation: Annotation) => void
-  onSilentAdopt?: (annotation: Annotation) => void
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-
-  return (
-    <li
-      aria-current={isCurrent ? 'true' : undefined}
-      className={cn('rounded-lg border border-border p-2', isCurrent && 'border-primary')}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => onSeek(annotation.start_seconds)}
-          className="flex flex-1 items-baseline gap-2 text-left text-sm"
-        >
-          <span aria-hidden="true" className="shrink-0 tabular-nums text-muted-foreground">
-            {formatTimecode(annotation.start_seconds)}
-          </span>
-          <span className="sr-only">Annotation at {formatSpokenTimecode(annotation.start_seconds)}</span>
-          <span className="truncate">{annotation.body}</span>
-        </button>
-        <div className="flex shrink-0 items-center gap-1">
-          <Button type="button" size="xs" variant="outline" onClick={() => setIsOpen((v) => !v)}>
-            {isOpen ? 'Close' : 'Edit'}
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            variant="destructive"
-            onClick={() => onDelete(annotation)}
-            aria-label={`Delete annotation at ${formatSpokenTimecode(annotation.start_seconds)}`}
-          >
-            Delete
-          </Button>
-        </div>
-      </div>
-
-      {isOpen && (
-        <div className="mt-2">
-          <RowEditor
-            annotation={annotation}
-            speechId={speechId}
-            reviewId={reviewId}
-            videoEl={videoEl}
-            autoPause={autoPause}
-            onLiveChange={onLiveChange}
-            onSaved={onSaved}
-            onSilentAdopt={onSilentAdopt}
-          />
-        </div>
-      )}
-    </li>
-  )
 }
 
-function RowEditor({
-  annotation,
-  speechId,
-  reviewId,
-  videoEl,
-  autoPause,
-  onLiveChange,
-  onSaved,
-  onSilentAdopt,
-}: {
-  annotation: Annotation
-  speechId: number
-  reviewId: number
-  videoEl: HTMLVideoElement | null
-  autoPause: boolean
-  onLiveChange: (live: Annotation) => void
-  onSaved?: (annotation: Annotation) => void
-  onSilentAdopt?: (annotation: Annotation) => void
-}) {
-  const editor = useAnnotationEditor({
-    speechId,
-    reviewId,
-    // `initial` is read once, at mount — this row's OWN state, seeded from
-    // its own data, never the composer's.
-    initial: annotation,
-    videoEl,
-    autoPause,
-    onLiveChange,
-    onSaved,
-    onSilentAdopt,
-  })
-
-  return <AnnotationEditor editor={editor} label="Editing note" autoFocus />
+export function AnnotationRow({ annotation, isCurrent, onSeek, onDelete, ...editorOptions }: RowProps) {
+  const [isOpen, setIsOpen] = useState(false)
+  const point = isPointAnnotation(annotation)
+  const startMs = Math.round(annotation.start_seconds * 1000)
+  return <li aria-current={isCurrent ? 'true' : undefined} className={cn('rounded-lg border border-border p-2', isCurrent && 'border-primary')}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <button type="button" onClick={() => onSeek(annotation.start_seconds)} className="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 text-left text-sm">
+        <span className="shrink-0 tabular-nums text-muted-foreground">{formatAnnotationTime(startMs)}{!point && `–${formatAnnotationTime(startMs + Math.round(annotation.duration_seconds * 1000))}`}</span>
+        <span className="sr-only">{point ? 'Voice note' : 'Annotation'} at {formatSpokenTimecode(annotation.start_seconds)}</span>
+        <span className="truncate">{annotation.body}</span>
+      </button>
+      {!isOpen && <div className="flex gap-1">
+        <Button type="button" size="xs" variant="outline" onClick={() => setIsOpen(true)}>{point ? 'Edit transcript' : 'Edit'}</Button>
+        <Button type="button" size="xs" variant="destructive" onClick={() => onDelete(annotation)} aria-label={`Delete annotation at ${formatSpokenTimecode(annotation.start_seconds)}`}>Delete</Button>
+      </div>}
+    </div>
+    {point && <p className="text-xs text-muted-foreground">Voice audio unavailable. This transcript stays at its original position.</p>}
+    {isOpen && <div className="mt-2"><RowEditor {...editorOptions} annotation={annotation} onClose={() => setIsOpen(false)} /></div>}
+  </li>
+}
+function RowEditor({ annotation, onClose, ...options }: Omit<RowProps, 'isCurrent' | 'onSeek' | 'onDelete'> & { onClose: () => void }) {
+  const editor = useAnnotationEditor({ ...options, initial: annotation, onCancel: onClose,
+    onSaved: (saved) => { options.onSaved?.(saved); onClose() } })
+  return <AnnotationEditor editor={editor} label={editor.point ? 'Editing transcript' : 'Editing annotation'} existing autoFocus />
 }
