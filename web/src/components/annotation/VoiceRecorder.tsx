@@ -41,6 +41,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     return time === null ? '' : formatAnnotationTime(time)
   })
   const [message, setMessage] = useState<string | null>(null)
+  const positionEditedRef = useRef(false)
   const [uncertain, setUncertain] = useState<VoiceSubmission | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -56,6 +57,15 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
   const recordingApiAvailable = typeof navigator.mediaDevices?.getUserMedia === 'function' && typeof globalThis.MediaRecorder === 'function'
   const [createVoice, { isLoading: isSaving }] = useCreateVoiceAnnotationMutation()
   const validation = validateAnnotationPoint(position, durationMs, annotations)
+  // The initial position is read at mount, but the speech's duration (and so
+  // a valid capture) can arrive afterwards; without this, a slow load left the
+  // field empty and Record disabled until the user typed or pressed "Use current time".
+  useEffect(() => {
+    if (positionEditedRef.current || position !== '' || !videoEl) return
+    const time = captureAnnotationTime(videoEl.currentTime, durationMs, videoEl.ended)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing to an external value (the video's duration) that arrives after mount
+    if (time !== null) setPosition(formatAnnotationTime(time))
+  }, [durationMs, position, videoEl])
   const frozen = isSaving || uncertain !== null || state === 'requesting' || state === 'recording'
   const pending = blob !== null || isSaving || uncertain !== null || state === 'requesting' || state === 'recording'
   useEffect(() => { onPendingChange?.(instanceId, pending) }, [onPendingChange, instanceId, pending])
@@ -125,7 +135,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     if (!videoEl || frozen || busyRef.current) return
     const time = captureAnnotationTime(videoEl.currentTime, durationMs, videoEl.ended)
     if (time === null) { setMessage('Choose a position within the speech.'); return }
-    videoEl.pause(); setPosition(formatAnnotationTime(time)); setMessage(null)
+    positionEditedRef.current = true; videoEl.pause(); setPosition(formatAnnotationTime(time)); setMessage(null)
   }
   const acknowledge = (saved: Annotation, submission: VoiceSubmission): boolean => {
     if (saved.client_uuid !== submission.clientUuid || Math.round(saved.start_seconds * 1000) !== submission.startMs || !isPointAnnotation(saved)) return false
@@ -174,7 +184,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     <label htmlFor={inputId} className="block text-sm font-medium">Voice note position</label>
     <div className="flex flex-wrap gap-2">
       <input id={inputId} type="text" inputMode="decimal" value={position} disabled={frozen} className="h-9 w-36 rounded-md border border-input px-2 text-sm"
-        onChange={(event) => { if (!busyRef.current && !uncertainRef.current) { setPosition(event.target.value); setMessage(null) } }} />
+        onChange={(event) => { if (!busyRef.current && !uncertainRef.current) { positionEditedRef.current = true; setPosition(event.target.value); setMessage(null) } }} />
       <Button type="button" variant="outline" disabled={frozen} onClick={capture} aria-label="Use current time for voice note">Use current time</Button>
     </div>
     {validation.message && !uncertain && <p role="status" className="text-sm text-muted-foreground">{validation.message}</p>}
