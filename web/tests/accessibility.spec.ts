@@ -11,7 +11,8 @@ import { APP_URL, FIXTURE_PASSWORD, USERS, VOICE } from './fixtures.js'
  * `accessibility-baseline/2026-10-17-baseline.json` against the code as it
  * stood before any §7.7 fix landed).
  *
- * Scans the same three screens the baseline capture did, with the same
+ * Scans the same three screens the baseline capture did (plus the logged-out
+ * landing page, added with its redesign; PLAN-LANDING-PAGE.md §1), with the same
  * `AxeBuilder({ page }).withTags(AXE_TAGS)` pattern and the same `.video-js`
  * exclusion (Video.js's own control surface — confirmed third-party, its
  * only two touch points in this codebase are a CSS import and a className
@@ -117,4 +118,38 @@ test('public profile/timeline screen has no critical/serious accessibility viola
   await expect(page.getByRole('heading', { name: USERS.speaker.name, level: 1 })).toBeVisible({ timeout: 30_000 })
 
   await scanAndAssert(page, 'profile-timeline/default')
+})
+
+test('landing page has no critical/serious accessibility violations', async ({ page }) => {
+  // Act II's sticky notes slide in on scroll (a CSS scroll-driven animation),
+  // so without scrolling they rest at opacity 0 and axe can only file their
+  // colour contrast as "incomplete". Reduced motion renders them static and
+  // fully visible, which is the state whose contrast actually matters.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  // Logged OUT: no login() call, and this file sets no storageState, so the
+  // test's fresh context has no session and `/` renders the landing page
+  // instead of redirecting. Same 120s 'domcontentloaded' budget as login(),
+  // for the same Vite-stall reason.
+  await page.goto(`${APP_URL}/`, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Instruction Speeches Library', exact: true }),
+  ).toBeVisible({ timeout: 120_000 })
+
+  // The scenes come from a lazy chunk. Scan only once both are in, so axe
+  // sees the finished page (their role="img" names included), not the empty
+  // frames that stand in while the chunk loads.
+  await expect(
+    page.getByRole('img', {
+      name: 'A nervous speaker shakes behind a lectern, alone on a big empty stage in front of rows of empty seats',
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 30_000 })
+  await expect(
+    page.getByRole('img', {
+      name: 'The same speaker, now confident, shouts with both arms raised in a spotlight in the middle of a packed theater, with a cheering crowd on every side',
+      exact: true,
+    }),
+  ).toBeVisible({ timeout: 30_000 })
+
+  await scanAndAssert(page, 'landing')
 })

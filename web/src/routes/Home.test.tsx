@@ -57,6 +57,14 @@ describe('Home', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   describe('logged out', () => {
+    // The landing art is a lazy chunk. Let it settle before Testing
+    // Library's cleanup (registered at the outer scope, so it runs after
+    // this) unmounts the tree; otherwise a Suspense boundary can resolve
+    // after the test has already ended.
+    afterEach(async () => {
+      await screen.findByRole('img', { name: /same speaker, now confident/i })
+    })
+
     function stubLoggedOut() {
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = urlOf(input)
@@ -101,6 +109,26 @@ describe('Home', () => {
 
       const link = await screen.findByRole('link', { name: /log in/i })
       expect(link).toHaveAttribute('href', '/login')
+    })
+
+    it('loads both illustrated scenes with their accessible names', async () => {
+      stubLoggedOut()
+      renderWithProviders(<Home />, { route: '/' })
+
+      expect(await screen.findByRole('img', { name: /nervous speaker shakes behind a lectern/i })).toBeInTheDocument()
+      expect(await screen.findByRole('img', { name: /same speaker, now confident/i })).toBeInTheDocument()
+    })
+
+    // The art is lazy-loaded, so the single-occurrence guarantees above are
+    // only meaningful once it's actually on the page: its balloons, SFX and
+    // SVG <title>s are text Testing Library also reads.
+    it('keeps the privacy rule and the fade sentence to one element each once the art has loaded', async () => {
+      stubLoggedOut()
+      renderWithProviders(<Home />, { route: '/' })
+
+      await screen.findByRole('img', { name: /same speaker, now confident/i })
+      expect(screen.getAllByText(/unless you.*invited/i)).toHaveLength(1)
+      expect(screen.getAllByText(/fade/i)).toHaveLength(1)
     })
   })
 

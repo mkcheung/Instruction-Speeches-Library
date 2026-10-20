@@ -1,4 +1,4 @@
-import { createRef } from 'react'
+import { createRef, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -7,6 +7,16 @@ import { Routes, Route } from 'react-router-dom'
 import SpeechWatch, { PosterFramePicker, OverlayPositioner } from '@/routes/SpeechWatch'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import type { SpeechSprite } from '@/features/speech/types'
+import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
+
+beforeEach(() => playbackPreferences.setIdentity(null))
+
+// Route tests verify authorization, selection and tabs. jsdom has no media
+// pipeline; player ownership is tested separately in VideoPlayer.test.tsx,
+// and real video/fullscreen behavior is verified in browser acceptance.
+vi.mock('@/components/speech/VideoPlayer', () => ({
+  VideoPlayer: ({ presentation }: { presentation?: ReactNode }) => <div data-testid="watch-player">{presentation}</div>,
+}))
 
 /**
  * §8.6: the overlay's actual vertical placement lives on THIS wrapper —
@@ -338,8 +348,8 @@ describe('SpeechWatch reviewers tab', () => {
   }) {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const path = pathOf(input)
-      if (path.startsWith('/api/me/preferences/voice-commentary/')) {
-        return json({ voice_commentary: { speech_id: 17, mode: 'play', experienced: true } })
+      if (path.startsWith('/api/me/preferences/commentary-playback/')) {
+        return json({ commentary_playback: { speech_id: 17, mode: 'all', source: 'saved' } })
       }
       if (path === '/api/me') return json(userPayload(String(OWNER_ID)))
       // The reviewer directory behind the invite panel. `keepMounted` on
@@ -489,11 +499,11 @@ describe('SpeechWatch reviewers tab', () => {
     // false, but the auto-select effect's `setSelected` flushes on a
     // following tick — `waitFor`, not a bare assertion, gives it that
     // room rather than racing it.
-    await waitFor(() => expect(laterChip).toHaveAttribute('aria-checked', 'true'))
-    expect(earlierChip).toHaveAttribute('aria-checked', 'false')
+    await waitFor(() => expect(laterChip).toBeChecked())
+    expect(earlierChip).not.toBeChecked()
   })
 
-  it('leaves the selection on No commentary when nobody has published yet', async () => {
+  it('keeps an internal empty selection without a redundant No commentary chip when nobody has published', async () => {
     stubWatchFetch({
       speech: speechFixture(),
       roster: [
@@ -509,8 +519,9 @@ describe('SpeechWatch reviewers tab', () => {
     renderWatch()
 
     const radiogroup = await screen.findByRole('radiogroup', { name: 'Choose commentary track' })
-    const noneChip = within(radiogroup).getByRole('radio', { name: 'No commentary' })
-    expect(noneChip).toHaveAttribute('aria-checked', 'true')
+    expect(within(radiogroup).queryByRole('radio', { name: 'No commentary' })).not.toBeInTheDocument()
+    expect(within(radiogroup).getByRole('radio', { name: /Still Working Coach/ })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Text + audio' })).toBeDisabled()
   })
 
   it('gives the owner a Reviewers tab in the Speech tools strip', async () => {
@@ -650,7 +661,7 @@ describe('SpeechWatch reviewers tab', () => {
     // clicking the OTHER chip actually switching the selection, proving
     // the picker drives the SAME shared state Notes' TrackSelector does,
     // not a local copy of it.
-    await waitFor(() => expect(laterChip).toHaveAttribute('aria-checked', 'true'))
+    await waitFor(() => expect(laterChip).toBeChecked())
 
     await user.click(earlierChip)
 

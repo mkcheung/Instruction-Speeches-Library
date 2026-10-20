@@ -12,6 +12,8 @@ import { describe, expect, it, vi } from 'vitest'
 type FakeTrack = { kind: string; mode: TextTrackMode; label?: string; src?: string }
 
 class FakePlayer {
+  disposed = false
+  isDisposed() { return this.disposed }
   listeners = new Map<string, Set<() => void>>()
   currentTimeValue = 0
   pausedValue = true
@@ -130,6 +132,20 @@ describe('videojs-adapter player configuration', () => {
 })
 
 describe('videojs-adapter refresh-on-error', () => {
+  it('ignores a signed source refresh that resolves after player disposal', async () => {
+    let resolve!: (url: string) => void
+    const player = createVideoJsPlayer(document.createElement('video'), {
+      initialUrl: 'https://stale.example/video.mp4',
+      refreshUrl: () => new Promise<string>((yes) => { resolve = yes }),
+    }) as unknown as FakePlayer
+    player.setError(2)
+    player.emit('error')
+    player.disposed = true
+    resolve('https://fresh.example/video.mp4')
+    await flush()
+    expect(player.srcCalls).toEqual([])
+    expect(player.playCalled).toBe(false)
+  })
   it('refreshes the URL and restores position + play state on MEDIA_ERR_NETWORK', async () => {
     const refreshUrl = vi.fn().mockResolvedValue('https://fresh.example/video.mp4')
     const player = createVideoJsPlayer(document.createElement('video'), {

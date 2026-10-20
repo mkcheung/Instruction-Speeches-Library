@@ -3,6 +3,9 @@ import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
 import type {
   Annotation,
   AnnotationsResponse,
+  CommentaryPlaybackMode,
+  CommentaryPlaybackPreference,
+  CommentaryPlaybackPreferenceResponse,
   CreateAnnotationPayload,
   CreateVoiceAnnotationPayload,
   UpdateAnnotationPayload,
@@ -30,7 +33,7 @@ import type {
 export const annotationApi = createApi({
   reducerPath: 'annotationApi',
   baseQuery: baseQueryWithCsrfRetry,
-  tagTypes: ['Annotations', 'VoicePreference'],
+  tagTypes: ['Annotations', 'VoicePreference', 'CommentaryPlaybackPreference'],
   endpoints: (builder) => ({
     getAnnotations: builder.query<AnnotationsResponse, { speechId: number; reviewId: number }>({
       query: ({ speechId, reviewId }) =>
@@ -132,6 +135,31 @@ export const annotationApi = createApi({
     getVoiceCommentaryPreference: builder.query<VoiceCommentaryPreferenceResponse, { speechId: number }>({
       query: ({ speechId }) => `/api/me/preferences/voice-commentary/${speechId}`,
       providesTags: (_result, _error, { speechId }) => [{ type: 'VoicePreference', id: speechId }],
+    }),
+
+    // userId scopes the cache, while the session determines server authorization.
+    getCommentaryPlaybackPreference: builder.query<
+      CommentaryPlaybackPreference,
+      { userId: string; speechId: number }
+    >({
+      query: ({ speechId }) => `/api/me/preferences/commentary-playback/${speechId}`,
+      transformResponse: (response: CommentaryPlaybackPreferenceResponse) => response.commentary_playback,
+      providesTags: (_result, _error, { userId, speechId }) => [
+        { type: 'CommentaryPlaybackPreference', id: `${userId}:${speechId}` },
+      ],
+    }),
+    updateCommentaryPlaybackPreference: builder.mutation<
+      CommentaryPlaybackPreference,
+      { userId: string; speechId: number; mode: CommentaryPlaybackMode }
+    >({
+      query: ({ speechId, mode }) => ({
+        url: `/api/me/preferences/commentary-playback/${speechId}`,
+        method: 'PATCH',
+        body: { mode },
+      }),
+      transformResponse: (response: CommentaryPlaybackPreferenceResponse) => response.commentary_playback,
+      // The coordinator commits acknowledgements and orders subsequent reads.
+      // Automatic invalidation here could race an explicit local choice.
     }),
 
     /**

@@ -67,6 +67,7 @@ export function useIosFullscreenSubtitles(
   annotations: readonly Annotation[],
 ): void {
   const annotationsRef = useRef(annotations)
+  const nativeFullscreenRef = useRef(false)
   useEffect(() => {
     annotationsRef.current = annotations
   })
@@ -77,10 +78,12 @@ export function useIosFullscreenSubtitles(
     const track = getOrCreateSubtitleTrack(videoEl)
 
     const onBeginFullscreen = () => {
+      nativeFullscreenRef.current = true
       rebuildSubtitleCues(track, annotationsRef.current)
-      track.mode = 'showing'
+      track.mode = annotationsRef.current.length ? 'showing' : 'disabled'
     }
     const onEndFullscreen = () => {
+      nativeFullscreenRef.current = false
       track.mode = 'disabled'
     }
 
@@ -88,6 +91,9 @@ export function useIosFullscreenSubtitles(
     videoEl.addEventListener('webkitendfullscreen', onEndFullscreen)
 
     return () => {
+      nativeFullscreenRef.current = false
+      rebuildSubtitleCues(track, [])
+      track.mode = 'disabled'
       videoEl.removeEventListener('webkitbeginfullscreen', onBeginFullscreen)
       videoEl.removeEventListener('webkitendfullscreen', onEndFullscreen)
     }
@@ -99,8 +105,9 @@ export function useIosFullscreenSubtitles(
   useEffect(() => {
     if (!videoEl) return
     const track = subtitleTrackCache.get(videoEl)
-    if (track && track.mode === 'showing') {
+    if (track && nativeFullscreenRef.current) {
       rebuildSubtitleCues(track, annotations)
+      track.mode = annotations.length ? 'showing' : 'disabled'
     }
   }, [videoEl, annotations])
 }

@@ -81,6 +81,20 @@ export interface VoiceAudioUrlResponse {
 
 export type VoiceCommentaryMode = 'play' | 'text' | 'none'
 
+/** Owner playback uses a separate contract; legacy voice-only clients stay valid. */
+export type CommentaryPlaybackMode = 'all' | 'written' | 'voice' | 'off'
+
+export interface CommentaryPlaybackPreference {
+  speech_id: number
+  mode: CommentaryPlaybackMode
+  source: 'saved' | 'legacy' | 'default' | 'invalid'
+  legacy_mode?: VoiceCommentaryMode
+}
+
+export interface CommentaryPlaybackPreferenceResponse {
+  commentary_playback: CommentaryPlaybackPreference
+}
+
 export interface VoiceCommentaryPreferenceResponse {
   voice_commentary: { speech_id: number; mode: VoiceCommentaryMode; experienced: boolean }
 }

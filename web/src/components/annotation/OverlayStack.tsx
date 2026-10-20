@@ -29,6 +29,7 @@ export function OverlayStack({
   currentTime,
   anchor = 'default',
   draftIds,
+  priorityId,
 }: {
   annotations: readonly Annotation[]
   /** From `useTimedAnnotations` — the FULL active set, uncapped. */
@@ -53,6 +54,8 @@ export function OverlayStack({
    * which never marks anything as a draft.
    */
   draftIds?: ReadonlySet<string>
+  /** Owner playback reserves one of the three slots for the active voice transcript. */
+  priorityId?: string
 }) {
   const sorted = useMemo(
     () => [...annotations].sort(compareByStartThenId),
@@ -65,10 +68,13 @@ export function OverlayStack({
   // `activeIds` (computeActive's job is unaffected); they simply stop
   // being shown, which is what "fade out" means for an overflowing cue.
   const visibleIds = useMemo(() => {
-    const activeSorted = sorted.filter((a) => activeIds.has(a.id))
-    const capped = activeSorted.slice(Math.max(0, activeSorted.length - SIMULTANEOUS_CAP))
+    const priority = sorted.find((a) => a.id === priorityId && activeIds.has(a.id))
+    const activeSorted = sorted.filter((a) => activeIds.has(a.id) && a.id !== priority?.id)
+    const available = SIMULTANEOUS_CAP - (priority ? 1 : 0)
+    const capped = activeSorted.slice(Math.max(0, activeSorted.length - available))
+    if (priority) capped.push(priority)
     return new Set(capped.map((a) => a.id))
-  }, [sorted, activeIds])
+  }, [sorted, activeIds, priorityId])
 
   const ghostIds = useDeferredRemoval(visibleIds, GHOST_MS)
 

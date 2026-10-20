@@ -5,6 +5,7 @@ import type { AppDispatch } from '@/app/store'
 import { authApi } from '@/features/auth/authApi'
 import { profileApi } from '@/features/profile/profileApi'
 import { UNAUTHENTICATED_EVENT } from '@/lib/baseQuery'
+import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
 
 const GUEST_PATHS = ['/login', '/register', '/forgot-password']
 
@@ -82,6 +83,7 @@ export function UnauthenticatedRedirect() {
 
   useEffect(() => {
     function handleUnauthenticated() {
+      playbackPreferences.setIdentity(null)
       if (GUEST_PATHS.some((path) => location.pathname.startsWith(path))) return
       if (PUBLIC_PATHS.some((path) => location.pathname.startsWith(path))) return
       if (EXACT_PUBLIC_PATHS.includes(location.pathname)) return

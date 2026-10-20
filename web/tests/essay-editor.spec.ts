@@ -749,7 +749,7 @@ async function openSpeakerEssayFor(page: Page, reviewerName: string) {
   await page
     .getByRole('radiogroup', { name: 'Choose commentary track' })
     .getByRole('radio', { name: reviewerName })
-    .click()
+    .press('Space')
   await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Essay' }).click()
 }
 

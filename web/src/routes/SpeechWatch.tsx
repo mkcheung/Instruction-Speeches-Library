@@ -9,6 +9,7 @@ import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { InviteReviewerPanel } from '@/components/review/InviteReviewerPanel'
 import { ReviewerRoster } from '@/components/review/ReviewerRoster'
 import { TrackSelector } from '@/components/review/TrackSelector'
+import { CommentaryPlaybackControls, VoicePlaybackControls } from '@/components/review/CommentaryPlaybackControls'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
 import { VoiceNoteMarkers } from '@/components/annotation/VoiceNoteMarkers'
@@ -32,6 +33,7 @@ import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutatio
 import type { SpeechSprite } from '@/features/speech/types'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { cn } from '@/lib/utils'
+
 
 /**
  * Imperative DOM write, not a React state mutation — same pattern (and
@@ -110,6 +112,9 @@ export default function SpeechWatch() {
   // that effect re-runs and re-adds the caption track after every refresh,
   // not just after the initial job completion or an edit.
   const [sourceRefreshToken, setSourceRefreshToken] = useState(0)
+  const [ownerTab, setOwnerTab] = useState('notes')
+  const [htmlFullscreen, setHtmlFullscreen] = useState(false)
+  const [fullscreenControlsOpen, setFullscreenControlsOpen] = useState(false)
 
   const asset = speech?.primary_video
 
@@ -202,7 +207,24 @@ export default function SpeechWatch() {
 
   // Called unconditionally (Rules of Hooks) even before `speech` has
   // loaded — `enabled: isOwner` keeps its queries skipped until then.
-  const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner, me?.user.id)
+  const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner, me?.user.id,
+    htmlFullscreen ? fullscreenControlsOpen : ownerTab === 'notes')
+  const playbackControlProps = {
+    mode: commentary.mode,
+    onModeChange: commentary.selectMode,
+    preference: commentary.preference,
+    disabled: commentary.selected === 'none' || !commentary.fetchedReviewerName,
+    annotations: commentary.annotations,
+    allAnnotations: commentary.allAnnotations,
+    hideReadableBody: commentary.hideReadableBody,
+    activeIds: commentary.activeIds,
+    currentTime: commentary.currentTime,
+    onSeek: commentary.seek,
+    voicePlayback: commentary.voicePlayback,
+    readingKey: commentary.readingKey,
+    onReadAll: commentary.markRead,
+    visible: htmlFullscreen ? fullscreenControlsOpen : ownerTab === 'notes',
+  }
 
   // STEP-07: a non-owner who is themselves an access-granting reviewer of
   // this speech gets the authoring composer instead of the owner's
@@ -226,7 +248,7 @@ export default function SpeechWatch() {
   // key.
   useKeyboardShortcuts({
     videoEl,
-    annotations: isOwner ? commentary.annotations : [],
+    annotations: isOwner ? commentary.navigationAnnotations : [],
     onSeek: isOwner ? commentary.seek : (seconds: number) => {
       if (videoEl) seekVideo(videoEl, seconds)
     },
@@ -356,23 +378,48 @@ export default function SpeechWatch() {
                   setVideoEl(getVideoElement(player))
                 }}
                 onSourceRefreshed={() => setSourceRefreshToken((token) => token + 1)}
-              />
-              {isOwner && (
+                onHtmlFullscreenChange={(fullscreen) => {
+                  setHtmlFullscreen(fullscreen)
+                  if (!fullscreen) setFullscreenControlsOpen(false)
+                }}
+                presentation={isOwner && (
                 <>
-                  <OverlayPositioner anchor={captionsAnchor}>
+                  <div className="owner-feedback-frame" style={{ '--video-ar': videoAr } as React.CSSProperties}>
+                    <OverlayPositioner anchor={captionsAnchor}>
                     <OverlayStack
-                      annotations={commentary.annotations}
-                      activeIds={commentary.activeIds}
+                      annotations={commentary.overlayAnnotations}
+                      activeIds={commentary.overlayActiveIds}
+                      priorityId={commentary.overlayVoiceId}
                       currentTime={commentary.currentTime}
                       anchor={captionsAnchor}
                     />
-                  </OverlayPositioner>
+                    </OverlayPositioner>
+                  </div>
                   <VoiceNoteMarkers
-                    annotations={commentary.annotations}
+                    annotations={commentary.markerAnnotations}
                     durationSeconds={asset.duration_seconds === null ? (videoEl?.duration ?? 0) : Number(asset.duration_seconds)}
                   />
+                  {htmlFullscreen && (commentary.voicePlayback.current || commentary.voicePlayback.hint || commentary.voicePlayback.error) && (
+                    <div className="pointer-events-auto absolute bottom-12 left-3 z-30 max-w-[min(360px,calc(100%-24px))] rounded-lg border bg-background p-2 text-foreground shadow-lg"
+                      onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
+                        if (event.key === 'Escape') commentary.voicePlayback.skip()
+                        event.stopPropagation()
+                      }}>
+                      <VoicePlaybackControls playback={commentary.voicePlayback} />
+                    </div>
+                  )}
+                  {htmlFullscreen && <details className="pointer-events-auto absolute right-3 top-3 z-30 max-h-[60vh] w-[min(360px,calc(100%-24px))] overflow-y-auto rounded-lg border bg-background p-3 text-foreground shadow-lg"
+                    open={fullscreenControlsOpen} onToggle={(event) => setFullscreenControlsOpen(event.currentTarget.open)}
+                    onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
+                        if (event.key === 'Escape') commentary.voicePlayback.skip()
+                        event.stopPropagation()
+                      }}>
+                    <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Commentary controls</summary>
+                    <CommentaryPlaybackControls {...playbackControlProps} showVoiceControls={false} />
+                  </details>}
                 </>
-              )}
+                )}
+              />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">Not ready to play yet.</p>
@@ -424,7 +471,7 @@ export default function SpeechWatch() {
           modes (notes while watching, essay after), so a tab strip rather
           than a stack. */}
       {isOwner && (
-        <Tabs defaultValue="notes">
+        <Tabs value={ownerTab} onValueChange={(value) => setOwnerTab(String(value))}>
           {/* `flex-wrap max-w-full`, not bare `flex-wrap`: the list is
               `inline-flex w-fit` (components/ui/tabs.tsx), i.e. sized to
               max-content, so without a cap it has no reason to wrap and a
@@ -446,6 +493,7 @@ export default function SpeechWatch() {
               one word, so it's included here too. */}
           <TabsPanel value="notes" keepMounted>
             <TrackSelector
+              {...playbackControlProps}
               options={commentary.options}
               optionsLoading={commentary.optionsLoading}
               selected={commentary.selected}
@@ -454,13 +502,7 @@ export default function SpeechWatch() {
               error={commentary.error}
               isFetching={commentary.isFetching}
               fetchedReviewerName={commentary.fetchedReviewerName}
-              annotations={commentary.annotations}
-              activeIds={commentary.activeIds}
-              currentTime={commentary.currentTime}
-              onSeek={commentary.seek}
-              voiceMode={commentary.voiceMode}
-              onVoiceModeChange={commentary.selectVoiceMode}
-              voicePlayback={commentary.voicePlayback}
+              controlsElsewhere={htmlFullscreen}
             />
           </TabsPanel>
           <TabsPanel value="essay">

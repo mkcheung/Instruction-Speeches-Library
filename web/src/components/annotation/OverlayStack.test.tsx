@@ -85,6 +85,26 @@ describe('OverlayStack', () => {
     expect(screen.getByTestId('overlay-stack')).toHaveAttribute('aria-hidden', 'true')
   })
 
+  it('reserves a slot for an older active voice transcript without changing the authoring cap', () => {
+    const notes = [annotation('voice', 0), annotation('a', 1), annotation('b', 2), annotation('c', 3)]
+    const { container, rerender } = render(<OverlayStack annotations={notes} activeIds={new Set(notes.map((note) => note.id))} currentTime={3} priorityId="voice" />)
+    expect(screen.getByTestId('overlay-voice')).toHaveAttribute('data-visible', 'true')
+    expect(screen.getByTestId('overlay-a')).toHaveAttribute('data-visible', 'false')
+    expect(container.querySelectorAll('[data-visible="true"]')).toHaveLength(3)
+    rerender(<OverlayStack annotations={notes} activeIds={new Set(notes.map((note) => note.id))} currentTime={3} />)
+    expect(screen.getByTestId('overlay-voice')).toHaveAttribute('data-visible', 'false')
+    expect(screen.getByTestId('overlay-a')).toHaveAttribute('data-visible', 'true')
+  })
+
+  it('removes excluded sources immediately even when deferred fade ghosts exist', () => {
+    const notes = [annotation('a', 0)]
+    const { rerender } = render(<OverlayStack annotations={notes} activeIds={new Set(['a'])} currentTime={1} />)
+    rerender(<OverlayStack annotations={notes} activeIds={new Set()} currentTime={1} />)
+    expect(screen.getByTestId('overlay-a')).toBeInTheDocument()
+    rerender(<OverlayStack annotations={[]} activeIds={new Set()} currentTime={1} />)
+    expect(screen.queryByTestId('overlay-a')).not.toBeInTheDocument()
+  })
+
   /** STEP-07-write-commentary.md: the composer's live preview reuses
    * `OverlayStack` unchanged except for `draftIds` → `data-draft="true"`,
    * marking a row provisional with a dashed border (CSS in `index.css`). */

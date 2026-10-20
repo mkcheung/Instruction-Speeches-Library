@@ -1,0 +1,576 @@
+/*
+ * The landing page ("Curtain Up", PLAN-LANDING-PAGE.md §4), ported from the
+ * approved mockup. Every class here is `land-`-prefixed, and nothing here
+ * reaches inside the art's SVGs (components/landing/art/ styles its own).
+ * Font families come from the `font-landing-*` Tailwind utilities.
+ *
+ * These rules are unlayered, so they win over Tailwind's layered utilities.
+ * The CTAs use that on purpose: their colors and sizes go through
+ * `className`, where twMerge replaces the Button's defaults, while
+ * `.land-cta` owns the offset shadow, the hover lift, the transition and the
+ * focus outline, overriding the Button's `transition-all`, `outline-none`
+ * and focus ring.
+ *
+ * Tailwind's preflight makes every box border-box, while the mockup was
+ * content-box by default. Boxes whose size that would change say
+ * `box-sizing: content-box` explicitly.
+ */
+
+/* ---- Page root and column ------------------------------------------------ */
+
+.land-root {
+  position: relative;
+  /* `clip`, never `hidden`: `hidden` would make the root a scroll container,
+     and the notes' `view()` timeline would track it instead of the page. */
+  overflow-x: clip;
+  background: #fff5e6;
+  color: #2b211b;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.land-column {
+  position: relative;
+  z-index: 1;
+  box-sizing: content-box; /* 760px of content inside 16px gutters */
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* ---- Curtains and valance ------------------------------------------------ */
+
+.land-curtain {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  box-sizing: content-box;
+  width: calc(50% - 440px);
+  background: #a81e28;
+  border-right: 10px solid #e9b949;
+  box-shadow:
+    inset -3px 0 0 #2b211b,
+    3px 0 0 #2b211b;
+}
+
+.land-curtain-right {
+  left: auto;
+  right: 0;
+  scale: -1 1; /* the left curtain's mirror image: folds, gold edge and shadow */
+}
+
+@media (min-width: 900px) {
+  .land-curtain {
+    display: block;
+  }
+}
+
+.land-fold {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  box-sizing: content-box;
+}
+
+.land-fold-deep {
+  background: #8a1720;
+  border-left: 2px solid #5e0f15;
+}
+
+.land-fold-sheen {
+  background: #c0333d;
+}
+
+.land-fold-edge {
+  background: #8a1720;
+}
+
+.land-valance {
+  display: block;
+  position: relative;
+  z-index: 2;
+}
+
+/* ---- Header: title, lede, buttons, stage lip ----------------------------- */
+
+.land-header {
+  padding-top: 36px;
+  text-align: center;
+}
+
+.land-title {
+  margin: 0;
+  font-weight: 400;
+  line-height: 1.05;
+  color: #2b211b;
+  text-align: center;
+}
+
+.land-ribbon {
+  position: relative;
+  display: inline-block;
+  isolation: isolate; /* keeps the tails' z-index: -1 behind the banner, not the page */
+  max-width: calc(100% - 80px); /* each tail overhangs 40px (left/right: -40px) */
+}
+
+.land-ribbon-tail {
+  position: absolute;
+  bottom: -16px;
+  z-index: -1;
+  display: block;
+}
+
+.land-ribbon-tail-left {
+  left: -40px;
+}
+
+.land-ribbon-tail-right {
+  right: -40px;
+  transform: scaleX(-1);
+}
+
+.land-ribbon-text {
+  position: relative;
+  display: block;
+  padding: 0.2em 0.55em 0.1em;
+  border: 3px solid #2b211b;
+  background: #a81e28;
+  color: #fff5e6;
+  font-size: clamp(1.9rem, 3.4vw + 0.6rem, 3.1rem);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-shadow: 3px 3px 0 #2b211b;
+}
+
+.land-library {
+  display: inline-block;
+  margin-top: 22px;
+  padding: 0.18em 0.7em 0.08em;
+  border: 3px solid #2b211b;
+  border-radius: 6px;
+  background: #e9b949;
+  color: #2b211b;
+  font-size: clamp(1.4rem, 2vw + 0.6rem, 2rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  box-shadow: 4px 4px 0 #2b211b;
+}
+
+.land-lede {
+  margin: 28px auto 0;
+  max-width: 34rem;
+  font-size: clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem);
+  line-height: 1.4;
+}
+
+.land-ctas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 32px;
+}
+
+.land-cta {
+  box-shadow: 4px 4px 0 #2b211b;
+  transition: none;
+}
+
+.land-cta:hover {
+  translate: -2px -2px;
+  box-shadow: 6px 6px 0 #2b211b;
+}
+
+.land-cta:active {
+  translate: 2px 2px;
+  box-shadow: 2px 2px 0 #2b211b;
+}
+
+.land-cta:focus-visible,
+.land-top-link:focus-visible {
+  outline: 3px solid #2b211b;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .land-cta {
+    transition:
+      translate 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .land-cta:hover,
+  .land-cta:active {
+    translate: none;
+  }
+}
+
+/* The stage top and footlights (art); this frame reserves its box. */
+.land-stage-lip {
+  margin-top: 40px;
+  aspect-ratio: 760 / 96;
+}
+
+/* ---- Acts ------------------------------------------------------------------ */
+
+.land-act-one {
+  padding: 28px 0 16px;
+}
+
+.land-act-two {
+  padding: 44px 0 8px;
+}
+
+.land-act-three {
+  padding: 40px 0 0;
+}
+
+.land-act-heading {
+  margin: 0;
+  text-align: center;
+  font-weight: 400;
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.4rem);
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #2b211b;
+}
+
+.land-act-label {
+  display: block;
+  width: max-content;
+  margin: 0 auto 10px;
+  padding: 3px 10px;
+  border: 2px solid #2b211b;
+  border-radius: 4px;
+  background: #e9b949;
+  color: #2b211b;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.14em;
+}
+
+/* Scene frames. The art fills them edge to edge and draws no frame of its
+   own; while it loads, the empty frame holds the exact same box. */
+.land-scene {
+  overflow: hidden;
+  border: 3px solid #2b211b;
+  border-radius: 6px;
+}
+
+.land-scene-rehearsal {
+  aspect-ratio: 760 / 520;
+  background: #2a2321;
+}
+
+.land-scene-full-house {
+  margin-top: 22px;
+  aspect-ratio: 760 / 720;
+  background: #5c1f27;
+}
+
+@media (max-width: 559px) {
+  .land-scene-rehearsal {
+    aspect-ratio: 560 / 520;
+  }
+
+  .land-scene-full-house {
+    aspect-ratio: 600 / 720;
+  }
+}
+
+/* ---- Act I: the closed-rehearsal sign ------------------------------------- */
+
+.land-rehearsal {
+  position: relative;
+  margin-top: 22px;
+}
+
+.land-sign {
+  position: absolute;
+  top: 6%;
+  right: 3%;
+  z-index: 1;
+  width: 39%;
+  rotate: 1.5deg;
+}
+
+@media (max-width: 759px) {
+  .land-sign {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: auto;
+    max-width: 420px;
+    margin: 20px auto 0;
+  }
+}
+
+.land-sign-board {
+  padding: 16px 18px 18px;
+  border: 8px solid #9c6a3e;
+  border-radius: 4px;
+  background: #fffdf6;
+  box-shadow:
+    0 0 0 3px #2b211b,
+    inset 0 0 0 3px #2b211b,
+    7px 9px 0 3px rgba(43, 33, 27, 0.35);
+  text-align: center;
+}
+
+.land-sign-title {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.05;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #a81e28;
+}
+
+.land-sign-rule {
+  width: 64px;
+  height: 3px;
+  margin: 10px auto 12px;
+  border-radius: 2px;
+  background: #2b211b;
+}
+
+.land-sign-text {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.3;
+  color: #2b211b;
+}
+
+.land-sign-legs {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: -2px;
+}
+
+/* ---- Act II: mechanism and example playback -------------------------------- */
+
+.land-mechanism {
+  margin: 22px auto 0;
+  max-width: 36rem;
+  font-size: clamp(1.25rem, 1.1rem + 0.4vw, 1.4rem);
+  line-height: 1.45;
+  color: #2b211b;
+}
+
+.land-timeline {
+  position: relative;
+  max-width: 36rem;
+  margin: 30px auto 0;
+}
+
+.land-rail {
+  position: absolute;
+  top: 14px;
+  bottom: 24px;
+  left: 43px;
+  width: 6px;
+  border-radius: 3px;
+  background: #cfe3e0;
+  view-timeline-name: --land-rail;
+}
+
+.land-rail-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: 3px;
+  background: #0f6b66;
+  transform-origin: top;
+}
+
+.land-rail-end {
+  position: absolute;
+  bottom: 12px;
+  left: 38px;
+  width: 16px;
+  height: 16px;
+  border: 3px solid #2b211b;
+  border-radius: 50%;
+  background: #fff5e6;
+}
+
+.land-playhead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #2b211b;
+}
+
+.land-playhead svg {
+  display: block;
+  flex: none;
+}
+
+.land-notes {
+  position: relative;
+  margin: 0;
+  padding: 0 0 28px;
+  list-style: none;
+}
+
+.land-note-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 0;
+}
+
+.land-stamp {
+  flex: none;
+  width: 92px;
+  padding: 6px 0;
+  border: 3px solid #2b211b;
+  border-radius: 999px;
+  background: #0f6b66;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.land-note {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 14px;
+  max-width: 440px;
+  padding: 18px 18px 16px;
+  border: 2px solid #2b211b;
+  border-radius: 3px;
+  background: #ffefa1;
+  color: #2b211b;
+  box-shadow: 4px 5px 0 rgba(43, 33, 27, 0.18);
+}
+
+/* The strip of tape holding each note up. */
+.land-note::before {
+  content: '';
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  box-sizing: content-box;
+  width: 86px;
+  height: 24px;
+  margin-left: -43px;
+  border: 1px solid rgba(43, 33, 27, 0.28);
+  background: rgba(255, 253, 246, 0.72);
+  rotate: -3deg;
+}
+
+.land-note-text {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+/* Holds the avatar's place until the art arrives: same 44px cream disc and
+   2px ink ring the real avatar draws. */
+.land-avatar-fallback {
+  display: block;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fff5e6;
+  box-shadow: 0 0 0 2px #2b211b;
+}
+
+@keyframes land-note-in {
+  from {
+    opacity: 0;
+    translate: 0 32px;
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes land-rail-grow {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* Scroll-driven, so no JavaScript; only where the browser supports view
+   timelines and the visitor hasn't asked for reduced motion. Everywhere
+   else the notes and the rail simply show. `animation` comes first because
+   the shorthand resets `animation-timeline` and `animation-range`. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .land-note {
+      animation: land-note-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+    }
+
+    .land-rail-fill {
+      animation: land-rail-grow linear both;
+      animation-timeline: --land-rail;
+      animation-range: cover 10% cover 60%;
+    }
+  }
+}
+
+/* ---- Act III and footer ------------------------------------------------------ */
+
+.land-caption {
+  margin: 20px auto 0;
+  max-width: 30rem;
+  font-size: 22px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.land-footer {
+  margin-top: 48px;
+  padding: 28px 0 48px;
+  border-top: 3px dashed #2b211b;
+  text-align: center;
+}
+
+.land-footer-line {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.land-top-link {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 10px 8px;
+  color: #0f6b66;
+  font-size: 20px;
+  line-height: 1.3;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.land-top-link:hover {
+  color: #0b4f4b;
+}
