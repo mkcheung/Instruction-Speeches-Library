@@ -10,14 +10,12 @@ import type { Transcript, SpeechSearchResult } from '@/features/transcript/types
  *
  * Routes:
  *   GET /api/speeches/{speech}/transcript   -> { transcript: {...} }
- *   GET /api/speeches/search?q=...           -> { results: SpeechResource[] }
+ *   GET /api/speeches/search?q=...           -> { results: SpeechSearchResult[] }
  *
- * Search is hosted HERE rather than a separate `searchApi.ts` — it's a
- * `tsvector` match against the same `speech_transcripts.body` this slice
- * already reads, and STEP-09.md's own framing ("search across everything
- * you've ever said") treats it as the same feature area, not a distinct
- * domain. Documented per the task's instruction to call out this choice
- * explicitly rather than silently pick a shape.
+ * Search includes literal title/description/transcript matches and stays
+ * in this slice so caption projection convergence can invalidate Search
+ * together with Transcript. Highlight parts are plain text from the API;
+ * the client never reruns matching or parses HTML.
  */
 export const transcriptApi = createApi({
   reducerPath: 'transcriptApi',
@@ -39,12 +37,12 @@ export const transcriptApi = createApi({
     }),
 
     /**
-     * ✅ `{ results: SpeechResource[] }`, reconciled against the real
-     * `TranscriptController::search` — scoped server-side to speeches the
-     * caller OWNS (`$request->user()->speeches()`), not everything they
-     * can merely view as a reviewer; `q` is `required|string|min:1|max:255`
+     * `{ results: SpeechSearchResult[] }` preserves normal speech fields
+     * and adds search-only highlight parts. Scoped to speeches the caller
+     * OWNS, not everything they can merely view as a reviewer;
+     * `q` is `required|string|min:1|max:255`
      * server-side (`SearchTranscriptsRequest`). An empty/whitespace-only
-     * `q` is still skipped client-side by the caller (`Search.tsx`) via
+     * `q` and queries over 255 codepoints are skipped by `Search.tsx` via
      * `skipToken`, so the 422 that a blank `q` would otherwise produce is
      * never actually reachable from the UI.
      */

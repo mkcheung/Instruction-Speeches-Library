@@ -5,14 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\SpeechDeletedException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Transcript\SearchTranscriptsRequest;
-use App\Http\Resources\SpeechResource;
+use App\Http\Resources\SpeechSearchResource;
 use App\Http\Resources\TranscriptResource;
 use App\Models\Speech;
 use App\Models\SpeechTranscript;
-use Illuminate\Database\Eloquent\Relations\Relation;
+use App\Services\Search\SpeechSearch;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * STEP-09-captions.md §6.12 / the frozen STEP-09 backend contract §4, §7:
@@ -62,70 +61,16 @@ class TranscriptController extends Controller
     }
 
     /**
-     * `GET /speeches/search?q=...`. STEP-09.md's own wording: "Search
-     * across your own speeches" — scoped to speeches the caller OWNS, not
-     * every speech they can merely view as a reviewer (matching
-     * `SpeechController::index`'s "my speeches" scope, `$request->user()
-     * ->speeches()`, rather than the wider `Speech::scopeVisibleTo` a
-     * reviewer would also satisfy).
-     *
-     * §7 of the frozen contract: a Postgres `tsvector`/GIN match, with a
-     * plain `LIKE` fallback on SQLite (the phpunit-pinned test driver,
-     * which has neither `tsvector` nor GIN) — both return the same
-     * envelope shape, so nothing downstream needs to know which one ran.
+     * Literal title/description/transcript search over the caller's own
+     * speeches. Reviewer access deliberately does not broaden this scope.
      */
-    public function search(SearchTranscriptsRequest $request): JsonResponse
+    public function search(SearchTranscriptsRequest $request, SpeechSearch $search): JsonResponse
     {
-        $q = (string) $request->validated('q');
-        $userId = $this->currentUser($request)->id;
-        $driver = DB::connection()->getDriverName();
-
-        // A single query (whereHas over the transcript match, rather than
-        // a `pluck('speech_id')` into a second `Speech::whereIn`) — two
-        // round trips for one search was pure overhead.
-        $speeches = Speech::query()
-            ->where('user_id', $userId)
-            ->whereHas('transcript', fn ($query) => $query->when(
-                $driver === 'pgsql',
-                fn ($q2) => $q2->whereRaw("body_tsv @@ plainto_tsquery('english', ?)", [$q]),
-                // Laravel's `where(..., 'like', ...)` does not append an
-                // `ESCAPE` clause on its own, and SQLite's LIKE recognizes
-                // no escape character without one — the backslash-escaping
-                // below was a no-op on this exact driver until this
-                // `whereRaw` made the escape character explicit. Without
-                // it, a literal `%`/`_` in a search query (e.g. "50% off")
-                // is still a live wildcard on the fallback path.
-                fn ($q2) => $q2->whereRaw(
-                    'body LIKE ? ESCAPE ?',
-                    ['%'.str_replace(['%', '_'], ['\%', '\_'], $q).'%', '\\'],
-                ),
-            ))
-            ->with(self::eagerLoads())
-            ->latest()
-            ->get();
+        $speeches = $search->find($this->currentUser($request)->id, (string) $request->validated('q'));
 
         return new JsonResponse([
-            'results' => SpeechResource::collection($speeches),
+            'results' => SpeechSearchResource::collection($speeches),
         ]);
-    }
-
-    /**
-     * Same shape as SpeechController::eagerLoads() — search results are
-     * SpeechResource instances too, so they need the same constrained
-     * `assets` load (poster/sprite only) to avoid an N+1 across the result
-     * set.
-     *
-     * @return array<int|string, string|\Closure(Relation<*, *, *>): mixed>
-     */
-    private static function eagerLoads(): array
-    {
-        return [
-            'primaryVideo',
-            'supersedes',
-            // See SpeechController::eagerLoads()'s identical comment on why
-            // this is typed against the base `Relation`, not `HasMany`.
-            'assets' => fn (Relation $query) => $query->whereIn('kind', ['poster', 'sprite']),
-        ];
     }
 
     /**

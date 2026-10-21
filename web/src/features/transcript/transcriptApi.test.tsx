@@ -68,6 +68,15 @@ describe('transcriptApi', () => {
               created_at: '2026-01-01T00:00:00Z',
               captions_enabled: true,
               primary_video: null,
+              search_match: {
+                title: [{ text: 'Districts speech', matched: false }],
+                description: null,
+                transcript_excerpt: {
+                  parts: [{ text: 'district final', matched: true }],
+                  truncated_before: true,
+                  truncated_after: false,
+                },
+              },
             },
           ],
         })
@@ -81,5 +90,29 @@ describe('transcriptApi', () => {
     await waitFor(() => expect(result.current.data).toBeDefined())
     expect(result.current.data).toHaveLength(1)
     expect(result.current.data?.[0].title).toBe('Districts speech')
+    expect(result.current.data?.[0].search_match).toEqual({
+      title: [{ text: 'Districts speech', matched: false }],
+      description: null,
+      transcript_excerpt: {
+        parts: [{ text: 'district final', matched: true }],
+        truncated_before: true,
+        truncated_after: false,
+      },
+    })
+  })
+
+  it('encodes literal punctuation without changing it and tolerates older responses', async () => {
+    const q = '100%_! \\ "<tag>" +😀'
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      expect(new URL(url).searchParams.get('q')).toBe(q)
+      expect(url).toContain(`q=${encodeURIComponent(q)}`)
+      return jsonResponse({ results: [{ id: 9, title: 'Old server title' }] })
+    }))
+    const { result } = renderHook(() => useSearchSpeechesQuery({ q }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.[0].title).toBe('Old server title')
+    expect(result.current.data?.[0].search_match).toBeUndefined()
   })
 })

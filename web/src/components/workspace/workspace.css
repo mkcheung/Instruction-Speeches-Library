@@ -1,0 +1,655 @@
+/* Option C: local paper surfaces. Keep these rules outside Tailwind layers so
+   existing dark-mode utilities cannot recolor this deliberately light workspace.
+   No token is applied to AppLayout/main or to a body-portaled control. */
+.workspace-login,
+.workspace-header,
+.workspace-sidebar,
+.workspace-dashboard {
+  --workspace-cream: #fff5e6;
+  --workspace-paper: #fffdf6;
+  --workspace-sidebar-paper: #f8ecda;
+  --workspace-ink: #2b211b;
+  --workspace-muted: #66574f;
+  --workspace-burgundy: #8a1720;
+  --workspace-red: #a81e28;
+  --workspace-gold: #e9b949;
+  --workspace-teal: #0f6b66;
+  --workspace-outline: #8a7668;
+  --workspace-error: #b91c1c;
+  --workspace-error-paper: #fef2f2;
+  --workspace-success: #166534;
+  --workspace-success-paper: #f0fdf4;
+
+  /* Legacy tokens and the shadcn tokens must both be local. */
+  --color-bg: var(--workspace-paper);
+  --color-fg: var(--workspace-ink);
+  --color-muted: var(--workspace-muted);
+  --color-border: var(--workspace-outline);
+  --color-accent: var(--workspace-teal);
+  --color-accent-fg: var(--workspace-paper);
+  --color-success: var(--workspace-success);
+  --color-danger: var(--workspace-error);
+  --background: var(--workspace-paper);
+  --foreground: var(--workspace-ink);
+  --card: var(--workspace-paper);
+  --card-foreground: var(--workspace-ink);
+  --primary: var(--workspace-teal);
+  --primary-foreground: var(--workspace-paper);
+  --secondary: var(--workspace-cream);
+  --secondary-foreground: var(--workspace-ink);
+  --muted: var(--workspace-cream);
+  --muted-foreground: var(--workspace-muted);
+  --accent: var(--workspace-sidebar-paper);
+  --accent-foreground: var(--workspace-ink);
+  --destructive: var(--workspace-error);
+  --border: var(--workspace-outline);
+  --input: var(--workspace-outline);
+  --ring: var(--workspace-teal);
+
+  color-scheme: light;
+  color: var(--workspace-ink);
+  font-family: var(--font-sans, 'Geist Variable', sans-serif);
+}
+
+.workspace-header {
+  height: 56px;
+  min-height: 56px;
+  border-bottom: 0;
+  background: var(--workspace-cream);
+  box-shadow: inset 0 4px var(--workspace-burgundy), inset 0 -1px var(--workspace-gold);
+}
+
+.workspace-header-brand {
+  color: var(--workspace-burgundy);
+  font-family: var(--font-landing-title, 'Luckiest Guy', cursive);
+  font-size: 1rem;
+  font-weight: 400;
+  letter-spacing: 0.025em;
+  line-height: 1.25;
+}
+
+.workspace-header-brand:hover {
+  color: var(--workspace-ink);
+}
+
+.workspace-header-brand:focus-visible,
+.workspace-sidebar-link:focus-visible,
+:is(.workspace-login, .workspace-dashboard) .workspace-link:focus-visible {
+  outline: 2px solid var(--workspace-teal);
+  outline-offset: 3px;
+}
+
+/* Base UI renders all three triggers as direct buttons. Descendant text is
+   intentionally not recolored: the avatar keeps its inline contrast pair. */
+.workspace-header-actions > button {
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  border: 1px solid var(--workspace-outline);
+  border-radius: 8px;
+  background: var(--workspace-paper);
+  color: var(--workspace-ink);
+  padding: 6px;
+  box-shadow: none;
+}
+
+.workspace-header-actions > button:hover,
+.workspace-header-actions > button[aria-expanded='true'],
+.workspace-header-actions > button[data-popup-open],
+.workspace-header-actions > button[data-open] {
+  border-color: var(--workspace-ink);
+  background: var(--workspace-sidebar-paper);
+  color: var(--workspace-ink);
+}
+
+.workspace-header-actions > button:active {
+  background: var(--workspace-cream);
+}
+
+.workspace-header-actions > button:focus-visible {
+  border-color: var(--workspace-teal);
+  outline: 2px solid var(--workspace-teal);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.workspace-header-actions > button:disabled,
+.workspace-header-actions > button[data-disabled] {
+  cursor: not-allowed;
+  background: var(--workspace-sidebar-paper);
+  color: var(--workspace-muted);
+  opacity: 1;
+}
+
+.workspace-header-actions > button [data-slot='badge'] {
+  border-color: var(--workspace-paper);
+  background: var(--workspace-error);
+  color: var(--workspace-paper);
+}
+
+.workspace-sidebar {
+  --sidebar: var(--workspace-sidebar-paper);
+  --sidebar-foreground: var(--workspace-ink);
+  --sidebar-primary: var(--workspace-burgundy);
+  --sidebar-primary-foreground: var(--workspace-paper);
+  --sidebar-accent: var(--workspace-cream);
+  --sidebar-accent-foreground: var(--workspace-ink);
+  --sidebar-border: var(--workspace-outline);
+  --sidebar-ring: var(--workspace-teal);
+
+  background: var(--workspace-sidebar-paper);
+  border-right-color: var(--workspace-outline);
+}
+
+.workspace-sidebar-link {
+  min-width: 0;
+  min-height: 44px;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  padding: 9px 10px;
+  color: var(--workspace-ink);
+  overflow-wrap: anywhere;
+}
+
+.workspace-sidebar-link:hover {
+  border-color: var(--workspace-outline);
+  background: var(--workspace-cream);
+  color: var(--workspace-ink);
+}
+
+.workspace-sidebar-link:active {
+  border-color: var(--workspace-ink);
+}
+
+.workspace-sidebar-link[aria-current='page'] {
+  border-color: var(--workspace-ink);
+  background: var(--workspace-burgundy);
+  color: var(--workspace-paper);
+  /* The light inset stripe and ink outline also identify selection without hue. */
+  box-shadow: inset 3px 0 var(--workspace-paper);
+}
+
+.workspace-scene {
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.workspace-scene > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.workspace-scene--sidebar {
+  width: 184px;
+  height: 176px;
+  margin: 16px auto 0;
+}
+
+.workspace-scene--login {
+  width: 360px;
+  height: 300px;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.workspace-login {
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--workspace-red) 0 16px,
+    var(--workspace-burgundy) 16px 24px
+  );
+}
+
+.workspace-login-stage {
+  display: flex;
+  width: 100%;
+  max-width: 960px;
+  min-width: 0;
+  min-height: calc(100svh - 48px);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  border: 2px solid var(--workspace-ink);
+  border-top: 8px solid var(--workspace-gold);
+  background: var(--workspace-cream);
+  padding: 32px;
+}
+
+.workspace-login-brand {
+  max-width: 100%;
+  border: 2px solid var(--workspace-ink);
+  background: var(--workspace-red);
+  color: var(--workspace-paper);
+  padding: 10px 16px;
+  box-shadow: 4px 4px var(--workspace-ink);
+  font-family: var(--font-landing-title, 'Luckiest Guy', cursive);
+  font-size: clamp(1.125rem, 2.4vw, 1.75rem);
+  font-weight: 400;
+  letter-spacing: 0.035em;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.workspace-login-grid {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 32px;
+}
+
+.workspace-login-welcome {
+  display: none;
+  width: 100%;
+  min-width: 0;
+}
+
+.workspace-login-form {
+  width: 100%;
+  max-width: 384px;
+  min-width: 0;
+}
+
+.workspace-login .workspace-login-card {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  border: 2px solid var(--workspace-ink);
+  border-radius: 12px;
+  background: var(--workspace-paper);
+  color: var(--workspace-ink);
+  box-shadow: 4px 4px var(--workspace-gold);
+}
+
+.workspace-login-title {
+  margin: 0;
+  font-family: var(--font-sans, 'Geist Variable', sans-serif);
+  font-size: 1.5rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.workspace-login-form-fields {
+  min-width: 0;
+}
+
+.workspace-login-password-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 8px;
+}
+
+.workspace-login .workspace-remember {
+  min-height: 44px;
+}
+
+.workspace-login .workspace-remember input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--workspace-teal);
+}
+
+.workspace-login .workspace-remember label {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.workspace-login .workspace-remember input:focus-visible {
+  outline: 2px solid var(--workspace-teal);
+  outline-offset: 3px;
+}
+
+.workspace-login [data-slot='input'] {
+  height: auto;
+  min-height: 44px;
+  border: 1px solid var(--workspace-outline);
+  background: var(--workspace-paper);
+  color: var(--workspace-ink);
+  font-size: 1rem;
+  box-shadow: none;
+}
+
+.workspace-login [data-slot='input']::placeholder {
+  color: var(--workspace-muted);
+  opacity: 1;
+}
+
+.workspace-login [data-slot='input']:hover:not(:disabled) {
+  border-color: var(--workspace-ink);
+}
+
+.workspace-login [data-slot='input']:focus-visible {
+  border-color: var(--workspace-teal);
+  outline: 2px solid var(--workspace-teal);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.workspace-login [data-slot='input'][aria-invalid='true'] {
+  border-color: var(--workspace-error);
+  outline-color: var(--workspace-error);
+  box-shadow: none;
+}
+
+.workspace-login [data-slot='input']:disabled {
+  cursor: not-allowed;
+  background: var(--workspace-sidebar-paper);
+  color: var(--workspace-muted);
+  opacity: 1;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-muted,
+:is(.workspace-login, .workspace-dashboard) [data-slot='card-description'] {
+  color: var(--workspace-muted);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-link {
+  display: inline-flex;
+  min-height: 44px;
+  max-width: 100%;
+  align-items: center;
+  color: var(--workspace-teal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-link:hover {
+  color: var(--workspace-ink);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-link:active {
+  color: var(--workspace-burgundy);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button {
+  height: auto;
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--workspace-teal);
+  border-radius: 8px;
+  background: var(--workspace-teal);
+  color: var(--workspace-paper);
+  padding: 10px 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.4;
+  box-shadow: none;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button:hover:not(:disabled):not([data-disabled]) {
+  border-color: #0b5652;
+  background: #0b5652;
+  color: var(--workspace-paper);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button--secondary {
+  border-color: var(--workspace-outline);
+  background: var(--workspace-paper);
+  color: var(--workspace-ink);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button--secondary:hover:not(:disabled):not([data-disabled]) {
+  border-color: var(--workspace-ink);
+  background: var(--workspace-sidebar-paper);
+  color: var(--workspace-ink);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button--destructive {
+  border-color: var(--workspace-error);
+  background: var(--workspace-error-paper);
+  color: var(--workspace-error);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button--destructive:hover:not(:disabled):not([data-disabled]) {
+  border-color: var(--workspace-error);
+  background: #fee2e2;
+  color: var(--workspace-error);
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button:active:not(:disabled):not([data-disabled]) {
+  outline: 1px solid currentColor;
+  outline-offset: -4px;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button:focus-visible {
+  outline: 2px solid var(--workspace-teal);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button[aria-expanded='true'],
+:is(.workspace-login, .workspace-dashboard) .workspace-button[data-popup-open] {
+  outline: 1px solid currentColor;
+  outline-offset: -4px;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-button:disabled,
+:is(.workspace-login, .workspace-dashboard) .workspace-button[data-disabled],
+:is(.workspace-login, .workspace-dashboard) .workspace-button[aria-busy='true'] {
+  cursor: not-allowed;
+  border-color: var(--workspace-outline);
+  background: var(--workspace-sidebar-paper);
+  color: var(--workspace-muted);
+  opacity: 1;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-banner {
+  border: 1px solid var(--workspace-error);
+  background: var(--workspace-error-paper);
+  color: var(--workspace-error);
+  overflow-wrap: anywhere;
+}
+
+:is(.workspace-login, .workspace-dashboard) .workspace-banner--success {
+  border-color: var(--workspace-success);
+  background: var(--workspace-success-paper);
+  color: var(--workspace-success);
+}
+
+:is(.workspace-login, .workspace-dashboard) [role='alert'] {
+  color: var(--workspace-error);
+  overflow-wrap: anywhere;
+}
+
+.workspace-dashboard {
+  flex: 1;
+  min-width: 0;
+  background: var(--workspace-cream);
+}
+
+.workspace-dashboard-content {
+  min-width: 0;
+}
+
+.workspace-dashboard h1 {
+  color: var(--workspace-ink);
+  font-family: var(--font-landing-title, 'Luckiest Guy', cursive);
+  font-size: 1.875rem;
+  font-weight: 400;
+  letter-spacing: 0.025em;
+  overflow-wrap: anywhere;
+}
+
+.workspace-dashboard-section {
+  min-width: 0;
+}
+
+.workspace-dashboard-section-title {
+  border-bottom: 1px solid var(--workspace-outline);
+  padding-bottom: 8px;
+  color: var(--workspace-ink);
+  overflow-wrap: anywhere;
+}
+
+.workspace-dashboard .workspace-panel {
+  min-width: 0;
+  border: 1px solid var(--workspace-outline);
+  border-radius: 12px;
+  background: var(--workspace-paper);
+  color: var(--workspace-ink);
+  box-shadow: none;
+}
+
+.workspace-dashboard [data-slot='card-header'],
+.workspace-dashboard [data-slot='card-content'],
+.workspace-dashboard [data-slot='card-title'],
+.workspace-dashboard [data-slot='card-description'],
+.workspace-dashboard .workspace-review-body,
+.workspace-dashboard .workspace-review-title,
+.workspace-dashboard .workspace-review-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-dashboard .workspace-review-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-dashboard .workspace-review-title {
+  font-family: var(--font-sans, 'Geist Variable', sans-serif);
+}
+
+.workspace-dashboard .workspace-review-message {
+  border-left: 3px solid var(--workspace-outline);
+  background: var(--workspace-cream);
+  padding: 10px 12px;
+  color: var(--workspace-ink);
+  line-height: 1.6;
+}
+
+.workspace-dashboard .workspace-review-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-dashboard [data-slot='badge'] {
+  height: auto;
+  min-height: 24px;
+  max-width: 100%;
+  border: 1px solid var(--workspace-outline);
+  background: var(--workspace-cream);
+  color: var(--workspace-ink);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.workspace-dashboard [data-slot='badge'][data-variant='destructive'] {
+  border-color: var(--workspace-error);
+  background: var(--workspace-error-paper);
+  color: var(--workspace-error);
+}
+
+@media (min-width: 640px) {
+  /* UserMenu's responsive name is inline in the shared primitive. Give only
+     that accessible-name span a box so long names honor its truncation width;
+     below sm its existing sr-only treatment remains unchanged. */
+  .workspace-header-actions > button > span.sr-only {
+    display: block;
+    min-width: 0;
+    max-width: 8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 1024px) {
+  .workspace-login-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 384px);
+  }
+
+  .workspace-login-welcome {
+    display: block;
+  }
+}
+
+@media (max-width: 767px) {
+  .workspace-login {
+    background: var(--workspace-cream);
+    padding: 16px;
+  }
+
+  .workspace-login-stage {
+    min-height: calc(100svh - 32px);
+    gap: 24px;
+    border: 0;
+    padding: 16px 0;
+  }
+
+  .workspace-login-brand,
+  .workspace-login .workspace-login-card {
+    box-shadow: none;
+  }
+
+  .workspace-scene--sidebar {
+    display: none;
+  }
+}
+
+@media (max-height: 719px) {
+  .workspace-scene--sidebar {
+    display: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .workspace-scene,
+  .workspace-login-welcome {
+    display: none;
+  }
+
+  .workspace-login,
+  .workspace-header,
+  .workspace-sidebar,
+  .workspace-dashboard {
+    --workspace-cream: Canvas;
+    --workspace-paper: Canvas;
+    --workspace-sidebar-paper: Canvas;
+    --workspace-ink: CanvasText;
+    --workspace-muted: CanvasText;
+    --workspace-outline: CanvasText;
+    --workspace-burgundy: Highlight;
+    --workspace-red: Canvas;
+    --workspace-gold: CanvasText;
+    --workspace-teal: LinkText;
+    --workspace-error: CanvasText;
+    --workspace-error-paper: Canvas;
+    --workspace-success: CanvasText;
+    --workspace-success-paper: Canvas;
+  }
+
+  .workspace-login-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .workspace-sidebar-link[aria-current='page'] {
+    border: 2px solid Highlight;
+    outline: 1px solid CanvasText;
+    outline-offset: -4px;
+  }
+}

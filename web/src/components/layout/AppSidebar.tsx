@@ -1,15 +1,16 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { navItemsFor, type NavItem } from '@/lib/roles'
 import { cn } from '@/lib/utils'
+import { ActivityScene } from '@/components/workspace/ActivityScene'
+import { activityForRoute } from '@/components/workspace/activityForRoute'
 
 /**
  * S1-S8 (PLAN-APP-HEADER.md) — the app's primary navigation. A `<nav>`
  * (not `<aside>`, S7: `<aside>` maps to the `complementary` role, which
- * would break `getByRole('navigation')`), `hidden lg:flex` (S5 — `lg` is
- * the deliberate breakpoint, not `md`), using the `--sidebar-*` tokens
- * already defined in `index.css` (D8/S7) and lucide icons (S7 — already a
- * dependency with zero imports before this).
+ * would break `getByRole('navigation')`), `hidden md:flex` (shown from
+ * 768px, 224px wide and 256px at `xl`), using the `--sidebar-*` tokens
+ * already defined in `index.css` (D8/S7) and lucide icons.
  *
  * Reads `useGetMeQuery()` for roles — no new fetch, RTK Query dedupes
  * with the route guards' own subscription.
@@ -28,15 +29,17 @@ import { cn } from '@/lib/utils'
 export function AppSidebar() {
   const { data } = useGetMeQuery()
   const items = navItemsFor(data?.user)
+  const scene = activityForRoute(useLocation().pathname, items)
 
   return (
     <nav
       aria-label="Main"
-      className="hidden w-56 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-3 md:flex xl:w-64"
+      className="workspace-sidebar hidden w-56 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-3 md:flex xl:w-64"
     >
       {items.map((item) => (
         <SidebarLink key={item.to} item={item} />
       ))}
+      {scene && <ActivityScene scene={scene} variant="sidebar" />}
     </nav>
   )
 }
@@ -57,7 +60,7 @@ function SidebarLink({ item }: { item: NavItem }) {
       <a
         href={item.to}
         rel="noreferrer"
-        className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="workspace-sidebar-link flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <Icon className="size-4 shrink-0" />
         {item.label}
@@ -71,7 +74,7 @@ function SidebarLink({ item }: { item: NavItem }) {
       end={item.end}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50',
+          'workspace-sidebar-link flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-sidebar-foreground outline-none hover:bg-sidebar-accent focus-visible:ring-3 focus-visible:ring-ring/50',
           isActive && 'bg-sidebar-accent',
         )
       }

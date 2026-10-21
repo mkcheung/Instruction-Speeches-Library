@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Storage;
 
 /**
  * STEP-09-VERIFICATION-PLAN.md §3.3. A separately-invoked media/caption
- * seeder with its own fixed IDs (9401-9409 for speeches, 9411-9413 for
+ * seeder with its own fixed IDs (9401-9409 and 9901-9913 for speeches, 9411-9413 for
  * reviews, 9501+ for assets) — deliberately never touching E2ESeeder's
  * shared speech 9101, which CP-05/CP-08 already depend on.
  *
@@ -65,6 +65,41 @@ class E2ECaptionsSeeder extends Seeder
 
     public const SEARCH_OTHER_USER_MATCH_SPEECH_ID = 9409;
 
+    // Dedicated search controls: verified unused across the existing seeders.
+    public const SEARCH_TITLE_ONLY_ID = 9901;
+
+    public const SEARCH_DESCRIPTION_ONLY_ID = 9902;
+
+    public const SEARCH_MULTI_FIELD_ID = 9903;
+
+    public const SEARCH_FOREIGN_TITLE_ID = 9904;
+
+    public const SEARCH_FOREIGN_DESCRIPTION_ID = 9905;
+
+    public const SEARCH_FOREIGN_BODY_ID = 9906;
+
+    public const SEARCH_DELETED_TITLE_ID = 9907;
+
+    public const SEARCH_DELETED_DESCRIPTION_ID = 9908;
+
+    public const SEARCH_DELETED_BODY_ID = 9909;
+
+    public const SEARCH_UNICODE_NEGATIVE_ID = 9910;
+
+    public const SEARCH_LITERAL_ID = 9911;
+
+    public const SEARCH_LITERAL_NONMATCH_ID = 9912;
+
+    public const SEARCH_UNICODE_POSITIVE_ID = 9913;
+
+    public const SEARCH_TITLE_PHRASE = 'spectral titleonly beacon';
+
+    public const SEARCH_DESCRIPTION_PHRASE = 'velvet descriptiononly beacon';
+
+    public const SEARCH_MULTI_PHRASE = 'cobalt multifield lantern';
+
+    public const SEARCH_LITERAL_TEXT = 'literal 100%_!\\archive [x].* "quoted" to be contiguous phrase';
+
     public const REVIEW_DISPLAY_COACH_A_ID = 9411;
 
     public const REVIEW_DISPLAY_COACH_B_ID = 9412;
@@ -101,6 +136,7 @@ class E2ECaptionsSeeder extends Seeder
         $this->seedCaptionProcessingSpeech($memberId);
         $this->seedCaptionFailedSpeech($memberId);
         $this->seedSearchControlSpeeches($memberId, $coachBId);
+        $this->seedSearchExcerptControls($memberId, $coachBId);
     }
 
     /**
@@ -449,9 +485,46 @@ class E2ECaptionsSeeder extends Seeder
         );
     }
 
+    /** Independent OR-arm controls; metadata-only fixtures have no transcript. */
+    private function seedSearchExcerptControls(int $memberId, int $otherOwnerId): void
+    {
+        $timestamp = Carbon::parse(self::FIXTURE_TIMESTAMP);
+        $this->upsertSpeech(self::SEARCH_TITLE_ONLY_ID, $memberId, self::SEARCH_TITLE_PHRASE, '', $timestamp);
+        $this->upsertSpeech(self::SEARCH_DESCRIPTION_ONLY_ID, $memberId, 'E2E description-only control', self::SEARCH_DESCRIPTION_PHRASE, $timestamp);
+
+        $multi = $this->upsertSpeech(self::SEARCH_MULTI_FIELD_ID, $memberId, self::SEARCH_MULTI_PHRASE, self::SEARCH_MULTI_PHRASE, $timestamp);
+        $this->seedReadyCaptions($multi, 9951, $timestamp, $this->twoCueVtt(self::SEARCH_MULTI_PHRASE, 'separate closing remarks'));
+
+        $this->upsertSpeech(self::SEARCH_FOREIGN_TITLE_ID, $otherOwnerId, self::SEARCH_TITLE_PHRASE, '', $timestamp);
+        $this->upsertSpeech(self::SEARCH_FOREIGN_DESCRIPTION_ID, $otherOwnerId, 'Foreign metadata control', self::SEARCH_DESCRIPTION_PHRASE, $timestamp);
+        $foreignBody = $this->upsertSpeech(self::SEARCH_FOREIGN_BODY_ID, $otherOwnerId, 'Foreign body control', '', $timestamp);
+        $this->seedReadyCaptions($foreignBody, 9952, $timestamp, $this->twoCueVtt(self::SEARCH_DISTINCTIVE_PHRASE, 'independent closing remarks'));
+
+        $deletedTitle = $this->upsertSpeech(self::SEARCH_DELETED_TITLE_ID, $memberId, self::SEARCH_TITLE_PHRASE, '', $timestamp);
+        $deletedDescription = $this->upsertSpeech(self::SEARCH_DELETED_DESCRIPTION_ID, $memberId, 'Deleted metadata control', self::SEARCH_DESCRIPTION_PHRASE, $timestamp);
+        $deletedBody = $this->upsertSpeech(self::SEARCH_DELETED_BODY_ID, $memberId, 'Deleted body control', '', $timestamp);
+        $this->seedReadyCaptions($deletedBody, 9953, $timestamp, $this->twoCueVtt(self::SEARCH_DISTINCTIVE_PHRASE, 'independent closing remarks'));
+        foreach ([$deletedTitle, $deletedDescription, $deletedBody] as $speech) {
+            // A fixed soft-delete timestamp without firing media-purge observers.
+            $speech->forceFill(['deleted_at' => $timestamp])->saveQuietly();
+        }
+
+        // Query "s" must mark the ASCII title but not either long-S field.
+        $negative = $this->upsertSpeech(self::SEARCH_UNICODE_NEGATIVE_ID, $memberId, 'Signal', 'ſſſ', $timestamp);
+        $this->seedReadyCaptions($negative, 9954, $timestamp, $this->twoCueVtt('ſſſ', 'ſſſ'));
+
+        $literal = $this->upsertSpeech(self::SEARCH_LITERAL_ID, $memberId, 'E2E literal body control', '', $timestamp);
+        $this->seedReadyCaptions($literal, 9955, $timestamp, $this->twoCueVtt(self::SEARCH_LITERAL_TEXT, 'district finalists'));
+        $near = $this->upsertSpeech(self::SEARCH_LITERAL_NONMATCH_ID, $memberId, 'E2E literal near-miss control', '', $timestamp);
+        $this->seedReadyCaptions($near, 9956, $timestamp, $this->twoCueVtt('literal 100X!archive x quoted to maybe be', 'phrase separated contiguous district final'));
+
+        $positive = $this->upsertSpeech(self::SEARCH_UNICODE_POSITIVE_ID, $memberId, 'CAFÉ İstanbul', 'Straße ΤΌΝΟΣ', $timestamp);
+        $this->seedReadyCaptions($positive, 9957, $timestamp, $this->twoCueVtt('café İstanbul', 'Straße τόνος'));
+    }
+
     private function upsertSpeech(int $id, int $ownerId, string $title, string $description, Carbon $timestamp): Speech
     {
-        return Speech::query()->updateOrCreate(
+        return Speech::withTrashed()->updateOrCreate(
             ['id' => $id],
             [
                 'ulid' => sprintf('01JQE2ECAPTIONS%011d', $id),
@@ -459,6 +532,7 @@ class E2ECaptionsSeeder extends Seeder
                 'user_id' => $ownerId,
                 'title' => $title,
                 'description' => $description,
+                'deleted_at' => null,
                 'is_example' => false,
                 'captions_enabled' => true,
                 'created_at' => $timestamp,

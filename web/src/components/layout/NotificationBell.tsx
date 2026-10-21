@@ -105,14 +105,17 @@ export function NotificationBell() {
             type="button"
             variant="outline"
             size="icon"
-            aria-label={unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
           />
         }
         className="relative"
       >
+        <span className="sr-only">
+          {unreadCount > 0 ? `Notifications (${unreadCount} unread)` : 'Notifications'}
+        </span>
         <BellIcon />
         {unreadCount > 0 && (
           <Badge
+            aria-hidden="true"
             variant="destructive"
             className="absolute -right-1 -top-1 h-4 min-w-4 justify-center px-1 text-[10px]"
           >

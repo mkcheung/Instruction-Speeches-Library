@@ -154,6 +154,65 @@ it('seeds the three search-control speeches with correct ownership and phrase di
     expect(Speech::query()->find(E2ECaptionsSeeder::SEARCH_OTHER_USER_MATCH_SPEECH_ID)->user_id)->toBe(E2ESeeder::COACH_B_ID);
 });
 
+it('seeds independent title and description matches without transcript rows', function () {
+    $this->seed(E2ECaptionsSeeder::class);
+
+    foreach ([
+        E2ECaptionsSeeder::SEARCH_TITLE_ONLY_ID => E2ECaptionsSeeder::SEARCH_TITLE_PHRASE,
+        E2ECaptionsSeeder::SEARCH_DESCRIPTION_ONLY_ID => E2ECaptionsSeeder::SEARCH_DESCRIPTION_PHRASE,
+    ] as $id => $phrase) {
+        $speech = Speech::query()->findOrFail($id);
+        expect($speech->user_id)->toBe(E2ESeeder::MEMBER_ID);
+        expect($speech->title.' '.$speech->description)->toContain($phrase);
+        expect(SpeechTranscript::query()->where('speech_id', $id)->exists())->toBeFalse();
+    }
+    expect(Speech::query()->findOrFail(E2ECaptionsSeeder::SEARCH_TITLE_ONLY_ID)->description)->toBe('');
+    expect(Speech::query()->findOrFail(E2ECaptionsSeeder::SEARCH_DESCRIPTION_ONLY_ID)->title)
+        ->not->toContain(E2ECaptionsSeeder::SEARCH_DESCRIPTION_PHRASE);
+});
+
+it('seeds isolated foreign and deleted controls for every search OR arm', function () {
+    $this->seed(E2ECaptionsSeeder::class);
+
+    foreach ([
+        [E2ECaptionsSeeder::SEARCH_FOREIGN_TITLE_ID, E2ECaptionsSeeder::SEARCH_DELETED_TITLE_ID, 'title', E2ECaptionsSeeder::SEARCH_TITLE_PHRASE],
+        [E2ECaptionsSeeder::SEARCH_FOREIGN_DESCRIPTION_ID, E2ECaptionsSeeder::SEARCH_DELETED_DESCRIPTION_ID, 'description', E2ECaptionsSeeder::SEARCH_DESCRIPTION_PHRASE],
+        [E2ECaptionsSeeder::SEARCH_FOREIGN_BODY_ID, E2ECaptionsSeeder::SEARCH_DELETED_BODY_ID, 'body', E2ECaptionsSeeder::SEARCH_DISTINCTIVE_PHRASE],
+    ] as [$foreignId, $deletedId, $field, $phrase]) {
+        $foreign = Speech::query()->findOrFail($foreignId);
+        $deleted = Speech::withTrashed()->findOrFail($deletedId);
+        expect($foreign->user_id)->toBe(E2ESeeder::COACH_B_ID);
+        expect($deleted->user_id)->toBe(E2ESeeder::MEMBER_ID);
+        expect($deleted->trashed())->toBeTrue();
+        foreach ([$foreign, $deleted] as $speech) {
+            $body = SpeechTranscript::query()->where('speech_id', $speech->id)->value('body');
+            foreach (['title' => $speech->title, 'description' => $speech->description, 'body' => $body ?? ''] as $name => $value) {
+                expect(str_contains($value, $phrase))->toBe($name === $field);
+            }
+        }
+    }
+});
+
+it('seeds multi-field, literal, and Unicode controls without hiding field-level negatives', function () {
+    $this->seed(E2ECaptionsSeeder::class);
+
+    $multi = Speech::query()->findOrFail(E2ECaptionsSeeder::SEARCH_MULTI_FIELD_ID);
+    expect($multi->title)->toBe(E2ECaptionsSeeder::SEARCH_MULTI_PHRASE);
+    expect($multi->description)->toBe(E2ECaptionsSeeder::SEARCH_MULTI_PHRASE);
+    expect(SpeechTranscript::query()->where('speech_id', $multi->id)->value('body'))->toContain(E2ECaptionsSeeder::SEARCH_MULTI_PHRASE);
+    expect(SpeechTranscript::query()->where('speech_id', E2ECaptionsSeeder::SEARCH_LITERAL_ID)->value('body'))
+        ->toContain(E2ECaptionsSeeder::SEARCH_LITERAL_TEXT);
+    expect(SpeechTranscript::query()->where('speech_id', E2ECaptionsSeeder::SEARCH_LITERAL_NONMATCH_ID)->value('body'))
+        ->not->toContain(E2ECaptionsSeeder::SEARCH_LITERAL_TEXT);
+
+    $negative = Speech::query()->findOrFail(E2ECaptionsSeeder::SEARCH_UNICODE_NEGATIVE_ID);
+    expect($negative->title)->toBe('Signal');
+    expect($negative->description)->toBe('ſſſ');
+    expect(SpeechTranscript::query()->where('speech_id', $negative->id)->value('body'))->toBe('ſſſ ſſſ');
+    expect(SpeechTranscript::query()->where('speech_id', E2ECaptionsSeeder::SEARCH_UNICODE_POSITIVE_ID)->value('body'))
+        ->toBe('café İstanbul Straße τόνος');
+});
+
 it('is idempotent, so re-seeding a live e2e database does not duplicate rows or objects', function () {
     $this->seed(E2ECaptionsSeeder::class);
     $this->seed(E2ECaptionsSeeder::class);
@@ -174,6 +233,12 @@ it('is idempotent, so re-seeding a live e2e database does not duplicate rows or 
         expect(Speech::query()->where('id', $id)->count())->toBe(1);
         expect(SpeechTranscript::query()->where('speech_id', $id)->count())->toBeLessThanOrEqual(1);
     }
+
+    foreach (range(9901, 9913) as $id) {
+        expect(Speech::withTrashed()->where('id', $id)->count())->toBe(1);
+        expect(SpeechTranscript::query()->where('speech_id', $id)->count())->toBeLessThanOrEqual(1);
+    }
+    expect(Speech::onlyTrashed()->whereBetween('id', [9901, 9913])->count())->toBe(3);
 
     expect(Review::query()->whereIn('id', [
         E2ECaptionsSeeder::REVIEW_DISPLAY_COACH_A_ID,
