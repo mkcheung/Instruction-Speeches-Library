@@ -3,7 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Auth\MfaChallenge;
-use App\Filament\Auth\PanelLogin;
+use App\Http\Controllers\AdminLoginRedirectController;
 use App\Http\Middleware\CheckUserIsActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\RequireFilamentMfaChallenge;
@@ -85,7 +85,11 @@ class AdminPanelProvider extends PanelProvider
             // Harmless here: there is exactly one panel.
             ->default()
             ->path('control-panel')
-            ->login(PanelLogin::class)
+            ->login(AdminLoginRedirectController::class)
+            // The manually routed challenge must also resolve by its snapshot alias
+            // on a fresh Livewire POST. Register the component without discovering
+            // it as a panel page, which would attach its own MFA gate to its route.
+            ->livewireComponents([MfaChallenge::class])
             ->authGuard('web')
             ->colors(['primary' => Color::Indigo])
             // PLAN-ADMIN-DASHBOARD.md §7. Filament already collapses the

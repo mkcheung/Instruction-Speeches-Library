@@ -3,7 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Login from '@/routes/Login'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
-import { ADMIN_PANEL_ITEM } from '@/lib/roles'
+import { ADMIN_LOGIN_CONTINUATION } from '@/lib/roles'
 
 /**
  * PLAN-ADMIN-LOGIN-REDIRECT.md §7.4: "No vitest test anywhere currently
@@ -60,12 +60,14 @@ async function submitLoginForm() {
 }
 
 describe('Login', () => {
+  const originalLocation = window.location
   beforeEach(() => {
     clearCookies()
   })
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
   })
 
   it('sends a member with no `from` to /dashboard', async () => {
@@ -90,8 +92,8 @@ describe('Login', () => {
     })
   })
 
-  it('escorts an admin with no `from` to the panel via a real cross-origin navigation, not navigate()', async () => {
-    stubLoginResponse({ roles: ['admin'], onboarding_completed: true })
+  it.each(['admin', 'super_admin'])('escorts %s with no `from` through the alias using a real cross-origin navigation', async (role) => {
+    stubLoginResponse({ roles: [role], onboarding_completed: true })
     const location = stubLocationReplace()
 
     const { router } = renderWithProviders(<Login />, { route: '/login' })
@@ -99,13 +101,47 @@ describe('Login', () => {
     await submitLoginForm()
 
     await waitFor(() => {
-      expect(location.replace).toHaveBeenCalledWith(ADMIN_PANEL_ITEM.to)
+      expect(location.replace).toHaveBeenCalledWith(ADMIN_LOGIN_CONTINUATION)
     })
     // The SPA's own router never moves — `navigate()` was deliberately
     // not the call made for this case.
     expect(router.state.location.pathname).toBe('/login')
 
     location.restore()
+  })
+
+  it.each([false, true])('submits the Remember me option as %s', async (remember) => {
+    const fetchMock = stubLoginResponse({ roles: ['member'], onboarding_completed: true })
+    const { router } = renderWithProviders(<Login />, { route: '/login' })
+    const checkbox = screen.getByRole('checkbox', { name: 'Remember me' })
+    expect(checkbox).not.toBeChecked()
+    if (remember) await userEvent.click(checkbox)
+
+    await submitLoginForm()
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'))
+    const loginCall = fetchMock.mock.calls.find(([input]) => new URL(urlOf(input)).pathname === '/login')
+    expect(loginCall).toBeDefined()
+    expect(await (loginCall![0] as Request).clone().json()).toEqual({
+      email: 'admin@example.com',
+      password: 'correct-horse-battery',
+      remember,
+    })
+  })
+
+  it('keeps a failed login on the shared form and displays the server error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (urlOf(input).includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      return jsonResponse({ message: 'These credentials do not match our records.' }, 422)
+    }))
+    const location = stubLocationReplace()
+    const { router } = renderWithProviders(<Login />, { route: '/login' })
+
+    await submitLoginForm()
+
+    expect(await screen.findByText('These credentials do not match our records.')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/login')
+    expect(location.replace).not.toHaveBeenCalled()
   })
 
   /**

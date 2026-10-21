@@ -471,13 +471,9 @@ class AppServiceProvider extends ServiceProvider
         // Both guards share the `web` guard (SESSION_DOMAIN's leading dot),
         // so this listens for ANY `web`-guard login, not just the panel's.
         //
-        // Ordering is load-bearing, not incidental: this fires INSIDE
-        // `parent::authenticate()` (Fortify's own `attemptWhen`/`attempt()`
-        // calls fire the same event), strictly before `PanelLogin::authenticate()`
-        // stamps past `parent::authenticate()`'s return. An implementation
-        // that stamped any earlier would have this listener delete the
-        // stamp it just wrote, and the symptom would be an endless MFA
-        // challenge loop rather than an obvious error.
+        // Shared Fortify password authentication clears old proof here.
+        // Only the subsequent dedicated MfaChallenge writes fresh proof;
+        // the admin login compatibility redirect never authenticates or stamps.
         Event::listen(Login::class, function (Login $event): void {
             if ($event->guard === 'web') {
                 FilamentMfaStamp::forget();

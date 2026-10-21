@@ -61,6 +61,28 @@ _compose exec -T app php artisan db:seed --class="Database\\Seeders\\RoleSeeder"
 #    expected `got 1`). Every OTHER admin/super_admin is demoted to
 #    `member` before the race so the two seeded users genuinely are the
 #    whole roster.
+# 4. The demotion below is shared state: every later step in the e2e job runs
+#    against this same database, and `admin-panel.spec.ts` needs the
+#    E2ESeeder admin/super-admin accounts to still hold their roles (without
+#    them the SPA treats an admin login as a member's and lands on
+#    /dashboard instead of the panel's MFA challenge). So record who held
+#    which role and put it back on exit, pass or fail, and demote the two
+#    throwaway lock-test users so they don't linger as admins.
+ORIGINAL_ROLES="$(_compose exec -T app php artisan tinker --execute="
+echo json_encode(App\Models\User::role(['admin', 'super_admin'])->get()->mapWithKeys(fn (\$u) => [\$u->id => \$u->getRoleNames()->values()->all()])->all());
+" | tail -n 1 | tr -d '\r')"
+case "$ORIGINAL_ROLES" in '{'*'}'|'[]') ;; *) fail "could not record the original admin roles (got: '$ORIGINAL_ROLES')" ;; esac
+
+restore_admin_roles() {
+  _compose exec -T app php artisan tinker --execute="
+foreach (json_decode('$ORIGINAL_ROLES', true) ?: [] as \$id => \$roles) {
+    App\Models\User::find(\$id)?->syncRoles(\$roles);
+}
+App\Models\User::whereIn('email', ['lock-test-admin-1@example.test', 'lock-test-admin-2@example.test'])->get()->each->syncRoles(['member']);
+" >/dev/null 2>&1 || echo "!!! could not restore the original admin roles" >&2
+}
+trap restore_admin_roles EXIT
+
 SEED_OUTPUT="$(_compose exec -T app php artisan tinker --execute="
 App\Models\User::role(['admin', 'super_admin'])->get()->each(function (\$u) {
     \$u->syncRoles(['member']);

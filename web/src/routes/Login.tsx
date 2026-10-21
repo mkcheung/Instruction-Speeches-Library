@@ -26,6 +26,7 @@ export default function Login() {
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
+    defaultValues: { remember: false },
   })
 
   const onSubmit = handleSubmit(async (values) => {
@@ -95,6 +96,11 @@ export default function Login() {
                 {...register('password')}
               />
               <FieldMessage message={errors.password?.message} />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input id="remember" type="checkbox" {...register('remember')} />
+              <Label htmlFor="remember">Remember me</Label>
             </div>
 
             <Button type="submit" disabled={isLoading} className="mt-2">

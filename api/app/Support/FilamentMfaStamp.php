@@ -12,7 +12,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
  * passed a challenge — a password-only SPA session reaches the panel in
  * full (§1 of the plan). This is the marker that records "this session's
  * current user presented a second factor," written only past the
- * challenge gate (`PanelLogin::authenticate()` / `MfaChallenge::authenticate()`),
+ * dedicated challenge gate (`MfaChallenge::authenticate()`),
  * and bound to the user id so it cannot be inherited by a different user
  * logging in on the same browser session.
  *

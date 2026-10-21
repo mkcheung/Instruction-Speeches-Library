@@ -1,9 +1,9 @@
 <?php
 
 use App\Filament\Auth\MfaChallenge;
-use App\Filament\Auth\PanelLogin;
 use App\Http\Middleware\RequireFilamentMfaChallenge;
 use App\Models\User;
+use App\Support\AdminLoginDestination;
 use App\Support\FilamentMfaStamp;
 use App\Support\Role;
 use Database\Seeders\RoleSeeder;
@@ -14,18 +14,7 @@ use Livewire\Drawer\Utils;
 use Livewire\Livewire;
 use PragmaRX\Google2FA\Google2FA;
 
-/**
- * PLAN-ADMIN-LOGIN-REDIRECT.md §1, §2, §6 — closing the live MFA bypass.
- *
- * §1: an SPA-authenticated admin's password-only session reached the full
- * panel — `EnsureMultiFactorAuthenticationIsEnabled` only checks that a
- * TOTP secret is ENROLLED, never that this session presented one. §2: the
- * obvious fix ("redirect to login when unstamped") deadlocks against
- * `PanelLogin::mount()`'s own authenticated-visitor bounce. §6 closes both
- * with a session-bound stamp (`FilamentMfaStamp`) and a step-up challenge
- * page (`MfaChallenge`) that an unstamped-but-enrolled admin is routed to
- * instead of back to the login form.
- */
+/** Regression coverage for shared password login followed by dedicated admin MFA. */
 beforeEach(function () {
     $this->seed(RoleSeeder::class);
 });
@@ -53,17 +42,15 @@ it('reaches /control-panel through its real middleware stack, unstamped, and get
     $response->assertRedirect(route(MfaChallenge::getRouteName(Filament::getDefaultPanel())));
 });
 
-it('breaks the mount() loop: an unstamped authenticated admin hitting /control-panel/login is sent to the challenge, not back to the panel', function () {
-    // §2's deadlock: the vendor `Login::mount()` bounces any
-    // `Filament::auth()->check()` visitor straight back to the panel,
-    // which an unstamped `RequireFilamentMfaChallenge` would bounce right
-    // back to login — PanelLogin::mount() has to branch on the stamp
-    // instead of always targeting the panel.
+it('continues an unstamped authenticated admin to protected content which then requires the challenge', function () {
     [$admin] = mfaEnrolledAdmin();
+    config(['app.url' => 'https://api.speechcoach.test']);
 
-    $response = $this->actingAs($admin)->get('/control-panel/login');
-
-    $response->assertRedirect(route(MfaChallenge::getRouteName(Filament::getDefaultPanel())));
+    $this->actingAs($admin)->get('/control-panel/login')
+        ->assertRedirect('https://api.speechcoach.test/control-panel');
+    $this->get('/control-panel')
+        ->assertRedirect(route(MfaChallenge::getRouteName(Filament::getDefaultPanel())));
+    expect(FilamentMfaStamp::isValid($admin))->toBeFalse();
 });
 
 it('sends a STAMPED admin hitting /control-panel/login straight to the panel', function () {
@@ -72,7 +59,7 @@ it('sends a STAMPED admin hitting /control-panel/login straight to the panel', f
 
     $response = $this->actingAs($admin)->get('/control-panel/login');
 
-    $response->assertRedirect(Filament::getUrl());
+    $response->assertRedirect(app(AdminLoginDestination::class)->resolve(null));
 });
 
 it('redirects a non-enrolled admin to the set-up page from /control-panel, not the challenge', function () {
@@ -278,32 +265,24 @@ it('does not admit a different user on a session stamped for someone else', func
         ->assertRedirect(route(MfaChallenge::getRouteName(Filament::getDefaultPanel())));
 });
 
-it('stamps the session on a real panel login, and lands on the panel — the ordering guard in §6.1', function () {
-    // §6.1's load-bearing ordering: the `Login` event's clear-on-login
-    // listener fires INSIDE `parent::authenticate()` (Fortify's/Filament's
-    // own `attemptWhen`), strictly before `PanelLogin::authenticate()`
-    // stamps past `parent::authenticate()`'s return. An implementation
-    // that stamped any earlier would have the listener delete the stamp
-    // it just wrote, and the symptom would be an endless challenge loop
-    // rather than an obvious error — this is the test that would catch it.
+it('shared Fortify password login remains unstamped until the dedicated MFA challenge succeeds', function () {
     $password = 'correct-horse-battery-staple';
     [$admin, $secret] = mfaEnrolledAdmin();
     $admin->forceFill(['password' => bcrypt($password)])->save();
+    config(['app.url' => 'https://api.speechcoach.test']);
 
-    $component = Livewire::test(PanelLogin::class)
-        ->fillForm(['email' => $admin->email, 'password' => $password])
-        ->call('authenticate');
-
-    // First submit only gets past the credential check and into the
-    // vendor challenge state — Login::authenticate() returns null here,
-    // so nothing should be stamped yet.
+    $this->postJson('/login', ['email' => $admin->email, 'password' => $password])
+        ->assertOk();
     expect(FilamentMfaStamp::isValid($admin))->toBeFalse();
 
-    $code = app(Google2FA::class)->getCurrentOtp($secret);
+    $this->get('/control-panel/login')->assertRedirect('https://api.speechcoach.test/control-panel');
+    $this->get('/control-panel')->assertRedirect(route(MfaChallenge::getRouteName(Filament::getDefaultPanel())));
+    expect(FilamentMfaStamp::isValid($admin))->toBeFalse();
 
-    $component
-        ->set('data.multiFactor.app.code', $code)
-        ->call('authenticate');
+    Livewire::test(MfaChallenge::class)
+        ->fillForm(['code' => app(Google2FA::class)->getCurrentOtp($secret)])
+        ->call('authenticate')
+        ->assertRedirect('/control-panel');
 
     expect(FilamentMfaStamp::isValid($admin))->toBeTrue();
 });

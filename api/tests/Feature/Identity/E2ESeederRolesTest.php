@@ -35,6 +35,6 @@ it('logs in as each of the four seeded roles with a completed profile', function
             'password' => 'password',
         ])->assertOk();
 
-        $this->post('/logout')->assertOk();
+        $this->postJson('/logout')->assertOk();
     }
 });
