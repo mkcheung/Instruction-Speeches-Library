@@ -17,6 +17,14 @@ class SearchTranscriptsRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $query = $this->input('q');
+        if (is_string($query)) {
+            $this->merge(['q' => trim($query)]);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */

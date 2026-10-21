@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { WorkspaceLoginFrame } from '@/components/workspace/WorkspaceLoginFrame'
 import { useLoginMutation } from '@/features/auth/authApi'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { getPostLoginDestination } from '@/lib/roles'
@@ -56,18 +57,18 @@ export default function Login() {
   })
 
   return (
-    <div className="mx-auto flex min-h-svh max-w-sm items-center px-4">
-      <Card className="w-full">
+    <WorkspaceLoginFrame>
+      <Card className="workspace-login-card">
         <CardHeader>
-          <CardTitle>Log in</CardTitle>
+          <CardTitle><h1 className="workspace-login-title">Log in</h1></CardTitle>
           <CardDescription>Welcome back.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+          <form onSubmit={onSubmit} className="workspace-login-form-fields flex flex-col gap-4" noValidate>
             {searchParams.has('verified') && (
-              <FormBanner variant="success" message="Email verified — log in to continue." />
+              <FormBanner variant="success" message="Email verified — log in to continue." className="workspace-banner workspace-banner--success" />
             )}
-            <FormBanner message={formError} />
+            <FormBanner message={formError} className="workspace-banner workspace-banner--error" />
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="email">Email</Label>
@@ -82,9 +83,9 @@ export default function Login() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
+              <div className="workspace-login-password-label">
                 <Label htmlFor="password">Password</Label>
-                <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+                <Link to="/forgot-password" className="workspace-link text-xs">
                   Forgot password?
                 </Link>
               </div>
@@ -98,24 +99,24 @@ export default function Login() {
               <FieldMessage message={errors.password?.message} />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="workspace-remember flex items-center gap-2">
               <input id="remember" type="checkbox" {...register('remember')} />
               <Label htmlFor="remember">Remember me</Label>
             </div>
 
-            <Button type="submit" disabled={isLoading} className="mt-2">
+            <Button type="submit" disabled={isLoading} className="workspace-button workspace-button--primary mt-2">
               {isLoading ? 'Logging in…' : 'Log in'}
             </Button>
 
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="workspace-muted text-center text-sm">
               Need an account?{' '}
-              <Link to="/register" className="text-primary underline-offset-4 hover:underline">
+              <Link to="/register" className="workspace-link">
                 Register
               </Link>
             </p>
           </form>
         </CardContent>
       </Card>
-    </div>
+    </WorkspaceLoginFrame>
   )
 }

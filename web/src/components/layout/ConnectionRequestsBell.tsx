@@ -40,14 +40,17 @@ export function ConnectionRequestsBell() {
             type="button"
             variant="outline"
             size="icon"
-            aria-label={count > 0 ? `Connection requests (${count} pending)` : 'Connection requests'}
           />
         }
         className="relative"
       >
+        <span className="sr-only">
+          {count > 0 ? `Connection requests (${count} pending)` : 'Connection requests'}
+        </span>
         <PeopleIcon />
         {count > 0 && (
           <Badge
+            aria-hidden="true"
             variant="destructive"
             className="absolute -right-1 -top-1 h-4 min-w-4 justify-center px-1 text-[10px]"
           >

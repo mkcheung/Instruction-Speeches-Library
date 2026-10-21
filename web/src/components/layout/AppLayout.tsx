@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom'
 import { AppHeader } from '@/components/layout/AppHeader'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { RouteErrorBoundary } from '@/components/error/RouteErrorBoundary'
+import '@/components/workspace/workspace.css'
 
 /**
  * D1/D8/S7 (PLAN-APP-HEADER.md) — the layout route `App.tsx` renders once

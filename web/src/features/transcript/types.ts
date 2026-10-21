@@ -54,11 +54,21 @@ export interface Transcript {
   caption_revision: string | null
 }
 
-/**
- * `GET /api/speeches/search?q=...` -> `{ results: SpeechResource[] }`
- * (§4). Each result is a full `Speech` (the same resource `speechApi.ts`
- * already types) — search returns full speech cards, not a
- * transcript-shaped projection, so the existing `Speech` type is reused
- * rather than inventing a parallel `SearchResult` shape.
- */
-export type SpeechSearchResult = Speech
+/** Plain source text, split by the server's literal substring matcher. */
+export interface SearchTextPart {
+  text: string
+  matched: boolean
+}
+
+/** Search-only metadata; optional while older backend artifacts are deployed. */
+export type SpeechSearchResult = Speech & {
+  search_match?: {
+    title: SearchTextPart[]
+    description: SearchTextPart[] | null
+    transcript_excerpt: {
+      parts: SearchTextPart[]
+      truncated_before: boolean
+      truncated_after: boolean
+    } | null
+  }
+}

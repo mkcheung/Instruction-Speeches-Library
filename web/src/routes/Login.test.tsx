@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Login from '@/routes/Login'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
@@ -68,6 +68,90 @@ describe('Login', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+  })
+
+  it('retains one semantic login heading, labeled fields, autocomplete, and the existing links inside the theater frame', () => {
+    const { container } = renderWithProviders(<Login />, { route: '/login' })
+
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('heading', { level: 1, name: 'Log in' })).toHaveClass('workspace-login-title')
+    expect(screen.getByText('Welcome back.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Email')).toHaveAttribute('autocomplete', 'email')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'current-password')
+    expect(screen.getByRole('checkbox', { name: 'Remember me' })).not.toBeChecked()
+    expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password')
+    expect(screen.getByRole('link', { name: 'Register' })).toHaveAttribute('href', '/register')
+    const submit = screen.getByRole('button', { name: 'Log in' })
+    expect(submit).toBeEnabled()
+    expect(submit).toHaveAttribute('type', 'submit')
+    expect(submit.closest('form')).toHaveAttribute('novalidate')
+    expect(submit.closest('[aria-hidden="true"]')).toBeNull()
+    expect(container.querySelector('.workspace-login-card')).toContainElement(submit)
+    expect(container.querySelector('[data-workspace-scene="welcome"]')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('keeps the verified notice readable without changing form copy or submitting', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    renderWithProviders(<Login />, { route: '/login?verified=1' })
+
+    expect(screen.getByRole('status')).toHaveTextContent('Email verified — log in to continue.')
+    expect(screen.getByRole('status')).toHaveClass('workspace-banner', 'workspace-banner--success')
+    expect(screen.getByText('Welcome back.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('preserves client-side field validation before requesting login', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    renderWithProviders(<Login />, { route: '/login' })
+
+    await userEvent.type(screen.getByLabelText('Email'), 'invalid-email')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+
+    expect(await screen.findAllByRole('alert')).toHaveLength(2)
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByLabelText('Password')).toHaveAttribute('aria-invalid', 'true')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('preserves server field errors and keeps the form usable for retry', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (urlOf(input).includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      return jsonResponse({ errors: { email: ['This email cannot log in.'] } }, 422)
+    }))
+    const { router } = renderWithProviders(<Login />, { route: '/login' })
+
+    await submitLoginForm()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This email cannot log in.')
+    expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.getByRole('button', { name: 'Log in' })).toBeEnabled()
+    expect(router.state.location.pathname).toBe('/login')
+  })
+
+  it('keeps the loading label and disables duplicate submissions until login completes', async () => {
+    let finishLogin!: (response: Response) => void
+    const pendingLogin = new Promise<Response>((resolve) => { finishLogin = resolve })
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (urlOf(input).includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      return pendingLogin
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { router } = renderWithProviders(<Login />, { route: '/login' })
+
+    await submitLoginForm()
+
+    const submit = await screen.findByRole('button', { name: 'Logging in…' })
+    expect(submit).toBeDisabled()
+    await userEvent.click(submit)
+    expect(fetchMock.mock.calls.filter(([input]) => new URL(urlOf(input)).pathname === '/login')).toHaveLength(1)
+    await act(async () => {
+      finishLogin(jsonResponse({ user: { roles: ['member'], onboarding_completed: true } }, 200))
+    })
+    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'))
   })
 
   it('sends a member with no `from` to /dashboard', async () => {
@@ -140,6 +224,7 @@ describe('Login', () => {
     await submitLoginForm()
 
     expect(await screen.findByText('These credentials do not match our records.')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveClass('workspace-banner', 'workspace-banner--error')
     expect(router.state.location.pathname).toBe('/login')
     expect(location.replace).not.toHaveBeenCalled()
   })

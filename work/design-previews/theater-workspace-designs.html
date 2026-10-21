@@ -1,0 +1,533 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Luckiest+Guy&family=Patrick+Hand&display=swap">
+<div id="speech-theater-preview" data-design="c" data-screen="dashboard">
+  <div class="stp-chooser" aria-label="Design options">
+    <div class="stp-designs">
+      <button type="button" data-choice="a" aria-pressed="false"><span class="stp-letter">A</span><span>Backstage workspace<small>Calm &amp; clear</small></span></button>
+      <button type="button" data-choice="b" aria-pressed="false"><span class="stp-letter">B</span><span>Rehearsal notebook<small>Playful · paper &amp; ink</small></span></button>
+      <button type="button" data-choice="c" aria-pressed="true"><span class="stp-letter">C</span><span>Theater entrance<small>Selected direction · changing characters</small></span></button>
+    </div>
+    <div class="stp-screen-switch" aria-label="Preview page">
+      <button type="button" data-page="login" aria-pressed="false">Login</button>
+      <button type="button" data-page="dashboard" aria-pressed="true">Dashboard</button>
+    </div>
+  </div>
+
+  <div class="stp-product">
+    <div class="stp-login" hidden>
+      <div class="stp-login-top"><span class="stp-wordmark">INSTRUCTION SPEECHES <b>LIBRARY</b></span></div>
+      <div class="stp-login-layout">
+        <section class="stp-welcome">
+          <span class="stp-kicker stp-login-kicker">BACKSTAGE PASS</span>
+          <h1>Your next great<br>speech starts here.</h1>
+          <div class="stp-login-illustration" role="img" aria-label="An original cartoon speaker with a notebook, standing beside a microphone on a small wooden stage.">
+            <div class="stp-stage-left"></div><div class="stp-stage-right"></div>
+            <div class="stp-speechbubble">Good to see you!</div>
+            <div class="stp-spotlight"></div><div class="stp-microphone"><span></span></div>
+            <div class="stp-person stp-large-person"><div class="stp-leg stp-leg-left"></div><div class="stp-leg stp-leg-right"></div><div class="stp-shoe stp-shoe-left"></div><div class="stp-shoe stp-shoe-right"></div><div class="stp-body"></div><div class="stp-ear stp-ear-left"></div><div class="stp-ear stp-ear-right"></div><div class="stp-head"><div class="stp-hair"></div><div class="stp-eye stp-eye-left"></div><div class="stp-eye stp-eye-right"></div><div class="stp-nose"></div><div class="stp-smile"></div></div><div class="stp-arm stp-arm-left"></div><div class="stp-arm stp-arm-right"></div><div class="stp-notebook"><span></span><span></span><span></span></div><div class="stp-hand"></div></div>
+            <div class="stp-stagefloor"></div>
+          </div>
+          <p class="stp-handwritten">A little practice. A fresh perspective.</p>
+        </section>
+        <section class="stp-login-form-panel" aria-label="Login preview">
+          <span class="stp-mini-label">WELCOME BACK</span><h2>Log in</h2><p class="stp-muted">Take your place. Your speeches are waiting.</p>
+          <form class="stp-login-form">
+            <label for="stp-email">Email</label><input id="stp-email" type="email" placeholder="you@example.com" autocomplete="off">
+            <div class="stp-password-label"><label for="stp-password">Password</label><a href="#" data-preview-action>Forgot password?</a></div><input id="stp-password" type="password" placeholder="Enter your password" autocomplete="off">
+            <label class="stp-remember"><input type="checkbox"> Remember me</label>
+            <button type="submit" class="stp-primary stp-login-submit">Log in <span aria-hidden="true">→</span></button>
+            <p class="stp-register">Need an account? <a href="#" data-preview-action>Register</a></p>
+            <p class="stp-feedback" role="status"></p>
+          </form>
+        </section>
+      </div>
+      <div class="stp-login-foot">A private place to practise. Helpful feedback, at your pace.</div>
+    </div>
+
+    <div class="stp-dashboard">
+      <header class="stp-header">
+        <span class="stp-wordmark">INSTRUCTION SPEECHES <b>LIBRARY</b></span>
+        <div class="stp-header-actions"><button type="button" class="stp-icon-button" aria-label="Connection requests" data-preview-action><i data-lucide="users" aria-hidden="true"></i></button><button type="button" class="stp-icon-button stp-notification" aria-label="Notifications, 2 unread" data-preview-action><i data-lucide="bell" aria-hidden="true"></i><span>2</span></button><span class="stp-avatar">MM</span><span class="stp-account-name">Milo Member</span></div>
+      </header>
+      <div class="stp-workspace">
+        <aside class="stp-sidebar" aria-label="Application navigation preview">
+          <div class="stp-nav-heading">YOUR WORKSPACE</div>
+          <nav class="stp-nav">
+            <button type="button" data-activity="reviews" aria-current="page"><i data-lucide="notebook-pen" aria-hidden="true"></i>My reviews</button>
+            <button type="button" data-activity="speeches"><i data-lucide="film" aria-hidden="true"></i>My speeches</button>
+            <button type="button" data-activity="reviewers"><i data-lucide="users" aria-hidden="true"></i>Find reviewers</button>
+            <button type="button" data-activity="upload"><i data-lucide="upload" aria-hidden="true"></i>Upload a speech</button>
+            <button type="button" data-activity="search"><i data-lucide="search" aria-hidden="true"></i>Search</button>
+            <span class="stp-nav-rule"></span>
+            <button type="button" data-activity="profile"><i data-lucide="user-round" aria-hidden="true"></i>Your profile</button>
+            <button type="button" data-activity="edit"><i data-lucide="pencil" aria-hidden="true"></i>Edit profile</button>
+            <button type="button" data-activity="account"><i data-lucide="shield-check" aria-hidden="true"></i>Account &amp; privacy</button>
+            <button type="button" data-activity="coach"><i data-lucide="graduation-cap" aria-hidden="true"></i>Become a Coach</button>
+          </nav>
+          <div class="stp-sidebar-scene" data-pose="reviews" role="img" aria-label="An original cartoon reviewer holding a notebook.">
+            <div class="stp-scene-halo"></div>
+            <div class="stp-person stp-small-person"><div class="stp-leg stp-leg-left"></div><div class="stp-leg stp-leg-right"></div><div class="stp-shoe stp-shoe-left"></div><div class="stp-shoe stp-shoe-right"></div><div class="stp-body"></div><div class="stp-ear stp-ear-left"></div><div class="stp-ear stp-ear-right"></div><div class="stp-head"><div class="stp-hair"></div><div class="stp-eye stp-eye-left"></div><div class="stp-eye stp-eye-right"></div><div class="stp-nose"></div><div class="stp-smile"></div></div><div class="stp-arm stp-arm-left"></div><div class="stp-arm stp-arm-right"></div><div class="stp-notebook"><span></span><span></span><span></span></div><div class="stp-hand"></div><div class="stp-prop-search"></div><div class="stp-prop-slate"><span>TAKE 1</span></div><div class="stp-prop-lock"></div></div>
+            <span class="stp-scene-caption">A fresh pair of ears.</span>
+          </div>
+        </aside>
+        <main class="stp-main">
+          <div class="stp-main-top"><div><span class="stp-kicker">THE REHEARSAL ROOM</span><h1 class="stp-page-heading">My reviews</h1><p class="stp-page-subtitle stp-muted">A few thoughtful words can make a big difference.</p></div><span class="stp-page-number" aria-hidden="true">01</span></div>
+          <div class="stp-reviews-view">
+            <section class="stp-section"><div class="stp-section-heading"><h2>Invitations awaiting response</h2><span class="stp-count">1</span></div><article class="stp-review-panel stp-invitation"><div class="stp-panel-label"><span class="stp-status-dot"></span>REVIEW INVITATION</div><h3>Finding your voice</h3><p class="stp-byline">From Cora Coach</p><blockquote>“I'd love your thoughts on my opening and pacing.”</blockquote><div class="stp-panel-actions"><button type="button" class="stp-primary" data-preview-action>Accept invitation</button><button type="button" class="stp-secondary" data-preview-action>Decline</button></div></article></section>
+            <section class="stp-section"><div class="stp-section-heading"><h2>In progress</h2><span class="stp-count">1</span></div><article class="stp-review-panel stp-progress-panel"><div class="stp-review-content"><span class="stp-small-status">Accepted</span><h3>A story worth telling</h3><p class="stp-byline">Cora Coach · Ready for your feedback</p></div><div class="stp-panel-actions"><button type="button" class="stp-primary" data-preview-action>Watch speech <span aria-hidden="true">→</span></button><button type="button" class="stp-text-button" data-preview-action>Withdraw</button></div></article></section>
+            <section class="stp-section"><div class="stp-section-heading"><h2>Published work</h2><span class="stp-count">1</span></div><article class="stp-review-panel stp-published-panel"><div><h3>The art of a good introduction</h3><p class="stp-byline">Your feedback is published</p></div><button type="button" class="stp-secondary" data-preview-action>Watch</button></article></section>
+            <details class="stp-revoked"><summary>Revoked <span>0</span></summary></details>
+          </div>
+          <section class="stp-activity-view" hidden></section>
+          <p class="stp-dashboard-feedback" role="status"></p>
+        </main>
+      </div>
+    </div>
+  </div>
+  <div class="stp-preview-caption" aria-live="polite">C · Theater entrance — dashboard</div>
+</div>
+
+<style>
+#speech-theater-preview{font-family:'Geist',Arial,sans-serif;color:#2b211b;font-size:14px;line-height:1.5;width:100%;background:transparent;color-scheme:light}
+#speech-theater-preview *{box-sizing:border-box}
+#speech-theater-preview [hidden]{display:none!important}
+#speech-theater-preview button,#speech-theater-preview input{font:inherit}
+#speech-theater-preview button{cursor:pointer}
+#speech-theater-preview button:focus-visible,#speech-theater-preview a:focus-visible,#speech-theater-preview input:focus-visible{outline:3px solid #0f6b66;outline-offset:3px}
+#speech-theater-preview .stp-chooser{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+#speech-theater-preview .stp-designs{display:flex;gap:8px;flex:1;flex-wrap:wrap}
+#speech-theater-preview .stp-designs button{background:#fffdf6;border:1px solid #ab9b8b;border-radius:9px;text-align:left;color:#2b211b;padding:10px 12px;display:flex;gap:9px;align-items:center;flex:1;min-width:185px;font-size:13px;font-weight:600}
+#speech-theater-preview .stp-designs button[aria-pressed=true]{border:2px solid #0f6b66;padding:9px 11px;box-shadow:0 2px 0 #0f6b66}
+#speech-theater-preview .stp-designs small{display:block;font-size:11px;font-weight:400;color:#66574f;margin-top:2px}
+#speech-theater-preview .stp-letter{font-weight:700;font-size:16px;background:#ffefa1;border:1px solid #2b211b;border-radius:4px;width:26px;height:30px;display:grid;place-items:center;flex-shrink:0}
+#speech-theater-preview .stp-screen-switch{display:flex;background:#fffdf6;border:1px solid #ab9b8b;padding:4px;border-radius:9px;gap:3px}
+#speech-theater-preview .stp-screen-switch button{border:0;border-radius:5px;padding:9px 13px;color:#2b211b;background:transparent;font-size:13px}
+#speech-theater-preview .stp-screen-switch button[aria-pressed=true]{background:#2b211b;color:#fffdf6}
+#speech-theater-preview .stp-product{background:#fffdf6;border:1px solid #9a8674;border-radius:12px;overflow:hidden;box-shadow:0 5px 0 #2b211b16}
+#speech-theater-preview .stp-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 24px;background:#fff5e6;border-bottom:1px solid #b9a38e;min-height:76px}
+#speech-theater-preview .stp-wordmark{font-family:'Luckiest Guy',Arial,sans-serif;font-size:18px;line-height:1.1;letter-spacing:.4px;display:inline-block;max-width:280px}
+#speech-theater-preview .stp-wordmark b{font-family:'Geist',Arial,sans-serif;display:inline-block;background:#e9b949;border:1.5px solid #2b211b;border-radius:3px;font-size:10px;font-weight:700;padding:3px 7px;letter-spacing:2px;vertical-align:middle;margin-left:6px}
+#speech-theater-preview .stp-header-actions{display:flex;align-items:center;gap:10px;flex-shrink:0;font-size:12px;font-weight:600}
+#speech-theater-preview .stp-icon-button{display:grid;place-items:center;width:33px;height:33px;border:1px solid #ad9984;border-radius:7px;background:#fffdf6;color:#2b211b;position:relative}
+#speech-theater-preview i[data-lucide],#speech-theater-preview .stp-nav svg{width:17px;height:17px;flex-shrink:0}
+#speech-theater-preview .stp-notification>span{position:absolute;right:-4px;top:-5px;background:#a81e28;color:#fffdf6;font-size:10px;border-radius:9px;min-width:15px;height:15px}
+#speech-theater-preview .stp-avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#0f6b66;color:#fff;font-size:11px}
+#speech-theater-preview .stp-workspace{display:grid;grid-template-columns:213px minmax(0,1fr)}
+#speech-theater-preview .stp-sidebar{background:#fff5e6;border-right:1px solid #b9a38e;padding:22px 12px 8px}
+#speech-theater-preview .stp-nav-heading{font-size:10px;letter-spacing:1.7px;padding:0 10px 12px;color:#66574f;font-weight:600}
+#speech-theater-preview .stp-nav{display:flex;flex-direction:column;gap:4px}
+#speech-theater-preview .stp-nav button{background:transparent;color:#2b211b;border:1px solid transparent;border-radius:6px;min-height:38px;text-align:left;padding:8px 10px;display:flex;gap:10px;align-items:center;font-size:12px;position:relative}
+#speech-theater-preview .stp-nav button:hover{background:#efe2ce}
+#speech-theater-preview .stp-nav button[aria-current=page]{background:#e9b949;border-color:#2b211b;font-weight:600;box-shadow:2px 2px 0 #2b211b}
+#speech-theater-preview .stp-nav-rule{height:1px;background:#d6c4ae;margin:12px 10px}
+#speech-theater-preview .stp-main{background:#fffefb;padding:29px 30px 24px;min-width:0}
+#speech-theater-preview .stp-main-top{display:flex;justify-content:space-between;gap:10px;margin-bottom:25px}
+#speech-theater-preview .stp-kicker{font-size:10px;letter-spacing:1.8px;font-weight:700;color:#a81e28}
+#speech-theater-preview h1,#speech-theater-preview h2,#speech-theater-preview h3,#speech-theater-preview p{margin:0}
+#speech-theater-preview .stp-main h1{font-size:28px;font-weight:600;letter-spacing:-.8px;line-height:1.25;margin-top:4px}
+#speech-theater-preview .stp-page-subtitle{font-size:12px;margin-top:7px}
+#speech-theater-preview .stp-muted{color:#66574f}
+#speech-theater-preview .stp-page-number{color:#c9b79f;font-family:'Patrick Hand',cursive;font-size:39px;line-height:1.25}
+#speech-theater-preview .stp-section{margin-bottom:23px}
+#speech-theater-preview .stp-section-heading{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+#speech-theater-preview .stp-section-heading h2{font-size:14px;font-weight:600}
+#speech-theater-preview .stp-count{background:#f3eadf;color:#66574f;border-radius:4px;min-width:20px;text-align:center;font-size:11px;padding:1px 4px}
+#speech-theater-preview .stp-review-panel{background:#fffdf6;border:1px solid #b9a38e;border-radius:8px;padding:18px}
+#speech-theater-preview .stp-panel-label{display:flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1.2px;color:#66574f;font-weight:600;margin-bottom:9px}
+#speech-theater-preview .stp-status-dot{background:#0f6b66;width:6px;height:6px;border-radius:50%}
+#speech-theater-preview .stp-main h3{font-size:16px;font-weight:600;letter-spacing:-.2px;overflow-wrap:anywhere}
+#speech-theater-preview .stp-byline{font-size:11px;color:#66574f;margin-top:4px}
+#speech-theater-preview blockquote{border-left:3px solid #d5c0a6;margin:15px 0 17px;padding:7px 12px;background:#f8f1e7;font-size:12px;color:#4f4237;border-radius:0 3px 3px 0}
+#speech-theater-preview .stp-panel-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+#speech-theater-preview .stp-primary{background:#0f6b66;color:#fff;border:1px solid #0a504c;border-radius:5px;padding:9px 13px;font-size:12px;font-weight:500;min-height:36px;display:inline-flex;align-items:center;justify-content:center;gap:15px}
+#speech-theater-preview .stp-secondary{background:#fffdf6;color:#2b211b;border:1px solid #8a7668;border-radius:5px;padding:8px 13px;font-size:12px;min-height:36px}
+#speech-theater-preview .stp-primary:hover{background:#0a504c}
+#speech-theater-preview .stp-secondary:hover{background:#f3eadf}
+#speech-theater-preview .stp-text-button{padding:5px 0;border:0;color:#66574f;background:transparent;font-size:11px;text-decoration:underline;text-underline-offset:3px}
+#speech-theater-preview .stp-progress-panel{display:flex;align-items:center;justify-content:space-between;gap:18px}
+#speech-theater-preview .stp-progress-panel .stp-panel-actions{align-items:flex-end;flex-direction:column;gap:6px;flex-shrink:0}
+#speech-theater-preview .stp-small-status{display:inline-block;font-size:10px;color:#0f6b66;background:#e4f0e9;border-radius:3px;padding:2px 5px;margin-bottom:6px}
+#speech-theater-preview .stp-published-panel{display:flex;align-items:center;justify-content:space-between;gap:18px}
+#speech-theater-preview .stp-published-panel h3{font-size:14px}
+#speech-theater-preview .stp-revoked{font-size:12px;color:#66574f;border-top:1px solid #dfd0bd;padding-top:13px}
+#speech-theater-preview .stp-revoked span{margin-left:6px}
+#speech-theater-preview .stp-preview-caption{font-family:'Geist',Arial,sans-serif;font-size:12px;text-align:center;margin-top:14px;color:light-dark(#66574f,#c5baad)}
+#speech-theater-preview .stp-dashboard-feedback:empty,#speech-theater-preview .stp-feedback:empty{display:none}
+#speech-theater-preview .stp-dashboard-feedback,#speech-theater-preview .stp-feedback{font-size:12px;margin-top:14px;color:#0f6b66}
+/* Original paper-and-ink character study, built from shapes rather than interface icons. */
+#speech-theater-preview .stp-sidebar-scene{height:195px;position:relative;margin-top:20px;overflow:hidden}
+#speech-theater-preview .stp-scene-halo{position:absolute;width:130px;height:116px;border-radius:48% 52% 45% 55%;background:#f1dfbc;top:29px;left:25px}
+#speech-theater-preview .stp-person{position:absolute;width:126px;height:198px}
+#speech-theater-preview .stp-small-person{left:29px;top:8px;transform:scale(.73);transform-origin:top center}
+#speech-theater-preview .stp-head{position:absolute;left:24px;top:11px;width:78px;height:81px;background:#d9a16c;border:2px solid #2b211b;border-radius:47% 48% 43% 45%;z-index:4;transform:rotate(-5deg)}
+#speech-theater-preview .stp-ear{position:absolute;top:48px;width:14px;height:20px;background:#d9a16c;border:2px solid #2b211b;border-radius:50%;z-index:3}
+#speech-theater-preview .stp-ear-left{left:16px;transform:rotate(-15deg)}
+#speech-theater-preview .stp-ear-right{left:94px;transform:rotate(15deg)}
+#speech-theater-preview .stp-hair{position:absolute;left:-3px;top:-7px;width:80px;height:29px;border:2px solid #2b211b;border-bottom:0;border-radius:55% 45% 8% 30%;background:#433126;transform:rotate(-6deg)}
+#speech-theater-preview .stp-hair:before{content:'';position:absolute;top:-7px;left:40px;width:21px;height:18px;background:#433126;border-top:2px solid #2b211b;border-radius:60% 60% 0 0;transform:rotate(33deg)}
+#speech-theater-preview .stp-eye{position:absolute;top:35px;width:4px;height:6px;background:#2b211b;border-radius:50%}
+#speech-theater-preview .stp-eye-left{left:20px}
+#speech-theater-preview .stp-eye-right{right:18px}
+#speech-theater-preview .stp-nose{position:absolute;left:37px;top:40px;width:8px;height:8px;border-right:1.5px solid #7b4d32;border-bottom:1.5px solid #7b4d32;border-radius:0 0 6px 0}
+#speech-theater-preview .stp-smile{position:absolute;left:29px;top:57px;width:22px;height:10px;border-bottom:2px solid #2b211b;border-radius:0 0 50% 50%;transform:rotate(-5deg)}
+#speech-theater-preview .stp-body{position:absolute;left:30px;top:83px;width:66px;height:65px;background:#168079;border:2px solid #2b211b;border-radius:13px 13px 4px 4px;z-index:2}
+#speech-theater-preview .stp-body:before{content:'';position:absolute;left:21px;top:-2px;width:21px;height:9px;border:2px solid #2b211b;border-top:0;background:#d9a16c;border-radius:0 0 50% 50%}
+#speech-theater-preview .stp-leg{position:absolute;top:140px;width:21px;height:43px;background:#4d6580;border:2px solid #2b211b;border-radius:0 0 3px 3px;z-index:1}
+#speech-theater-preview .stp-leg-left{left:37px;transform:rotate(4deg)}
+#speech-theater-preview .stp-leg-right{left:68px;transform:rotate(-3deg)}
+#speech-theater-preview .stp-shoe{position:absolute;top:178px;width:31px;height:13px;background:#2b211b;border-radius:55% 40% 30% 30%}
+#speech-theater-preview .stp-shoe-left{left:27px;transform:rotate(-4deg)}
+#speech-theater-preview .stp-shoe-right{left:68px;transform:rotate(4deg)}
+#speech-theater-preview .stp-arm{position:absolute;top:94px;height:47px;width:17px;border:2px solid #2b211b;border-radius:9px;background:#d9a16c;z-index:3}
+#speech-theater-preview .stp-arm-left{left:21px;transform:rotate(-17deg)}
+#speech-theater-preview .stp-arm-right{left:88px;transform:rotate(25deg)}
+#speech-theater-preview .stp-notebook{position:absolute;top:107px;left:30px;width:63px;height:40px;background:#fffdf6;border:2px solid #2b211b;border-radius:3px;transform:rotate(-8deg);z-index:5;box-shadow:inset 7px 0 #e9b949;padding:7px 8px 6px 16px}
+#speech-theater-preview .stp-notebook span{display:block;height:2px;background:#9e8b77;margin-bottom:6px}
+#speech-theater-preview .stp-hand{position:absolute;top:129px;left:78px;width:15px;height:12px;background:#d9a16c;border:2px solid #2b211b;border-radius:6px;transform:rotate(-10deg);z-index:6}
+#speech-theater-preview .stp-scene-caption{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-family:'Patrick Hand',cursive;font-size:16px;color:#66574f}
+#speech-theater-preview .stp-prop-search,#speech-theater-preview .stp-prop-slate,#speech-theater-preview .stp-prop-lock{display:none}
+#speech-theater-preview [data-pose=search] .stp-prop-search{display:block;position:absolute;width:37px;height:37px;border:5px solid #2b211b;border-radius:50%;background:#d1e9e7;top:64px;left:96px;z-index:6;transform:rotate(-20deg)}
+#speech-theater-preview [data-pose=search] .stp-prop-search:after{content:'';position:absolute;left:9px;top:30px;width:8px;height:33px;background:#a46d3e;border:2px solid #2b211b;border-radius:3px}
+#speech-theater-preview [data-pose=upload] .stp-prop-slate{display:block;position:absolute;top:102px;left:22px;width:83px;height:49px;background:#3a322b;border:2px solid #2b211b;color:#fffdf6;z-index:6;transform:rotate(-7deg);border-radius:3px;font-size:12px;text-align:center;padding-top:17px}
+#speech-theater-preview [data-pose=upload] .stp-prop-slate:before{content:'';position:absolute;left:-2px;right:-2px;height:12px;top:-3px;background:repeating-linear-gradient(130deg,#fffdf6 0 10px,#2b211b 10px 20px);border:2px solid #2b211b}
+#speech-theater-preview [data-pose=account] .stp-prop-lock{display:block;position:absolute;left:43px;top:113px;width:48px;height:36px;background:#e9b949;border:2px solid #2b211b;border-radius:4px;z-index:6}
+#speech-theater-preview [data-pose=account] .stp-prop-lock:before{content:'';position:absolute;left:10px;top:-21px;border:4px solid #2b211b;border-bottom:0;border-radius:15px 15px 0 0;width:24px;height:21px}
+#speech-theater-preview [data-pose=account] .stp-prop-lock:after{content:'';position:absolute;left:19px;top:10px;width:6px;height:12px;border-radius:6px;background:#2b211b}
+/* Login */
+#speech-theater-preview .stp-login{background:#fff5e6;position:relative}
+#speech-theater-preview .stp-login-top{text-align:center;padding:29px 20px;border-top:8px solid #a81e28;border-bottom:1px solid #d2bda4}
+#speech-theater-preview .stp-login-top .stp-wordmark{font-size:22px;max-width:none}
+#speech-theater-preview .stp-login-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:45px;padding:54px 55px 40px;position:relative;z-index:1;align-items:center}
+#speech-theater-preview .stp-welcome{text-align:center;min-width:0}
+#speech-theater-preview .stp-welcome h1{font-family:'Luckiest Guy',Arial,sans-serif;font-size:34px;line-height:1.15;font-weight:400;letter-spacing:.2px;margin-top:15px}
+#speech-theater-preview .stp-login-illustration{height:242px;position:relative;max-width:350px;margin:8px auto 0}
+#speech-theater-preview .stp-large-person{top:33px;left:calc(50% - 47px);transform:rotate(2deg)}
+#speech-theater-preview .stp-stagefloor{position:absolute;bottom:8px;height:19px;left:0;right:0;background:#aa784a;border-top:3px solid #2b211b;border-bottom:2px solid #2b211b;transform:rotate(-1deg);z-index:0}
+#speech-theater-preview .stp-stagefloor:after{content:'';position:absolute;top:7px;left:0;right:0;border-top:1px solid #805831}
+#speech-theater-preview .stp-microphone{position:absolute;left:45px;top:100px;width:3px;height:118px;background:#2b211b;z-index:2;transform:rotate(6deg)}
+#speech-theater-preview .stp-microphone:before,#speech-theater-preview .stp-microphone:after{content:'';position:absolute;width:30px;height:3px;bottom:0;background:#2b211b}
+#speech-theater-preview .stp-microphone:before{transform:rotate(-30deg);transform-origin:right;right:0}
+#speech-theater-preview .stp-microphone:after{transform:rotate(30deg);transform-origin:left}
+#speech-theater-preview .stp-microphone span{position:absolute;top:-22px;left:-7px;width:17px;height:27px;border:2px solid #2b211b;border-radius:9px;background:repeating-linear-gradient(0deg,#ddc495 0 3px,#2b211b 3px 4px)}
+#speech-theater-preview .stp-spotlight{position:absolute;left:8px;top:23px;width:210px;height:200px;background:#f6e7c9;border-radius:48% 51% 40% 49%;transform:rotate(-10deg)}
+#speech-theater-preview .stp-speechbubble{position:absolute;right:3px;top:1px;z-index:7;background:#fffdf6;border:2px solid #2b211b;border-radius:50%;padding:11px 16px;font-family:'Patrick Hand',cursive;font-size:17px;transform:rotate(5deg)}
+#speech-theater-preview .stp-speechbubble:after{content:'';position:absolute;bottom:-8px;left:32px;width:12px;height:14px;background:#fffdf6;border-right:2px solid #2b211b;border-bottom:2px solid #2b211b;transform:skewY(-35deg) rotate(38deg)}
+#speech-theater-preview .stp-handwritten{font-family:'Patrick Hand',cursive;color:#66574f;font-size:19px;margin-top:3px}
+#speech-theater-preview .stp-login-form-panel{background:#fffdf6;border:1.5px solid #8a7668;border-radius:10px;padding:31px 28px;box-shadow:5px 5px 0 #e6d7c3;min-width:0}
+#speech-theater-preview .stp-mini-label{font-size:10px;color:#0f6b66;letter-spacing:1.5px;font-weight:700}
+#speech-theater-preview .stp-login-form-panel h2{font-size:31px;letter-spacing:-.8px;margin:7px 0 5px;line-height:1.2;font-weight:600}
+#speech-theater-preview .stp-login-form-panel>.stp-muted{font-size:12px;line-height:1.6;max-width:260px}
+#speech-theater-preview .stp-login-form{margin-top:25px}
+#speech-theater-preview .stp-login-form>label,#speech-theater-preview .stp-password-label label{font-size:12px;font-weight:600;display:block;margin-bottom:7px}
+#speech-theater-preview input:not([type=checkbox]){width:100%;min-width:0;background:#fff;color:#2b211b;border:1px solid #8a7668;border-radius:5px;padding:11px 12px;font-size:14px}
+#speech-theater-preview input::placeholder{color:#77695d;opacity:1}
+#speech-theater-preview .stp-password-label{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-top:19px}
+#speech-theater-preview a{color:#0f6b66;text-decoration:underline;text-underline-offset:3px;font-weight:500}
+#speech-theater-preview .stp-password-label a{font-size:11px}
+#speech-theater-preview .stp-login-form .stp-remember{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:400;margin:18px 0 20px}
+#speech-theater-preview input[type=checkbox]{width:15px;height:15px;accent-color:#0f6b66;margin:0}
+#speech-theater-preview .stp-login-submit{width:100%;justify-content:space-between;padding:12px 15px;font-size:14px}
+#speech-theater-preview .stp-register{text-align:center;font-size:12px;margin-top:21px}
+#speech-theater-preview .stp-login-foot{text-align:center;font-size:11px;color:#66574f;padding:7px 20px 23px}
+#speech-theater-preview .stp-stage-left,#speech-theater-preview .stp-stage-right{display:none}
+/* B: notebook construction; functional content remains upright and plain. */
+#speech-theater-preview[data-design=b] .stp-header{background:#fffdf6;border-bottom:2px solid #2b211b;box-shadow:0 5px 0 #e9b949;position:relative;z-index:1}
+#speech-theater-preview[data-design=b] .stp-sidebar{background:#f6eddb;border-right:1.5px solid #2b211b}
+#speech-theater-preview[data-design=b] .stp-main{background:#fff5e6;padding-left:36px;border-left:6px solid #e8d7ba;position:relative}
+#speech-theater-preview[data-design=b] .stp-main:before{content:'';position:absolute;top:0;bottom:0;left:9px;width:1px;background:#d69a90}
+#speech-theater-preview[data-design=b] .stp-main-top{border-bottom:2px solid #2b211b;padding-bottom:18px}
+#speech-theater-preview[data-design=b] .stp-main h1{font-family:'Luckiest Guy',Arial,sans-serif;font-size:29px;letter-spacing:.4px;font-weight:400}
+#speech-theater-preview[data-design=b] .stp-kicker{color:#0f6b66}
+#speech-theater-preview[data-design=b] .stp-review-panel{border:1.5px solid #2b211b;border-radius:3px;background:#fffdf6;box-shadow:3px 3px 0 #d8c6a8}
+#speech-theater-preview[data-design=b] .stp-section-heading{gap:0}
+#speech-theater-preview[data-design=b] .stp-section-heading h2{background:#e9b949;border:1.5px solid #2b211b;padding:4px 9px;border-radius:5px 5px 0 0;font-size:12px}
+#speech-theater-preview[data-design=b] .stp-count{background:transparent;margin-left:7px}
+#speech-theater-preview[data-design=b] .stp-section{margin-bottom:24px}
+#speech-theater-preview[data-design=b] .stp-section-heading{margin-bottom:-1px;position:relative;z-index:1}
+#speech-theater-preview[data-design=b] .stp-login-top{border-top:0;border-bottom:2px solid #2b211b;background:#fffdf6;box-shadow:0 5px 0 #e9b949}
+#speech-theater-preview[data-design=b] .stp-login-form-panel{border:2px solid #2b211b;border-radius:3px;box-shadow:6px 6px 0 #e9b949;position:relative}
+#speech-theater-preview[data-design=b] .stp-login-form-panel:before{content:'';position:absolute;left:-9px;top:25px;bottom:20px;width:15px;background:repeating-linear-gradient(180deg,transparent 0 10px,#2b211b 10px 13px,transparent 13px 28px);border-radius:5px}
+#speech-theater-preview[data-design=b] .stp-speechbubble{border-radius:6px;transform:rotate(-4deg)}
+#speech-theater-preview[data-design=b] .stp-body{background:#9b6781}
+/* C: curtain entrance; quiet, readable workspace after login. */
+#speech-theater-preview[data-design=c] .stp-login{background:#8a1720;padding:0 27px;background-image:repeating-linear-gradient(90deg,#a81e28 0 21px,#8a1720 21px 39px,#b82530 39px 47px,#8a1720 47px 65px)}
+#speech-theater-preview[data-design=c] .stp-login-top{background:#fff5e6;border-top:11px solid #e9b949;border-bottom:0;padding-top:28px}
+#speech-theater-preview[data-design=c] .stp-login-top .stp-wordmark{background:#a81e28;color:#fff5e6;border:2px solid #2b211b;box-shadow:4px 4px 0 #2b211b;padding:13px 16px;font-size:23px}
+#speech-theater-preview[data-design=c] .stp-login-layout{background:#fff5e6;border-left:2px solid #2b211b;border-right:2px solid #2b211b;padding:40px 27px;gap:30px}
+#speech-theater-preview[data-design=c] .stp-login-foot{background:#fff5e6;border-top:1px solid #d2bda4;border-left:2px solid #2b211b;border-right:2px solid #2b211b}
+#speech-theater-preview[data-design=c] .stp-login-form-panel{box-shadow:4px 4px 0 #e9b949;border-color:#2b211b}
+#speech-theater-preview[data-design=c] .stp-header{background:#fff5e6;border-top:7px solid #a81e28;border-bottom:2px solid #e9b949}
+#speech-theater-preview[data-design=c] .stp-wordmark{color:#8a1720}
+#speech-theater-preview[data-design=c] .stp-wordmark b{color:#2b211b}
+#speech-theater-preview[data-design=c] .stp-sidebar{background:#f8ecda;border-right:1px solid #b9a38e}
+#speech-theater-preview[data-design=c] .stp-main h1{font-family:'Luckiest Guy',Arial,sans-serif;font-weight:400;letter-spacing:.5px;font-size:30px}
+#speech-theater-preview[data-design=c] .stp-section-heading{border-bottom:1px solid #d7c6af;padding-bottom:7px}
+#speech-theater-preview[data-design=c] .stp-nav button[aria-current=page]{background:#8a1720;color:#fffdf6;box-shadow:none;border-color:#8a1720}
+#speech-theater-preview[data-design=c] .stp-scene-halo{background:#e9b949}
+#speech-theater-preview[data-design=c] .stp-stage-left,#speech-theater-preview[data-design=c] .stp-stage-right{display:block;position:absolute;top:17px;width:28px;height:191px;background:#a81e28;border:2px solid #2b211b;border-radius:0 0 50% 0;z-index:1}
+#speech-theater-preview[data-design=c] .stp-stage-left{left:0}
+#speech-theater-preview[data-design=c] .stp-stage-right{right:0;transform:scaleX(-1)}
+/* Nine original character studies: one activity per navigation choice. */
+#speech-theater-preview .stp-prop-films,#speech-theater-preview .stp-prop-portrait,#speech-theater-preview .stp-prop-pencil,#speech-theater-preview .stp-prop-lectern,#speech-theater-preview .stp-dialog,#speech-theater-preview .stp-partner{display:none}
+#speech-theater-preview .stp-sidebar-scene .stp-scene-caption{bottom:3px;font-size:15px}
+#speech-theater-preview [data-pose=speeches] .stp-head,#speech-theater-preview [data-pose=speeches] .stp-ear,#speech-theater-preview [data-pose=speeches] .stp-arm,#speech-theater-preview [data-pose=speeches] .stp-hand{background:#a66b45}
+#speech-theater-preview [data-pose=speeches] .stp-body{background:#d79f3d}
+#speech-theater-preview [data-pose=speeches] .stp-hair{background:#25221f;height:37px;border-radius:50% 50% 17% 13%;top:-12px}
+#speech-theater-preview [data-pose=speeches] .stp-hair:before{background:#25221f;top:-12px;left:52px;width:28px;height:26px;border:2px solid #2b211b;border-radius:50%}
+#speech-theater-preview [data-pose=speeches] .stp-prop-films{display:block;position:absolute;left:24px;top:103px;width:79px;height:50px;z-index:6;transform:rotate(-7deg)}
+#speech-theater-preview .stp-prop-films span{position:absolute;width:73px;height:20px;border:2px solid #2b211b;border-radius:3px;background:#fffdf6;box-shadow:inset 9px 0 #2b211b,inset -9px 0 #2b211b}
+#speech-theater-preview .stp-prop-films span:nth-child(1){top:0;left:5px;background:#afc5c1}
+#speech-theater-preview .stp-prop-films span:nth-child(2){top:15px;left:0;background:#f2d179}
+#speech-theater-preview .stp-prop-films span:nth-child(3){top:30px;left:7px;background:#d9bbc8}
+#speech-theater-preview [data-pose=reviewers] .stp-small-person{left:1px;top:23px;transform:scale(.65) rotate(-5deg)}
+#speech-theater-preview [data-pose=reviewers] .stp-partner{display:block;position:absolute;left:82px;top:33px;transform:scale(.6) rotate(5deg);transform-origin:top center}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-body{background:#b76c79}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-head,#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-ear,#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-arm{background:#edc49c}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-hair,#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-hair:before{background:#9d573a}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-notebook,#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-hand{display:none}
+#speech-theater-preview [data-pose=reviewers] .stp-dialog{display:block;position:absolute;left:45px;top:0;padding:2px 13px;background:#fffdf6;border:2px solid #2b211b;border-radius:50%;font-family:'Patrick Hand',cursive;font-size:16px;transform:rotate(-6deg)}
+#speech-theater-preview [data-pose=reviewers] .stp-dialog:after{content:'';position:absolute;right:7px;bottom:-7px;width:9px;height:10px;background:#fffdf6;border-right:2px solid #2b211b;transform:skewY(30deg)}
+#speech-theater-preview [data-pose=upload] .stp-hair{background:#b75c35;top:-10px;transform:rotate(5deg);border-radius:35% 55% 15% 5%}
+#speech-theater-preview [data-pose=upload] .stp-hair:before{background:#b75c35;left:20px;transform:rotate(-20deg)}
+#speech-theater-preview [data-pose=upload] .stp-body{background:#527da4}
+#speech-theater-preview [data-pose=search] .stp-head,#speech-theater-preview [data-pose=search] .stp-ear,#speech-theater-preview [data-pose=search] .stp-arm{background:#eac09c}
+#speech-theater-preview [data-pose=search] .stp-hair{height:35px;top:-10px;background:#743e30;border-radius:65% 35% 10% 30%}
+#speech-theater-preview [data-pose=search] .stp-hair:before{background:#743e30;top:13px;left:-8px;width:15px;height:48px;border:2px solid #2b211b;border-radius:60% 0 50% 50%;transform:rotate(15deg)}
+#speech-theater-preview [data-pose=search] .stp-body{background:#d9aa42}
+#speech-theater-preview [data-pose=search] .stp-arm-right{top:87px;left:93px;transform:rotate(-28deg)}
+#speech-theater-preview [data-pose=search] .stp-notebook,#speech-theater-preview [data-pose=search] .stp-hand{display:none}
+#speech-theater-preview [data-pose=profile] .stp-prop-portrait{display:block;position:absolute;top:-2px;left:9px;width:111px;height:158px;z-index:7;border:7px solid #b88149;outline:2px solid #2b211b;box-shadow:inset 0 0 0 2px #2b211b;background:transparent}
+#speech-theater-preview [data-pose=profile] .stp-prop-portrait:after{content:'MILO';position:absolute;bottom:-26px;left:24px;background:#fffdf6;border:1px solid #2b211b;border-radius:2px;padding:1px 8px;font-size:12px;letter-spacing:1px}
+#speech-theater-preview [data-pose=profile] .stp-leg,#speech-theater-preview [data-pose=profile] .stp-shoe,#speech-theater-preview [data-pose=profile] .stp-arm,#speech-theater-preview [data-pose=profile] .stp-hand,#speech-theater-preview [data-pose=profile] .stp-notebook{display:none}
+#speech-theater-preview [data-pose=profile] .stp-body{background:#8a6c98}
+#speech-theater-preview [data-pose=profile] .stp-hair{height:20px;top:1px;left:0;width:74px;border-radius:65% 45% 5% 5%}
+#speech-theater-preview [data-pose=profile] .stp-hair:before{display:none}
+#speech-theater-preview [data-pose=edit] .stp-body{background:#bd6d81}
+#speech-theater-preview [data-pose=edit] .stp-head,#speech-theater-preview [data-pose=edit] .stp-ear,#speech-theater-preview [data-pose=edit] .stp-arm,#speech-theater-preview [data-pose=edit] .stp-hand{background:#b67e55}
+#speech-theater-preview [data-pose=edit] .stp-hair{height:38px;top:-12px;background:#272526;border-radius:50% 45% 10% 15%}
+#speech-theater-preview [data-pose=edit] .stp-hair:before{background:#272526;width:29px;height:30px;border:2px solid #2b211b;left:-11px;top:12px;border-radius:50%}
+#speech-theater-preview [data-pose=edit] .stp-notebook{top:102px;height:52px;transform:rotate(7deg)}
+#speech-theater-preview [data-pose=edit] .stp-prop-pencil{display:block;position:absolute;top:94px;left:95px;width:12px;height:66px;background:#e9b949;border:2px solid #2b211b;transform:rotate(31deg);border-radius:3px 3px 0 0;z-index:7;box-shadow:inset 3px 0 #f9d87c}
+#speech-theater-preview [data-pose=edit] .stp-prop-pencil:before{content:'';position:absolute;bottom:-13px;left:-2px;border-left:6px solid transparent;border-right:6px solid transparent;border-top:12px solid #2b211b}
+#speech-theater-preview [data-pose=edit] .stp-prop-pencil:after{content:'';position:absolute;top:-8px;left:-2px;width:12px;height:11px;background:#bd6d81;border:2px solid #2b211b;border-radius:4px 4px 0 0}
+#speech-theater-preview [data-pose=account] .stp-body{background:#6c8052}
+#speech-theater-preview [data-pose=account] .stp-head,#speech-theater-preview [data-pose=account] .stp-ear,#speech-theater-preview [data-pose=account] .stp-arm,#speech-theater-preview [data-pose=account] .stp-hand{background:#edc69f}
+#speech-theater-preview [data-pose=account] .stp-hair,#speech-theater-preview [data-pose=account] .stp-hair:before{background:#968775}
+#speech-theater-preview [data-pose=account] .stp-prop-lock{width:65px;height:39px;left:30px;background:#bb844e;box-shadow:inset 0 9px #d7a368}
+#speech-theater-preview [data-pose=account] .stp-prop-lock:before{left:18px}
+#speech-theater-preview [data-pose=account] .stp-prop-lock:after{left:27px}
+#speech-theater-preview [data-pose=coach] .stp-head,#speech-theater-preview [data-pose=coach] .stp-ear,#speech-theater-preview [data-pose=coach] .stp-arm{background:#aa704d}
+#speech-theater-preview [data-pose=coach] .stp-body{background:#8a6b98}
+#speech-theater-preview [data-pose=coach] .stp-hair,#speech-theater-preview [data-pose=coach] .stp-hair:before{background:#bdb0a0}
+#speech-theater-preview [data-pose=coach] .stp-eye{background:transparent;width:19px;height:16px;border:2px solid #2b211b;border-radius:50%;top:31px}
+#speech-theater-preview [data-pose=coach] .stp-eye-left{left:13px}
+#speech-theater-preview [data-pose=coach] .stp-eye-right{right:12px}
+#speech-theater-preview [data-pose=coach] .stp-nose{border-top:2px solid #2b211b;width:13px;left:31px;top:37px}
+#speech-theater-preview [data-pose=coach] .stp-prop-lectern{display:block;position:absolute;left:11px;top:108px;width:108px;height:19px;background:#9d6b3f;border:2px solid #2b211b;z-index:7;transform:rotate(-2deg)}
+#speech-theater-preview [data-pose=coach] .stp-prop-lectern:before{content:'';position:absolute;top:15px;left:12px;width:80px;height:67px;border:2px solid #2b211b;background:#bd8a56;clip-path:polygon(0 0,100% 0,85% 100%,15% 100%)}
+#speech-theater-preview [data-pose=coach] .stp-prop-lectern:after{content:'';position:absolute;left:83px;top:-29px;width:4px;height:28px;background:#2b211b;border-radius:4px;transform:rotate(-15deg)}
+#speech-theater-preview [data-pose=coach] .stp-notebook,#speech-theater-preview [data-pose=coach] .stp-hand{display:none}
+/* Acting studies: posture and facial expression change with the activity. */
+#speech-theater-preview .stp-eyebrow{position:absolute;top:28px;width:13px;height:6px;border-top:2px solid #2b211b;border-radius:50%;z-index:6}
+#speech-theater-preview .stp-eyebrow-left{left:15px;transform:rotate(-10deg)}
+#speech-theater-preview .stp-eyebrow-right{right:13px;transform:rotate(10deg)}
+#speech-theater-preview .stp-sidebar-scene .stp-arm{transform-origin:8px 7px}
+#speech-theater-preview .stp-stool,#speech-theater-preview .stp-gesture{display:none}
+/* Reviewer: seated, looking down thoughtfully at the open notebook. */
+#speech-theater-preview [data-pose=reviews] .stp-small-person{top:17px;left:28px;transform:scale(.76)}
+#speech-theater-preview [data-pose=reviews] .stp-head{transform:rotate(13deg);top:18px;left:20px;border-radius:40% 48% 46% 45%;background:#dfb78e}
+#speech-theater-preview [data-pose=reviews] .stp-hair{background:#6c6157;height:33px;border-radius:45% 60% 20% 35%}
+#speech-theater-preview [data-pose=reviews] .stp-hair:before{background:#6c6157;left:13px;top:-5px;border-radius:50%;width:32px}
+#speech-theater-preview [data-pose=reviews] .stp-body{background:#607d91;top:92px;height:54px;transform:rotate(6deg)}
+#speech-theater-preview [data-pose=reviews] .stp-eye{top:40px;height:4px;transform:rotate(15deg)}
+#speech-theater-preview [data-pose=reviews] .stp-eyebrow-left{top:31px;transform:rotate(14deg)}
+#speech-theater-preview [data-pose=reviews] .stp-eyebrow-right{top:32px;transform:rotate(-10deg)}
+#speech-theater-preview [data-pose=reviews] .stp-smile{width:15px;height:4px;left:34px;top:62px;transform:rotate(7deg)}
+#speech-theater-preview [data-pose=reviews] .stp-arm-left{top:105px;left:24px;transform:rotate(-47deg);height:35px}
+#speech-theater-preview [data-pose=reviews] .stp-arm-right{top:108px;left:91px;transform:rotate(47deg);height:33px}
+#speech-theater-preview [data-pose=reviews] .stp-notebook{top:124px;left:32px;width:70px;height:31px;transform:rotate(10deg)}
+#speech-theater-preview [data-pose=reviews] .stp-hand{top:142px;left:83px}
+#speech-theater-preview [data-pose=reviews] .stp-leg{top:142px;height:24px;width:36px;transform:rotate(0deg);border-radius:12px 9px 0 0}
+#speech-theater-preview [data-pose=reviews] .stp-leg-left{left:17px;transform:rotate(-22deg)}
+#speech-theater-preview [data-pose=reviews] .stp-leg-right{left:65px;transform:rotate(18deg)}
+#speech-theater-preview [data-pose=reviews] .stp-shoe-left{top:163px;left:12px;transform:rotate(-13deg)}
+#speech-theater-preview [data-pose=reviews] .stp-shoe-right{top:166px;left:78px;transform:rotate(8deg)}
+#speech-theater-preview [data-pose=reviews] .stp-stool{display:block;position:absolute;top:145px;left:31px;width:65px;height:12px;border:2px solid #2b211b;background:#b88655;border-radius:4px;z-index:0;box-shadow:inset 0 3px #d4a775}
+#speech-theater-preview [data-pose=reviews] .stp-stool:after{content:'';position:absolute;top:9px;left:7px;width:45px;height:40px;border-left:5px solid #795236;border-right:5px solid #795236}
+/* Library: striding along with a stack of films and a pleased smile. */
+#speech-theater-preview [data-pose=speeches] .stp-small-person{left:25px;top:8px;transform:scale(.75) rotate(-9deg)}
+#speech-theater-preview [data-pose=speeches] .stp-head{transform:rotate(7deg);width:72px;left:27px}
+#speech-theater-preview [data-pose=speeches] .stp-eye{width:12px;height:7px;background:transparent;border-top:2px solid #2b211b;border-radius:50%;top:37px}
+#speech-theater-preview [data-pose=speeches] .stp-smile{width:28px;height:14px;left:24px;top:53px;background:#fffdf6;border:2px solid #2b211b;border-radius:3px 3px 50% 50%}
+#speech-theater-preview [data-pose=speeches] .stp-leg-left{height:46px;left:26px;top:137px;transform:rotate(29deg)}
+#speech-theater-preview [data-pose=speeches] .stp-leg-right{left:78px;top:138px;transform:rotate(-32deg)}
+#speech-theater-preview [data-pose=speeches] .stp-shoe-left{left:10px;top:177px;transform:rotate(16deg)}
+#speech-theater-preview [data-pose=speeches] .stp-shoe-right{left:93px;top:172px;transform:rotate(-23deg)}
+#speech-theater-preview [data-pose=speeches] .stp-arm-left{transform:rotate(-35deg)}
+#speech-theater-preview [data-pose=speeches] .stp-arm-right{left:95px;transform:rotate(58deg)}
+/* Directory: a welcoming wave and an answering laugh. */
+#speech-theater-preview [data-pose=reviewers] .stp-small-person .stp-head{transform:rotate(-13deg)}
+#speech-theater-preview [data-pose=reviewers] .stp-small-person .stp-smile{height:13px;width:20px;background:#64392e;border:2px solid #2b211b;top:56px;border-radius:4px 4px 50% 50%}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-head{transform:rotate(12deg)}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-arm-left{left:22px;top:92px;transform:rotate(145deg);height:40px}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-arm-right{transform:rotate(-18deg)}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-eye{background:transparent;border-bottom:2px solid #2b211b;width:12px;height:7px;top:32px}
+#speech-theater-preview [data-pose=reviewers] .stp-partner .stp-smile{width:27px;height:14px;left:24px;top:53px;border-bottom-width:3px}
+/* Upload: slate held overhead, raised brows, an excited open smile. */
+#speech-theater-preview [data-pose=upload] .stp-small-person{top:12px;left:29px;transform:scale(.73) rotate(7deg)}
+#speech-theater-preview [data-pose=upload] .stp-prop-slate{top:-8px;left:17px;transform:rotate(-13deg);width:91px}
+#speech-theater-preview [data-pose=upload] .stp-head{top:43px;left:24px;transform:rotate(-9deg);height:74px;background:#edbe94}
+#speech-theater-preview [data-pose=upload] .stp-hair{height:21px;top:0;width:75px;left:0;border-radius:45% 40% 5% 5%}
+#speech-theater-preview [data-pose=upload] .stp-eyebrow{top:24px}
+#speech-theater-preview [data-pose=upload] .stp-eye{top:34px;width:6px;height:8px}
+#speech-theater-preview [data-pose=upload] .stp-smile{width:24px;height:16px;background:#653b30;border:2px solid #2b211b;top:53px;left:27px;border-radius:3px 3px 50% 50%}
+#speech-theater-preview [data-pose=upload] .stp-body{top:109px;height:41px}
+#speech-theater-preview [data-pose=upload] .stp-arm{top:110px;height:71px;background:#edbe94}
+#speech-theater-preview [data-pose=upload] .stp-arm-left{left:24px;transform:rotate(168deg)}
+#speech-theater-preview [data-pose=upload] .stp-arm-right{left:88px;transform:rotate(-168deg)}
+#speech-theater-preview [data-pose=upload] .stp-notebook,#speech-theater-preview [data-pose=upload] .stp-hand{display:none}
+#speech-theater-preview [data-pose=upload] .stp-leg-left{transform:rotate(13deg);left:32px}
+#speech-theater-preview [data-pose=upload] .stp-leg-right{transform:rotate(-15deg);left:73px}
+/* Search: crouching sideways, one eye narrowed behind the magnifier. */
+#speech-theater-preview [data-pose=search] .stp-small-person{top:26px;left:19px;transform:scale(.73) rotate(17deg)}
+#speech-theater-preview [data-pose=search] .stp-head{transform:rotate(13deg);left:35px;top:15px;width:74px;height:75px}
+#speech-theater-preview [data-pose=search] .stp-eyebrow-left{transform:rotate(23deg);top:29px}
+#speech-theater-preview [data-pose=search] .stp-eyebrow-right{transform:rotate(-20deg);top:23px}
+#speech-theater-preview [data-pose=search] .stp-eye-left{width:10px;height:4px;background:transparent;border-top:2px solid #2b211b;top:38px}
+#speech-theater-preview [data-pose=search] .stp-eye-right{height:9px;width:6px;right:15px;top:33px}
+#speech-theater-preview [data-pose=search] .stp-smile{width:9px;height:10px;border:2px solid #2b211b;border-radius:50%;left:46px;top:54px;transform:rotate(-10deg)}
+#speech-theater-preview [data-pose=search] .stp-ear-left{left:27px;top:47px}
+#speech-theater-preview [data-pose=search] .stp-ear-right{left:102px;top:47px}
+#speech-theater-preview [data-pose=search] .stp-body{transform:rotate(11deg);left:39px;top:85px;height:58px}
+#speech-theater-preview [data-pose=search] .stp-prop-search{top:45px;left:92px;background:#d1e9e7aa;width:40px;height:40px}
+#speech-theater-preview [data-pose=search] .stp-arm-right{top:98px;left:95px;transform:rotate(160deg);height:35px}
+#speech-theater-preview [data-pose=search] .stp-arm-left{top:105px;left:31px;transform:rotate(-52deg);height:33px}
+#speech-theater-preview [data-pose=search] .stp-leg-left{top:135px;left:32px;width:36px;height:26px;transform:rotate(-32deg)}
+#speech-theater-preview [data-pose=search] .stp-leg-right{top:143px;left:77px;height:31px;transform:rotate(-38deg)}
+#speech-theater-preview [data-pose=search] .stp-shoe-left{top:157px;left:9px;transform:rotate(-13deg)}
+#speech-theater-preview [data-pose=search] .stp-shoe-right{top:164px;left:90px;transform:rotate(-27deg)}
+/* Profile: an asymmetrical grin and a wink in a tilted portrait. */
+#speech-theater-preview [data-pose=profile] .stp-small-person{transform:scale(.74) rotate(-7deg);top:9px}
+#speech-theater-preview [data-pose=profile] .stp-head{transform:rotate(8deg);border-radius:42% 50% 45% 40%}
+#speech-theater-preview [data-pose=profile] .stp-eye-right{background:transparent;border-bottom:2px solid #2b211b;width:14px;height:5px;top:34px}
+#speech-theater-preview [data-pose=profile] .stp-eyebrow-right{top:25px;transform:rotate(-16deg)}
+#speech-theater-preview [data-pose=profile] .stp-smile{width:29px;height:12px;left:26px;transform:rotate(-14deg)}
+/* Editor: seated in concentration, pencil poised over a large page. */
+#speech-theater-preview [data-pose=edit] .stp-small-person{top:18px;left:27px;transform:scale(.75) rotate(-4deg)}
+#speech-theater-preview [data-pose=edit] .stp-head{top:21px;transform:rotate(19deg);width:73px;left:25px}
+#speech-theater-preview [data-pose=edit] .stp-eyebrow-left{top:30px;transform:rotate(18deg)}
+#speech-theater-preview [data-pose=edit] .stp-eyebrow-right{top:30px;transform:rotate(-18deg)}
+#speech-theater-preview [data-pose=edit] .stp-eye{top:41px;height:4px;width:5px}
+#speech-theater-preview [data-pose=edit] .stp-smile{width:17px;height:3px;top:61px;left:35px;transform:rotate(12deg);border-radius:0}
+#speech-theater-preview [data-pose=edit] .stp-smile:after{content:'';position:absolute;top:0;left:8px;width:7px;height:6px;background:#d98d87;border:1px solid #2b211b;border-radius:0 0 4px 4px}
+#speech-theater-preview [data-pose=edit] .stp-notebook{top:129px;left:18px;width:87px;height:32px;transform:rotate(-9deg)}
+#speech-theater-preview [data-pose=edit] .stp-prop-pencil{top:92px;left:92px;height:49px;transform:rotate(31deg)}
+#speech-theater-preview [data-pose=edit] .stp-arm-right{left:93px;top:106px;transform:rotate(56deg);height:31px}
+#speech-theater-preview [data-pose=edit] .stp-arm-left{left:23px;top:100px;transform:rotate(-45deg);height:43px}
+#speech-theater-preview [data-pose=edit] .stp-hand{left:80px;top:126px}
+#speech-theater-preview [data-pose=edit] .stp-leg-left{top:145px;left:21px;width:34px;height:27px;transform:rotate(-20deg)}
+#speech-theater-preview [data-pose=edit] .stp-leg-right{top:147px;left:67px;width:33px;height:24px;transform:rotate(22deg)}
+#speech-theater-preview [data-pose=edit] .stp-shoe-left{left:12px;top:169px}
+#speech-theater-preview [data-pose=edit] .stp-shoe-right{left:84px;top:169px}
+/* Privacy: kneeling to lock a chest, calm closed eyes and a satisfied smile. */
+#speech-theater-preview [data-pose=account] .stp-small-person{left:13px;top:16px;transform:scale(.75) rotate(-9deg)}
+#speech-theater-preview [data-pose=account] .stp-head{left:13px;top:22px;transform:rotate(17deg);height:74px;width:71px}
+#speech-theater-preview [data-pose=account] .stp-ear{top:53px}
+#speech-theater-preview [data-pose=account] .stp-ear-left{left:6px}
+#speech-theater-preview [data-pose=account] .stp-ear-right{left:77px}
+#speech-theater-preview [data-pose=account] .stp-hair{width:73px;left:-2px;height:23px}
+#speech-theater-preview [data-pose=account] .stp-eye{width:11px;height:6px;background:transparent;border-bottom:2px solid #2b211b;border-radius:50%;top:31px}
+#speech-theater-preview [data-pose=account] .stp-smile{left:26px;top:53px;width:19px;height:9px}
+#speech-theater-preview [data-pose=account] .stp-body{top:93px;left:24px;transform:rotate(-8deg);height:55px}
+#speech-theater-preview [data-pose=account] .stp-prop-lock{top:132px;left:76px;width:65px;height:43px;transform:rotate(8deg)}
+#speech-theater-preview [data-pose=account] .stp-arm-right{left:80px;top:103px;transform:rotate(-42deg);height:47px}
+#speech-theater-preview [data-pose=account] .stp-arm-left{top:105px;left:21px;transform:rotate(-47deg);height:41px}
+#speech-theater-preview [data-pose=account] .stp-leg-left{top:143px;left:21px;height:25px;width:34px;transform:rotate(-35deg)}
+#speech-theater-preview [data-pose=account] .stp-leg-right{top:146px;left:52px;height:35px;transform:rotate(65deg)}
+#speech-theater-preview [data-pose=account] .stp-shoe-left{top:162px;left:5px;transform:rotate(-10deg)}
+#speech-theater-preview [data-pose=account] .stp-shoe-right{top:167px;left:53px;transform:rotate(6deg)}
+#speech-theater-preview [data-pose=account] .stp-hand,#speech-theater-preview [data-pose=account] .stp-notebook{display:none}
+/* Coach: animated gesture, open smile, and a silver beard. */
+#speech-theater-preview [data-pose=coach] .stp-head{transform:rotate(-13deg);top:13px;left:28px;height:79px;width:73px}
+#speech-theater-preview [data-pose=coach] .stp-hair{width:75px;left:-2px;top:-6px;height:25px;border-radius:50% 50% 10% 10%}
+#speech-theater-preview [data-pose=coach] .stp-smile{width:25px;height:14px;left:26px;top:53px;background:#fffdf6;border:2px solid #2b211b;border-radius:2px 2px 50% 50%}
+#speech-theater-preview [data-pose=coach] .stp-smile:after{content:'';position:absolute;top:10px;left:-6px;width:34px;height:15px;border-bottom:7px solid #bdb0a0;border-radius:0 0 50% 50%}
+#speech-theater-preview [data-pose=coach] .stp-eyebrow-left{top:23px;transform:rotate(-13deg)}
+#speech-theater-preview [data-pose=coach] .stp-eyebrow-right{top:24px;transform:rotate(7deg)}
+#speech-theater-preview [data-pose=coach] .stp-arm-left{left:25px;top:94px;transform:rotate(132deg);height:41px}
+#speech-theater-preview [data-pose=coach] .stp-arm-right{left:93px;top:93px;transform:rotate(-62deg);height:31px}
+#speech-theater-preview [data-pose=coach] .stp-gesture{display:block;position:absolute;left:-4px;top:60px;width:20px;height:19px;border:2px solid #2b211b;background:#aa704d;border-radius:8px;z-index:7;transform:rotate(-30deg)}
+#speech-theater-preview [data-pose=coach] .stp-gesture:before{content:'';position:absolute;left:0;top:-15px;width:8px;height:19px;background:#aa704d;border:2px solid #2b211b;border-bottom:0;border-radius:6px 6px 0 0}
+/* Lightweight local navigation studies, using the same actual product labels. */
+#speech-theater-preview .stp-activity-view{background:#fffdf6;border:1px solid #b9a38e;border-radius:8px;padding:20px}
+#speech-theater-preview .stp-activity-view h2{font-size:17px;margin-bottom:8px;font-weight:600}
+#speech-theater-preview .stp-activity-view p{font-size:13px;color:#66574f;margin:5px 0 18px}
+#speech-theater-preview .stp-activity-view label{display:block;font-size:13px;font-weight:500;margin-bottom:7px}
+#speech-theater-preview .stp-activity-view .stp-primary{margin-top:15px}
+#speech-theater-preview .stp-speech-tile{margin-top:20px;border:1px solid #b9a38e;border-radius:7px;overflow:hidden;background:#fffdf6}
+#speech-theater-preview .stp-film-placeholder{height:120px;background:#e9dfcd;display:flex;align-items:center;justify-content:center;color:#66574f;font-family:'Patrick Hand',cursive;font-size:26px;border-bottom:1px solid #b9a38e}
+#speech-theater-preview .stp-tile-content{padding:15px}
+#speech-theater-preview .stp-tile-content p{margin:4px 0 0;font-size:12px}
+#speech-theater-preview mark{background:#ffefa1;color:#2b211b;padding:0 2px}
+@media(max-width:800px){#speech-theater-preview .stp-chooser{gap:10px}#speech-theater-preview .stp-designs{flex-basis:100%}#speech-theater-preview .stp-designs button{min-width:160px}#speech-theater-preview .stp-header{padding:15px 18px}#speech-theater-preview .stp-wordmark{font-size:16px;max-width:220px}#speech-theater-preview .stp-wordmark b{font-size:9px}#speech-theater-preview .stp-account-name{display:none}#speech-theater-preview .stp-workspace{grid-template-columns:186px minmax(0,1fr)}#speech-theater-preview .stp-main{padding:25px 21px}#speech-theater-preview .stp-progress-panel{align-items:flex-start;flex-direction:column}#speech-theater-preview .stp-progress-panel .stp-panel-actions{flex-direction:row;align-items:center}#speech-theater-preview .stp-login-layout{gap:26px;padding:42px 26px}#speech-theater-preview .stp-welcome h1{font-size:28px}#speech-theater-preview .stp-login-form-panel{padding:26px 21px}#speech-theater-preview .stp-handwritten{font-size:17px}#speech-theater-preview .stp-sidebar-scene{margin-left:-8px}#speech-theater-preview[data-design=c] .stp-login{padding:0 17px}#speech-theater-preview[data-design=c] .stp-login-layout{padding:35px 20px;gap:22px}}
+@media(max-width:600px){#speech-theater-preview .stp-designs{gap:6px}#speech-theater-preview .stp-designs button{min-width:100%;padding:9px 12px}#speech-theater-preview .stp-designs button[aria-pressed=true]{padding:8px 11px}#speech-theater-preview .stp-designs small{display:inline;margin-left:7px}#speech-theater-preview .stp-product{border-radius:9px}#speech-theater-preview .stp-header{padding:15px 14px;gap:8px}#speech-theater-preview .stp-header-actions{gap:7px}#speech-theater-preview .stp-header-actions .stp-icon-button:first-child{display:none}#speech-theater-preview .stp-wordmark{font-size:15px;max-width:165px}#speech-theater-preview .stp-wordmark b{margin:5px 0 0;font-size:8px}#speech-theater-preview .stp-workspace{grid-template-columns:minmax(0,1fr)}#speech-theater-preview .stp-sidebar{border-right:0;border-bottom:1px solid #b9a38e;padding:9px 10px}#speech-theater-preview .stp-nav-heading,#speech-theater-preview .stp-sidebar-scene,#speech-theater-preview .stp-nav-rule{display:none}#speech-theater-preview .stp-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}#speech-theater-preview .stp-nav button{display:none}#speech-theater-preview .stp-nav button[data-activity=reviews],#speech-theater-preview .stp-nav button[data-activity=speeches],#speech-theater-preview .stp-nav button[data-activity=search]{display:flex;justify-content:center;gap:5px;font-size:11px;min-height:40px;padding:6px 3px}#speech-theater-preview .stp-nav svg{width:14px;height:14px}#speech-theater-preview .stp-main{padding:24px 16px}#speech-theater-preview .stp-main h1{font-size:26px}#speech-theater-preview .stp-page-number{display:none}#speech-theater-preview .stp-page-subtitle{font-size:12px}#speech-theater-preview .stp-review-panel{padding:15px}#speech-theater-preview .stp-published-panel{align-items:flex-start;flex-direction:column;gap:12px}#speech-theater-preview .stp-login-layout{display:block;padding:25px 19px 30px}#speech-theater-preview .stp-welcome{display:none}#speech-theater-preview .stp-login-top{padding:22px 18px}#speech-theater-preview .stp-login-top .stp-wordmark{font-size:19px;max-width:none}#speech-theater-preview .stp-login-form-panel{padding:26px 22px}#speech-theater-preview .stp-login-foot{font-size:11px}#speech-theater-preview input:not([type=checkbox]){font-size:16px}#speech-theater-preview[data-design=b] .stp-main{padding-left:25px;border-left-width:4px}#speech-theater-preview[data-design=c] .stp-login{padding:0}#speech-theater-preview[data-design=c] .stp-login-layout{border-left:0;border-right:0;padding:25px 19px 30px}#speech-theater-preview[data-design=c] .stp-login-top .stp-wordmark{font-size:17px;padding:12px 10px}#speech-theater-preview[data-design=c] .stp-login-foot{border:0}#speech-theater-preview .stp-section-heading h2{font-size:13px}}
+@media(pointer:coarse){#speech-theater-preview button{min-height:44px}#speech-theater-preview .stp-remember{min-height:44px}}
+</style>
+<script>
+(() => {
+ const root=document.getElementById('speech-theater-preview');
+ const names={a:'Backstage workspace',b:'Rehearsal notebook',c:'Theater entrance'};
+ const login=root.querySelector('.stp-login');
+ const dashboard=root.querySelector('.stp-dashboard');
+ const caption=root.querySelector('.stp-preview-caption');
+ const updateCaption=()=>{caption.textContent=`${root.dataset.design.toUpperCase()} · ${names[root.dataset.design]} — ${root.dataset.screen}`;};
+ root.querySelectorAll('[data-choice]').forEach(button=>button.addEventListener('click',()=>{
+   root.dataset.design=button.dataset.choice;
+   root.querySelectorAll('[data-choice]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+   root.querySelector('.stp-login-kicker').textContent={a:'BACKSTAGE PASS',b:'THE PRACTICE NOTEBOOK',c:'TAKE YOUR PLACE'}[button.dataset.choice];
+   updateCaption();
+ }));
+ root.querySelectorAll('[data-page]').forEach(button=>button.addEventListener('click',()=>{
+   root.dataset.screen=button.dataset.page;
+   login.hidden=button.dataset.page!=='login';dashboard.hidden=button.dataset.page!=='dashboard';
+   root.querySelectorAll('[data-page]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+   updateCaption();
+ }));
+ const sceneRoot=root.querySelector('.stp-sidebar-scene');
+ const lead=sceneRoot.querySelector('.stp-small-person');
+ const partner=lead.cloneNode(true);partner.className='stp-person stp-partner';sceneRoot.appendChild(partner);
+ const props=document.createElement('div');props.innerHTML='<div class="stp-prop-films"><span></span><span></span><span></span></div><div class="stp-prop-portrait"></div><div class="stp-prop-pencil"></div><div class="stp-prop-lectern"></div>';while(props.firstChild)lead.appendChild(props.firstChild);
+ const dialogue=document.createElement('span');dialogue.className='stp-dialog';dialogue.textContent='Hello!';sceneRoot.appendChild(dialogue);
+ for(const person of [lead,partner]){
+   const face=person.querySelector('.stp-head');
+   for(const side of ['left','right']){const brow=document.createElement('div');brow.className=`stp-eyebrow stp-eyebrow-${side}`;face.appendChild(brow);}
+   for(const name of ['stool','gesture']){const detail=document.createElement('div');detail.className=`stp-${name}`;person.appendChild(detail);}
+ }
+ const activities={
+ reviews:{title:'My reviews',subtitle:'A few thoughtful words can make a big difference.',pose:'reviews',scene:'A fresh pair of ears.'},
+ speeches:{title:'My speeches',subtitle:'Your speeches, ready for a fresh perspective.',pose:'upload',scene:'Your stories, in one place.',html:'<h2>Your speech library</h2><article class="stp-speech-tile"><div class="stp-film-placeholder">Your next great speech.</div><div class="stp-tile-content"><h3>2018 Club ISC Speech</h3><p>Ready</p><button type="button" class="stp-primary" data-preview-action>Watch speech →</button></div></article>'},
+ reviewers:{title:'Find reviewers',subtitle:'Find a fresh perspective on your speech.',pose:'reviews',scene:'Better with another perspective.',html:'<label for="stp-reviewer-search">Find a reviewer</label><input id="stp-reviewer-search" placeholder="Search the reviewer directory"><article class="stp-speech-tile"><div class="stp-tile-content"><h3>Cora Coach</h3><p>Coach · e2e-coach</p><button type="button" class="stp-primary" data-preview-action>View profile</button></div></article>'},
+ upload:{title:'Upload a speech',subtitle:'Bring your next speech to the rehearsal room.',pose:'upload',scene:'Ready for your next take.',html:'<label for="stp-speech-title">Title</label><input id="stp-speech-title" placeholder="Give your speech a title"><p style="margin-top:20px">Choose a video to begin.</p><button type="button" class="stp-secondary" data-preview-action>Choose video</button>'},
+ search:{title:'Search your speeches',subtitle:'Search titles, descriptions, and available speech transcripts.',pose:'search',scene:'Find just the right words.',html:'<label for="stp-search-query">Search text</label><input id="stp-search-query" value="conversation"><article class="stp-speech-tile"><div class="stp-tile-content"><h3>2018 Club ISC Speech</h3><p>How a simple exchange changed my perspective.</p><p style="color:#2b211b;margin-top:12px">“…one <mark>conversation</mark> can change the way we see the world.”</p></div></article>'},
+ profile:{title:'Your profile',subtitle:'Your place in the speech community.',pose:'reviews',scene:'Meet the person behind the words.',html:'<h2>Milo Member</h2><p>@e2e-member</p><button type="button" class="stp-secondary" data-preview-action>Edit profile</button>'},
+ edit:{title:'Edit profile',subtitle:'Tell people a little about yourself.',pose:'reviews',scene:'A little more about you.',html:'<label for="stp-display-name">Display name</label><input id="stp-display-name" value="Milo Member"><button type="button" class="stp-primary" data-preview-action>Save changes</button>'},
+ account:{title:'Account & privacy',subtitle:'Manage your account and privacy.',pose:'account',scene:'Keep your backstage pass safe.',html:'<h2>Account & privacy</h2><p>Your account settings stay on a clear, readable surface.</p><button type="button" class="stp-secondary" data-preview-action>Account settings</button>'},
+ coach:{title:'Become a Coach',subtitle:'Help others grow their confidence.',pose:'reviews',scene:'A little guidance goes a long way.',html:'<h2>Share your experience</h2><p>Help speakers find their voice.</p><button type="button" class="stp-primary" data-preview-action>Become a Coach</button>'}
+ };
+ root.querySelectorAll('[data-activity]').forEach(button=>button.addEventListener('click',()=>{
+   const activity=activities[button.dataset.activity];
+   root.querySelectorAll('[data-activity]').forEach(item=>{item.removeAttribute('aria-current');});button.setAttribute('aria-current','page');
+   root.querySelector('.stp-page-heading').textContent=activity.title;
+   root.querySelector('.stp-page-subtitle').textContent=activity.subtitle;
+   root.querySelector('.stp-reviews-view').hidden=button.dataset.activity!=='reviews';
+   const panel=root.querySelector('.stp-activity-view');panel.hidden=button.dataset.activity==='reviews';panel.innerHTML=activity.html||'';
+   const scene=root.querySelector('.stp-sidebar-scene');scene.dataset.pose=button.dataset.activity;scene.setAttribute('aria-label',`Original cartoon character: ${activity.scene}`);
+   root.querySelector('.stp-scene-caption').textContent=activity.scene;
+   root.querySelector('.stp-dashboard-feedback').textContent='';
+ }));
+ root.addEventListener('click',event=>{
+   const action=event.target.closest('[data-preview-action]');if(!action)return;event.preventDefault();
+   root.querySelector(root.dataset.screen==='login'?'.stp-feedback':'.stp-dashboard-feedback').textContent='Design preview only — no changes saved.';
+ });
+ root.querySelector('.stp-login-form').addEventListener('submit',event=>{event.preventDefault();root.querySelector('.stp-feedback').textContent='Design preview only — no login request sent.';});
+})();
+</script>

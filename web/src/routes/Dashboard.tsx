@@ -34,7 +34,7 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+      <div className="workspace-dashboard workspace-muted flex flex-1 items-center justify-center text-sm">
         Loading…
       </div>
     )
@@ -54,59 +54,72 @@ export default function Dashboard() {
   const showProfileLink = Boolean(username) && !hasRole(me?.user, 'admin')
 
   return (
-    <PageShell width="content" className="gap-8">
-      {/* Email verification lands on `/login?verified=1`, which bounces an
-          already-onboarded user straight here — so the confirmation has to
-          render at this end too, or finishing verification would look
-          silently like nothing happened. */}
-      {searchParams.has('verified') && <FormBanner variant="success" message="Email verified." />}
-
-      <PageHeader
-        title="My reviews"
-        actions={
-          showProfileLink && (
-            <Button variant="outline" size="sm" render={<Link to={`/u/${username}`} />}>
-              Your profile &amp; connections
-            </Button>
-          )
-        }
-      />
-
-      <DashboardSection title="Invitations awaiting response" empty="No pending invitations.">
-        {invitations.map((review) => (
-          <InvitationCard key={review.id} review={review} />
-        ))}
-      </DashboardSection>
-
-      <DashboardSection title="In progress" empty="Nothing in progress.">
-        {inProgress.map((review) => (
-          <ReviewCard
-            key={review.id}
-            review={review}
-            timestampLabel="Started"
-            timestamp={review.last_transition_at}
-            showExitActions
+    <div className="workspace-dashboard">
+      <PageShell width="content" className="workspace-dashboard-content gap-8">
+        {/* Email verification lands on `/login?verified=1`, which bounces an
+            already-onboarded user straight here — so the confirmation has to
+            render at this end too, or finishing verification would look
+            silently like nothing happened. */}
+        {searchParams.has('verified') && (
+          <FormBanner
+            className="workspace-banner workspace-banner--success"
+            variant="success"
+            message="Email verified."
           />
-        ))}
-      </DashboardSection>
+        )}
 
-      <DashboardSection title="Published work" empty="Nothing published yet.">
-        {published.map((review) => (
-          <ReviewCard
-            key={review.id}
-            review={review}
-            timestampLabel="Published"
-            timestamp={review.last_published_at ?? review.last_transition_at}
-          />
-        ))}
-      </DashboardSection>
+        <PageHeader
+          title="My reviews"
+          actions={
+            showProfileLink && (
+              <Button
+                className="workspace-button workspace-button--secondary"
+                variant="outline"
+                size="sm"
+                render={<Link to={`/u/${username}`} />}
+              >
+                Your profile &amp; connections
+              </Button>
+            )
+          }
+        />
 
-      <DashboardSection title="Revoked" empty="Nothing revoked.">
-        {revoked.map((review) => (
-          <ReviewCard key={review.id} review={review} timestampLabel="Revoked" timestamp={review.revoked_at} readOnly />
-        ))}
-      </DashboardSection>
-    </PageShell>
+        <DashboardSection title="Invitations awaiting response" empty="No pending invitations.">
+          {invitations.map((review) => (
+            <InvitationCard key={review.id} review={review} />
+          ))}
+        </DashboardSection>
+
+        <DashboardSection title="In progress" empty="Nothing in progress.">
+          {inProgress.map((review) => (
+            <ReviewCard
+              key={review.id}
+              review={review}
+              timestampLabel="Started"
+              timestamp={review.last_transition_at}
+              showExitActions
+            />
+          ))}
+        </DashboardSection>
+
+        <DashboardSection title="Published work" empty="Nothing published yet.">
+          {published.map((review) => (
+            <ReviewCard
+              key={review.id}
+              review={review}
+              timestampLabel="Published"
+              timestamp={review.last_published_at ?? review.last_transition_at}
+            />
+          ))}
+        </DashboardSection>
+
+        <DashboardSection title="Revoked" empty="Nothing revoked.">
+          {revoked.map((review) => (
+            <ReviewCard key={review.id} review={review} timestampLabel="Revoked" timestamp={review.revoked_at} readOnly />
+          ))}
+        </DashboardSection>
+      </PageShell>
+    </div>
   )
 }
 
@@ -122,12 +135,12 @@ function DashboardSection({
   const hasChildren = Array.isArray(children) ? children.length > 0 : !!children
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-medium">{title}</h2>
+    <section className="workspace-dashboard-section flex flex-col gap-3">
+      <h2 className="workspace-dashboard-section-title text-lg font-medium">{title}</h2>
       {hasChildren ? (
         <div className="flex flex-col gap-3">{children}</div>
       ) : (
-        <p className="text-sm text-muted-foreground">{empty}</p>
+        <p className="workspace-muted text-sm">{empty}</p>
       )}
     </section>
   )
@@ -194,24 +207,24 @@ function ReviewCard({
   }
 
   return (
-    <Card>
+    <Card className="workspace-panel">
       <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-2">
-          <span>{review.speech?.title ?? 'Untitled speech'}</span>
+        <CardTitle className="workspace-review-heading justify-between">
+          <span className="workspace-review-title">{review.speech?.title ?? 'Untitled speech'}</span>
           <Badge variant={readOnly ? 'destructive' : 'secondary'}>{readOnly ? 'Revoked' : review.status}</Badge>
         </CardTitle>
         <CardDescription>
           {review.speech?.owner_name ? `by ${review.speech.owner_name}` : null}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-1">
+      <CardContent className="workspace-review-body flex flex-col gap-1">
         {timestamp && (
-          <p className="text-xs text-muted-foreground">
+          <p className="workspace-muted text-xs">
             {timestampLabel} {formatTimestamp(timestamp)}
           </p>
         )}
         {readOnly && review.revocation_reason && (
-          <p className="text-sm text-muted-foreground">Reason: {review.revocation_reason}</p>
+          <p className="workspace-muted text-sm">Reason: {review.revocation_reason}</p>
         )}
         {/* PLAN-ACCESS-DENIED-STATES.md §4. The speech id was always in this
             payload (ReviewController eager-loads `speech.user` for all four
@@ -243,12 +256,12 @@ function ReviewCard({
             The two concerns are independent now — Watch needs a speech
             id, Withdraw/Abandon need a review id, which always exists. */}
         {!readOnly && (review.speech?.id || showExitActions) && (
-          <div className="flex items-center gap-2">
+          <div className="workspace-review-actions">
             {review.speech?.id && (
               <Button
                 size="sm"
                 variant="outline"
-                className="self-start"
+                className="workspace-button workspace-button--primary self-start"
                 render={<Link to={`/speeches/${review.speech.id}`} />}
               >
                 Watch
@@ -260,6 +273,7 @@ function ReviewCard({
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="workspace-button workspace-button--secondary"
                   disabled={busy}
                   onClick={() => void handleWithdraw()}
                 >
@@ -269,6 +283,7 @@ function ReviewCard({
                   type="button"
                   size="sm"
                   variant="destructive"
+                  className="workspace-button workspace-button--destructive"
                   disabled={busy}
                   onClick={() => void handleAbandon()}
                 >
@@ -279,7 +294,7 @@ function ReviewCard({
           </div>
         )}
         {readOnly && (
-          <p className="text-sm text-muted-foreground">This speech isn&rsquo;t available to open.</p>
+          <p className="workspace-muted text-sm">This speech isn&rsquo;t available to open.</p>
         )}
       </CardContent>
     </Card>
@@ -292,23 +307,38 @@ function InvitationCard({ review }: { review: Review }) {
   const busy = isAccepting || isDeclining
 
   return (
-    <Card>
+    <Card className="workspace-panel">
       <CardHeader>
-        <CardTitle>{review.speech?.title ?? 'Untitled speech'}</CardTitle>
+        <CardTitle className="workspace-review-heading">
+          <span className="workspace-review-title">{review.speech?.title ?? 'Untitled speech'}</span>
+        </CardTitle>
         <CardDescription>
           {review.speech?.owner_name ? `by ${review.speech.owner_name}` : null}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {review.invitation_message && <p className="text-sm">{review.invitation_message}</p>}
+      <CardContent className="workspace-review-body flex flex-col gap-3">
+        {review.invitation_message && <p className="workspace-review-message text-sm">{review.invitation_message}</p>}
         {review.invited_at && (
-          <p className="text-xs text-muted-foreground">Invited {formatTimestamp(review.invited_at)}</p>
+          <p className="workspace-muted text-xs">Invited {formatTimestamp(review.invited_at)}</p>
         )}
-        <div className="flex items-center gap-2">
-          <Button type="button" size="sm" disabled={busy} onClick={() => accept(review.id)}>
+        <div className="workspace-review-actions">
+          <Button
+            className="workspace-button workspace-button--primary"
+            type="button"
+            size="sm"
+            disabled={busy}
+            onClick={() => accept(review.id)}
+          >
             {isAccepting ? 'Accepting…' : 'Accept'}
           </Button>
-          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => decline(review.id)}>
+          <Button
+            className="workspace-button workspace-button--secondary"
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => decline(review.id)}
+          >
             {isDeclining ? 'Declining…' : 'Decline'}
           </Button>
         </div>

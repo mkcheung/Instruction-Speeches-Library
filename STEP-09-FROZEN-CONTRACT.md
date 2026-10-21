@@ -6,6 +6,22 @@ STEP-07/STEP-08 method: resolve every point STEP-09.md's own prose leaves undeci
 concrete decision here, so two parallel build agents can work from the same shape rather than
 guessing independently (the guess-divergence class of bug that hit S05/S07/S08 exactly once each).
 
+**Current search status — 2026-10-20:** the authorized implementation in
+[PLAN-SPEECH-SEARCH-EXCERPTS.md](PLAN-SPEECH-SEARCH-EXCERPTS.md) supersedes this document's
+transcript-only full-text search statement for `GET /api/speeches/search`. Search now uses
+owner-scoped, case-insensitive literal substring matching across title, description, and the
+available persisted transcript. Its existing result envelope and ordinary speech fields are
+retained, with additive structured `search_match` text parts and a bounded transcript excerpt
+only when the body matches. The database's lowercase behavior is the matching authority;
+locale-specific production checks are recorded in the new plan. No schema/index migration is
+introduced: the original tsvector/GIN infrastructure remains, but does not accelerate the new
+substring query. Independent review and applicable full suites, including real-stack Chromium
+search/caption-convergence checks and shared login, passed; see the execution record in that
+plan for exact results, skipped tests and locale-specific boundaries. The changes remain
+uncommitted; this implementation did not deploy, restart or reseed the development stack.
+The original contract below is preserved as historical context; this note does not revise
+unrelated caption decisions.
+
 ## 1. Policy — new `SpeechPolicy` methods, not `AnnotationPolicy::readAnnotations`
 
 `AnnotationPolicy::readAnnotations` is Review-scoped and wrong here: captions/transcripts belong

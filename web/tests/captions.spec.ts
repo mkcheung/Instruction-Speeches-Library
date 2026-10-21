@@ -60,6 +60,46 @@ interface TranscriptPayload {
   caption_revision: string | null
 }
 
+interface SearchPart {
+  text: string
+  matched: boolean
+}
+
+interface SearchResult {
+  id: number
+  title: string
+  description: string | null
+  user_id: number
+  created_at: string
+  primary_video: unknown
+  search_match: {
+    title: SearchPart[]
+    description: SearchPart[] | null
+    transcript_excerpt: {
+      parts: SearchPart[]
+      truncated_before: boolean
+      truncated_after: boolean
+    } | null
+  }
+}
+
+async function searchSpeeches(page: Page, query: string): Promise<SearchResult[]> {
+  const response = await page.request.get(`${API_URL}/api/speeches/search`, {
+    headers: JSON_HEADERS,
+    params: { q: query },
+  })
+  expect(response.status()).toBe(200)
+  return ((await response.json()) as { results: SearchResult[] }).results
+}
+
+function markedText(parts: SearchPart[] | null): string[] {
+  return (parts ?? []).filter((part) => part.matched).map((part) => part.text)
+}
+
+function searchCard(page: Page, id: number): Locator {
+  return page.locator('li').filter({ has: page.locator(`a[href="/speeches/${id}"]`) })
+}
+
 function speechUrl(id: number): string {
   return `${APP_URL}/speeches/${id}`
 }
@@ -462,7 +502,7 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
   const page = await context.newPage()
 
   await page.goto(`${APP_URL}/search`, { waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
-  const searchInput = page.getByLabel('Phrase')
+  const searchInput = page.getByLabel('Search text')
 
   // Step 1: stable phrase scoping.
   await searchInput.fill(CAPTIONS.searchDistinctivePhrase)
@@ -475,6 +515,8 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
   // Step 2: the future corrected phrase, searched before the edit — must
   // be absent. Chosen to be distinctive and not present in any fixture's
   // seeded VTT.
+  const oldPhrase = "closing thoughts for today's meeting"
+  expect((await searchSpeeches(page, oldPhrase)).map((speech) => speech.id)).toContain(CAPTIONS.searchEditSpeechId)
   const futurePhrase = 'zephyrquartz melody'
   await searchInput.fill(futurePhrase)
   await expect(page.getByText(`No speeches matched "${futurePhrase}"`)).toBeVisible({ timeout: POLL_TIMEOUT })
@@ -489,7 +531,13 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
   await card.getByRole('link', { name: 'Watch' }).click()
   await expect(page).toHaveURL(speechUrl(CAPTIONS.searchEditSpeechId))
 
-  await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' }).click()
+  // The SPA URL settles before the asynchronous player finishes loading.
+  // Wait for real media metadata before interacting with the tabs below it.
+  await waitForVideo(page)
+  const transcriptTab = page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Transcript' })
+  await transcriptTab.click()
+  await expect(transcriptTab).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tabpanel', { name: 'Transcript' })).toBeVisible()
   const cueButton = page.getByTestId('caption-cue-cue-1')
   await expect(cueButton).toBeVisible()
   await cueButton.click()
@@ -501,7 +549,7 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
       res.request().method() === 'PUT' &&
       res.url().includes(`/api/speeches/${CAPTIONS.searchEditSpeechId}/captions`),
   )
-  await textarea.fill(`closing thoughts for today's meeting ${futurePhrase}`)
+  await textarea.fill(`new closing remarks ${futurePhrase}`)
   await textarea.blur()
   const putResponse = await putPromise
   expect(putResponse.status()).toBe(200)
@@ -528,11 +576,20 @@ test('Scenario D — search scoping and pre-warmed cache convergence after an ed
 
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Search' }).click()
   await expect(page).toHaveURL(`${APP_URL}/search`)
-  await page.getByLabel('Phrase').fill(futurePhrase)
+  await page.getByLabel('Search text').fill(futurePhrase)
 
   await expect(page.getByRole('link', { name: 'E2E search-edit speech', exact: true })).toBeVisible({
     timeout: POLL_TIMEOUT,
   })
+  const correctedCard = searchCard(page, CAPTIONS.searchEditSpeechId)
+  await expect(correctedCard.getByText('Transcript excerpt', { exact: true })).toBeVisible()
+  await expect(correctedCard.locator('mark')).toHaveText([futurePhrase])
+  const corrected = (await searchSpeeches(page, futurePhrase)).find((speech) => speech.id === CAPTIONS.searchEditSpeechId)
+  expect(markedText(corrected?.search_match.transcript_excerpt?.parts ?? null)).toEqual([futurePhrase])
+  expect((await searchSpeeches(page, oldPhrase)).map((speech) => speech.id)).not.toContain(CAPTIONS.searchEditSpeechId)
+  await page.getByLabel('Search text').fill(oldPhrase)
+  await expect(page.getByRole('status')).toHaveText(`No speeches matched "${oldPhrase}".`, { timeout: POLL_TIMEOUT })
+  await expect(searchCard(page, CAPTIONS.searchEditSpeechId)).toHaveCount(0)
 
   await context.close()
 })
@@ -671,4 +728,129 @@ test('Scenario F — reviewer read-only surface, auth seam, and owner off-switch
 
     await context.close()
   }
+})
+
+/* ------------------------------------------------------------------ *
+ * Scenario G — additive search contract against real PostgreSQL.
+ * Each OR arm has its own foreign-owner and soft-deleted control.
+ * ------------------------------------------------------------------ */
+
+test('Scenario G — literal search JSON, owner isolation, and field-level Unicode matches', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+  const page = await context.newPage()
+
+  for (const [query, expectedId] of [
+    [CAPTIONS.searchTitlePhrase, CAPTIONS.searchTitleOnlyId],
+    [CAPTIONS.searchDescriptionPhrase, CAPTIONS.searchDescriptionOnlyId],
+    [CAPTIONS.searchDistinctivePhrase, CAPTIONS.searchOwnerMatchSpeechId],
+    [CAPTIONS.searchMultiPhrase, CAPTIONS.searchMultiFieldId],
+  ] as const) {
+    const results = await searchSpeeches(page, query)
+    expect(results.map((speech) => speech.id)).toEqual([expectedId])
+    const speech = results[0]
+    expect(speech.user_id).toBe(9004)
+    expect(speech.created_at).toBeTruthy()
+    expect(speech).toHaveProperty('primary_video')
+    expect(speech).not.toHaveProperty('body')
+    expect(speech).not.toHaveProperty('segments')
+    expect(speech.search_match.title.map((part) => part.text).join('')).toBe(speech.title)
+    expect(speech.search_match.description?.map((part) => part.text).join('') ?? null).toBe(speech.description || null)
+    if (expectedId === CAPTIONS.searchTitleOnlyId) {
+      expect(markedText(speech.search_match.title)).toEqual([query])
+      expect(speech.search_match.description).toBeNull()
+      expect(speech.search_match.transcript_excerpt).toBeNull()
+    } else if (expectedId === CAPTIONS.searchDescriptionOnlyId) {
+      expect(markedText(speech.search_match.title)).toEqual([])
+      expect(markedText(speech.search_match.description)).toEqual([query])
+      expect(speech.search_match.transcript_excerpt).toBeNull()
+    } else {
+      expect(markedText(speech.search_match.transcript_excerpt?.parts ?? null)).toEqual([query])
+      if (expectedId === CAPTIONS.searchMultiFieldId) {
+        expect(markedText(speech.search_match.title)).toEqual([query])
+        expect(markedText(speech.search_match.description)).toEqual([query])
+      } else {
+        expect(markedText(speech.search_match.title)).toEqual([])
+        expect(markedText(speech.search_match.description)).toEqual([])
+      }
+    }
+  }
+
+  for (const query of ['100%_!', '\\archive', '[x].*', '"quoted"', 'to be', 'contiguous phrase', 'DISTRICT FINALISTS']) {
+    const results = await searchSpeeches(page, query)
+    expect(results.map((speech) => speech.id), query).toEqual([CAPTIONS.searchLiteralId])
+    expect(markedText(results[0].search_match.transcript_excerpt?.parts ?? null).join('').toLowerCase()).toBe(query.toLowerCase())
+  }
+  for (const query of ['contiguous  phrase', 'finalists district', 'to phrase be']) {
+    expect(await searchSpeeches(page, query), query).toEqual([])
+  }
+  expect((await searchSpeeches(page, '  CONTIGUOUS PHRASE  ')).map((speech) => speech.id)).toEqual([CAPTIONS.searchLiteralId])
+  expect((await searchSpeeches(page, 'finalist')).map((speech) => speech.id)).toEqual([CAPTIONS.searchLiteralId])
+
+  for (const [query, titleMarks, descriptionMarks, bodyMarks] of [
+    ['CAFÉ', ['CAFÉ'], [], ['café']],
+    ['straße', [], ['Straße'], ['Straße']],
+    // LOWER preserves the distinction between Greek final ς and ordinary σ.
+    ['ΤΌΝΟΣ', [], ['ΤΌΝΟΣ'], []],
+    ['τόνος', [], [], ['τόνος']],
+  ] as const) {
+    const speech = (await searchSpeeches(page, query)).find((result) => result.id === CAPTIONS.searchUnicodePositiveId)
+    expect(speech, query).toBeDefined()
+    expect(markedText(speech!.search_match.title)).toEqual(titleMarks)
+    expect(markedText(speech!.search_match.description)).toEqual(descriptionMarks)
+    expect(markedText(speech!.search_match.transcript_excerpt?.parts ?? null)).toEqual(bodyMarks)
+    if (bodyMarks.length === 0) expect(speech!.search_match.transcript_excerpt).toBeNull()
+  }
+  for (const query of ['STRASSE', 'cafe\u0301']) {
+    expect((await searchSpeeches(page, query)).map((speech) => speech.id)).not.toContain(CAPTIONS.searchUnicodePositiveId)
+  }
+  const longS = (await searchSpeeches(page, 's')).find((speech) => speech.id === CAPTIONS.searchUnicodeNegativeId)
+  expect(longS).toBeDefined()
+  expect(markedText(longS!.search_match.title)).toEqual(['S'])
+  expect(markedText(longS!.search_match.description)).toEqual([])
+  expect(longS!.search_match.transcript_excerpt).toBeNull()
+
+  await context.close()
+})
+
+/* ------------------------------------------------------------------ *
+ * Scenario H — the real cards render only matching body excerpts.
+ * ------------------------------------------------------------------ */
+
+test('Scenario H — yellow highlights and conditional excerpts in search cards', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+  const page = await context.newPage()
+  await page.goto(`${APP_URL}/search`, { waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
+  const input = page.getByLabel('Search text')
+
+  for (const [query, id, marks, excerpt] of [
+    [CAPTIONS.searchTitlePhrase, CAPTIONS.searchTitleOnlyId, [CAPTIONS.searchTitlePhrase], false],
+    [CAPTIONS.searchDescriptionPhrase, CAPTIONS.searchDescriptionOnlyId, [CAPTIONS.searchDescriptionPhrase], false],
+    [CAPTIONS.searchDistinctivePhrase, CAPTIONS.searchOwnerMatchSpeechId, [CAPTIONS.searchDistinctivePhrase], true],
+    [CAPTIONS.searchMultiPhrase, CAPTIONS.searchMultiFieldId, [CAPTIONS.searchMultiPhrase, CAPTIONS.searchMultiPhrase, CAPTIONS.searchMultiPhrase], true],
+  ] as const) {
+    await input.fill(query)
+    const card = searchCard(page, id)
+    await expect(card).toBeVisible({ timeout: POLL_TIMEOUT })
+    await expect(card.locator('mark')).toHaveText([...marks])
+    await expect(card.getByText('Transcript excerpt', { exact: true })).toHaveCount(excerpt ? 1 : 0)
+    await expect(page.getByRole('status')).toHaveText('1 speech matched.')
+    const mark = card.locator('mark').first()
+    await expect(mark).toHaveClass(/bg-yellow-200/)
+    await expect(mark).toHaveClass(/text-gray-950/)
+  }
+
+  // Narrow layout and dark theme retain the entire visible marked phrase.
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await input.fill('[x].*')
+  const literalCard = searchCard(page, CAPTIONS.searchLiteralId)
+  await expect(literalCard.locator('mark')).toHaveText(['[x].*'], { timeout: POLL_TIMEOUT })
+  await expect(literalCard.getByRole('link')).toHaveAccessibleName('E2E literal body control')
+  await literalCard.getByRole('link').focus()
+  await expect(literalCard.getByRole('link')).toBeFocused()
+  await input.fill('')
+  await expect(page.getByRole('status')).toHaveText('Start typing to search.')
+  await expect(searchCard(page, CAPTIONS.searchLiteralId)).toHaveCount(0)
+
+  await context.close()
 })

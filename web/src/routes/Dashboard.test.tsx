@@ -268,4 +268,103 @@ describe('Dashboard', () => {
       ),
     )
   })
+
+  it('retains all four server-grouped sections in order and their empty states', async () => {
+    stubReviews({})
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    await screen.findByRole('heading', { name: 'My reviews' })
+    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual([
+      'Invitations awaiting response',
+      'In progress',
+      'Published work',
+      'Revoked',
+    ])
+    for (const message of [
+      'No pending invitations.',
+      'Nothing in progress.',
+      'Nothing published yet.',
+      'Nothing revoked.',
+    ]) {
+      expect(screen.getByText(message)).toBeInTheDocument()
+    }
+  })
+
+  it('preserves long invitation content and all review statuses without inventing display counts', async () => {
+    const title = `An unusually long speech title ${'unbroken'.repeat(32)}`
+    const message = `Please review my introduction. ${'Detailed feedback requested. '.repeat(20)}`.trim()
+    const owner = 'A very long speaker name that should remain available in full'
+    stubReviews({
+      invited: [review({
+        id: 1,
+        status: 'invited',
+        responded_at: null,
+        invitation_message: message,
+        speech: { id: 42, ulid: '01ABCDEF', title, owner_name: owner },
+      })],
+      in_progress: [review({ id: 2, status: 'in_progress' })],
+      published: [review({ id: 3, status: 'published', last_published_at: '2026-09-03T10:00:00Z' })],
+      revoked: [review({ id: 4, status: 'published', revoked_at: '2026-09-04T10:00:00Z', revocation_reason: 'The speaker withdrew access.' })],
+    })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    expect(await screen.findByText(title)).toHaveTextContent(title)
+    expect(screen.getByText(message)).toHaveTextContent(message)
+    expect(screen.getByText(`by ${owner}`)).toBeInTheDocument()
+    expect(screen.getByText('in_progress')).toBeInTheDocument()
+    expect(screen.getByText('published')).toBeInTheDocument()
+    expect(screen.getByText('Revoked', { selector: '[data-slot="badge"]' })).toBeInTheDocument()
+    expect(screen.getByText('Reason: The speaker withdrew access.')).toBeInTheDocument()
+    expect(screen.getByText(/^Invited /)).toBeInTheDocument()
+    expect(screen.getByText(/^Started /)).toBeInTheDocument()
+    expect(screen.getByText(/^Published /, { selector: 'p' })).toBeInTheDocument()
+    expect(screen.getByText(/^Revoked /, { selector: 'p' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Accept' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeEnabled()
+  })
+
+  it('keeps both exit actions disabled while withdrawing and allows retry after a server error', async () => {
+    const user = userEvent.setup()
+    const fetchMock = stubReviews({ in_progress: [review({ id: 2, status: 'accepted' })] })
+    const originalFetch = fetchMock.getMockImplementation()!
+    let finishWithdraw: (response: Response) => void = () => { throw new Error('No pending withdrawal') }
+    fetchMock.mockImplementation((input, init) => {
+      if (urlOf(input).endsWith('/api/reviews/2/withdraw')) {
+        return new Promise<Response>((resolve) => { finishWithdraw = resolve })
+      }
+      return originalFetch(input, init)
+    })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    await user.click(await screen.findByRole('button', { name: 'Withdraw' }))
+    expect(screen.getByRole('button', { name: 'Withdrawing…' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Abandon' })).toBeDisabled()
+    finishWithdraw(jsonResponse({ message: 'Please retry.' }, 422))
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Withdraw' })).toBeEnabled())
+    expect(screen.getByRole('button', { name: 'Abandon' })).toBeEnabled()
+    expect(screen.getByRole('link', { name: 'Watch' })).toHaveAttribute('href', '/speeches/42')
+  })
+
+  it('keeps the route-local loading surface and the existing empty fallback after a list error', async () => {
+    const fetchMock = stubReviews({})
+    const originalFetch = fetchMock.getMockImplementation()!
+    let finishReviews: (response: Response) => void = () => { throw new Error('No pending list request') }
+    fetchMock.mockImplementation((input, init) => {
+      if (urlOf(input).endsWith('/api/reviews')) {
+        return new Promise<Response>((resolve) => { finishReviews = resolve })
+      }
+      return originalFetch(input, init)
+    })
+    renderWithProviders(<Dashboard />, { route: '/dashboard' })
+
+    expect(screen.getByText('Loading…')).toHaveClass('workspace-dashboard')
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => urlOf(input).endsWith('/api/reviews'))).toBe(true))
+    finishReviews(jsonResponse({ message: 'Temporarily unavailable.' }, 503))
+
+    expect(await screen.findByRole('heading', { name: 'My reviews' })).toBeInTheDocument()
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(4)
+    expect(screen.getByText('No pending invitations.')).toBeInTheDocument()
+  })
 })

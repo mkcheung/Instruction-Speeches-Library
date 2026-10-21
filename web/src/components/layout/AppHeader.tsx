@@ -13,11 +13,11 @@ import { UserMenu } from '@/components/layout/UserMenu'
  */
 export function AppHeader() {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 sm:px-6 lg:px-8">
-      <Link to="/dashboard" className="min-w-0 truncate text-sm font-semibold">
+    <header className="workspace-header flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 sm:px-6 lg:px-8">
+      <Link to="/dashboard" className="workspace-header-brand min-w-0 truncate text-sm font-semibold">
         Instruction Speeches Library
       </Link>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="workspace-header-actions flex shrink-0 items-center gap-2">
         <ConnectionRequestsBell />
         <NotificationBell />
         <UserMenu />
