@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import Home from '@/routes/Home'
 import { createTestStore, renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { ADMIN_LOGIN_CONTINUATION } from '@/lib/roles'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -53,8 +54,29 @@ function meResponse(overrides: Partial<Record<string, unknown>> = {}) {
  *   `router.state.location.pathname`.
  */
 describe('Home', () => {
+  const originalLocation = window.location
   beforeEach(() => clearCookies())
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+  })
+
+  it.each(['admin', 'super_admin'])('sends authenticated %s through the continuation alias', async (role) => {
+    const replace = vi.fn()
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, replace },
+    })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (urlOf(input).includes('/api/me')) return jsonResponse(meResponse({ roles: [role] }))
+      throw new Error(`unexpected fetch: ${urlOf(input)}`)
+    }))
+    const { router } = renderWithProviders(<Home />, { route: '/' })
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(ADMIN_LOGIN_CONTINUATION))
+    expect(router.state.location.pathname).toBe('/')
+    expect(screen.queryByRole('link', { name: /log in/i })).not.toBeInTheDocument()
+  })
 
   describe('logged out', () => {
     // The landing art is a lazy chunk. Let it settle before Testing

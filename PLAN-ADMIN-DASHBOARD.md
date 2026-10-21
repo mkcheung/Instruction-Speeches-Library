@@ -1,5 +1,11 @@
 # Plan — Admin & Superadmin Dashboard
 
+> Current implementation note (2026-10-20): this document preserves historical
+> findings and decisions. The secondary Filament credential form is retired by
+> `PLAN-REMOVE-SECONDARY-ADMIN-LOGIN.md`: `/control-panel/login` is a redirect
+> alias to the shared React login; admin MFA remains a dedicated challenge.
+> Do not use historical inline-login instructions as the current login flow.
+
 **Status:** draft for review (rev 2, post-validation) · **Date:** 2026-10-06 · **Do not execute without sign-off**
 
 Built from a five-agent audit of backend, Filament surface, frontend, migrations and the media pipeline, then fact-checked and critiqued by two further agents. Rev 2 corrects seven factual errors in rev 1 — they are listed in §13 rather than silently patched, because two of them had already been used to justify a design decision.

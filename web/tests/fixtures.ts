@@ -41,8 +41,8 @@ export const USERS = {
    * unreachable panel survived three steps.
    *
    * No `storageState`: these two do NOT go through `auth.setup.ts`. The
-   * Filament panel login is a Blade page on the API origin behind a
-   * mandatory TOTP challenge, and putting it in the shared `setup`
+   * Panel entry uses the shared React login, followed by the dedicated
+   * Filament TOTP challenge. Putting it in the shared `setup`
    * project — which every browser project declares a dependency on —
    * would mean a panel regression takes the entire suite down with it.
    * `admin-panel.spec.ts` signs in for itself; see `panel-auth.ts`.

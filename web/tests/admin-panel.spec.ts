@@ -1,64 +1,12 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
-import { API_URL, APP_URL, FIXTURE_PASSWORD, USERS } from './fixtures.js'
-import { msUntilNextTimestep, signInToPanel, totp } from './panel-auth.js'
+import { API_URL, APP_URL, USERS } from './fixtures.js'
+import { completePanelChallenge, MFA_CHALLENGE_URL, signInToPanel, submitSharedCredentials } from './panel-auth.js'
 
 /**
- * PLAN-ADMIN-DASHBOARD.md §9's E2E row — Phase 4.
- *
- * "The panel has never been exercised by a browser in CI, and no test
- * asserts `/control-panel` status codes" (§9, quoting
- * `STEP-12-RETROSPECTIVE.md:36`). Everything the backend suite proves
- * about the panel it proves through `Livewire::test()`, which deliberately
- * runs with NO panel middleware: `PanelModerationTest`'s own docblock says
- * so, and `SuspensionEnforcementTest` — the one file that does issue real
- * `/control-panel` requests — asserts only that the response is not a
- * redirect to the suspension notice, never that it is a 200. So this file
- * is the first thing in the repo to drive the panel's real middleware
- * stack, real Blade login, real mandatory TOTP challenge and real
- * stylesheet through a browser.
- *
- * Requires `api/database/seeders/E2ESeeder.php` — including the
- * `*_TOTP_SECRET` columns it now seeds for ids 9001/9002, without which
- * every panel navigation lands in Filament's mandatory enrollment flow:
- *   docker compose exec app php artisan db:seed --class=E2ESeeder
- *
- * ## What runs where
- *
- * Every test here is project-agnostic on purpose. The responsive cases
- * drive `page.setViewportSize()` through 390 / 768 / 1280 themselves
- * rather than leaning on the `mobile-webkit` project, because
- * `ci.yml`'s main Playwright command is `--project=chromium` ONLY — the
- * same gap that once let an unconditional-sidebar assertion ship broken
- * in `app-shell.spec.ts`. Running this file under `mobile-webkit` as well
- * still adds real value (WebKit's own layout engine, `hasTouch`), and it
- * works unchanged; it is just not where the 390px coverage comes from.
- *
- * ## ⚠️ The one thing this file CANNOT prove in the e2e stack
- *
- * `Filament\Http\Middleware\Authenticate` ends in
- *
- *     abort_if($user instanceof FilamentUser
- *         ? (! $user->canAccessPanel($panel))
- *         : (config('app.env') !== 'local'), 403)
- *
- * and `App\Models\User` implements neither (`EnsureUserIsAdmin`'s
- * docblock records that as a deliberate decision). `compose.e2e.yaml`
- * sets `APP_ENV: e2e`, so in the harness CI runs — and in production,
- * where it is `production` — that is an unconditional 403 for EVERY
- * authenticated user, admin or not, on every panel route. The dev stack
- * (`api/.env`, `APP_ENV=local`) is the only place the panel is reachable
- * at all today, which is where these tests were verified.
- *
- * That is a production bug, not a test-harness problem, and it is not
- * fixable from `web/tests/`: it needs `User` to implement `FilamentUser`
- * with a `canAccessPanel()`. The admin/super_admin tests below are
- * written against the correct behaviour and will fail loudly in any
- * non-local environment until that lands — which is the honest outcome,
- * and precisely the class of "it boots, so it works" error §9 exists to
- * catch. The member-403 case is the one to read carefully in that state:
- * it passes either way, because the env-403 and the role-403 render the
- * identical page. Its meaning comes from the admin-200 tests passing
- * alongside it, not from itself.
+ * Real-stack unified login regression coverage. Run only against seeded,
+ * disposable E2E infrastructure, with admin MFA enabled. TOTP is real;
+ * no auth endpoint or middleware is mocked. Layout checks also exercise
+ * retained Filament CSS/JS on actual panel pages.
  */
 
 /* ------------------------------------------------------------------ *
@@ -101,53 +49,29 @@ test.describe('§8.1 — /control-panel refuses a non-admin, with an explanation
     // name the account, or the hint is useless.
     await expect(page.getByText(USERS.speaker.email)).toBeVisible()
 
-    // Both escapes from the dead end. The sign-out form posts to the
-    // panel's own logout route (the view picks it by path); the secondary
-    // link goes back to the SPA.
+    // The generic form uses Fortify logout, which also accepts members.
     await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible()
     await expect(page.getByRole('link', { name: 'Back to the app' })).toHaveAttribute(
       'href',
-      APP_URL,
+      `${APP_URL}/`,
     )
 
     await context.close()
   })
 
-  test('an anonymous visitor is sent to the panel login, not 403', async ({ page }) => {
+  test('an anonymous panel visitor reaches the shared credential form', async ({ page }) => {
     // Deliberately no `storageState` — a fresh, unauthenticated context.
     // Filament's `Authenticate::redirectTo()` returns the panel's login
     // URL, and this is the branch that proves the 403 above came from the
     // authorization layer rather than from being signed out.
     await page.goto(`${API_URL}/control-panel`)
 
-    await expect(page).toHaveURL(`${API_URL}/control-panel/login`)
-    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+    await expect(page).toHaveURL(`${APP_URL}/login`)
+    await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Log in', exact: true })).toBeVisible()
   })
 
-  test("the panel login page's own CSS and JS actually load", async ({ page }) => {
-    // Not padding. `AdminPanelProvider`'s docblock records that the panel
-    // rendered unstyled with no Alpine for an entire step, because
-    // `filament:assets` had never run and "the login page returns HTTP
-    // 200 whether or not its stylesheet exists, and no test ever requested
-    // an asset". A page-level 200 cannot see that; a response listener can.
-    const broken: string[] = []
 
-    page.on('response', (response) => {
-      const type = response.request().resourceType()
-      const isPanelAsset =
-        response.url().startsWith(API_URL) &&
-        ['stylesheet', 'script', 'font'].includes(type)
-
-      if (isPanelAsset && response.status() >= 400) {
-        broken.push(`${response.status()} ${type} ${response.url()}`)
-      }
-    })
-
-    await page.goto(`${API_URL}/control-panel/login`)
-    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
-
-    expect(broken, 'every /css/filament and /js/filament request should succeed').toEqual([])
-  })
 })
 
 /* ------------------------------------------------------------------ *
@@ -196,6 +120,24 @@ test.describe.serial('§6.1 — an admin lands on the dashboard PAGE', () => {
     await expect(page.getByText('Open reports')).toBeVisible()
     await expect(page.getByText('Coach applications waiting')).toBeVisible()
     await expect(page.getByText('Most connections in the last 7 days')).toBeVisible()
+  })
+
+  test('retained dashboard CSS and JS load without response errors', async () => {
+    const broken: string[] = []
+    const loaded = new Set<string>()
+    page.on('response', (response) => {
+      const type = response.request().resourceType()
+      if (response.url().startsWith(API_URL) && ['stylesheet', 'script', 'font'].includes(type)) {
+        loaded.add(type)
+        if (response.status() >= 400) broken.push(`${response.status()} ${type} ${response.url()}`)
+      }
+    })
+
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible()
+    expect(loaded.has('stylesheet'), 'actual retained Filament stylesheet was requested').toBe(true)
+    expect(loaded.has('script'), 'actual retained Filament JavaScript was requested').toBe(true)
+    expect(broken, 'all retained Filament CSS/JS/font requests succeed').toEqual([])
   })
 
   test('the desktop sidebar collapses and expands — §7’s ->sidebarCollapsibleOnDesktop()', async () => {
@@ -333,7 +275,7 @@ test.describe.serial('§5.2 — a super_admin reaches the same panel as an admin
 
     context = await browser.newContext()
     page = await context.newPage()
-    await signInToPanel(page, USERS.superAdmin)
+    await signInToPanel(page, USERS.superAdmin, 'shared')
   })
 
   test.afterAll(async () => {
@@ -413,26 +355,13 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
     context = await browser.newContext()
     page = await context.newPage()
 
-    // An inline SPA login rather than a fourth entry in `auth.setup.ts`,
-    // for the reason `fixtures.ts` gives: every browser project depends on
-    // that setup project, and nothing about the admin fixtures should be
-    // able to take `speech-create.spec.ts` down. The timeouts match
-    // `auth.setup.ts`'s, and for its documented reason — the Vite dev
-    // server transforms modules on demand and intermittently stalls.
+    // Password login must reach the dedicated challenge without a second
+    // credential form. Leave it unstamped to exercise SPA nav step-up below.
     await page.goto(`${APP_URL}/login`, { timeout: 120_000 })
-    await page.getByRole('textbox', { name: 'Email' }).fill(USERS.admin.email)
-    await page.getByRole('textbox', { name: 'Password', exact: true }).fill(FIXTURE_PASSWORD)
-    await page.getByRole('button', { name: 'Log in' }).click()
+    await submitSharedCredentials(page, USERS.admin.email)
+    await expect(page).toHaveURL(MFA_CHALLENGE_URL)
+    await expect(page.getByRole('heading', { name: 'Verify your identity' })).toBeVisible()
 
-    // PLAN-ADMIN-LOGIN-REDIRECT.md Phase 2: a plain admin sign-in with no
-    // `from` now escorts straight to the panel origin (`getPostLoginDestination`),
-    // not `/dashboard` — that redirect is itself the feature this block's
-    // later tests exercise, so it has to be allowed to happen here rather
-    // than asserted against. Getting back into the SPA for the
-    // nav-rendering tests below relies on the resolved Q2's third rule:
-    // "no route guard — typing `/dashboard` still works for an admin,
-    // forever."
-    await page.waitForURL((url) => url.origin === API_URL, { timeout: 120_000 })
     await page.goto(`${APP_URL}/dashboard`, { timeout: 120_000 })
   })
 
@@ -475,6 +404,8 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
   })
 
   test('clicking it lands on the step-up challenge, not the panel directly — the MFA bypass PLAN-ADMIN-LOGIN-REDIRECT.md closes', async () => {
+    // Code-reuse prevention can require waiting for the next TOTP window.
+    test.setTimeout(120_000)
     // The end-to-end of §7, INVERTED from what this test used to assert.
     // Its old comment recorded, as a known-good fact, that "an admin who
     // is already signed into the app is NOT challenged for TOTP again" —
@@ -496,49 +427,8 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
     await expect(page).toHaveURL(`${API_URL}/control-panel/multi-factor-authentication/challenge`)
     await expect(page.getByRole('heading', { name: 'Verify your identity' })).toBeVisible()
 
-    // Completing it here, rather than deferring to a separate test, is
-    // what actually proves the mechanism end to end: the stamp write, the
-    // `redirect()->intended()` back to the originally requested panel
-    // URL, and the Livewire persistent-middleware allowlist all have to
-    // be correct for this to land on the real panel rather than looping,
-    // erroring, or stranding the admin on the challenge forever.
-    //
-    // Two attempts, same reason `signInToPanel` retries (`panel-auth.ts`):
-    // `AppAuthentication::verifyCode(…, shouldPreventCodeReuse: true)`
-    // refuses a second code from the same 30-second window for the same
-    // secret, which is exactly what happens if another Playwright project
-    // (chromium / mobile-webkit) races this one against the same seeded
-    // `USERS.admin` secret. This page shares that secret and that
-    // rate-limiting key with the panel's own login form, so it is
-    // exposed to the identical race.
-    const codeInput = page.getByLabel('Enter the 6-digit code from the authenticator app')
-    const confirmButton = page.getByRole('button', { name: 'Confirm sign in' })
+    await completePanelChallenge(page, USERS.admin)
 
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      await codeInput.fill(totp(USERS.admin.totpSecret))
-      await confirmButton.click()
-
-      try {
-        await page.waitForURL((url) => !url.pathname.endsWith('/multi-factor-authentication/challenge'), {
-          timeout: 15_000,
-        })
-        break
-      } catch (error) {
-        if (attempt === 2) {
-          throw new Error(
-            `the step-up challenge rejected two consecutive codes for ${USERS.admin.email}. ` +
-              'If the page shows "The code you entered is invalid", the seeded secret and ' +
-              "web/tests/fixtures.ts have drifted apart (check E2ESeeder's ADMIN_TOTP_SECRET " +
-              'constant).',
-            { cause: error },
-          )
-        }
-        await page.waitForTimeout(msUntilNextTimestep())
-      }
-    }
-
-    await expect(page).toHaveURL(`${API_URL}/control-panel`)
-    await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible()
   })
 })
 
@@ -567,4 +457,55 @@ test.describe('§7 — and it is additive, not a rename', () => {
 
     await context.close()
   })
+})
+
+
+test.describe('unified credential entry and recovery', () => {
+  for (const [label, user, entry] of [
+    ['admin shared login', USERS.admin, 'shared'],
+    ['super-admin old alias', USERS.superAdmin, 'alias'],
+  ] as const) {
+    test(`${label} completes MFA and panel logout returns to shared login`, async ({ page }) => {
+      test.setTimeout(120_000)
+      await signInToPanel(page, user, entry)
+      await page.locator('.fi-user-menu-trigger').click()
+      await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+      await expect(page).toHaveURL(`${APP_URL}/login`)
+      await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
+      // The old authenticated resource must require shared credentials again.
+      await page.goto(`${API_URL}/control-panel`)
+      await expect(page).toHaveURL(`${APP_URL}/login`)
+    })
+  }
+
+  test('a guest resource bookmark retains its query through shared login and MFA', async ({ page }) => {
+    test.setTimeout(120_000)
+    const target = `${API_URL}/control-panel/users?tableRecordsPerPage=10&tableSearch=e2e`
+    await page.goto(target)
+    await submitSharedCredentials(page, USERS.admin.email)
+    await completePanelChallenge(page, USERS.admin, target, 'Users')
+    await expect(page.locator('table.fi-ta-table')).toBeVisible()
+    await expect(page.getByText(USERS.admin.email).first()).toBeVisible()
+  })
+
+  for (const user of [USERS.speaker, USERS.reviewerA]) {
+    test(`${user.name} keeps the member/coach dashboard and can switch accounts after denial`, async ({ page }) => {
+      test.setTimeout(120_000)
+      await page.goto(`${APP_URL}/login`)
+      await submitSharedCredentials(page, user.email)
+      await expect(page).toHaveURL(`${APP_URL}/dashboard`)
+      await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Admin panel', exact: true })).toHaveCount(0)
+
+      const response = await page.goto(`${API_URL}/control-panel/login`)
+      expect(response?.status()).toBe(403)
+      await expect(page.getByText(user.email)).toBeVisible()
+      await expect(page.locator('form[action="' + API_URL + '/logout"]')).toBeVisible()
+      await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+      await expect(page).toHaveURL(`${APP_URL}/login`)
+      await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
+      await submitSharedCredentials(page, USERS.admin.email)
+      await completePanelChallenge(page, USERS.admin)
+    })
+  }
 })

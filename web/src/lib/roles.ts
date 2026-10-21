@@ -103,6 +103,9 @@ export const ADMIN_PANEL_ITEM: NavItem = {
   external: true,
 }
 
+/** Continuation alias consumes a pending admin destination before normal MFA checks. */
+export const ADMIN_LOGIN_CONTINUATION = `${API_URL}/control-panel/login`
+
 /**
  * The public profile — the app's social surface (connections rail,
  * profile timeline, arc strip). Not in `BASELINE_NAV_ITEMS` because its
@@ -205,7 +208,7 @@ export function getPostLoginDestination(
     return { to: from, external: false }
   }
   if (hasRole(user, 'admin')) {
-    return { to: ADMIN_PANEL_ITEM.to, external: true }
+    return { to: ADMIN_LOGIN_CONTINUATION, external: true }
   }
   return { to: user?.onboarding_completed ? '/dashboard' : '/onboarding', external: false }
 }

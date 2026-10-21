@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ADMIN_PANEL_ITEM, getPostLoginDestination, hasRole, navItemsFor } from '@/lib/roles'
+import { ADMIN_LOGIN_CONTINUATION, ADMIN_PANEL_ITEM, getPostLoginDestination, hasRole, navItemsFor } from '@/lib/roles'
 
 describe('hasRole', () => {
   it('is false for a user with roles: []', () => {
@@ -148,12 +148,17 @@ describe('navItemsFor', () => {
 describe('getPostLoginDestination', () => {
   it('sends an admin with no `from` to the panel — the feature', () => {
     const destination = getPostLoginDestination({ roles: ['admin'], onboarding_completed: true }, undefined)
-    expect(destination).toEqual({ to: ADMIN_PANEL_ITEM.to, external: true })
+    expect(destination).toEqual({ to: ADMIN_LOGIN_CONTINUATION, external: true })
   })
 
   it('sends a super_admin with no `from` to the panel too', () => {
     const destination = getPostLoginDestination({ roles: ['super_admin'], onboarding_completed: true }, undefined)
-    expect(destination).toEqual({ to: ADMIN_PANEL_ITEM.to, external: true })
+    expect(destination).toEqual({ to: ADMIN_LOGIN_CONTINUATION, external: true })
+  })
+
+  it('keeps the visible panel link separate from the login continuation', () => {
+    expect(ADMIN_LOGIN_CONTINUATION).toBe(`${ADMIN_PANEL_ITEM.to}/login`)
+    expect(ADMIN_PANEL_ITEM.to).toMatch(/\/control-panel$/)
   })
 
   /**

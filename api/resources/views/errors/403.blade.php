@@ -22,14 +22,10 @@
     which needs no build step and cannot silently stop working.
 --}}
 @php
-    /**
-     * The panel declares its own logout route; Fortify's is root-mounted.
-     * Posting to the wrong one 404s, so pick by path rather than guessing.
-     */
     $isPanelRequest = request()->is('control-panel', 'control-panel/*');
-    $logoutUrl = $isPanelRequest && \Illuminate\Support\Facades\Route::has('filament.admin.auth.logout')
-        ? route('filament.admin.auth.logout')
-        : (\Illuminate\Support\Facades\Route::has('logout') ? route('logout') : null);
+    // The root Fortify logout accepts every authenticated role. Panel logout
+    // requires admin access, so it cannot recover a member's denied session.
+    $logoutUrl = route('logout');
 
     $currentUser = request()->user();
     $frontendUrl = rtrim((string) config('app.frontend_url'), '/');

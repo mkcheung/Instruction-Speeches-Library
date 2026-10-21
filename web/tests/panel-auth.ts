@@ -1,28 +1,11 @@
 import { createHmac } from 'node:crypto'
 import { expect, type Page } from '@playwright/test'
-import { API_URL, FIXTURE_PASSWORD } from './fixtures.js'
+import { API_URL, APP_URL, FIXTURE_PASSWORD } from './fixtures.js'
 
 /**
- * PLAN-ADMIN-DASHBOARD.md §9 — "you need seeded secrets plus a TOTP
- * generator, or an env-gated bypass: new seed data *and* new machinery."
- * This file is that machinery, and it is deliberately NOT a bypass.
- *
- * Nothing about the panel's auth stack is weakened or stubbed to make
- * these tests run: the browser fills the real Filament Blade login form,
- * gets the real mandatory multi-factor challenge, and answers it with a
- * real RFC 6238 code that `PragmaRX\Google2FA` verifies the same way it
- * would verify Google Authenticator's. The only thing the test harness
- * knows that a stranger does not is the seed, which `E2ESeeder` now
- * hardcodes for ids 9001/9002 (and only those two).
- *
- * ## Why this is not in `auth.setup.ts`
- *
- * Every browser project declares `dependencies: ['setup']`, so a failure
- * in that file takes the whole suite down — its own docblock says so.
- * The panel is the least-exercised surface in the repo and the one most
- * likely to break; coupling `speech-create.spec.ts` to it would trade a
- * red admin spec for a red everything. The admin spec signs in for
- * itself instead, once per `test.describe.serial` block.
+ * Real shared-form credentials plus the dedicated Filament MFA challenge.
+ * Seeded TOTP secrets are test data, not an MFA bypass. Admin authentication
+ * stays outside auth.setup.ts so panel failures do not block unrelated specs.
  */
 
 /** Base32 (RFC 4648) alphabet google2fa's secrets are drawn from. */
@@ -103,92 +86,67 @@ export interface PanelUser {
   readonly totpSecret: string
 }
 
+export const MFA_CHALLENGE_URL = `${API_URL}/control-panel/multi-factor-authentication/challenge`
+
+/** Submit the same React credential form used by every application role. */
+export async function submitSharedCredentials(page: Page, email: string): Promise<void> {
+  await expect(page).toHaveURL(`${APP_URL}/login`)
+  await page.getByLabel('Email', { exact: true }).fill(email)
+  await page.getByLabel('Password', { exact: true }).fill(FIXTURE_PASSWORD)
+  await expect(page.getByLabel('Remember me', { exact: true })).not.toBeChecked()
+  await page.getByRole('button', { name: 'Log in', exact: true }).click()
+}
+
 /**
- * Signs `user` into the Filament panel at `${API_URL}/control-panel` and
- * resolves once a panel page — not the login page, not the enrollment
- * page — is on screen.
- *
- * Two attempts, because one specific failure is expected rather than
- * exceptional. `AppAuthentication::verifyCode(…, shouldPreventCodeReuse:
- * true)` caches the accepted timestep under
- * `filament.app_authentication_codes.<md5 of secret>` and then demands
- * that every later code be strictly newer, so a second login for the SAME
- * account inside the same 30-second window is refused by design — which
- * is exactly what happens when two Playwright projects (chromium and
- * mobile-webkit, say) run this file at once. Waiting out the timestep and
- * presenting a fresh code is the correct response to that, and it is also
- * the only thing this retry can rescue: a wrong secret, a suspended
- * account or a 403 all fail identically on both attempts and surface as a
- * real failure.
+ * Complete real MFA, allowing one next-window retry for seeded-code reuse.
+ * Reaching another auth page is never success: require the exact final URL
+ * and protected page heading, with challenge/enrollment content absent.
  */
-export async function signInToPanel(page: Page, user: PanelUser): Promise<void> {
-  await page.goto(`${API_URL}/control-panel/login`)
-
-  // EXACT STRINGS, not anchored regexes, and the distinction is not
-  // stylistic — an earlier draft used `/^Email address/` and timed out on
-  // every run, which read as "the panel never loaded" and cost a full
-  // debugging pass to tell apart from a broken login.
-  //
-  // Filament renders the label as `Email address<sup>*</sup>` with the
-  // markup on its own lines, so the raw text node carries surrounding
-  // whitespace. Playwright normalizes whitespace when matching by STRING
-  // but NOT when matching by regular expression, so `/^Email address/`
-  // anchors against a leading newline and matches nothing. Measured on
-  // the real login page: the regex yields 0 elements, `'Email address*'`
-  // with `exact: true` yields 1.
-  //
-  // `exact: true` is still required on the password field for the reason
-  // the earlier draft anchored in the first place: `getByLabel` is
-  // case-insensitive and substring-based, so a bare `'Password'` matches
-  // THREE elements here — the field, the reveal toggle's "Show password"
-  // aria-label, and the toggle's "Hide password" counterpart.
-  await page.getByLabel('Email address*', { exact: true }).fill(user.email)
-  await page.getByLabel('Password*', { exact: true }).fill(FIXTURE_PASSWORD)
-  await page.getByRole('button', { name: 'Sign in' }).click()
-
-  // `isRequired: true` is not what produces this screen — an enabled
-  // provider is. `Login::authenticate()` presents the challenge because
-  // `AppAuthentication::isEnabled()` returns true for a user with a
-  // filled `two_factor_secret`, which is precisely what E2ESeeder now
-  // gives ids 9001/9002. Without that column this heading never appears
-  // and the panel redirects to mandatory enrollment instead.
-  const challengeHeading = page.getByRole('heading', { name: 'Verify your identity' })
-  await expect(challengeHeading).toBeVisible()
+export async function completePanelChallenge(
+  page: Page,
+  user: PanelUser,
+  target = `${API_URL}/control-panel`,
+  heading = 'Dashboard',
+): Promise<void> {
+  await expect(page).toHaveURL(MFA_CHALLENGE_URL)
+  await expect(page.getByRole('heading', { name: 'Verify your identity' })).toBeVisible()
 
   const codeInput = page.getByLabel('Enter the 6-digit code from the authenticator app')
   const confirmButton = page.getByRole('button', { name: 'Confirm sign in' })
 
   for (let attempt = 1; attempt <= 2; attempt++) {
-    // One `fill()` is enough even though the component renders six
-    // separate `<input>`s: `filamentOneTimeCodeInput`'s own `input`
-    // handler treats a value longer than one character as a paste and
-    // distributes it across the digits itself.
     await codeInput.fill(totp(user.totpSecret))
     await confirmButton.click()
 
-    // Success is leaving the login page entirely. Filament's
-    // `LoginResponse` sends `redirect()->intended(Filament::getUrl())`,
-    // so the destination is the panel root unless something deeper
-    // redirected — `waitForURL` on "anything but /control-panel/login"
-    // keeps this helper usable for a user who lands somewhere else.
     try {
-      await page.waitForURL((url) => !url.pathname.endsWith('/control-panel/login'), {
-        timeout: 15_000,
-      })
-
-      return
-    } catch {
-      if (attempt === 2) {
-        throw new Error(
-          `the panel multi-factor challenge rejected two consecutive codes for ${user.email}. ` +
-            'If the page shows "The code you entered is invalid", the seeded secret and ' +
-            "web/tests/fixtures.ts have drifted apart (check E2ESeeder's *_TOTP_SECRET " +
-            'constants). If it shows a throttling notification, the run made more than ' +
-            'five login attempts from this IP.',
-        )
+      await page.waitForURL(target, { timeout: 15_000 })
+      break
+    } catch (error) {
+      // Only an unchanged challenge can justify waiting for a fresh code.
+      // A redirect to setup, login, or the wrong content is a real failure.
+      if (attempt === 2 || page.url() !== MFA_CHALLENGE_URL) {
+        throw new Error(`MFA did not reach ${target} for ${user.email}; current URL: ${page.url()}`, {
+          cause: error,
+        })
       }
-
       await page.waitForTimeout(msUntilNextTimestep())
     }
   }
+
+  await expect(page).toHaveURL(target)
+  await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Verify your identity' })).toHaveCount(0)
+  await expect(page.getByLabel('Enter the 6-digit code from the authenticator app')).toHaveCount(0)
+  expect(new URL(page.url()).pathname).not.toMatch(/\/(?:login|multi-factor-authentication)(?:\/|$)/)
+}
+
+/** Old bookmarks and plain shared login both end at the protected dashboard. */
+export async function signInToPanel(
+  page: Page,
+  user: PanelUser,
+  entry: 'alias' | 'shared' = 'alias',
+): Promise<void> {
+  await page.goto(entry === 'alias' ? `${API_URL}/control-panel/login` : `${APP_URL}/login`)
+  await submitSharedCredentials(page, user.email)
+  await completePanelChallenge(page, user)
 }

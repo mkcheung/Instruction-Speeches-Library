@@ -1,5 +1,11 @@
 # Plan — Role-Based Post-Login Routing for the Admin Tier
 
+> Current implementation note (2026-10-20): this document preserves historical
+> findings and decisions. The secondary Filament credential form is retired by
+> `PLAN-REMOVE-SECONDARY-ADMIN-LOGIN.md`: `/control-panel/login` is a redirect
+> alias to the shared React login; admin MFA remains a dedicated challenge.
+> Do not use historical inline-login instructions as the current login flow.
+
 **rev 3 · 2026-10-09 · branch `step-16-admin-dashboard`**
 
 > **Q1, Q2, Q3 and Q5 are resolved** (all 2026-10-09). Q1 → the step-up challenge
