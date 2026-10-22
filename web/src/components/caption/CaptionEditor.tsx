@@ -139,7 +139,7 @@ function CaptionEditorInner({
             <button
               type="button"
               onClick={() => onSeek(cue.start)}
-              aria-label={`Seek to ${formatSpokenTimecode(cue.start)}`}
+              aria-label={`Seek to ${formatTimecode(cue.start)} (${formatSpokenTimecode(cue.start)})`}
               className="shrink-0 tabular-nums text-sm text-muted-foreground underline-offset-2 hover:underline"
             >
               {formatTimecode(cue.start)}

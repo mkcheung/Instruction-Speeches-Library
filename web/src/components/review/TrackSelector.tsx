@@ -24,7 +24,7 @@ export function TrackSelector(props: TrackSelectorProps) {
   const reviewers = options.filter((option) => option.review !== null)
   if (optionsLoading) return <p role="status" className="text-sm text-muted-foreground">Loading reviewers…</p>
   return (
-    <Card>
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle>Commentary track</CardTitle>
@@ -42,7 +42,7 @@ export function TrackSelector(props: TrackSelectorProps) {
               <input className="sr-only" type="radio" name={name} checked={option.key === selected}
                 onChange={() => onSelect(option.key)} onFocus={() => onPrefetch(option.key)} />
               {option.label}
-              {option.noteCount > 0 && <span className="ml-1 text-xs opacity-75">{` · ${option.noteCount} ${option.noteCount === 1 ? 'note' : 'notes'} total`}</span>}
+              {option.noteCount > 0 && <span className={cn('ml-1 text-xs', option.key === selected ? 'opacity-90' : 'opacity-75')}>{` · ${option.noteCount} ${option.noteCount === 1 ? 'note' : 'notes'} total`}</span>}
               {option.hasUnread && <><span aria-hidden="true" className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-current" /><span className="sr-only">{', new'}</span></>}
             </label>
           ))}

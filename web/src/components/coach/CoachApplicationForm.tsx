@@ -71,7 +71,7 @@ export function CoachApplicationForm({
   const hasDraft = !!application
 
   return (
-    <Card>
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader>
         <CardTitle>Apply to become a coach</CardTitle>
         <CardDescription>
@@ -80,7 +80,7 @@ export function CoachApplicationForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <FormBanner message={formError} />
+        <FormBanner className="workspace-notebook-banner" message={formError} />
 
         <form onSubmit={hasDraft ? onSubmitForReview : onSaveDraft} className="flex flex-col gap-4" noValidate>
           <div className="flex flex-col gap-1.5">
@@ -105,7 +105,7 @@ export function CoachApplicationForm({
           </div>
 
           {!hasDraft && (
-            <Button type="submit" disabled={isSaving}>
+            <Button className="workspace-notebook-control workspace-notebook-control--primary" type="submit" disabled={isSaving}>
               {isSaving ? 'Saving…' : 'Save draft and continue'}
             </Button>
           )}
@@ -118,10 +118,12 @@ export function CoachApplicationForm({
               <p className="text-sm text-muted-foreground">
                 Upload up to two PDFs — certificates or other proof of coaching credentials.
               </p>
-              <CoachDocumentUpload
-                applicationId={application.id}
-                onUploaded={() => setDocumentsUploaded(true)}
-              />
+              <div className="workspace-notebook-embedded">
+                <CoachDocumentUpload
+                  applicationId={application.id}
+                  onUploaded={() => setDocumentsUploaded(true)}
+                />
+              </div>
               {application.documents.length > 0 && (
                 <ul className="flex flex-col gap-1 text-sm">
                   {application.documents.map((document) => (
@@ -133,7 +135,7 @@ export function CoachApplicationForm({
               )}
             </div>
 
-            <Button type="button" onClick={onSubmitForReview} disabled={isSaving || !documentsUploaded}>
+            <Button className="workspace-notebook-control workspace-notebook-control--primary" type="button" onClick={onSubmitForReview} disabled={isSaving || !documentsUploaded}>
               {isSaving ? 'Submitting…' : 'Submit application'}
             </Button>
           </>

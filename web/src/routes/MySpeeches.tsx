@@ -17,7 +17,9 @@ import { SpeechEditDialog } from '@/components/speech/SpeechEditDialog'
 import { SpeechDeleteDialog } from '@/components/speech/SpeechDeleteDialog'
 import { useListSpeechesQuery } from '@/features/speech/speechApi'
 import type { Speech } from '@/features/speech/types'
-import { CardGrid, PageHeader, PageShell } from '@/components/layout/PageShell'
+import { CardGrid } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
 /**
  * STEP-03-upload-and-watch.md's "my speeches" — "the card shows
@@ -32,13 +34,14 @@ import { CardGrid, PageHeader, PageShell } from '@/components/layout/PageShell'
  * has for speeches that don't have one yet.
  */
 export default function MySpeeches() {
+  const scene = useWorkspaceCompanionScene()
   const { data, isLoading } = useListSpeechesQuery(undefined, { pollingInterval: 3000 })
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading…
-      </div>
+      <NotebookPage width="wide" scene={scene} title="My speeches">
+        <p className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status text-sm text-muted-foreground">Loading…</p>
+      </NotebookPage>
     )
   }
 
@@ -49,18 +52,15 @@ export default function MySpeeches() {
        uses every pixel. It was previously capped at `max-w-3xl` with a
        two-column ceiling, so a 1920px window showed two cards and ~70rem
        of empty space. */
-    <PageShell width="wide">
-      <PageHeader
-        title="My speeches"
-        actions={
-          <Button size="sm" render={<Link to="/speeches/new" />}>
-            Upload a speech
-          </Button>
-        }
-      />
-
+    <NotebookPage width="wide" scene={scene} title="My speeches"
+      actions={
+        <Button size="sm" className="workspace-notebook-control workspace-notebook-control--primary" render={<Link to="/speeches/new" />}>
+          Upload a speech
+        </Button>
+      }
+    >
       {speeches.length === 0 && (
-        <p className="text-sm text-muted-foreground">No speeches yet.</p>
+        <p className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status text-sm text-muted-foreground">No speeches yet.</p>
       )}
 
       <CardGrid>
@@ -68,7 +68,7 @@ export default function MySpeeches() {
           <SpeechCard key={speech.id} speech={speech} />
         ))}
       </CardGrid>
-    </PageShell>
+    </NotebookPage>
   )
 }
 
@@ -92,10 +92,10 @@ function SpeechCard({ speech }: { speech: Speech }) {
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   return (
-    <Card>
+    <Card className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-poster-card">
       <SpeechPoster speech={speech} className="rounded-b-none" />
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex min-w-0 flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
           {speech.title}
           <SupersedesBadge speech={speech} />
         </CardTitle>
@@ -103,7 +103,7 @@ function SpeechCard({ speech }: { speech: Speech }) {
           <DropdownMenuRoot modal={false}>
             <DropdownMenuTrigger
               render={
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Speech options">
+                <Button type="button" variant="ghost" size="icon-sm" className="workspace-notebook-control workspace-notebook-control--secondary" aria-label="Speech options">
                   <MoreHorizontal />
                 </Button>
               }
@@ -119,10 +119,10 @@ function SpeechCard({ speech }: { speech: Speech }) {
           </DropdownMenuRoot>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex items-center justify-between">
+      <CardContent className="flex flex-wrap items-center justify-between gap-2">
         <StatusBadge speech={speech} />
         {speech.primary_video?.status === 'ready' && (
-          <Button size="sm" variant="outline" render={<Link to={`/speeches/${speech.id}`} />}>
+          <Button size="sm" variant="outline" className="workspace-notebook-control workspace-notebook-control--primary" render={<Link to={`/speeches/${speech.id}`} />}>
             Watch
           </Button>
         )}

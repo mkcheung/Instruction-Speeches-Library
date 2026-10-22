@@ -4,6 +4,12 @@ import userEvent from '@testing-library/user-event'
 import SpeechCreate from '@/routes/SpeechCreate'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 
+vi.mock('@/components/speech/UploadDashboard', () => ({
+  UploadDashboard: ({ speechId, onAssetReady }: { speechId: number; onAssetReady: () => void }) => (
+    <button onClick={onAssetReady}>Complete upload for speech {speechId}</button>
+  ),
+}))
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
@@ -30,6 +36,7 @@ describe('SpeechCreate', () => {
   function stubFetch() {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
       if (url.includes('/api/speeches') && !url.match(/\/\d/)) {
         // GET /api/speeches (list, for the supersedes picker) — matching on
@@ -66,6 +73,7 @@ describe('SpeechCreate', () => {
   it('does not require a supersedes picker or change_note for a first attempt', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
       if (url.includes('/api/speeches') && !url.match(/\/\d/)) {
         return jsonResponse({ speeches: [], meta: { current_page: 1, last_page: 1, total: 0 } })
@@ -79,4 +87,37 @@ describe('SpeechCreate', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     expect(screen.queryByLabelText(/replaces an earlier attempt/i)).not.toBeInTheDocument()
   })
+
+  it('preserves metadata and earlier-attempt submission through upload completion and list navigation', async () => {
+    let submitted: unknown
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      const path = new URL(request.url).pathname
+      if (path === '/api/me') return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
+      if (path === '/sanctum/csrf-cookie') return new Response(null, { status: 204 })
+      if (path === '/api/speeches' && request.method === 'GET') {
+        return jsonResponse({ speeches: [EXISTING_SPEECH], meta: { current_page: 1, last_page: 1, total: 1 } })
+      }
+      if (path === '/api/speeches' && request.method === 'POST') {
+        submitted = await request.json()
+        return jsonResponse({ speech: { ...EXISTING_SPEECH, id: 8, title: 'Attempt 2' } })
+      }
+      throw new Error(`unexpected fetch: ${request.method} ${path}`)
+    }))
+    const user = userEvent.setup()
+    const { router } = renderWithProviders(<SpeechCreate />, { route: '/speeches/new' })
+    await user.type(screen.getByLabelText('Title'), 'Attempt 2')
+    await user.type(screen.getByLabelText('Description'), 'A clearer opening')
+    await user.type(screen.getByLabelText('Delivered on'), '2026-10-21')
+    await user.selectOptions(await screen.findByLabelText('This replaces an earlier attempt'), '7')
+    await user.type(screen.getByLabelText('What did you change?'), 'Slowed the opening')
+    await user.click(screen.getByRole('button', { name: 'Continue to upload' }))
+    await user.click(await screen.findByRole('button', { name: 'Complete upload for speech 8' }))
+    expect(submitted).toEqual({ title: 'Attempt 2', description: 'A clearer opening', delivered_on: '2026-10-21', supersedes_id: 7, change_note: 'Slowed the opening' })
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('status')).toHaveTextContent('Uploaded. Processing now')
+    await user.click(screen.getByRole('button', { name: 'Go to my speeches' }))
+    expect(router.state.location.pathname).toBe('/speeches')
+  })
+
 })

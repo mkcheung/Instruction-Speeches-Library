@@ -28,7 +28,7 @@ afterEach(() => {
 })
 
 describe('ActivityScene', () => {
-  it.each(['sidebar', 'login'] as const)('keeps the %s frame decorative and nonfocusable', (variant) => {
+  it.each(['sidebar', 'login', 'compact'] as const)('keeps the %s frame decorative and nonfocusable', (variant) => {
     const scene = variant === 'login' ? 'welcome' : 'reviews'
     const { container } = render(<ActivityScene scene={scene} variant={variant} />)
     const frame = container.firstElementChild!
@@ -40,7 +40,14 @@ describe('ActivityScene', () => {
     expect(frame.children).toHaveLength(1)
   })
 
-  it.each(['pending', 'unavailable', 'throw'] as const)('preserves the reserved frame and working form/navigation with %s art', async (mode) => {
+  it.each([
+    ['sidebar', 'pending'],
+    ['sidebar', 'unavailable'],
+    ['sidebar', 'throw'],
+    ['compact', 'pending'],
+    ['compact', 'unavailable'],
+    ['compact', 'throw'],
+  ] as const)('preserves the reserved %s frame and working form/navigation with %s art', async (variant, mode) => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     drawing.mode = mode
     let resolveArt!: () => void
@@ -49,12 +56,12 @@ describe('ActivityScene', () => {
     const onNavigate = vi.fn((event: React.MouseEvent) => event.preventDefault())
     const user = userEvent.setup()
     const { container } = render(<>
-      <ActivityScene scene="reviews" variant="sidebar" />
+      <ActivityScene scene="reviews" variant={variant} />
       <form onSubmit={onSubmit}><label>Email<input type="email" /></label><button>Log in</button></form>
       <a href="/search" onClick={onNavigate}>Search</a>
     </>)
     const frame = container.querySelector('[data-workspace-scene="reviews"]')!
-    expect(frame).toHaveClass('workspace-scene--sidebar')
+    expect(frame).toHaveClass(`workspace-scene--${variant}`)
     expect(frame).toBeEmptyDOMElement()
     await user.type(screen.getByLabelText('Email'), 'member@example.test')
     await user.click(screen.getByRole('button', { name: 'Log in' }))

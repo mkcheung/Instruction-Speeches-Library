@@ -1,22 +1,131 @@
-import { createRef, type ReactNode } from 'react'
+import { createRef, StrictMode } from 'react'
+import type { ComponentProps } from 'react'
+import { speechApi } from '@/features/speech/speechApi'
+import { reviewApi } from '@/features/review/reviewApi'
+import { authApi } from '@/features/auth/authApi'
+import { annotationApi } from '@/features/annotation/annotationApi'
+import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type Player from 'video.js/dist/types/player'
 import { Routes, Route } from 'react-router-dom'
 import SpeechWatch, { PosterFramePicker, OverlayPositioner } from '@/routes/SpeechWatch'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import type { SpeechSprite } from '@/features/speech/types'
+import type { Review } from '@/features/review/types'
 import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
+import { WorkspaceCompanionProvider } from '@/components/workspace/WorkspaceCompanionProvider'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
-beforeEach(() => playbackPreferences.setIdentity(null))
+function CompanionProbe() {
+  const scene = useWorkspaceCompanionScene()
+  return <output data-testid="published-companion">{scene ?? 'none'}</output>
+}
 
-// Route tests verify authorization, selection and tabs. jsdom has no media
-// pipeline; player ownership is tested separately in VideoPlayer.test.tsx,
-// and real video/fullscreen behavior is verified in browser acceptance.
-vi.mock('@/components/speech/VideoPlayer', () => ({
-  VideoPlayer: ({ presentation }: { presentation?: ReactNode }) => <div data-testid="watch-player">{presentation}</div>,
+beforeEach(() => { playbackPreferences.setIdentity(null); localStorage.clear() })
+
+type PlayerHarnessInstance = {
+  player: Player
+  video: HTMLVideoElement
+  root: HTMLDivElement
+  url: string
+  disposed: boolean
+  ready: () => void
+  refresh: () => Promise<string>
+  replacePresentation: () => void
+}
+const playerHarness = vi.hoisted(() => ({
+  autoReady: true,
+  instances: [] as PlayerHarnessInstance[],
 }))
+beforeEach(() => {
+  playerHarness.autoReady = true
+  playerHarness.instances = []
+})
+
+// Reproduce VideoPlayer's detached React host, initialUrl-driven source
+// disposal and latest-ready-callback semantics. Readiness can be delayed
+// independently for each concrete player. This is not a native media test.
+vi.mock('@/components/speech/VideoPlayer', async () => {
+  const { useState, useEffect, useRef } = await import('react')
+  const { createPortal } = await import('react-dom')
+  return { VideoPlayer: (props: ComponentProps<typeof VideoPlayer>) => {
+    const container = useRef<HTMLDivElement>(null)
+    const latest = useRef(props)
+    const [presentationGeneration, setPresentationGeneration] = useState(0)
+    const [host] = useState(() => {
+      const node = document.createElement('div')
+      node.dataset.testid = 'owner-commentary-host'
+      node.className = 'owner-commentary-host'
+      return node
+    })
+    useEffect(() => { latest.current = props })
+    useEffect(() => {
+      const root = document.createElement('div')
+      root.className = 'video-js'
+      const video = document.createElement('video')
+      video.dataset.testid = 'speech-video'
+      root.append(video, host)
+      container.current!.append(root)
+      let tracks: TextTrack[] = []
+      const instance: PlayerHarnessInstance = {
+        root, video, url: props.initialUrl, disposed: false,
+        replacePresentation: () => setPresentationGeneration((generation) => generation + 1),
+        player: null as unknown as Player,
+        ready: () => { if (!instance.disposed) latest.current.onPlayerReady?.(instance.player) },
+        refresh: async () => {
+          const url = await latest.current.refreshUrl()
+          if (!instance.disposed) {
+            video.src = url
+            tracks = []
+            latest.current.onSourceRefreshed?.()
+          }
+          return url
+        },
+      }
+      instance.player = {
+        isDisposed: () => instance.disposed,
+        tech: () => ({ el: () => video }),
+        el: () => root,
+        currentTime: () => video.currentTime,
+        remoteTextTracks: () => {
+          if (instance.disposed) throw new Error('Track access on disposed player')
+          return tracks
+        },
+        removeRemoteTextTrack: (track: TextTrack) => { tracks = tracks.filter((t) => t !== track) },
+        addRemoteTextTrack: () => {
+          const track = { kind: 'captions', mode: 'showing' } as TextTrack
+          tracks.push(track)
+          return { track }
+        },
+      } as unknown as Player
+      playerHarness.instances.push(instance)
+      if (playerHarness.autoReady) queueMicrotask(instance.ready)
+      return () => {
+        host.remove()
+        instance.disposed = true
+        root.remove()
+      }
+      // Deliberately mirror the production source effect's dependency.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.initialUrl])
+    return <div data-testid="watch-player" ref={container}>{createPortal(props.presentation, host, String(presentationGeneration))}</div>
+  } }
+})
+
+// A microphone seam retains a real pending Blob while route/composer state,
+// tab mounting, timers, list, editor and visual preview remain production code.
+vi.mock('@/components/annotation/VoiceRecorder', async () => {
+  const { useState } = await import('react')
+  return { VoiceRecorder: ({ onPendingChange }: { onPendingChange?: (id: string, pending: boolean) => void }) => {
+    const [blob, setBlob] = useState<Blob | null>(null)
+    return <button type="button" onClick={() => {
+      setBlob(new Blob(['unsaved voice']))
+      onPendingChange?.('pending-route-recording', true)
+    }}>{blob ? `Unsaved recording: ${blob.size} bytes` : 'Capture test recording'}</button>
+  } }
+})
 
 /**
  * §8.6: the overlay's actual vertical placement lives on THIS wrapper —
@@ -424,9 +533,12 @@ describe('SpeechWatch reviewers tab', () => {
 
   function renderWatch() {
     return renderWithProviders(
-      <Routes>
-        <Route path="/speeches/:id" element={<SpeechWatch />} />
-      </Routes>,
+      <WorkspaceCompanionProvider>
+        <CompanionProbe />
+        <Routes>
+          <Route path="/speeches/:id" element={<SpeechWatch />} />
+        </Routes>
+      </WorkspaceCompanionProvider>,
       { route: '/speeches/17' },
     )
   }
@@ -622,7 +734,9 @@ describe('SpeechWatch reviewers tab', () => {
     renderWatch()
 
     expect(await screen.findByText('A Speech With Tabs')).toBeInTheDocument()
-    expect(screen.getByText(/not ready to play yet/i)).toBeInTheDocument()
+    const processingNotice = screen.getByText(/not ready to play yet/i)
+    expect(processingNotice).toHaveClass('workspace-notebook-surface')
+    expect(screen.queryByTestId('watch-player')).not.toBeInTheDocument()
 
     const tab = await screen.findByRole('tab', { name: 'Reviewers' })
     await user.click(tab)
@@ -673,4 +787,566 @@ describe('SpeechWatch reviewers tab', () => {
       ).toBe(true),
     )
   })
+
+  it('updates owner context without replacing the player or losing an invitation draft', async () => {
+    const fetchMock = stubWatchFetch({ speech: speechFixture() })
+    const user = userEvent.setup()
+    const view = renderWatch()
+    const player = await screen.findByTestId('watch-player')
+    const expectScene = async (scene: string) => {
+      await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent(scene))
+      expect(view.container.querySelector('.workspace-scene--compact')).toHaveAttribute('data-workspace-scene', scene)
+      expect(screen.getByTestId('watch-player')).toBe(player)
+      expect(player.closest('.workspace-notebook-surface')).toBeNull()
+    }
+    await expectScene('reviews')
+    await user.click(screen.getByRole('tab', { name: 'Reviewers' }))
+    await expectScene('reviewers')
+    const message = screen.getByLabelText('Message (optional)')
+    await user.type(message, 'Please review my opening.')
+    await user.click(screen.getByRole('tab', { name: 'Essay' }))
+    await expectScene('edit')
+    await user.click(screen.getByRole('tab', { name: 'Transcript' }))
+    await expectScene('search')
+    await user.click(screen.getByRole('tab', { name: 'Notes' }))
+    await expectScene('reviews')
+    await user.click(screen.getByRole('tab', { name: 'Reviewers' }))
+    await expectScene('reviewers')
+    expect(screen.getByLabelText('Message (optional)')).toBe(message)
+    expect(message).toHaveValue('Please review my opening.')
+    expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).includes('/playback-url'))).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
+  it.each([403, 404, 200])('suppresses local and published art for cached A while B resolves (%s)', async (status) => {
+    const fetchMock = stubWatchFetch({ speech: speechFixture() })
+    const originalFetch = fetchMock.getMockImplementation()!
+    let finish!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    fetchMock.mockImplementation(async (input) => {
+      const path = pathOf(input)
+      if (path === '/api/speeches/18') return pending
+      if (path === '/api/speeches/18/review-roster') return json({ reviews: [] })
+      if (path === '/api/speeches/18/captions') return json({ captions: { status: 'unavailable', vtt: null } })
+      return originalFetch(input)
+    })
+    const user = userEvent.setup()
+    const view = renderWatch()
+    await screen.findByTestId('watch-player')
+    await user.click(screen.getByRole('tab', { name: 'Reviewers' }))
+    await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('reviewers'))
+    const player = screen.getByTestId('watch-player')
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    // Preserve the existing retained-query rendering while hiding its art.
+    expect(screen.getByRole('heading', { name: 'A Speech With Tabs' })).toBeInTheDocument()
+    expect(screen.getByTestId('watch-player')).toBe(player)
+    expect(screen.getByTestId('published-companion')).toHaveTextContent('none')
+    expect(view.container.querySelector('.workspace-scene--compact')).toBeNull()
+    await act(async () => {
+      finish(status === 200
+        ? json({ speech: { ...speechFixture(), id: 18, title: 'Current speech B' } })
+        : json({ message: 'Unavailable' }, status))
+      await pending
+    })
+    if (status === 200) {
+      await screen.findByRole('heading', { name: 'Current speech B' })
+      await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('reviewers'))
+      expect(view.container.querySelector('.workspace-scene--compact')).toHaveAttribute('data-workspace-scene', 'reviewers')
+    } else {
+      await waitFor(() => expect(view.store.getState().speechApi.queries['getSpeech(18)']?.status).toBe('rejected'))
+      expect(screen.getByTestId('published-companion')).toHaveTextContent('none')
+      expect(view.container.querySelector('.workspace-scene--compact')).toBeNull()
+    }
+  })
+
+  it('observes real reviewer tabs while retaining the mounted Notes composer', async () => {
+    stubWatchFetch({
+      speech: speechFixture({ userId: 4242 }),
+      myReviews: { in_progress: [{ ...rosterReview(), id: 501, status: 'in_progress',
+        speech: { id: 17, title: 'A Speech With Tabs' } }] },
+    })
+    const user = userEvent.setup()
+    const view = renderWatch()
+    await screen.findByRole('tablist', { name: 'Your feedback' })
+    const player = screen.getByTestId('watch-player')
+    const composer = await screen.findByText('Your commentary')
+    const draft = await screen.findByLabelText('Commentary')
+    await user.type(draft, 'A pending written note.')
+    await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('reviews'))
+    await user.click(screen.getByRole('tab', { name: 'Transcript' }))
+    expect(screen.getByRole('tab', { name: 'Transcript' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('search'))
+    expect(view.container.querySelector('.workspace-scene--compact')).toHaveAttribute('data-workspace-scene', 'search')
+    expect(composer).toBeInTheDocument()
+    expect(composer).not.toBeVisible()
+    expect(screen.getByTestId('watch-player')).toBe(player)
+    await user.click(screen.getByRole('tab', { name: 'Notes' }))
+    expect(composer).toBeVisible()
+    expect(screen.getByLabelText('Commentary')).toBe(draft)
+    expect(draft).toHaveValue('A pending written note.')
+    expect(screen.getByTestId('published-companion')).toHaveTextContent('reviews')
+  })
+
+
+  function reviewerReview(speechId = 17, id = 501): Review {
+    return { ...rosterReview(), id, status: 'in_progress',
+      speech: { id: speechId, ulid: `01TEST${speechId}`, title: `Speech ${speechId}`, owner_name: 'Owner' } } as Review
+  }
+
+  function writtenNote(id: string, body: string) {
+    return { id, timing_type: 'range', start_seconds: 2, duration_seconds: 5,
+      body, kind: 'observation', topic: null, voice: null, lock_version: 0, client_uuid: `uuid-${id}` }
+  }
+
+  function stubReviewerFetch() {
+    const mock = stubWatchFetch({ speech: speechFixture({ userId: 4242 }),
+      myReviews: { in_progress: [reviewerReview(), reviewerReview(18, 502)] } })
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation(async (input) => {
+      const path = pathOf(input)
+      if (path === '/api/me') return json({ user: { ...userPayload(String(OWNER_ID)).user, roles: ['coach'] } })
+      if (path === '/api/speeches/18') return json({ speech: {
+        ...speechFixture({ userId: 4242 }), id: 18, title: 'Speech B',
+        primary_video: { ...speechFixture().primary_video, id: 84 },
+      } })
+      if (path === '/api/speeches/18/assets/84/playback-url') return json({ url: 'https://example.com/signed.mp4' })
+      if (path === '/api/speeches/18/captions') return json({ captions: { status: 'unavailable', vtt: null } })
+      if (path === '/api/speeches/18/essay') return json({ essay: { essay_html: null, essay_published_at: null } })
+      if (path === '/api/speeches/17/annotations' || path === '/api/speeches/18/annotations') {
+        const isA = path.includes('/17/')
+        const reviewId = isA ? 501 : 502
+        expect(new URL(urlOf(input), 'http://localhost').searchParams.get('review_id')).toBe(String(reviewId))
+        return json({ review_id: reviewId, reviewer: null,
+          annotations: [writtenNote(isA ? 'note-a' : 'note-b', isA ? 'Only A commentary' : 'Only B commentary')] })
+      }
+      return original(input)
+    })
+    return mock
+  }
+
+  function activePlayer() {
+    const active = playerHarness.instances.filter((instance) => !instance.disposed)
+    expect(active).toHaveLength(1)
+    return active[0]
+  }
+
+  function seekPlayer(instance: PlayerHarnessInstance, time = 3) {
+    act(() => { instance.video.currentTime = time; instance.video.dispatchEvent(new Event('seeked')) })
+  }
+
+  function enterDraft(body = 'Unsent reviewer draft') {
+    const editor = screen.getByRole('region', { name: 'New annotation' })
+    fireEvent.change(within(editor).getByLabelText('Start'), { target: { value: '10' } })
+    fireEvent.change(within(editor).getByLabelText('End'), { target: { value: '15' } })
+    const input = within(editor).getByLabelText('Commentary')
+    fireEvent.change(input, { target: { value: body } })
+    return input
+  }
+
+  it('waits for concrete player readiness and keeps one reviewer portal and draft across Notes, Essay and Transcript', async () => {
+    playerHarness.autoReady = false
+    const mock = stubReviewerFetch()
+    const user = userEvent.setup()
+    renderWatch()
+    await screen.findByTestId('watch-player')
+    await screen.findByText('Your commentary')
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    const instance = activePlayer()
+    // Readiness does not depend on native currentSrc having metadata yet.
+    expect(instance.video.currentSrc).toBe('')
+    const addTrack = vi.spyOn(instance.video, 'addTextTrack')
+    act(instance.ready)
+    const target = await screen.findByTestId('reviewer-preview-target')
+    seekPlayer(instance)
+    expect(within(target).getByTestId('overlay-note-a')).toHaveAttribute('data-visible', 'true')
+    expect(instance.root).toContainElement(target)
+    expect(target.closest('.owner-feedback-frame')).toBeInTheDocument()
+    expect(target.closest('.workspace-notebook-surface')).toBeNull()
+    expect(target.closest('[data-testid="overlay-positioner"]')).toHaveAttribute('data-anchor', 'default')
+    const draft = enterDraft()
+    seekPlayer(instance, 12)
+    expect(target.querySelector('[data-draft="true"]')).toHaveTextContent('Unsent reviewer draft')
+    await user.click(screen.getByRole('button', { name: 'Capture test recording' }))
+    const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
+    expect(addTrack).toHaveBeenCalledTimes(1)
+    for (const tab of ['Essay', 'Transcript']) {
+      await user.click(screen.getByRole('tab', { name: tab }))
+      expect(screen.getByTestId('reviewer-preview-target')).toBe(target)
+      expect(within(target).queryByTestId('overlay-stack')).not.toBeInTheDocument()
+      expect(instance.video).toBe(screen.getByTestId('speech-video'))
+    }
+    await user.click(screen.getByRole('tab', { name: 'Notes' }))
+    expect(screen.getByLabelText('Commentary', { selector: 'textarea' })).toBe(draft)
+    expect(draft).toHaveValue('Unsent reviewer draft')
+    expect(target.querySelector('[data-draft="true"]')).toHaveTextContent('Unsent reviewer draft')
+    expect(screen.getAllByTestId('overlay-stack')).toHaveLength(1)
+    expect(screen.getAllByRole('list', { name: 'Your commentary' })).toHaveLength(1)
+    expect(addTrack).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })).toBe(recording)
+    expect(playerHarness.instances).toHaveLength(1)
+    expect(mock.mock.calls.filter(([input]) => pathOf(input).endsWith('/annotations'))).toHaveLength(1)
+    expect(document.querySelector('div.pointer-events-none.min-h-16')).toBeNull()
+  })
+
+  it.each([403, 404])('removes A preview during pending B and B %s while retaining A-bound URL refresh', async (status) => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let finish!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/18' ? pending : original(input))
+    const view = renderWatch()
+    await screen.findByTestId('reviewer-preview-target')
+    const a = activePlayer()
+    seekPlayer(a)
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    expect(screen.getByTestId('speech-video')).toBe(a.video)
+    await act(async () => { await a.refresh() })
+    expect(mock.mock.calls.filter(([input]) => pathOf(input) === '/api/speeches/17/assets/42/playback-url')).toHaveLength(2)
+    expect(mock.mock.calls.some(([input]) => pathOf(input) === '/api/speeches/18/assets/42/playback-url')).toBe(false)
+    await act(async () => { finish(json({ message: 'Unavailable' }, status)); await pending })
+    await waitFor(() => expect(view.store.getState().speechApi.queries['getSpeech(18)']?.status).toBe('rejected'))
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    act(a.ready)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+  })
+
+  it('keeps B commentary off retained A until B URL and B player are ready, even with identical URLs', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let finish!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/18/assets/84/playback-url' ? pending.then((response) => response.clone()) : original(input))
+    const view = renderWatch()
+    await screen.findByTestId('reviewer-preview-target')
+    const a = activePlayer()
+    seekPlayer(a)
+    playerHarness.autoReady = false
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    await screen.findByRole('heading', { name: 'Speech B' })
+    await waitFor(() => expect(mock.mock.calls.some(([input]) => pathOf(input) === '/api/speeches/18/assets/84/playback-url')).toBe(true))
+    expect(screen.getByTestId('speech-video')).toBe(a.video)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    await act(async () => { await a.refresh() })
+    expect(mock.mock.calls.some(([input]) => pathOf(input) === '/api/speeches/18/assets/42/playback-url')).toBe(false)
+    await act(async () => { finish(json({ url: a.url })); await pending })
+    await waitFor(() => expect(a.disposed).toBe(true))
+    const b = activePlayer()
+    expect(b.url).toBe(a.url)
+    expect(b.video).not.toBe(a.video)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    act(a.ready)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    act(b.ready)
+    const target = await screen.findByTestId('reviewer-preview-target')
+    seekPlayer(b)
+    expect(target).toHaveTextContent('Only B commentary')
+    expect(target).not.toHaveTextContent('Only A commentary')
+    expect(b.root).toContainElement(target)
+    await act(async () => { await b.refresh() })
+    expect(screen.getByTestId('reviewer-preview-target')).toBe(target)
+    expect(screen.getByTestId('speech-video')).toBe(b.video)
+  })
+
+  it('returns to not-ready when the new B initial URL fails instead of retaining A playback under B', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let finish!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/18/assets/84/playback-url'
+      ? pending : original(input))
+    const view = renderWatch()
+    await screen.findByTestId('reviewer-preview-target')
+    const a = activePlayer()
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    await screen.findByRole('heading', { name: 'Speech B' })
+    expect(screen.getByTestId('speech-video')).toBe(a.video)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    await act(async () => { finish(json({ message: 'Cannot sign B video' }, 500)); await pending })
+    await screen.findByText('Not ready to play yet.')
+    expect(a.disposed).toBe(true)
+    expect(screen.queryByTestId('speech-video')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    expect(mock.mock.calls.some(([input]) => pathOf(input) === '/api/speeches/18/assets/42/playback-url')).toBe(false)
+  })
+
+  it('ignores a late initial A URL completion after B has its own ready player', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let finish!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17/assets/42/playback-url' ? pending : original(input))
+    const view = renderWatch()
+    await waitFor(() => expect(mock.mock.calls.some(([input]) => pathOf(input).endsWith('/playback-url'))).toBe(true))
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    const target = await screen.findByTestId('reviewer-preview-target')
+    const b = activePlayer()
+    seekPlayer(b)
+    await act(async () => { finish(json({ url: 'https://example.com/late-a.mp4' })); await pending })
+    expect(activePlayer()).toBe(b)
+    expect(screen.getByTestId('reviewer-preview-target')).toBe(target)
+    expect(target).toHaveTextContent('Only B commentary')
+    expect(playerHarness.instances).toHaveLength(1)
+  })
+
+  it('rejects old ready bindings during same-asset initial source recreation and retains the editor on transient errors', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let speechFailure = false
+    let failPlayback = false
+    let playbackUrl = 'https://example.com/signed.mp4'
+    mock.mockImplementation((input) => {
+      const path = pathOf(input)
+      if (path === '/api/speeches/17' && speechFailure) return Promise.resolve(json({ message: 'Temporary problem' }, 500))
+      if (path.endsWith('/playback-url')) return Promise.resolve(failPlayback
+        ? json({ message: 'Temporary URL problem' }, 500) : json({ url: playbackUrl }))
+      return original(input)
+    })
+    const view = renderWatch()
+    await screen.findByTestId('reviewer-preview-target')
+    const a = activePlayer()
+    const draft = enterDraft('Preserve me across polling')
+    fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
+    const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
+    const refetch = async () => {
+      await act(async () => { await view.store.dispatch(speechApi.endpoints.getSpeech.initiate(17,
+        { forceRefetch: true, subscribe: false })).unwrap().catch(() => {}) })
+    }
+    speechFailure = true
+    await refetch()
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Commentary', { selector: 'textarea' })).toBe(draft)
+    expect(draft).toHaveValue('Preserve me across polling')
+    speechFailure = false
+    failPlayback = true
+    await refetch()
+    await screen.findByTestId('reviewer-preview-target')
+    expect(activePlayer()).toBe(a)
+    expect(draft).toHaveValue('Preserve me across polling')
+    speechFailure = true
+    await refetch()
+    speechFailure = false
+    failPlayback = false
+    playbackUrl = 'https://example.com/new-generation.mp4'
+    playerHarness.autoReady = false
+    await refetch()
+    await waitFor(() => expect(a.disposed).toBe(true))
+    const replacement = activePlayer()
+    expect(replacement.url).toBe(playbackUrl)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    act(a.ready)
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    act(replacement.ready)
+    const target = await screen.findByTestId('reviewer-preview-target')
+    expect(replacement.root).toContainElement(target)
+    expect(screen.getByLabelText('Commentary', { selector: 'textarea' })).toBe(draft)
+    expect(draft).toHaveValue('Preserve me across polling')
+    expect(playerHarness.instances).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })).toBe(recording)
+  })
+
+  it('preserves same-asset adapter refresh and caption anchor changes without recreating the player or draft', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17/captions'
+      ? Promise.resolve(json({ captions: { status: 'ready', vtt: 'WEBVTT\n\n00:00.000 --> 00:04.000\nHello', asset_id: 42 } }))
+      : original(input))
+    const view = renderWatch()
+    const target = await screen.findByTestId('reviewer-preview-target')
+    const instance = activePlayer()
+    const draft = enterDraft()
+    await waitFor(() => expect(target.closest('[data-testid="overlay-positioner"]')).toHaveAttribute('data-anchor', 'top'))
+    const track = (instance.player.remoteTextTracks() as unknown as TextTrack[])[0]
+    act(() => { track.mode = 'disabled' })
+    await waitFor(() => expect(target.closest('[data-testid="overlay-positioner"]')).toHaveAttribute('data-anchor', 'default'), { timeout: 1500 })
+    await act(async () => { await instance.refresh() })
+    expect(screen.getByTestId('reviewer-preview-target')).toBe(target)
+    expect(screen.getByTestId('speech-video')).toBe(instance.video)
+    expect(draft).toHaveValue('Unsent reviewer draft')
+    expect(playerHarness.instances).toHaveLength(1)
+    // A successful same-identity speech poll does not fetch another initial URL.
+    await act(async () => { await view.store.dispatch(speechApi.endpoints.getSpeech.initiate(17,
+      { forceRefetch: true, subscribe: false })).unwrap() })
+    expect(playerHarness.instances).toHaveLength(1)
+    expect(mock.mock.calls.filter(([input]) => pathOf(input).endsWith('/playback-url'))).toHaveLength(2)
+  })
+
+  it.each(['accepted', 'in_progress', 'published'])('permits an access-granting member reviewer (%s)', async (status) => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation((input) => {
+      if (pathOf(input) === '/api/me') return Promise.resolve(json({ ...userPayload(String(OWNER_ID)),
+        user: { ...userPayload(String(OWNER_ID)).user, roles: ['member'] } }))
+      if (pathOf(input) === '/api/reviews') return Promise.resolve(json({ in_progress: [{ ...reviewerReview(), status }] }))
+      return original(input)
+    })
+    renderWatch()
+    expect(await screen.findByTestId('reviewer-preview-target')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Capture test recording' })).not.toBeInTheDocument()
+  })
+
+  it.each(['revoked', 'invited', 'declined'])('does not provision a preview without an access-granting review (%s)', async (status) => {
+    stubWatchFetch({ speech: speechFixture({ userId: 4242 }),
+      myReviews: { in_progress: [{ ...reviewerReview(), status: status === 'revoked' ? 'in_progress' : status,
+        revoked_at: status === 'revoked' ? '2026-10-22T00:00:00Z' : null }] } })
+    renderWatch()
+    await screen.findByTestId('speech-video')
+    await waitFor(() => expect(activePlayer().disposed).toBe(false))
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    expect(screen.queryByText('Your commentary')).not.toBeInTheDocument()
+  })
+
+  it('suppresses a mounted reviewer preview when the review is removed or the current user is unresolved', async () => {
+    stubReviewerFetch()
+    const view = renderWatch()
+    const firstTarget = await screen.findByTestId('reviewer-preview-target')
+    act(() => { view.store.dispatch(reviewApi.util.updateQueryData('listMyReviews', undefined,
+      (data) => { data.in_progress = [] })) })
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    expect(firstTarget.querySelector('[data-testid="overlay-stack"]')).toBeNull()
+    act(() => { view.store.dispatch(reviewApi.util.updateQueryData('listMyReviews', undefined,
+      (data) => { data.in_progress = [reviewerReview()] })) })
+    await screen.findByTestId('reviewer-preview-target')
+    act(() => { view.store.dispatch(authApi.util.resetApiState()) })
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+  })
+
+  it.each([401, 403, 404, 410])('removes retained commentary on annotation access error %s while keeping draft text', async (status) => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    const view = renderWatch()
+    const target = await screen.findByTestId('reviewer-preview-target')
+    const draft = enterDraft()
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17/annotations'
+      ? Promise.resolve(json({ message: 'Unavailable' }, status)) : original(input))
+    await act(async () => { await view.store.dispatch(annotationApi.endpoints.getAnnotations.initiate(
+      { speechId: 17, reviewId: 501 }, { forceRefetch: true, subscribe: false })).unwrap().catch(() => {}) })
+    expect(within(target).queryByTestId('overlay-stack')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(draft).toHaveValue('Unsent reviewer draft')
+  })
+
+  it('converges detached hosts under StrictMode and removes the target and nested portal on unmount', async () => {
+    stubReviewerFetch()
+    const view = renderWithProviders(<StrictMode><Routes>
+      <Route path="/speeches/:id" element={<SpeechWatch />} />
+    </Routes></StrictMode>, { route: '/speeches/17' })
+    const target = await screen.findByTestId('reviewer-preview-target')
+    const instance = activePlayer()
+    seekPlayer(instance)
+    expect(screen.getAllByTestId('reviewer-preview-target')).toHaveLength(1)
+    expect(screen.getAllByTestId('overlay-stack')).toHaveLength(1)
+    expect(instance.root).toContainElement(target)
+    view.unmount()
+    expect(instance.disposed).toBe(true)
+    expect(document.querySelector('[data-testid="reviewer-preview-target"]')).toBeNull()
+    expect(document.querySelector('[data-testid="overlay-stack"]')).toBeNull()
+    expect(target.querySelector('[data-testid="overlay-stack"]')).toBeNull()
+  })
+
+
+  it('replaces the actual target within one preview identity without losing the portal to stale cleanup', async () => {
+    stubReviewerFetch()
+    renderWatch()
+    const target = await screen.findByTestId('reviewer-preview-target')
+    const instance = activePlayer()
+    seekPlayer(instance)
+    const draft = enterDraft()
+    act(instance.replacePresentation)
+    const replacement = await screen.findByTestId('reviewer-preview-target')
+    expect(replacement).not.toBe(target)
+    expect(target.querySelector('[data-testid="overlay-stack"]')).toBeNull()
+    expect(screen.getAllByTestId('reviewer-preview-target')).toHaveLength(1)
+    expect(screen.getAllByTestId('overlay-stack')).toHaveLength(1)
+    expect(replacement).toHaveTextContent('Only A commentary')
+    expect(instance.root).toContainElement(replacement)
+    expect(screen.getByLabelText('Commentary', { selector: 'textarea' })).toBe(draft)
+    expect(playerHarness.instances).toHaveLength(1)
+  })
+
+  it('retains the draft, recording and alert on transient annotation refresh failure', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    const view = renderWatch()
+    const target = await screen.findByTestId('reviewer-preview-target')
+    const instance = activePlayer()
+    const draft = enterDraft()
+    fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
+    const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17/annotations'
+      ? Promise.resolve(json({ message: 'Temporary annotation error' }, 500)) : original(input))
+    await act(async () => { await view.store.dispatch(annotationApi.endpoints.getAnnotations.initiate(
+      { speechId: 17, reviewId: 501 }, { forceRefetch: true, subscribe: false })).unwrap().catch(() => {}) })
+    expect(screen.getByRole('alert')).toHaveTextContent('Your draft is retained')
+    expect(screen.getByLabelText('Commentary', { selector: 'textarea' })).toBe(draft)
+    expect(draft).toHaveValue('Unsent reviewer draft')
+    expect(screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })).toBe(recording)
+    expect(within(target).getByTestId('overlay-stack')).toBeInTheDocument()
+    expect(activePlayer()).toBe(instance)
+  })
+
+
+  it.each(['owner', 'viewer', 'guest'])('never provisions a reviewer target for an ineligible %s', async (identity) => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation((input) => {
+      const path = pathOf(input)
+      if (identity === 'owner' && path === '/api/speeches/17') return Promise.resolve(json({ speech: speechFixture() }))
+      if (identity === 'viewer' && path === '/api/reviews') return Promise.resolve(json({ in_progress: [] }))
+      if (identity === 'guest' && path === '/api/me') return Promise.resolve(json({ message: 'Unauthenticated' }, 401))
+      return original(input)
+    })
+    renderWatch()
+    await screen.findByTestId('speech-video')
+    await waitFor(() => expect(activePlayer().disposed).toBe(false))
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+  })
+
+  it('waits for a resolved user before registering the ready reviewer target', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let finish!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    mock.mockImplementation((input) => pathOf(input) === '/api/me' ? pending : original(input))
+    renderWatch()
+    await screen.findByTestId('speech-video')
+    await screen.findByText('Your commentary')
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    await act(async () => {
+      finish(json({ user: { ...userPayload(String(OWNER_ID)).user, roles: ['coach'] } }))
+      await pending
+    })
+    expect(await screen.findByTestId('reviewer-preview-target')).toBeInTheDocument()
+    expect(playerHarness.instances).toHaveLength(1)
+  })
+
+
+  it('waits for the new concrete ready player when B captions finish after A is disposed', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let finishCaptions!: (value: Response) => void
+    const pendingCaptions = new Promise<Response>((resolve) => { finishCaptions = resolve })
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/18/captions'
+      ? pendingCaptions : original(input))
+    const view = renderWatch()
+    await screen.findByTestId('reviewer-preview-target')
+    const a = activePlayer()
+    playerHarness.autoReady = false
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    await waitFor(() => expect(a.disposed).toBe(true))
+    const b = activePlayer()
+    expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+    await act(async () => {
+      finishCaptions(json({ captions: { status: 'ready', asset_id: 84,
+        vtt: 'WEBVTT\n\n00:00.000 --> 00:04.000\nB subtitles' } }))
+      await pendingCaptions
+    })
+    act(b.ready)
+    const target = await screen.findByTestId('reviewer-preview-target')
+    await waitFor(() => expect(target.closest('[data-testid="overlay-positioner"]')).toHaveAttribute('data-anchor', 'top'))
+    expect(b.player.remoteTextTracks()).toHaveLength(1)
+    expect(screen.getByTestId('speech-video')).toBe(b.video)
+    expect(playerHarness.instances).toHaveLength(2)
+  })
+
 })

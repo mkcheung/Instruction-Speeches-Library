@@ -15,7 +15,8 @@ import {
 import type { Review } from '@/features/review/types'
 import { hasRole } from '@/lib/roles'
 import { formatTimestamp } from '@/lib/time'
-import { PageHeader, PageShell } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
 /**
  * STEP-05-invitation-loop.md's reviewer dashboard — four sections, read
@@ -31,12 +32,15 @@ export default function Dashboard() {
   // for every route under `AppLayout`, and RTK Query dedupes.
   const { data: me } = useGetMeQuery()
   const [searchParams] = useSearchParams()
+  const scene = useWorkspaceCompanionScene()
 
   if (isLoading) {
     return (
-      <div className="workspace-dashboard workspace-muted flex flex-1 items-center justify-center text-sm">
-        Loading…
-      </div>
+      <NotebookPage width="content" scene={scene} className="workspace-dashboard">
+        <div className="workspace-notebook-surface workspace-notebook-status workspace-muted text-sm">
+          Loading…
+        </div>
+      </NotebookPage>
     )
   }
 
@@ -54,72 +58,75 @@ export default function Dashboard() {
   const showProfileLink = Boolean(username) && !hasRole(me?.user, 'admin')
 
   return (
-    <div className="workspace-dashboard">
-      <PageShell width="content" className="workspace-dashboard-content gap-8">
-        {/* Email verification lands on `/login?verified=1`, which bounces an
-            already-onboarded user straight here — so the confirmation has to
-            render at this end too, or finishing verification would look
-            silently like nothing happened. */}
-        {searchParams.has('verified') && (
-          <FormBanner
-            className="workspace-banner workspace-banner--success"
-            variant="success"
-            message="Email verified."
+    <NotebookPage
+      width="content"
+      scene={scene}
+      className="workspace-dashboard"
+      shellClassName="workspace-dashboard-content gap-8"
+      title="My reviews"
+      beforeHeading={
+        <>
+          {/* Email verification lands on `/login?verified=1`, which bounces an
+              already-onboarded user straight here — so the confirmation has to
+              render at this end too, or finishing verification would look
+              silently like nothing happened. */}
+          {searchParams.has('verified') && (
+            <FormBanner
+              className="workspace-banner workspace-banner--success"
+              variant="success"
+              message="Email verified."
+            />
+          )}
+        </>
+      }
+      actions={
+        showProfileLink && (
+          <Button
+            className="workspace-notebook-control workspace-notebook-control--secondary"
+            variant="outline"
+            size="sm"
+            render={<Link to={`/u/${username}`} />}
+          >
+            Your profile &amp; connections
+          </Button>
+        )
+      }
+    >
+      <DashboardSection title="Invitations awaiting response" empty="No pending invitations.">
+        {invitations.map((review) => (
+          <InvitationCard key={review.id} review={review} />
+        ))}
+      </DashboardSection>
+
+      <DashboardSection title="In progress" empty="Nothing in progress.">
+        {inProgress.map((review) => (
+          <ReviewCard
+            key={review.id}
+            review={review}
+            timestampLabel="Started"
+            timestamp={review.last_transition_at}
+            showExitActions
           />
-        )}
+        ))}
+      </DashboardSection>
 
-        <PageHeader
-          title="My reviews"
-          actions={
-            showProfileLink && (
-              <Button
-                className="workspace-button workspace-button--secondary"
-                variant="outline"
-                size="sm"
-                render={<Link to={`/u/${username}`} />}
-              >
-                Your profile &amp; connections
-              </Button>
-            )
-          }
-        />
+      <DashboardSection title="Published work" empty="Nothing published yet.">
+        {published.map((review) => (
+          <ReviewCard
+            key={review.id}
+            review={review}
+            timestampLabel="Published"
+            timestamp={review.last_published_at ?? review.last_transition_at}
+          />
+        ))}
+      </DashboardSection>
 
-        <DashboardSection title="Invitations awaiting response" empty="No pending invitations.">
-          {invitations.map((review) => (
-            <InvitationCard key={review.id} review={review} />
-          ))}
-        </DashboardSection>
-
-        <DashboardSection title="In progress" empty="Nothing in progress.">
-          {inProgress.map((review) => (
-            <ReviewCard
-              key={review.id}
-              review={review}
-              timestampLabel="Started"
-              timestamp={review.last_transition_at}
-              showExitActions
-            />
-          ))}
-        </DashboardSection>
-
-        <DashboardSection title="Published work" empty="Nothing published yet.">
-          {published.map((review) => (
-            <ReviewCard
-              key={review.id}
-              review={review}
-              timestampLabel="Published"
-              timestamp={review.last_published_at ?? review.last_transition_at}
-            />
-          ))}
-        </DashboardSection>
-
-        <DashboardSection title="Revoked" empty="Nothing revoked.">
-          {revoked.map((review) => (
-            <ReviewCard key={review.id} review={review} timestampLabel="Revoked" timestamp={review.revoked_at} readOnly />
-          ))}
-        </DashboardSection>
-      </PageShell>
-    </div>
+      <DashboardSection title="Revoked" empty="Nothing revoked.">
+        {revoked.map((review) => (
+          <ReviewCard key={review.id} review={review} timestampLabel="Revoked" timestamp={review.revoked_at} readOnly />
+        ))}
+      </DashboardSection>
+    </NotebookPage>
   )
 }
 
@@ -135,7 +142,7 @@ function DashboardSection({
   const hasChildren = Array.isArray(children) ? children.length > 0 : !!children
 
   return (
-    <section className="workspace-dashboard-section flex flex-col gap-3">
+    <section className="workspace-notebook-surface workspace-dashboard-section flex flex-col gap-3">
       <h2 className="workspace-dashboard-section-title text-lg font-medium">{title}</h2>
       {hasChildren ? (
         <div className="flex flex-col gap-3">{children}</div>
@@ -207,7 +214,7 @@ function ReviewCard({
   }
 
   return (
-    <Card className="workspace-panel">
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader>
         <CardTitle className="workspace-review-heading justify-between">
           <span className="workspace-review-title">{review.speech?.title ?? 'Untitled speech'}</span>
@@ -261,7 +268,7 @@ function ReviewCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="workspace-button workspace-button--primary self-start"
+                className="workspace-notebook-control workspace-notebook-control--primary self-start"
                 render={<Link to={`/speeches/${review.speech.id}`} />}
               >
                 Watch
@@ -273,7 +280,7 @@ function ReviewCard({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="workspace-button workspace-button--secondary"
+                  className="workspace-notebook-control workspace-notebook-control--secondary"
                   disabled={busy}
                   onClick={() => void handleWithdraw()}
                 >
@@ -283,7 +290,7 @@ function ReviewCard({
                   type="button"
                   size="sm"
                   variant="destructive"
-                  className="workspace-button workspace-button--destructive"
+                  className="workspace-notebook-control workspace-notebook-control--destructive"
                   disabled={busy}
                   onClick={() => void handleAbandon()}
                 >
@@ -307,7 +314,7 @@ function InvitationCard({ review }: { review: Review }) {
   const busy = isAccepting || isDeclining
 
   return (
-    <Card className="workspace-panel">
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader>
         <CardTitle className="workspace-review-heading">
           <span className="workspace-review-title">{review.speech?.title ?? 'Untitled speech'}</span>
@@ -323,7 +330,7 @@ function InvitationCard({ review }: { review: Review }) {
         )}
         <div className="workspace-review-actions">
           <Button
-            className="workspace-button workspace-button--primary"
+            className="workspace-notebook-control workspace-notebook-control--primary"
             type="button"
             size="sm"
             disabled={busy}
@@ -332,7 +339,7 @@ function InvitationCard({ review }: { review: Review }) {
             {isAccepting ? 'Accepting…' : 'Accept'}
           </Button>
           <Button
-            className="workspace-button workspace-button--secondary"
+            className="workspace-notebook-control workspace-notebook-control--secondary"
             type="button"
             size="sm"
             variant="outline"

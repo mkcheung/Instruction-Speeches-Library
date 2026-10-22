@@ -55,7 +55,7 @@ describe('AnnotationComposerPanel voice authoring', () => {
   it('warns after six notes and sums their full added duration', () => {
     render(
       <TestRouter>
-        <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} />
+        <AnnotationComposerPanel previewTarget={null} previewEnabled={false} previewAnchor="default" speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} />
       </TestRouter>,
     )
     expect(screen.getByRole('status')).toHaveTextContent('7 voice notes')
@@ -67,7 +67,7 @@ describe('AnnotationComposerPanel voice authoring', () => {
     voiceRows = makeVoiceRows(6)
     render(
       <TestRouter>
-        <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} />
+        <AnnotationComposerPanel previewTarget={null} previewEnabled={false} previewAnchor="default" speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} />
       </TestRouter>,
     )
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
@@ -76,7 +76,7 @@ describe('AnnotationComposerPanel voice authoring', () => {
   it('does not mount the recorder for a Member', () => {
     render(
       <TestRouter>
-        <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} />
+        <AnnotationComposerPanel previewTarget={null} previewEnabled={false} previewAnchor="default" speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} />
       </TestRouter>,
     )
     expect(screen.queryByTestId('voice-recorder')).not.toBeInTheDocument()
@@ -104,7 +104,7 @@ describe('AnnotationComposerPanel Abandon button', () => {
   function renderAt(path: string) {
     const router = createMemoryRouter(
       [
-        { path: '/speeches/:id', element: <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /> },
+        { path: '/speeches/:id', element: <AnnotationComposerPanel previewTarget={null} previewEnabled={false} previewAnchor="default" speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /> },
         { path: '/dashboard', element: <div data-testid="dashboard-route">Dashboard</div> },
       ],
       { initialEntries: [path] },
@@ -141,7 +141,7 @@ describe('pending feedback coordination', () => {
   beforeEach(() => { voiceRows = []; abandonSpy.mockClear() })
   it('blocks Publish, Clear and Abandon until pending text is explicitly resolved', async () => {
     const user = userEvent.setup()
-    render(<TestRouter><AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /></TestRouter>)
+    render(<TestRouter><AnnotationComposerPanel previewTarget={null} previewEnabled={false} previewAnchor="default" speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /></TestRouter>)
     const publish = screen.getByRole('button', { name: 'Publish feedback' })
     expect(publish).toBeEnabled()
     await user.type(screen.getByRole('textbox', { name: 'Draft commentary' }), 'Unsaved')
@@ -156,7 +156,7 @@ describe('pending feedback coordination', () => {
   it('protects route navigation and keeps the pending editor visible when staying', async () => {
     const user = userEvent.setup()
     const router = createMemoryRouter([
-      { path: '/speeches/1', element: <AnnotationComposerPanel speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /> },
+      { path: '/speeches/1', element: <AnnotationComposerPanel previewTarget={null} previewEnabled={false} previewAnchor="default" speechId={1} review={review} videoEl={null} durationSeconds={100} userId="3" canRecordVoice={false} onSeek={vi.fn()} /> },
       { path: '/dashboard', element: <p>Dashboard</p> },
     ], { initialEntries: ['/speeches/1'] })
     render(<RouterProvider router={router} />)
