@@ -96,11 +96,20 @@ async function expectVideoToStayAtManualPause(video: ReturnType<Page['getByTestI
 
 test.beforeEach(() => resetVoiceFixtures())
 
+/** Both authoring tools stay mounted but only one is reachable: choose Voice before touching the recorder. */
+async function chooseVoiceTool(page: Page): Promise<void> {
+  const tabs = page.getByRole('tablist', { name: 'Add commentary' })
+  await expect(page.getByRole('region', { name: 'Record a voice note' })).toHaveCount(0)
+  await tabs.getByRole('tab', { name: /^Voice note/ }).click()
+  await expect(tabs.getByRole('tab', { name: /^Voice note/ })).toHaveAttribute('aria-selected', 'true')
+}
+
 test('Scenario A — Coach sees recording while a Member is denied by the real direct endpoint', async ({ browser }) => {
   const coachContext = await browser.newContext({ storageState: USERS.reviewerA.storageState })
   const coachPage = await coachContext.newPage()
   await installDeterministicRecorder(coachPage)
   await openSpeech(coachPage, VOICE.coachSpeechId)
+  await chooseVoiceTool(coachPage)
   await expect(coachPage.getByRole('region', { name: 'Record a voice note' })).toBeVisible()
   await expect(coachPage.getByRole('button', { name: /^Record/ })).toBeVisible()
 
@@ -109,6 +118,8 @@ test('Scenario A — Coach sees recording while a Member is denied by the real d
   await installDeterministicRecorder(memberPage)
   await openSpeech(memberPage, VOICE.memberReviewSpeechId)
   await expect(memberPage.getByText('Your commentary')).toBeVisible()
+  // A Member has no Voice note tool at all (no tab strip, no mounted recorder).
+  await expect(memberPage.getByRole('tab', { name: /^Voice note/ })).toHaveCount(0)
   await expect(memberPage.getByRole('region', { name: 'Record a voice note' })).toHaveCount(0)
 
   const response = await memberPage.request.post(
@@ -169,6 +180,7 @@ test('Scenario B — fallback/rerecord posts once; real FFmpeg reaches ready wit
   })
 
   await openSpeech(page, VOICE.coachSpeechId)
+  await chooseVoiceTool(page)
   const recorder = page.getByRole('region', { name: 'Record a voice note' })
   // Before the legacy 0.1–5.1 written span: an unoccupied point.
   await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('0')

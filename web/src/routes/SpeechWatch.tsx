@@ -100,6 +100,9 @@ type ReadyPlayback = {
 
 type PreviewRegistration = { identity: string; node: HTMLDivElement; token: symbol }
 
+/** Recording lock report, keyed to the `${user}:${speech}:${review}` session that sent it. */
+type RecordingLock = { scopeKey: string; locked: boolean }
+
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
@@ -136,6 +139,7 @@ export default function SpeechWatch() {
   const [sourceRefreshToken, setSourceRefreshToken] = useState(0)
   const [ownerTab, setOwnerTab] = useState('notes')
   const [reviewerTab, setReviewerTab] = useState('notes')
+  const [recordingLock, setRecordingLock] = useState<RecordingLock | null>(null)
   const [htmlFullscreen, setHtmlFullscreen] = useState(false)
   const [fullscreenControlsOpen, setFullscreenControlsOpen] = useState(false)
 
@@ -314,6 +318,21 @@ export default function SpeechWatch() {
   const previewTarget = previewIdentity && previewRegistration?.identity === previewIdentity
     ? previewRegistration.node : null
 
+  // Same key the panel remounts on. A lock report only counts for the session
+  // it came from, so retained A state can never disable B's tabs.
+  const reviewerScopeKey = me?.user && myReview ? `${me.user.id}:${speechId}:${myReview.id}` : null
+  const reviewerRecordingLocked = reviewerScopeKey !== null &&
+    recordingLock?.scopeKey === reviewerScopeKey && recordingLock.locked
+  const onRecordingLockChange = useCallback((locked: boolean) => {
+    if (reviewerScopeKey === null) return
+    setRecordingLock((current) => {
+      // A different session's "unlocked" (e.g. an old panel unmounting) must not
+      // clobber this session's report.
+      if (!locked && current && current.scopeKey !== reviewerScopeKey) return current
+      return current?.scopeKey === reviewerScopeKey && current.locked === locked
+        ? current : { scopeKey: reviewerScopeKey, locked }
+    })
+  }, [reviewerScopeKey])
   const feedbackVisible = isOwner || (!!myReview && asset?.status === 'ready' && !!initialUrl)
   const scenes: Record<string, WorkspaceSceneId> = {
     notes: 'reviews', essay: 'edit', transcript: 'search', reviewers: 'reviewers',
@@ -684,29 +703,45 @@ export default function SpeechWatch() {
       )}
 
       {!isOwner && myReview && asset?.status === 'ready' && initialUrl && (
-        <Tabs className="workspace-notebook-surface" value={reviewerTab} onValueChange={(value) => setReviewerTab(String(value))}>
+        <Tabs className="workspace-notebook-surface" value={reviewerTab} onValueChange={(value) => {
+          // While the microphone is requested/recording, Notes cannot be left.
+          if (reviewerRecordingLocked && String(value) !== 'notes') return
+          setReviewerTab(String(value))
+        }}>
           <TabsList aria-label="Your feedback">
             <TabsTab value="notes">Notes</TabsTab>
-            <TabsTab value="essay">Essay</TabsTab>
-            <TabsTab value="transcript">Transcript</TabsTab>
+            <TabsTab value="essay" disabled={reviewerRecordingLocked}>Essay</TabsTab>
+            <TabsTab value="transcript" disabled={reviewerRecordingLocked}>Transcript</TabsTab>
           </TabsList>
+          {reviewerRecordingLocked && (
+            <p className="aw-lock-hint text-sm text-muted-foreground" role="status">
+              Stop recording before switching tabs.
+            </p>
+          )}
           {/* `keepMounted`: §7.7.1 of IMPLEMENTATION-PLANS.md — DECIDED:
               `AnnotationList` (inside `AnnotationComposerPanel` below) is
               the coach-side AUTHORITATIVE ACCESSIBLE SURFACE for this
               authoring screen (§8.6's "always available, <ol>,
-              chronological, timecoded, aria-current, click-to-seek" list),
-              not a gap where a second `Transcript` instance belongs —
-              `Transcript.tsx`'s own `<ol aria-label="Commentary
-              transcript">` is the SPEAKER-side surface (mounted above via
-              `TrackSelector`, owner-only) and intentionally has no
-              coach-side counterpart; rendering one here would duplicate
-              the coach's own notes into two lists on one screen and create
-              a Playwright strict-mode `aria-label` collision. Without
-              `keepMounted`, Base UI's default `TabsPanel` behaviour
-              unmounts this panel — and `AnnotationList` with it — the
-              instant the reviewer switches to Essay or Transcript, which
-              is what made the surface fail §8.6's "always available"
-              property until this was added. */}
+              timecoded, aria-current, click-to-seek" list), not a gap
+              where a second `Transcript` instance belongs. It is ONE
+              authoritative PAGED list (six saved notes per page, accessible
+              name "Your commentary"); the complete annotation dataset still
+              drives timing, keyboard navigation and overlap validation, so
+              paging never hides notes from those. `Transcript.tsx`'s own
+              `<ol aria-label="Commentary transcript">` is the SPEAKER-side
+              surface (mounted above via `TrackSelector`, owner-only) and
+              intentionally has no coach-side counterpart; rendering one
+              here would duplicate the coach's own notes into two lists on
+              one screen and create a Playwright strict-mode `aria-label`
+              collision. Without `keepMounted`, Base UI's default
+              `TabsPanel` behaviour unmounts this panel — and
+              `AnnotationList` with it — the instant the reviewer switches
+              to Essay or Transcript, which is what made the surface fail
+              §8.6's "always available" property until this was added.
+              `authoringActive` follows the actual outer tab selection (not
+              preview readiness); `onRecordingLockChange` feeds the
+              session-scoped lock that keeps the reviewer on Notes while the
+              microphone is requested or recording. */}
           <TabsPanel value="notes" keepMounted>
             <AnnotationComposerPanel
               speechId={speechId}
@@ -714,6 +749,8 @@ export default function SpeechWatch() {
               previewTarget={previewTarget}
               previewEnabled={reviewerTab === 'notes' && !!previewIdentity}
               previewAnchor={captionsAnchor}
+              authoringActive={reviewerTab === 'notes'}
+              onRecordingLockChange={onRecordingLockChange}
               videoEl={videoEl}
               durationSeconds={
                 asset.duration_seconds !== null ? Number(asset.duration_seconds) : 0

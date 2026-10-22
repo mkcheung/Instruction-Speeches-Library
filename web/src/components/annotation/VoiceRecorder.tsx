@@ -9,6 +9,19 @@ import { newClientUuid } from '@/lib/uuid'
 
 const MAX_RECORDING_MS = 90_000
 type RecorderState = 'idle' | 'requesting' | 'recording' | 'preview' | 'denied' | 'no-device' | 'unsupported' | 'error'
+export type VoiceRecorderPhase = RecorderState | 'saving' | 'uncertain'
+/** Derived UI facts for one recorder session. `blocksToolSwitch` is true only from the moment
+ *  microphone permission is requested until the MediaRecorder has actually stopped (or failed). */
+export interface VoiceRecorderSessionReport {
+  phase: VoiceRecorderPhase
+  pending: boolean
+  hasRecording: boolean
+  blocksToolSwitch: boolean
+}
+/** `report === null` means that session is gone (unmounted); only clear state owned by `sessionId`. */
+export type VoiceRecorderSessionCallback = (sessionId: string, report: VoiceRecorderSessionReport | null) => void
+/** Emitted once per saved note per recorder session, only after the exact UUID/position/point acknowledgement. */
+export type VoiceRecorderSavedCallback = (saved: Annotation, sessionId: string) => void
 interface VoiceSubmission { audio: Blob; clientUuid: string; startMs: number }
 function useVideoPaused(videoEl: HTMLVideoElement | null): boolean {
   const [paused, setPaused] = useState(() => videoEl?.paused ?? true)
@@ -22,7 +35,7 @@ function useVideoPaused(videoEl: HTMLVideoElement | null): boolean {
   return paused
 }
 
-export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, annotations, writable = true, onPendingChange }: {
+export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, annotations, writable = true, onPendingChange, onSessionStateChange, onAcknowledgedSave, active = true }: {
   speechId: number
   reviewId: number
   videoEl: HTMLVideoElement | null
@@ -30,6 +43,10 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
   annotations?: readonly Annotation[]
   writable?: boolean
   onPendingChange?: (id: string, pending: boolean) => void
+  onSessionStateChange?: VoiceRecorderSessionCallback
+  onAcknowledgedSave?: VoiceRecorderSavedCallback
+  /** When false the contained preview audio is paused (never discarded). Defaults to true. */
+  active?: boolean
 }) {
   const [instanceId] = useState(newClientUuid)
   const inputId = useId()
@@ -54,6 +71,12 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
   const busyRef = useRef(false)
   const uncertainRef = useRef<VoiceSubmission | null>(null)
   const paused = useVideoPaused(videoEl)
+  const previewRef = useRef<HTMLDivElement | null>(null)
+  const activeRef = useRef(active)
+  const sessionCbRef = useRef(onSessionStateChange)
+  const savedCbRef = useRef(onAcknowledgedSave)
+  const reportedSavesRef = useRef<Set<string>>(new Set())
+  useEffect(() => { activeRef.current = active; sessionCbRef.current = onSessionStateChange; savedCbRef.current = onAcknowledgedSave })
   const recordingApiAvailable = typeof navigator.mediaDevices?.getUserMedia === 'function' && typeof globalThis.MediaRecorder === 'function'
   const [createVoice, { isLoading: isSaving }] = useCreateVoiceAnnotationMutation()
   const validation = validateAnnotationPoint(position, durationMs, annotations)
@@ -68,6 +91,25 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
   }, [durationMs, position, videoEl])
   const frozen = isSaving || uncertain !== null || state === 'requesting' || state === 'recording'
   const pending = blob !== null || isSaving || uncertain !== null || state === 'requesting' || state === 'recording'
+  const phase: VoiceRecorderPhase = !recordingApiAvailable ? 'unsupported' : isSaving ? 'saving' : uncertain ? 'uncertain' : state
+  const hasRecording = blob !== null
+  const blocksToolSwitch = state === 'requesting' || state === 'recording'
+  const hasSessionCallback = onSessionStateChange !== undefined
+  useEffect(() => {
+    if (hasSessionCallback) sessionCbRef.current?.(instanceId, { phase, pending, hasRecording, blocksToolSwitch })
+  }, [hasSessionCallback, instanceId, phase, pending, hasRecording, blocksToolSwitch])
+  useEffect(() => () => { sessionCbRef.current?.(instanceId, null) }, [instanceId])
+  // Pause (never revoke/destroy) the owned preview audio whenever the recorder is inactive,
+  // and also if a late-rendered preview starts playing while inactive.
+  useEffect(() => {
+    const wrapper = previewRef.current
+    if (!wrapper) return
+    const pauseAll = () => wrapper.querySelectorAll('audio').forEach((audio) => audio.pause())
+    if (!active) pauseAll()
+    const onPlay = (event: Event) => { if (!activeRef.current && event.target instanceof HTMLMediaElement) event.target.pause() }
+    wrapper.addEventListener('play', onPlay, true)
+    return () => wrapper.removeEventListener('play', onPlay, true)
+  }, [active, hasRecording])
   useEffect(() => { onPendingChange?.(instanceId, pending) }, [onPendingChange, instanceId, pending])
   useEffect(() => () => { onPendingChange?.(instanceId, false) }, [onPendingChange, instanceId])
   useEffect(() => {
@@ -141,6 +183,10 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     if (saved.client_uuid !== submission.clientUuid || Math.round(saved.start_seconds * 1000) !== submission.startMs || !isPointAnnotation(saved)) return false
     uncertainRef.current = null; setUncertain(null); setBlob(null); setDurationSeconds(0)
     clientUuidRef.current = null; setState('idle'); setMessage(`Voice note saved at ${formatAnnotationTime(submission.startMs)}.`)
+    if (!reportedSavesRef.current.has(saved.client_uuid)) {
+      reportedSavesRef.current.add(saved.client_uuid)
+      savedCbRef.current?.(saved, instanceId)
+    }
     return true
   }
   const save = async () => {
@@ -177,6 +223,8 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     // A matching server row is external confirmation of an uncertain upload.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (admitted) acknowledge(admitted, uncertain)
+    // acknowledge only touches refs, setters and the latest-callback ref, so it is deliberately not a dependency
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotations, uncertain, isSaving])
 
   if (!recordingApiAvailable || state === 'unsupported') return <p className="text-sm text-muted-foreground">Voice recording is not supported by this browser.</p>
@@ -199,7 +247,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     {state === 'error' && !message && <p role="alert" className="text-sm text-[var(--color-danger)]">Could not record this voice note. Try again.</p>}
     {message && <p role={state === 'error' ? 'alert' : 'status'} className="text-sm">{message}</p>}
     {blob && <div className="space-y-2">
-      <VoiceWaveformPreview blob={blob} />
+      <div ref={previewRef}><VoiceWaveformPreview blob={blob} /></div>
       <p className="text-xs text-muted-foreground">Voice note at {position} · {durationSeconds.toFixed(1)} seconds of recorded audio</p>
       <p className="text-xs text-muted-foreground">This recording is kept in this page only. Save it before leaving or reloading.</p>
       <div className="flex flex-wrap gap-2">

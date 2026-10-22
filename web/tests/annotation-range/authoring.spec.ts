@@ -17,6 +17,17 @@ async function open(page: Page, speechId: number) {
   await expect.poll(() => page.getByTestId('speech-video').evaluate((node) => (node as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1)
 }
 function composer(page: Page) { return page.getByRole('region', { name: 'New annotation', exact: true }) }
+// Saved notes is a collapsed disclosure holding the one paged `ol` "Your commentary".
+async function openSaved(page: Page) {
+  const toggle = page.getByRole('button', { name: /^Saved notes \(\d+\)$/ })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  return page.getByRole('list', { name: 'Your commentary', exact: true })
+}
+// Voice must be chosen before its recorder UI is reachable (both tools stay mounted, only one is visible).
+async function chooseTool(page: Page, name: 'Text note' | 'Voice note') {
+  await page.getByRole('tablist', { name: 'Add commentary' }).getByRole('tab', { name: new RegExp(`^${name}`) }).click()
+}
 async function fill(page: Page, start: string, end: string, body: string) {
   const form = composer(page)
   await form.getByRole('textbox', { name: 'Start', exact: true }).fill(start)
@@ -59,13 +70,14 @@ test('captures explicit endpoints, adds private drafts, edits/cancels and publis
   await expect(form.getByLabel('Topic')).toHaveCount(0)
   await add(page)
   await expect(form.getByRole('textbox', { name: 'Start', exact: true })).toHaveValue('')
-  const list = page.getByRole('list', { name: 'Your commentary', exact: true })
+  const list = await openSaved(page)
   await expect(list).toContainText('0:01.000–0:02.000')
   const owner = await ownerPage(browser)
   const privateResponse = await owner.page.request.get(`${API}/api/speeches/${speechId}/annotations?review_id=${speechId}`, { headers: { Accept: 'application/json', Origin: APP } })
   expect(privateResponse.status()).toBe(200)
   expect((await privateResponse.json()).annotations).toHaveLength(0)
-  await list.getByRole('button', { name: 'Edit', exact: true }).click()
+  // Row controls are named "<label>, annotation at <time>" (1 s -> "1 second").
+  await list.getByRole('button', { name: 'Edit, annotation at 1 second', exact: true }).click()
   const edit = page.getByRole('region', { name: 'Editing annotation', exact: true })
   await edit.getByRole('textbox', { name: 'Commentary', exact: true }).fill('Cancel this local edit')
   await expect(page.getByRole('button', { name: 'Publish feedback' })).toBeDisabled()
@@ -108,7 +120,7 @@ test('separate tabs retain separate drafts and reload offers explicit recovery',
   await form.getByRole('textbox', { name: 'Start', exact: true }).fill('2')
   await form.getByRole('textbox', { name: 'End', exact: true }).fill('3')
   await add(sibling)
-  await expect(sibling.getByRole('list', { name: 'Your commentary', exact: true }).getByRole('listitem')).toHaveCount(2)
+  await expect((await openSaved(sibling)).getByRole('listitem')).toHaveCount(2)
   await sibling.close()
 })
 
@@ -116,6 +128,7 @@ test('a stopped recording survives an uncertain upload and retries its original 
   const speechId = speechFor(testInfo, 3)
   await installDeterministicRecorder(page)
   await login(page); await open(page, speechId)
+  await chooseTool(page, 'Voice note')
   const recorder = page.getByRole('region', { name: 'Record a voice note' })
   await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('1.25')
   await recorder.getByRole('button', { name: /^Record/ }).click()

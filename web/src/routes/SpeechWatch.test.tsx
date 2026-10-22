@@ -127,6 +127,21 @@ vi.mock('@/components/annotation/VoiceRecorder', async () => {
   } }
 })
 
+// Wraps the REAL panel, recording the props SpeechWatch passes so tests can
+// drive the lock callback and assert authoringActive.
+const panelSpy = vi.hoisted(() => ({
+  props: [] as Array<{ authoringActive?: boolean; onRecordingLockChange?: (locked: boolean) => void }>,
+}))
+beforeEach(() => { panelSpy.props = [] })
+vi.mock('@/components/annotation/AnnotationComposerPanel', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/annotation/AnnotationComposerPanel')>()
+  return { ...actual, AnnotationComposerPanel: (props: ComponentProps<typeof actual.AnnotationComposerPanel>) => {
+    panelSpy.props.push({ authoringActive: props.authoringActive, onRecordingLockChange: props.onRecordingLockChange })
+    return <actual.AnnotationComposerPanel {...props} />
+  } }
+})
+const latestPanel = () => panelSpy.props[panelSpy.props.length - 1]
+
 /**
  * §8.6: the overlay's actual vertical placement lives on THIS wrapper —
  * the one element with room to place content in the upper vs lower half
@@ -966,6 +981,7 @@ describe('SpeechWatch reviewers tab', () => {
     const draft = enterDraft()
     seekPlayer(instance, 12)
     expect(target.querySelector('[data-draft="true"]')).toHaveTextContent('Unsent reviewer draft')
+    await user.click(screen.getByRole('tab', { name: /^Voice note/ }))
     await user.click(screen.getByRole('button', { name: 'Capture test recording' }))
     const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
     expect(addTrack).toHaveBeenCalledTimes(1)
@@ -980,6 +996,8 @@ describe('SpeechWatch reviewers tab', () => {
     expect(draft).toHaveValue('Unsent reviewer draft')
     expect(target.querySelector('[data-draft="true"]')).toHaveTextContent('Unsent reviewer draft')
     expect(screen.getAllByTestId('overlay-stack')).toHaveLength(1)
+    // The single paged list is folded by default for a populated review.
+    await user.click(screen.getByRole('button', { name: /^Saved notes/ }))
     expect(screen.getAllByRole('list', { name: 'Your commentary' })).toHaveLength(1)
     expect(addTrack).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })).toBe(recording)
@@ -1106,6 +1124,7 @@ describe('SpeechWatch reviewers tab', () => {
     await screen.findByTestId('reviewer-preview-target')
     const a = activePlayer()
     const draft = enterDraft('Preserve me across polling')
+    fireEvent.click(screen.getByRole('tab', { name: /^Voice note/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
     const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
     const refetch = async () => {
@@ -1271,6 +1290,7 @@ describe('SpeechWatch reviewers tab', () => {
     const target = await screen.findByTestId('reviewer-preview-target')
     const instance = activePlayer()
     const draft = enterDraft()
+    fireEvent.click(screen.getByRole('tab', { name: /^Voice note/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
     const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
     mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17/annotations'
@@ -1347,6 +1367,88 @@ describe('SpeechWatch reviewers tab', () => {
     expect(b.player.remoteTextTracks()).toHaveLength(1)
     expect(screen.getByTestId('speech-video')).toBe(b.video)
     expect(playerHarness.instances).toHaveLength(2)
+  })
+
+  describe('outer reviewer tab guard', () => {
+    it('passes authoringActive true on Notes and false once Essay or Transcript is selected', async () => {
+      stubReviewerFetch()
+      const user = userEvent.setup()
+      renderWatch()
+      await screen.findByText('Your commentary')
+      expect(latestPanel().authoringActive).toBe(true)
+      await user.click(screen.getByRole('tab', { name: 'Essay' }))
+      expect(latestPanel().authoringActive).toBe(false)
+      await user.click(screen.getByRole('tab', { name: 'Notes' }))
+      expect(latestPanel().authoringActive).toBe(true)
+      await user.click(screen.getByRole('tab', { name: 'Transcript' }))
+      expect(latestPanel().authoringActive).toBe(false)
+    })
+
+    it('stays authoringActive on Notes even while the preview target is unavailable', async () => {
+      playerHarness.autoReady = false
+      stubReviewerFetch()
+      renderWatch()
+      await screen.findByText('Your commentary')
+      expect(screen.queryByTestId('reviewer-preview-target')).not.toBeInTheDocument()
+      expect(latestPanel().authoringActive).toBe(true)
+    })
+
+    it('disables sibling tabs and ignores leaving Notes while recording, then re-enables', async () => {
+      stubReviewerFetch()
+      const user = userEvent.setup()
+      renderWatch()
+      await screen.findByText('Your commentary')
+      expect(screen.queryByText('Stop recording before switching tabs.')).not.toBeInTheDocument()
+      act(() => latestPanel().onRecordingLockChange?.(true))
+      expect(screen.getByText('Stop recording before switching tabs.')).toBeVisible()
+      const essay = screen.getByRole('tab', { name: 'Essay' })
+      const transcript = screen.getByRole('tab', { name: 'Transcript' })
+      expect(essay).toHaveAttribute('aria-disabled', 'true')
+      expect(transcript).toHaveAttribute('aria-disabled', 'true')
+      expect(screen.getByRole('tab', { name: 'Notes' })).not.toHaveAttribute('aria-disabled', 'true')
+      await user.click(essay)
+      await user.click(transcript)
+      screen.getByRole('tab', { name: 'Notes' }).focus()
+      await user.keyboard('{ArrowRight}{Enter}{End}{Enter}')
+      expect(screen.getByRole('tab', { name: 'Notes' })).toHaveAttribute('aria-selected', 'true')
+      expect(latestPanel().authoringActive).toBe(true)
+      act(() => latestPanel().onRecordingLockChange?.(false))
+      expect(screen.queryByText('Stop recording before switching tabs.')).not.toBeInTheDocument()
+      expect(essay).not.toHaveAttribute('aria-disabled', 'true')
+      await user.click(essay)
+      expect(essay).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('does not leak a retained lock into another speech/review session', async () => {
+      stubReviewerFetch()
+      const user = userEvent.setup()
+      const view = renderWatch()
+      await screen.findByText('Your commentary')
+      const staleCallback = latestPanel().onRecordingLockChange!
+      act(() => staleCallback(true))
+      expect(screen.getByRole('tab', { name: 'Essay' })).toHaveAttribute('aria-disabled', 'true')
+      await act(async () => { await view.router.navigate('/speeches/18') })
+      await screen.findByRole('heading', { name: 'Speech B' })
+      await waitFor(() => expect(screen.getByRole('tab', { name: 'Essay' })).not.toHaveAttribute('aria-disabled', 'true'))
+      expect(screen.queryByText('Stop recording before switching tabs.')).not.toBeInTheDocument()
+      // A late report from the old session must not affect the new one.
+      act(() => staleCallback(true))
+      expect(screen.getByRole('tab', { name: 'Essay' })).not.toHaveAttribute('aria-disabled', 'true')
+      await user.click(screen.getByRole('tab', { name: 'Essay' }))
+      expect(screen.getByRole('tab', { name: 'Essay' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it('leaves owner tabs unaffected and mounts no reviewer panel', async () => {
+      stubWatchFetch({ speech: speechFixture() })
+      const user = userEvent.setup()
+      renderWatch()
+      await screen.findByRole('tablist', { name: 'Speech tools' })
+      expect(panelSpy.props).toHaveLength(0)
+      expect(screen.queryByText('Stop recording before switching tabs.')).not.toBeInTheDocument()
+      await user.click(screen.getByRole('tab', { name: 'Essay' }))
+      expect(screen.getByRole('tab', { name: 'Essay' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tab', { name: 'Transcript' })).not.toHaveAttribute('aria-disabled', 'true')
+    })
   })
 
 })

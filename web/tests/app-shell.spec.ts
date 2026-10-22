@@ -3,6 +3,7 @@ import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { API_URL, APP_URL, USERS } from './fixtures.js'
+import { installDeterministicRecorder } from './voice-test-helpers.js'
 import type { CurrentUser } from '../src/features/auth/types.js'
 import type { Review, ReviewSections } from '../src/features/review/types.js'
 
@@ -573,6 +574,9 @@ interface NotebookFixtureOptions {
   reviewer?: boolean
   // Opt in to one consistent reviewer/speech/annotation identity; legacy dashboard fixtures stay unchanged.
   reviewerOverlay?: boolean
+  // 13 saved mixed annotations (text + voice, erased/historical points, processing/failed
+  // transcripts) for the review-22 reviewer, who is also a Coach so the Voice tool exists.
+  notebookTools?: boolean
   missingCaptions?: boolean
   writtenBody?: string
   feedback?: boolean
@@ -587,7 +591,7 @@ const notebookDate = '2026-10-01T12:00:00Z'
 const notebookTitle = 'Finding a clear voice ' + 'LongSpeechTitle'.repeat(12)
 function notebookUser(options: NotebookFixtureOptions) {
   return { id: options.reviewer ? '2' : '1', email: 'notebook@example.test', first_name: 'Morgan', last_name: 'Member',
-    username: 'notebook-member', display_name: 'Morgan Member', roles: [], email_verified: true,
+    username: 'notebook-member', display_name: 'Morgan Member', roles: options.notebookTools ? ['coach'] : [], email_verified: true,
     onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 120_000, quota_bytes: 5_000_000, uploads_in_flight: 0 }
 }
 function notebookSpeech(options: NotebookFixtureOptions) {
@@ -596,6 +600,32 @@ function notebookSpeech(options: NotebookFixtureOptions) {
     delivered_on: null, change_note: null, created_at: notebookDate, captions_enabled: true,
     primary_video: { id: 90, kind: 'video', status: options.notReady ? 'processing' : 'ready', failure_code: null, duration_seconds: '3',
       width: options.portrait ? 360 : 640, height: options.portrait ? 640 : 360, poster_time_seconds: null } }
+}
+// Ids that own ready audio in the notebookTools set; only these may resolve a playback URL.
+const notebookToolsAudioIds = ['notebook-voice', 'tools-voice-historic', 'tools-voice-ready-2', 'tools-voice-ready-3']
+// Chronological: 13 notes = pages of 6, 6 and 1. Text ranges never overlap points; 2.45-3.0 stays free for a live draft.
+function notebookToolsAnnotations() {
+  const text = (id: string, start: number, end: number, body: string) => ({ id, timing_type: 'range', start_seconds: start,
+    duration_seconds: Math.round((end - start) * 1000) / 1000, kind: 'observation', topic: null, body, lock_version: 1, client_uuid: id, voice: null })
+  const voice = (id: string, start: number, body: string, status: { audio_status: string; transcript_status: string } | null, timing: 'point' | null = 'point') => ({
+    id, timing_type: timing, start_seconds: start, duration_seconds: 4, kind: 'observation', topic: null, body, lock_version: 1, client_uuid: id,
+    voice: status === null ? null : { asset_id: 100 + Math.round(start * 100), ...status, failure_code: status.transcript_status === 'failed' ? 'fixture_transcript_failed' : null } })
+  const ready = { audio_status: 'ready', transcript_status: 'ready' }
+  return [
+    text('tools-text-01', 0, .2, 'Open with a steady breath before the first word.'),
+    voice('tools-voice-processing', .22, '', { audio_status: 'ready', transcript_status: 'processing' }),
+    text('tools-text-02', .25, .35, 'Slow down on this phrase.'),
+    text('notebook-written', .4, .9, 'Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.'),
+    voice('tools-voice-failed', .95, '', { audio_status: 'ready', transcript_status: 'failed' }),
+    voice('tools-voice-erased', 1, 'This transcript survives the erased audio.', null),
+    voice('notebook-voice', 1.2, 'Your opening sounds warm and confident.', ready),
+    voice('tools-voice-historic', 1.4, 'Historical note recorded before timing types existed.', ready, null),
+    text('tools-text-03', 1.5, 1.7, 'Let the story land before moving on.'),
+    voice('tools-voice-ready-2', 1.8, 'This pause works well.', ready),
+    text('tools-text-04', 1.9, 2, 'Good eye contact here.'),
+    text('tools-text-05', 2.1, 2.2, 'Lift the pitch slightly to close the thought.'),
+    voice('tools-voice-ready-3', 2.3, 'A strong, memorable finish.', ready),
+  ]
 }
 function notebookReview(options: NotebookFixtureOptions) {
   return { id: 22, status: 'in_progress', invitation_message: 'Please consider my opening.', allow_preview: false,
@@ -622,7 +652,8 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     '/api/speeches/9/captions', '/api/speeches/9/transcript', '/api/speeches/9/reviews', '/api/speeches/9/review-roster',
     '/api/speeches/9/annotations', '/api/speeches/9/annotations/notebook-voice/voice-playback-url', '/api/speeches/9/essay', '/api/me/preferences/commentary-playback/9',
     '/api/me/preferences/voice-commentary/9', ...(options.reviewerOverlay ? ['/api/reviews'] : [])]
-  if (!handled.includes(path)) return undefined
+  const toolsAudioPath = options.notebookTools && notebookToolsAudioIds.some((id) => path === `/api/speeches/9/annotations/${id}/voice-playback-url`)
+  if (!handled.includes(path) && !toolsAudioPath) return undefined
   if (options.mode === 'error') return { status: 500, body: { message: 'Presentation fixture failure.' } }
   const speech = notebookSpeech(options), review = notebookReview(options), empty = options.mode === 'empty'
   switch (path) {
@@ -650,16 +681,19 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     case '/api/speeches/9/transcript': return { body: { transcript: { body: 'Find your voice.', segments: [{ start: 0, end: 3, text: 'Find your voice.' }],
       word_count: 3, words_per_minute: 60, language: 'en', model: 'fixture', source: 'whisper', updated_at: notebookDate, caption_revision: 'notebook-revision' } } }
     case '/api/speeches/9/reviews': return { body: { reviews: [review] } }
-    case '/api/speeches/9/review-roster': return { body: { reviews: [{ ...review, annotations_count: options.feedback ? 2 : 0, published_annotations_count: options.feedback ? 2 : 0, revoked_by_is_self: false }] } }
+    case '/api/speeches/9/review-roster': return { body: { reviews: [{ ...review, annotations_count: options.feedback ? (options.notebookTools ? 13 : 2) : 0, published_annotations_count: options.feedback ? (options.notebookTools ? 13 : 2) : 0, revoked_by_is_self: false }] } }
     case '/api/speeches/9/annotations':
       if (options.reviewerOverlay && url.searchParams.get('review_id') !== String(review.id)) return { status: 403, body: { message: 'Unexpected fixture review denied.' } }
-      return { body: { review_id: options.reviewerOverlay ? review.id : Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback ? [
+      return { body: { review_id: options.reviewerOverlay ? review.id : Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback && options.notebookTools ? notebookToolsAnnotations() : options.feedback ? [
       { id: 'notebook-written', timing_type: 'range', start_seconds: options.reviewerOverlay ? .4 : 0, duration_seconds: options.reviewerOverlay ? .5 : .8, kind: 'observation', topic: null,
         body: options.writtenBody ?? (options.reviewerOverlay ? 'Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.' : 'Pause briefly before the opening sentence.'), lock_version: 1, client_uuid: 'notebook-written', voice: null },
       { id: 'notebook-voice', timing_type: 'point', start_seconds: 1.2, duration_seconds: 10, kind: 'observation', topic: null,
         body: 'Your opening sounds warm and confident.', lock_version: 1, client_uuid: 'notebook-voice',
         voice: { asset_id: 92, audio_status: 'ready', transcript_status: 'ready', failure_code: null } },
     ] : [] } }
+    case '/api/speeches/9/annotations/tools-voice-historic/voice-playback-url':
+    case '/api/speeches/9/annotations/tools-voice-ready-2/voice-playback-url':
+    case '/api/speeches/9/annotations/tools-voice-ready-3/voice-playback-url':
     case '/api/speeches/9/annotations/notebook-voice/voice-playback-url': return { body: { audio: { url: `${APP_URL}/__notebook/voice.m4a`, expires_at: '2030-01-01T00:00:00Z' } } }
     case '/api/speeches/9/essay': return { body: { essay: { essay_html: '<p>A clear opening.</p>', essay_text: 'A clear opening.', essay_words: 4,
       essay_published_at: null, essay_updated_at: notebookDate, essay_lock_version: 0 } } }
@@ -1125,6 +1159,13 @@ test.describe('notebook presentation (isolated frontend)', () => {
   }
 })
 
+async function expectDocumentOrder(locators: import('@playwright/test').Locator[]) {
+  const handles = await Promise.all(locators.map((locator) => locator.elementHandle()))
+  for (let i = 0; i + 1 < handles.length; i++) {
+    presentationExpect(await handles[i]!.evaluate((a, b) => Boolean(a.compareDocumentPosition(b as Node) & Node.DOCUMENT_POSITION_FOLLOWING), handles[i + 1]), `element ${i} precedes element ${i + 1}`).toBe(true)
+  }
+}
+
 // Geometry uses the actual player host and displayed footage, including portrait
 // and fullscreen. Unbounded text is compared with the owner baseline separately.
 async function expectReviewerFrame(page: Page, overlay: import('@playwright/test').Locator, anchor: 'top' | 'default') {
@@ -1182,13 +1223,19 @@ test.describe('reviewer overlay presentation (isolated frontend)', () => {
         await presentationExpect(stack).toHaveAttribute('aria-hidden', 'true')
         await presentationExpect(stack).toHaveCSS('pointer-events', 'none')
         await presentationExpect(page.getByTestId('overlay-stack')).toHaveCount(1)
-        const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole('list', { name: 'Your commentary', exact: true }) })
+        const card = page.locator('[data-slot="card"]').filter({ has: page.getByTestId('timeline-strip') })
         await presentationExpect(card.getByTestId('overlay-stack')).toHaveCount(0)
-        await presentationExpect(card.locator('[data-slot="card-content"] > :first-child')).toHaveAttribute('data-testid', 'timeline-strip')
+        // Saved notes starts folded: the one authoritative list is not exposed until opened.
+        const savedToggle = page.getByRole('button', { name: 'Saved notes (2)', exact: true })
+        await presentationExpect(savedToggle).toHaveAttribute('aria-expanded', 'false')
+        await presentationExpect(page.getByRole('list', { name: 'Your commentary', exact: true })).toHaveCount(0)
+        await savedToggle.click()
         await presentationExpect(page.getByRole('list', { name: 'Your commentary', exact: true })).toHaveCount(1)
         await presentationExpect(page.getByRole('group', { name: 'Annotation timeline', exact: true })).toBeVisible()
         const editor = page.getByRole('region', { name: 'New annotation', exact: true, includeHidden: true })
         await presentationExpect(editor).toBeVisible()
+        // Workspace order: timeline, then the creation tool, then Saved notes (the timeline stays outside both).
+        await expectDocumentOrder([page.getByTestId('timeline-strip'), editor, savedToggle])
         // Wrong review IDs must not yield plausible annotations in this fixture.
         const denied = await page.evaluate(async (api) => {
           const response = await fetch(`${api}/api/speeches/9/annotations?review_id=2`, { credentials: 'include' })
@@ -1310,5 +1357,321 @@ test.describe('reviewer overlay presentation (isolated frontend)', () => {
     const evidence = test.info().outputPath('reviewer-owner-existing-overflow.json')
     await writeFile(evidence, JSON.stringify({ limitation: 'Existing shared overlay CSS lacks unbroken-word containment; separately scoped CSS work is required.', measurements }, null, 2))
     await test.info().attach('reviewer-owner-existing-overflow', { path: evidence, contentType: 'application/json' })
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Annotation notebook tools: the reviewer's tool tabs, labeled timeline lanes and paged Saved
+// notes disclosure, against the exact built frontend and a fail-closed review-22 fixture of 13
+// mixed saved notes. Deterministic recorder doubles prove the lock seam only; they are not proof
+// of a physical microphone, iPhone Safari or real worker processing.
+// ---------------------------------------------------------------------------------------------
+const toolsPage1 = ['tools-text-01', 'tools-voice-processing', 'tools-text-02', 'notebook-written', 'tools-voice-failed', 'tools-voice-erased']
+const toolsPage2 = ['notebook-voice', 'tools-voice-historic', 'tools-text-03', 'tools-voice-ready-2', 'tools-text-04', 'tools-text-05']
+
+test.describe('annotation notebook tools', () => {
+  test.setTimeout(240_000)
+  let media: Buffer
+  test.beforeAll(async ({ browser }) => { media = await createNotebookMedia(browser, false) })
+
+  async function openTools(browser: Browser, options: { width?: number; recorder?: boolean } = {}) {
+    const context = await browser.newContext({ viewport: { width: options.width ?? 1440, height: 900 }, reducedMotion: 'reduce' })
+    const mocked = await interceptPresentationApi(context, true, { reviewer: true, reviewerOverlay: true, feedback: true, notebookTools: true, missingCaptions: true, media })
+    const page = await context.newPage()
+    if (options.recorder) await installDeterministicRecorder(page)
+    await page.goto(`${APP_URL}/speeches/9`)
+    const video = page.locator('video[data-testid="speech-video"]')
+    const tools = page.getByRole('tablist', { name: 'Add commentary' })
+    await presentationExpect(tools).toBeVisible()
+    await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+    await video.evaluate((element: HTMLVideoElement) => { element.muted = true; element.pause(); element.currentTime = 0 })
+    const toggle = page.getByRole('button', { name: 'Saved notes (13)', exact: true })
+    return {
+      context, mocked, page, video, tools, toggle,
+      row: (id: string) => page.locator(`li[data-annotation-id="${id}"]`),
+      list: page.getByRole('list', { name: 'Your commentary', exact: true }),
+      pager: page.getByRole('navigation', { name: 'Saved notes pages', exact: true }),
+      form: page.getByRole('region', { name: 'New annotation', exact: true }),
+      recorder: page.getByRole('region', { name: 'Record a voice note', exact: true }),
+    }
+  }
+  type Tools = Awaited<ReturnType<typeof openTools>>
+  const rowIds = (tools: Tools) => tools.list.locator('> li').evaluateAll((items) => items.map((item) => item.getAttribute('data-annotation-id')))
+  const currentTime = (tools: Tools) => tools.video.evaluate((element: HTMLVideoElement) => element.currentTime)
+  // A hidden tool/body must not leave focusable controls in the layout (display:none has no rects).
+  async function expectNothingFocusableIn(locator: import('@playwright/test').Locator) {
+    const reachable = await locator.evaluate((root) => Array.from(root.querySelectorAll<HTMLElement>('button, input, textarea, select, a[href], audio[controls], [tabindex]:not([tabindex="-1"])'))
+      .filter((element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden').map((element) => element.outerHTML.slice(0, 80)))
+    presentationExpect(reachable).toEqual([])
+  }
+
+  test('tool tabs show one tool, keep the same text draft and leave the timeline lanes in place', async ({ browser }) => {
+    const t = await openTools(browser)
+    const { page, tools, form, recorder, video } = t
+    try {
+      await presentationExpect(tools.getByRole('tab')).toHaveCount(2)
+      await presentationExpect(tools.getByRole('tab', { name: 'Text note', exact: true })).toHaveAttribute('aria-selected', 'true')
+      await presentationExpect(tools.getByRole('tab', { name: 'Voice note', exact: true })).toHaveAttribute('aria-selected', 'false')
+      await presentationExpect(form).toBeVisible()
+      // The Voice tool must be chosen before its recorder UI is reachable.
+      await presentationExpect(recorder).toHaveCount(0)
+      const timeline = page.getByRole('group', { name: 'Annotation timeline', exact: true })
+      await presentationExpect(timeline).toBeVisible()
+      await presentationExpect(timeline.getByText('Text', { exact: true })).toBeVisible()
+      await presentationExpect(timeline.getByText('Voice', { exact: true })).toBeVisible()
+      await presentationExpect(page.getByTestId('timeline-lane-text').getByRole('button')).toHaveCount(6)
+      await presentationExpect(page.getByTestId('timeline-lane-voice').getByRole('button')).toHaveCount(7)
+      await presentationExpect(page.getByTestId('timeline-lane-voice').getByRole('button', { name: /^Voice note at \d+ seconds?, audio unavailable$/ })).toHaveCount(1)
+      // Lane geometry: both lanes share one data axis, so equal seconds give equal x positions.
+      const axis = await page.evaluate(() => {
+        const lane = (name: string) => document.querySelector(`[data-testid="timeline-lane-${name}"]`)!.getBoundingClientRect()
+        const text = lane('text'), voice = lane('voice'), axisBox = document.querySelector('[data-testid="timeline-axis"]')!.getBoundingClientRect()
+        return { text: [text.left, text.right], voice: [voice.left, voice.right], axis: [axisBox.left, axisBox.right] }
+      })
+      presentationExpect(axis.text[0]).toBeCloseTo(axis.voice[0], 0); presentationExpect(axis.text[1]).toBeCloseTo(axis.voice[1], 0)
+      presentationExpect(axis.axis[0]).toBeCloseTo(axis.text[0], 0)
+
+      const start = form.getByRole('textbox', { name: 'Start', exact: true }), end = form.getByRole('textbox', { name: 'End', exact: true })
+      const draft = form.getByRole('textbox', { name: 'Commentary', exact: true })
+      const originalDraft = await draft.elementHandle()
+      await start.fill('2.45'); await end.fill('3'); await draft.fill('Draft kept across tools.')
+      await presentationExpect(tools.getByRole('tab', { name: 'Text note · Unsaved', exact: true })).toBeVisible()
+      await presentationExpect(page.locator('[data-temporary="true"]')).toHaveCount(1)
+      await presentationExpect(page.locator('[data-temporary="true"]')).toHaveAccessibleName(/^Unsaved text draft from \d+ seconds? to \d+ seconds?$/)
+
+      await tools.getByRole('tab', { name: /^Voice note/ }).click()
+      await presentationExpect(tools.getByRole('tab', { name: /^Voice note/ })).toHaveAttribute('aria-selected', 'true')
+      await presentationExpect(recorder).toBeVisible()
+      await presentationExpect(form).toHaveCount(0)
+      await expectNothingFocusableIn(page.getByRole('group', { name: 'Text note tool', includeHidden: true }))
+      await presentationExpect(timeline).toBeVisible()
+      // The live draft stays previewed over the footage while Voice is the visible tool.
+      await video.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = 2.7 })
+      await presentationExpect(page.getByTestId('reviewer-preview-target').locator('.annotation-overlay[data-draft="true"]')).toHaveCSS('opacity', '1')
+
+      await tools.getByRole('tab', { name: /^Text note/ }).click()
+      await presentationExpect(form).toBeVisible()
+      await presentationExpect(recorder).toHaveCount(0)
+      presentationExpect(await draft.evaluate((element, original) => element === original, originalDraft)).toBe(true)
+      await presentationExpect(draft).toHaveValue('Draft kept across tools.')
+      await presentationExpect(start).toHaveValue('2.45')
+
+      // Tablist keyboard semantics: Arrow moves to Voice (activating it where the primitive follows focus).
+      await tools.getByRole('tab', { name: /^Text note/ }).focus()
+      await page.keyboard.press('ArrowRight')
+      await presentationExpect(tools.getByRole('tab', { name: /^Voice note/ })).toBeFocused()
+      if ((await tools.getByRole('tab', { name: /^Voice note/ }).getAttribute('aria-selected')) !== 'true') await page.keyboard.press('Enter')
+      await presentationExpect(recorder).toBeVisible()
+      await tools.getByRole('tab', { name: /^Text note/ }).click()
+      for (const width of [375, 1440]) {
+        await page.setViewportSize({ width, height: 900 })
+        await expectNoPageOverflow(page)
+        await expectTargetSizes(page, '[role="tablist"][aria-label="Add commentary"] [role="tab"]')
+      }
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { await t.context.close() }
+  })
+
+  test('Saved notes folds, pages six at a time and discloses text, voice, processing, failed and erased details', async ({ browser }) => {
+    const t = await openTools(browser)
+    const { page, toggle, list, pager, row } = t
+    try {
+      await presentationExpect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await presentationExpect(list).toHaveCount(0)
+      await presentationExpect(page.getByText('No saved notes yet.')).toHaveCount(0)
+      const bodyId = (await toggle.getAttribute('aria-controls'))!
+      await presentationExpect(page.locator(`[id="${bodyId}"]`)).toBeHidden()
+      await expectNothingFocusableIn(page.locator(`[id="${bodyId}"]`))
+      await presentationExpect(page.getByRole('group', { name: 'Annotation timeline', exact: true })).toBeVisible()
+
+      await toggle.click()
+      await presentationExpect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await presentationExpect(list).toHaveCount(1)
+      presentationExpect(await rowIds(t)).toEqual(toolsPage1)
+      await presentationExpect(pager).toContainText('Notes 1–6 of 13 · Page 1 of 3')
+      const previous = pager.getByRole('button', { name: 'Previous', exact: true }), next = pager.getByRole('button', { name: 'Next', exact: true })
+      await presentationExpect(previous).toHaveAttribute('aria-disabled', 'true')
+      // aria-disabled (not disabled) at the edge: a forced click must still be a no-op.
+      await previous.click({ force: true })
+      await presentationExpect(pager).toContainText('Notes 1–6 of 13 · Page 1 of 3')
+
+      // Row controls carry "<label>, annotation|voice note at <time>" names.
+      await presentationExpect(row('tools-text-01').getByRole('button', { name: 'Go to time, annotation at 0 seconds', exact: true })).toBeVisible()
+      await presentationExpect(row('tools-voice-erased').getByRole('button', { name: 'Go to time, voice note at 1 second', exact: true })).toBeVisible()
+      await presentationExpect(row('tools-text-01')).toContainText('0:00.000–0:00.200')
+
+      // Status variants, expanded in place.
+      await row('tools-voice-processing').getByRole('button', { name: 'Show details, voice note at 0 seconds', exact: true }).click()
+      await presentationExpect(row('tools-voice-processing').locator('p.whitespace-pre-wrap')).toHaveText('Transcribing…')
+      await row('tools-voice-failed').getByRole('button', { name: 'Show details, voice note at 0 seconds', exact: true }).click()
+      await presentationExpect(row('tools-voice-failed').locator('p.whitespace-pre-wrap')).toHaveText('Transcript unavailable.')
+      await presentationExpect(row('tools-voice-failed').getByRole('button', { name: 'Retry transcript, voice note at 0 seconds', exact: true })).toBeVisible()
+      await row('tools-voice-erased').getByRole('button', { name: 'Show details, voice note at 1 second', exact: true }).click()
+      await presentationExpect(row('tools-voice-erased')).toContainText('Voice note · Audio unavailable')
+      await presentationExpect(row('tools-voice-erased').getByText('Voice audio unavailable. This transcript stays at its original position.')).toBeVisible()
+      await presentationExpect(row('tools-voice-erased').getByRole('button', { name: /^Preview audio/ })).toHaveCount(0)
+      await presentationExpect(row('tools-voice-erased').getByRole('button', { name: 'Edit transcript, voice note at 1 second', exact: true })).toBeEnabled()
+
+      await next.click()
+      presentationExpect(await rowIds(t)).toEqual(toolsPage2)
+      await presentationExpect(pager).toContainText('Notes 7–12 of 13 · Page 2 of 3')
+      await presentationExpect(row('tools-text-03')).toContainText('Text note')
+      // Historical audio row without a timing type is still a Voice point with audio.
+      await presentationExpect(row('tools-voice-historic').getByRole('button', { name: 'Preview audio, voice note at 1 second', exact: true })).toBeVisible()
+
+      // Voice detail: audio mounts only while the detail, page, list and Notes are active.
+      const voice = row('notebook-voice')
+      await voice.getByRole('button', { name: 'Show details, voice note at 1 second', exact: true }).click()
+      await presentationExpect(voice.locator('p.whitespace-pre-wrap')).toHaveText('Your opening sounds warm and confident.')
+      await voice.getByRole('button', { name: 'Preview audio, voice note at 1 second', exact: true }).click()
+      await presentationExpect(voice.locator('audio[aria-label="Voice note audio"]')).toHaveCount(1)
+      await voice.getByRole('button', { name: 'Hide details, voice note at 1 second', exact: true }).click()
+      await presentationExpect(page.locator('audio[aria-label="Voice note audio"]')).toHaveCount(0)
+      await voice.getByRole('button', { name: 'Show details, voice note at 1 second', exact: true }).click()
+      await voice.getByRole('button', { name: 'Preview audio, voice note at 1 second', exact: true }).click()
+      await presentationExpect(page.locator('audio[aria-label="Voice note audio"]')).toHaveCount(1)
+      await toggle.click()
+      await presentationExpect(page.locator('audio[aria-label="Voice note audio"]')).toHaveCount(0)
+      await toggle.click()
+
+      await next.click()
+      await presentationExpect(pager).toContainText('Notes 13–13 of 13 · Page 3 of 3')
+      presentationExpect(await rowIds(t)).toEqual(['tools-voice-ready-3'])
+      await presentationExpect(next).toHaveAttribute('aria-disabled', 'true')
+      await previous.click(); await previous.click()
+      presentationExpect(await rowIds(t)).toEqual(toolsPage1)
+      // Expansion survives paging while the note still exists.
+      await presentationExpect(row('tools-voice-failed').getByRole('button', { name: 'Hide details, voice note at 0 seconds', exact: true })).toBeVisible()
+
+      // Real keyboard walk: every focus stop inside the workspace is rendered (no hidden focus targets).
+      await t.tools.getByRole('tab').first().focus()
+      const stops: { rects: number; hiddenAncestor: boolean; label: string }[] = []
+      for (let i = 0; i < 90; i++) {
+        await page.keyboard.press('Tab')
+        const stop = await page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null
+          if (!el || !el.closest('[data-testid="annotation-workspace"]')) return null
+          return { rects: el.getClientRects().length, hiddenAncestor: Boolean(el.closest('[hidden], [aria-hidden="true"], [inert]')), label: el.getAttribute('aria-label') ?? el.textContent?.slice(0, 40) ?? el.tagName }
+        })
+        if (!stop) break
+        stops.push(stop)
+      }
+      presentationExpect(stops.length).toBeGreaterThan(10)
+      presentationExpect(stops.filter((stop) => stop.rects === 0 || stop.hiddenAncestor)).toEqual([])
+
+      for (const width of [375, 1440]) {
+        await page.setViewportSize({ width, height: 900 })
+        await expectNoPageOverflow(page)
+        await expectTargetSizes(page, '[data-annotation-id] button, nav[aria-label="Saved notes pages"] button')
+      }
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { await t.context.close() }
+  })
+
+  test('editing locks paging, a marker reveals its note, and an off-page reveal waits for Save or Cancel', async ({ browser }) => {
+    const t = await openTools(browser)
+    const { page, toggle, pager, row } = t
+    try {
+      // Marker -> reveal while Saved notes is folded: seek once, open, page, detail, focus the summary.
+      await presentationExpect(toggle).toHaveAttribute('aria-expanded', 'false')
+      await page.getByTestId('voice-marker-tools-voice-ready-2').click()
+      await presentationExpect(toggle).toHaveAttribute('aria-expanded', 'true')
+      await presentationExpect(pager).toContainText('Notes 7–12 of 13 · Page 2 of 3')
+      await presentationExpect(row('tools-voice-ready-2').getByRole('button', { name: 'Hide details, voice note at 1 second', exact: true })).toBeFocused()
+      await presentationExpect(row('tools-voice-ready-2')).toHaveAttribute('data-selected', 'true')
+      await presentationExpect(page.getByTestId('voice-marker-tools-voice-ready-2')).toHaveAttribute('data-selected', 'true')
+      await presentationExpect.poll(() => currentTime(t)).toBeCloseTo(1.8, 1)
+      // The same marker twice deliberately focuses the summary again.
+      await pager.getByRole('button', { name: 'Previous', exact: true }).focus()
+      await page.getByTestId('voice-marker-tools-voice-ready-2').click()
+      await presentationExpect(row('tools-voice-ready-2').getByRole('button', { name: 'Hide details, voice note at 1 second', exact: true })).toBeFocused()
+      // Playback never paginates by itself.
+      await t.video.evaluate((element: HTMLVideoElement) => { element.currentTime = 0.1 })
+      await presentationExpect(pager).toContainText('Page 2 of 3')
+
+      await page.getByTestId('range-marker-tools-text-01').click()
+      await presentationExpect(pager).toContainText('Notes 1–6 of 13 · Page 1 of 3')
+      await presentationExpect(row('tools-text-01').getByRole('button', { name: 'Hide details, annotation at 0 seconds', exact: true })).toBeFocused()
+      await presentationExpect.poll(() => currentTime(t)).toBeCloseTo(0, 1)
+
+      // Edit lock: one editor, page held, collapse and other editors disabled, marker reveal deferred.
+      await row('tools-text-01').getByRole('button', { name: 'Edit, annotation at 0 seconds', exact: true }).click()
+      const editor = page.getByRole('region', { name: 'Editing annotation', exact: true })
+      await presentationExpect(editor).toBeVisible()
+      await presentationExpect(pager.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled()
+      await presentationExpect(pager.getByRole('button', { name: 'Next', exact: true })).toBeDisabled()
+      await presentationExpect(toggle).toBeDisabled()
+      await presentationExpect(pager).toContainText('Editing page held · 6 saved notes shown · 13 saved total')
+      await presentationExpect(pager.getByText('Save or cancel this edit to change pages.')).toBeVisible()
+      await presentationExpect(row('tools-text-02').getByRole('button', { name: 'Edit, annotation at 0 seconds', exact: true })).toBeDisabled()
+      const deferred = page.locator('div[role="status"]').filter({ hasText: 'Save or cancel this edit, then show the selected note.' })
+      await page.getByTestId('voice-marker-tools-voice-ready-2').click()
+      await presentationExpect(deferred).toBeVisible()
+      await presentationExpect(deferred.getByRole('button', { name: 'Show selected note', exact: true })).toBeDisabled()
+      await presentationExpect.poll(() => currentTime(t)).toBeCloseTo(1.8, 1)
+      await presentationExpect(editor).toBeVisible()
+      await presentationExpect(pager).toContainText('Editing page held')
+
+      await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+      await presentationExpect(editor).toHaveCount(0)
+      await presentationExpect(pager).toContainText('Notes 1–6 of 13 · Page 1 of 3')
+      await presentationExpect(toggle).toBeEnabled()
+      const show = page.getByRole('button', { name: 'Show selected note', exact: true })
+      await presentationExpect(show).toBeEnabled()
+      await show.click()
+      await presentationExpect(pager).toContainText('Notes 7–12 of 13 · Page 2 of 3')
+      await presentationExpect(row('tools-voice-ready-2').getByRole('button', { name: 'Hide details, voice note at 1 second', exact: true })).toBeFocused()
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { await t.context.close() }
+  })
+
+  test('a deterministic recorder double locks the tools and outer tabs only while requesting or recording', async ({ browser }) => {
+    const t = await openTools(browser, { recorder: true })
+    const { page, tools, form, recorder } = t
+    try {
+      const outer = page.getByRole('tablist', { name: 'Your feedback' })
+      const start = form.getByRole('textbox', { name: 'Start', exact: true })
+      await start.fill('2.45')
+      await form.getByRole('textbox', { name: 'End', exact: true }).fill('3')
+      await form.getByRole('textbox', { name: 'Commentary', exact: true }).fill('Draft that must survive recording.')
+      await tools.getByRole('tab', { name: /^Voice note/ }).click()
+      await presentationExpect(recorder).toBeVisible()
+      await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('2.7')
+      await recorder.getByRole('button', { name: /^Record/ }).click()
+      await presentationExpect(recorder.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+      await presentationExpect(tools.getByRole('tab', { name: 'Voice note · Recording', exact: true })).toBeVisible()
+      // Locked: cannot leave Voice or Notes, with a visible reason; Stop stays available.
+      await presentationExpect(tools.getByRole('tab', { name: /^Text note/ })).toBeDisabled()
+      await presentationExpect(outer.getByRole('tab', { name: 'Essay', exact: true })).toBeDisabled()
+      await presentationExpect(outer.getByRole('tab', { name: 'Transcript', exact: true })).toBeDisabled()
+      await presentationExpect(page.getByText('Stop recording to switch to Text note.')).toBeVisible()
+      await presentationExpect(page.getByText('Stop recording before switching tabs.')).toBeVisible()
+      // C must not stamp the hidden Text composer while the microphone is locked.
+      await page.locator('body').click({ position: { x: 2, y: 2 } })
+      await page.keyboard.press('c')
+      await presentationExpect(page.getByRole('textbox', { name: 'Start', exact: true, includeHidden: true })).toHaveValue('2.45')
+      // A draft marker cannot reveal the draft yet; Voice and Stop stay visible and the draft is unchanged.
+      await page.locator('[data-temporary="true"]').click()
+      await presentationExpect(page.getByText('Stop recording, then open the unsaved text draft. Your draft is unchanged.')).toBeVisible()
+      await presentationExpect(recorder.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+      await presentationExpect(page.getByRole('button', { name: 'Publish feedback', exact: true })).toBeDisabled()
+
+      await recorder.getByRole('button', { name: 'Stop', exact: true }).click()
+      const preview = recorder.getByLabel('Voice note preview')
+      await presentationExpect(preview).toBeVisible()
+      await presentationExpect(tools.getByRole('tab', { name: 'Voice note · Unsaved recording', exact: true })).toBeVisible()
+      await presentationExpect(tools.getByRole('tab', { name: /^Text note/ })).toBeEnabled()
+      await presentationExpect(outer.getByRole('tab', { name: 'Essay', exact: true })).toBeEnabled()
+      await presentationExpect(page.getByText('Stop recording before switching tabs.')).toHaveCount(0)
+      // A stopped recording may be left and returned to; the same preview is retained and nothing is uploaded.
+      const previewHandle = await preview.elementHandle()
+      await tools.getByRole('tab', { name: /^Text note/ }).click()
+      await presentationExpect(form).toBeVisible()
+      await presentationExpect(form.getByRole('textbox', { name: 'Commentary', exact: true })).toHaveValue('Draft that must survive recording.')
+      await tools.getByRole('tab', { name: /^Voice note/ }).click()
+      presentationExpect(await preview.evaluate((element, original) => element === original, previewHandle)).toBe(true)
+      await presentationExpect(page.getByRole('button', { name: 'Publish feedback', exact: true })).toBeDisabled()
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { await t.context.close() }
   })
 })

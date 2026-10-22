@@ -75,6 +75,13 @@ function mountPanel(overrides: Partial<PanelProps> = {}, strict = false) {
   return { ...rendered, target, video, addTrack, onSeek: props.onSeek,
     update(next: Partial<PanelProps> = {}) { props = { ...props, ...next }; rendered.rerender(ui()) } }
 }
+function showTool(name: 'Text note' | 'Voice note') {
+  fireEvent.click(screen.getByRole('tab', { name: new RegExp(`^${name}`) }))
+}
+function openSaved() {
+  const toggle = screen.getByRole('button', { name: /^Saved notes/ })
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle)
+}
 function seek(video: HTMLVideoElement, time: number) {
   act(() => { video.currentTime = time; video.dispatchEvent(new Event('seeked')) })
 }
@@ -112,7 +119,13 @@ describe('AnnotationComposerPanel external preview', () => {
     expect(screen.getAllByTestId('overlay-stack')).toHaveLength(1)
     expect(container.querySelector('[data-testid="overlay-stack"]')).toBeNull()
     expect(container.querySelector('div.pointer-events-none.min-h-16')).toBeNull()
+    // The portal sits outside both tool panels and outside Saved notes.
+    expect(stack.closest('[role="tabpanel"]')).toBeNull()
+    openSaved()
     expect(screen.getAllByRole('list', { name: 'Your commentary' })).toHaveLength(1)
+    showTool('Voice note')
+    expect(within(target).getByTestId('overlay-stack')).toBe(stack)
+    showTool('Text note')
     expect(screen.getByLabelText('Start')).toBeInTheDocument()
     expect(screen.getByLabelText('End')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('range-marker-saved'))
@@ -154,8 +167,10 @@ describe('AnnotationComposerPanel external preview', () => {
     const view = mountPanel()
     const editor = draft()
     const textarea = within(editor).getByLabelText('Commentary')
+    showTool('Voice note')
     fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
     const recording = screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })
+    showTool('Text note')
     seek(view.video, 12)
     view.update({ previewEnabled: false })
     expect(screen.queryByTestId('overlay-stack')).not.toBeInTheDocument()
@@ -176,6 +191,7 @@ describe('AnnotationComposerPanel external preview', () => {
     expect(draftOverlay(replacement)).toHaveAttribute('data-visible', 'true')
     expect(screen.getByLabelText('Commentary')).toBe(textarea)
     expect(textarea).toHaveValue('Live draft commentary')
+    showTool('Voice note')
     expect(screen.getByRole('button', { name: 'Unsaved recording: 13 bytes' })).toBe(recording)
     expect(screen.getByRole('button', { name: 'Publish feedback' })).toBeDisabled()
     expect(view.video.currentTime).toBe(12)
@@ -222,6 +238,7 @@ describe('AnnotationComposerPanel external preview', () => {
   it.each([401, 403, 404, 410])('suppresses retained annotations on %i without clearing pending authoring state', (status) => {
     const view = mountPanel()
     const textarea = within(draft()).getByLabelText('Commentary')
+    showTool('Voice note')
     fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
     seek(view.video, 12)
     queryState = { ...queryState, isError: true, isSuccess: false, error: { status } }
@@ -265,6 +282,7 @@ describe('AnnotationComposerPanel external preview', () => {
   it('retains saved and live preview, editor, recording and retry behavior through a transient 500 refresh error', () => {
     const view = mountPanel()
     const textarea = within(draft()).getByLabelText('Commentary')
+    showTool('Voice note')
     fireEvent.click(screen.getByRole('button', { name: 'Capture test recording' }))
     seek(view.video, 12)
     const stack = within(view.target).getByTestId('overlay-stack')

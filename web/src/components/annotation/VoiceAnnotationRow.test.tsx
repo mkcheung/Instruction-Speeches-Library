@@ -8,10 +8,11 @@ const api = vi.hoisted(() => ({
   loadAudio: vi.fn(),
   retryTranscript: vi.fn(),
   updateAnnotation: vi.fn(),
+  fetching: false,
 }))
 
 vi.mock('@/features/annotation/annotationApi', () => ({
-  useLazyGetVoiceAudioUrlQuery: () => [api.loadAudio, { isFetching: false }],
+  useLazyGetVoiceAudioUrlQuery: () => [api.loadAudio, { isFetching: api.fetching }],
   useRetryVoiceTranscriptMutation: () => [api.retryTranscript, { isLoading: false }],
   useUpdateAnnotationMutation: () => [api.updateAnnotation, { isLoading: false }],
   useCreateAnnotationMutation: () => [vi.fn(), { isLoading: false }],
@@ -32,7 +33,7 @@ function voice(overrides: Partial<Annotation> = {}): Annotation {
   }
 }
 
-function row(annotation: Annotation) {
+function row(annotation: Annotation, extra: Partial<React.ComponentProps<typeof VoiceAnnotationRow>> = {}) {
   return (
     <VoiceAnnotationRow
       annotation={annotation}
@@ -42,6 +43,7 @@ function row(annotation: Annotation) {
       isCurrent={false}
       onSeek={vi.fn()}
       onDelete={vi.fn(async () => undefined)}
+      {...extra}
     />
   )
 }
@@ -50,9 +52,13 @@ function renderRow(annotation: Annotation) {
   return render(row(annotation))
 }
 
+const erased = (overrides: Partial<Annotation> = {}) => voice({ timing_type: 'point', voice: null, ...overrides })
+
 describe('VoiceAnnotationRow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    api.fetching = false
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
     localStorage.clear()
     api.retryTranscript.mockReturnValue({ unwrap: () => Promise.resolve({}) })
     api.updateAnnotation.mockImplementation(({ body }: { body: { body: string; lock_version: number } }) => ({
@@ -65,7 +71,7 @@ describe('VoiceAnnotationRow', () => {
     const user = userEvent.setup()
     renderRow(voice())
 
-    await user.click(screen.getByRole('button', { name: 'Edit transcript' }))
+    await user.click(screen.getByRole('button', { name: /^Edit transcript/ }))
     const editor = screen.getByRole('textbox', { name: 'Transcript' })
     await user.clear(editor)
     await user.type(editor, 'Coach corrected transcript')
@@ -88,7 +94,7 @@ describe('VoiceAnnotationRow', () => {
       .mockReturnValueOnce({ unwrap: () => Promise.resolve(voice({ body: 'My unsaved text', lock_version: 10 })) })
     renderRow(voice())
 
-    await user.click(screen.getByRole('button', { name: 'Edit transcript' }))
+    await user.click(screen.getByRole('button', { name: /^Edit transcript/ }))
     const editor = screen.getByRole('textbox', { name: 'Transcript' })
     await user.clear(editor)
     await user.type(editor, 'My unsaved text')
@@ -109,9 +115,10 @@ describe('VoiceAnnotationRow', () => {
     const user = userEvent.setup()
     renderRow(voice({ body: '', voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'failed', failure_code: 'voice_transcription_failed' } }))
 
-    await user.click(screen.getByRole('button', { name: 'Retry transcript' }))
+    await user.click(screen.getByRole('button', { name: /^Show details/ }))
+    await user.click(screen.getByRole('button', { name: /^Retry transcript/ }))
     expect(api.retryTranscript).toHaveBeenCalledWith({ speechId: 1, reviewId: 2, annotationId: '17' })
-    expect(screen.queryByRole('button', { name: 'Edit transcript' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Edit transcript/ })).not.toBeInTheDocument()
   })
 
   it('adopts an asynchronously completed transcript and the lock returned by each save', async () => {
@@ -120,13 +127,13 @@ describe('VoiceAnnotationRow', () => {
     const rendered = renderRow(pending)
     rendered.rerender(row(voice({ body: 'Whisper result', lock_version: 7 })))
 
-    await user.click(screen.getByRole('button', { name: 'Edit transcript' }))
+    await user.click(screen.getByRole('button', { name: /^Edit transcript/ }))
     const editor = screen.getByRole('textbox', { name: 'Transcript' })
     expect(editor).toHaveValue('Whisper result')
     await user.clear(editor)
     await user.type(editor, 'First edit')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
-    await user.click(screen.getByRole('button', { name: 'Edit transcript' }))
+    await user.click(screen.getByRole('button', { name: /^Edit transcript/ }))
     await user.clear(screen.getByRole('textbox', { name: 'Transcript' }))
     await user.type(screen.getByRole('textbox', { name: 'Transcript' }), 'Second edit')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
@@ -147,7 +154,7 @@ describe('VoiceAnnotationRow', () => {
       .mockReturnValueOnce({ unwrap: () => Promise.resolve({ audio: { url: 'blob:voice-fresh', expires_at: '' } }) })
     renderRow(voice())
 
-    await user.click(screen.getByRole('button', { name: 'Preview audio' }))
+    await user.click(screen.getByRole('button', { name: /^Preview audio/ }))
     const audio = await screen.findByLabelText('Voice note audio')
     expect(audio).toHaveAttribute('src', 'blob:voice-expired')
 
@@ -156,8 +163,75 @@ describe('VoiceAnnotationRow', () => {
     })
     expect(screen.queryByLabelText('Voice note audio')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Preview audio' }))
+    await user.click(screen.getByRole('button', { name: /^Preview audio/ }))
     expect(api.loadAudio).toHaveBeenCalledTimes(2)
     expect(await screen.findByLabelText('Voice note audio')).toHaveAttribute('src', 'blob:voice-fresh')
+  })
+
+  it('never lets an acknowledged saved object revive audio the latest row has erased', async () => {
+    const user = userEvent.setup()
+    const rendered = renderRow(voice())
+    await user.click(screen.getByRole('button', { name: /^Edit transcript/ }))
+    const editor = screen.getByRole('textbox', { name: 'Transcript' })
+    await user.clear(editor)
+    await user.type(editor, 'Acknowledged body')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    // The poll still has the older lock_version, but the audio is now erased.
+    rendered.rerender(row(erased()))
+    expect(screen.queryByRole('button', { name: /^Preview audio/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Voice note · Audio unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Acknowledged body', { selector: 'p.whitespace-pre-wrap' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Edit transcript/ })).toBeInTheDocument()
+  })
+
+  it('keeps the same transcript editor and typed text through audio erasure', async () => {
+    const user = userEvent.setup()
+    const onEditingChange = vi.fn()
+    const rendered = render(row(voice(), { onEditingChange }))
+    await user.click(screen.getByRole('button', { name: /^Edit transcript/ }))
+    const editor = screen.getByRole('textbox', { name: 'Transcript' })
+    await user.type(editor, ' plus draft')
+    rendered.rerender(row(erased(), { onEditingChange }))
+    expect(screen.getByRole('textbox', { name: 'Transcript' })).toBe(editor)
+    expect(editor).toHaveValue('Original transcript plus draft')
+    expect(onEditingChange).toHaveBeenCalledTimes(1)
+    expect(onEditingChange).toHaveBeenCalledWith('17', true)
+  })
+
+  it('pauses and unmounts preview audio when inactive or when details close', async () => {
+    const user = userEvent.setup()
+    const pause = vi.mocked(HTMLMediaElement.prototype.pause)
+    const rendered = renderRow(voice())
+    await user.click(screen.getByRole('button', { name: /^Preview audio/ }))
+    await screen.findByLabelText('Voice note audio')
+    pause.mockClear()
+    rendered.rerender(row(voice(), { audioActive: false }))
+    expect(pause).toHaveBeenCalled()
+    expect(screen.queryByLabelText('Voice note audio')).not.toBeInTheDocument()
+    rendered.rerender(row(voice(), { audioActive: true }))
+    expect(await screen.findByLabelText('Voice note audio')).toBeInTheDocument()
+    pause.mockClear()
+    await user.click(screen.getByRole('button', { name: /^Hide details/ }))
+    expect(pause).toHaveBeenCalled()
+    expect(screen.queryByLabelText('Voice note audio')).not.toBeInTheDocument()
+  })
+
+  it('does not reopen details or mount audio when a late URL resolves after the details closed', async () => {
+    const user = userEvent.setup()
+    let resolve!: (value: { audio: { url: string; expires_at: string } }) => void
+    api.loadAudio.mockReturnValue({ unwrap: () => new Promise((done) => { resolve = done }) })
+    renderRow(voice())
+    await user.click(screen.getByRole('button', { name: /^Preview audio/ }))
+    await user.click(screen.getByRole('button', { name: /^Hide details/ }))
+    await act(async () => { resolve({ audio: { url: 'blob:late', expires_at: '' } }) })
+    expect(screen.getByRole('button', { name: /^Show details/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByLabelText('Voice note audio')).not.toBeInTheDocument()
+  })
+
+  it('keeps the visible Loading text inside the preview button accessible name', () => {
+    api.fetching = true
+    renderRow(voice())
+    const button = screen.getByRole('button', { name: /^Loading…/ })
+    expect(button).toHaveTextContent('Loading…')
   })
 })
