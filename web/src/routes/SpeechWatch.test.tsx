@@ -1,6 +1,6 @@
 import { createRef, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type Player from 'video.js/dist/types/player'
 import { Routes, Route } from 'react-router-dom'
@@ -8,6 +8,13 @@ import SpeechWatch, { PosterFramePicker, OverlayPositioner } from '@/routes/Spee
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import type { SpeechSprite } from '@/features/speech/types'
 import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
+import { WorkspaceCompanionProvider } from '@/components/workspace/WorkspaceCompanionProvider'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
+
+function CompanionProbe() {
+  const scene = useWorkspaceCompanionScene()
+  return <output data-testid="published-companion">{scene ?? 'none'}</output>
+}
 
 beforeEach(() => playbackPreferences.setIdentity(null))
 
@@ -424,9 +431,12 @@ describe('SpeechWatch reviewers tab', () => {
 
   function renderWatch() {
     return renderWithProviders(
-      <Routes>
-        <Route path="/speeches/:id" element={<SpeechWatch />} />
-      </Routes>,
+      <WorkspaceCompanionProvider>
+        <CompanionProbe />
+        <Routes>
+          <Route path="/speeches/:id" element={<SpeechWatch />} />
+        </Routes>
+      </WorkspaceCompanionProvider>,
       { route: '/speeches/17' },
     )
   }
@@ -622,7 +632,9 @@ describe('SpeechWatch reviewers tab', () => {
     renderWatch()
 
     expect(await screen.findByText('A Speech With Tabs')).toBeInTheDocument()
-    expect(screen.getByText(/not ready to play yet/i)).toBeInTheDocument()
+    const processingNotice = screen.getByText(/not ready to play yet/i)
+    expect(processingNotice).toHaveClass('workspace-notebook-surface')
+    expect(screen.queryByTestId('watch-player')).not.toBeInTheDocument()
 
     const tab = await screen.findByRole('tab', { name: 'Reviewers' })
     await user.click(tab)
@@ -673,4 +685,104 @@ describe('SpeechWatch reviewers tab', () => {
       ).toBe(true),
     )
   })
+
+  it('updates owner context without replacing the player or losing an invitation draft', async () => {
+    const fetchMock = stubWatchFetch({ speech: speechFixture() })
+    const user = userEvent.setup()
+    const view = renderWatch()
+    const player = await screen.findByTestId('watch-player')
+    const expectScene = async (scene: string) => {
+      await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent(scene))
+      expect(view.container.querySelector('.workspace-scene--compact')).toHaveAttribute('data-workspace-scene', scene)
+      expect(screen.getByTestId('watch-player')).toBe(player)
+      expect(player.closest('.workspace-notebook-surface')).toBeNull()
+    }
+    await expectScene('reviews')
+    await user.click(screen.getByRole('tab', { name: 'Reviewers' }))
+    await expectScene('reviewers')
+    const message = screen.getByLabelText('Message (optional)')
+    await user.type(message, 'Please review my opening.')
+    await user.click(screen.getByRole('tab', { name: 'Essay' }))
+    await expectScene('edit')
+    await user.click(screen.getByRole('tab', { name: 'Transcript' }))
+    await expectScene('search')
+    await user.click(screen.getByRole('tab', { name: 'Notes' }))
+    await expectScene('reviews')
+    await user.click(screen.getByRole('tab', { name: 'Reviewers' }))
+    await expectScene('reviewers')
+    expect(screen.getByLabelText('Message (optional)')).toBe(message)
+    expect(message).toHaveValue('Please review my opening.')
+    expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).includes('/playback-url'))).toHaveLength(1)
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
+
+  it.each([403, 404, 200])('suppresses local and published art for cached A while B resolves (%s)', async (status) => {
+    const fetchMock = stubWatchFetch({ speech: speechFixture() })
+    const originalFetch = fetchMock.getMockImplementation()!
+    let finish!: (response: Response) => void
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    fetchMock.mockImplementation(async (input) => {
+      const path = pathOf(input)
+      if (path === '/api/speeches/18') return pending
+      if (path === '/api/speeches/18/review-roster') return json({ reviews: [] })
+      if (path === '/api/speeches/18/captions') return json({ captions: { status: 'unavailable', vtt: null } })
+      return originalFetch(input)
+    })
+    const user = userEvent.setup()
+    const view = renderWatch()
+    await screen.findByTestId('watch-player')
+    await user.click(screen.getByRole('tab', { name: 'Reviewers' }))
+    await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('reviewers'))
+    const player = screen.getByTestId('watch-player')
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    // Preserve the existing retained-query rendering while hiding its art.
+    expect(screen.getByRole('heading', { name: 'A Speech With Tabs' })).toBeInTheDocument()
+    expect(screen.getByTestId('watch-player')).toBe(player)
+    expect(screen.getByTestId('published-companion')).toHaveTextContent('none')
+    expect(view.container.querySelector('.workspace-scene--compact')).toBeNull()
+    await act(async () => {
+      finish(status === 200
+        ? json({ speech: { ...speechFixture(), id: 18, title: 'Current speech B' } })
+        : json({ message: 'Unavailable' }, status))
+      await pending
+    })
+    if (status === 200) {
+      await screen.findByRole('heading', { name: 'Current speech B' })
+      await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('reviewers'))
+      expect(view.container.querySelector('.workspace-scene--compact')).toHaveAttribute('data-workspace-scene', 'reviewers')
+    } else {
+      await waitFor(() => expect(view.store.getState().speechApi.queries['getSpeech(18)']?.status).toBe('rejected'))
+      expect(screen.getByTestId('published-companion')).toHaveTextContent('none')
+      expect(view.container.querySelector('.workspace-scene--compact')).toBeNull()
+    }
+  })
+
+  it('observes real reviewer tabs while retaining the mounted Notes composer', async () => {
+    stubWatchFetch({
+      speech: speechFixture({ userId: 4242 }),
+      myReviews: { in_progress: [{ ...rosterReview(), id: 501, status: 'in_progress',
+        speech: { id: 17, title: 'A Speech With Tabs' } }] },
+    })
+    const user = userEvent.setup()
+    const view = renderWatch()
+    await screen.findByRole('tablist', { name: 'Your feedback' })
+    const player = screen.getByTestId('watch-player')
+    const composer = await screen.findByText('Your commentary')
+    const draft = await screen.findByLabelText('Commentary')
+    await user.type(draft, 'A pending written note.')
+    await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('reviews'))
+    await user.click(screen.getByRole('tab', { name: 'Transcript' }))
+    expect(screen.getByRole('tab', { name: 'Transcript' })).toHaveAttribute('aria-selected', 'true')
+    await waitFor(() => expect(screen.getByTestId('published-companion')).toHaveTextContent('search'))
+    expect(view.container.querySelector('.workspace-scene--compact')).toHaveAttribute('data-workspace-scene', 'search')
+    expect(composer).toBeInTheDocument()
+    expect(composer).not.toBeVisible()
+    expect(screen.getByTestId('watch-player')).toBe(player)
+    await user.click(screen.getByRole('tab', { name: 'Notes' }))
+    expect(composer).toBeVisible()
+    expect(screen.getByLabelText('Commentary')).toBe(draft)
+    expect(draft).toHaveValue('A pending written note.')
+    expect(screen.getByTestId('published-companion')).toHaveTextContent('reviews')
+  })
+
 })

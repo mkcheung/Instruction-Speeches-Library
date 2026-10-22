@@ -1,9 +1,9 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { navItemsFor, type NavItem } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { ActivityScene } from '@/components/workspace/ActivityScene'
-import { activityForRoute } from '@/components/workspace/activityForRoute'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
 /**
  * S1-S8 (PLAN-APP-HEADER.md) — the app's primary navigation. A `<nav>`
@@ -29,16 +29,18 @@ import { activityForRoute } from '@/components/workspace/activityForRoute'
 export function AppSidebar() {
   const { data } = useGetMeQuery()
   const items = navItemsFor(data?.user)
-  const scene = activityForRoute(useLocation().pathname, items)
+  const scene = useWorkspaceCompanionScene()
 
   return (
     <nav
       aria-label="Main"
       className="workspace-sidebar hidden w-56 shrink-0 flex-col gap-1 border-r border-sidebar-border bg-sidebar p-3 md:flex xl:w-64"
     >
-      {items.map((item) => (
-        <SidebarLink key={item.to} item={item} />
-      ))}
+      <div className="workspace-sidebar-links">
+        {items.map((item) => (
+          <SidebarLink key={item.to} item={item} />
+        ))}
+      </div>
       {scene && <ActivityScene scene={scene} variant="sidebar" />}
     </nav>
   )

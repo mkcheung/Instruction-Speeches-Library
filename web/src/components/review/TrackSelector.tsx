@@ -24,7 +24,7 @@ export function TrackSelector(props: TrackSelectorProps) {
   const reviewers = options.filter((option) => option.review !== null)
   if (optionsLoading) return <p role="status" className="text-sm text-muted-foreground">Loading reviewers…</p>
   return (
-    <Card>
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle>Commentary track</CardTitle>

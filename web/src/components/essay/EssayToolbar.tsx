@@ -50,13 +50,13 @@ export function EssayToolbar({ editor }: { editor: Editor | null }) {
     },
     {
       label: 'H2',
-      ariaLabel: 'Heading 2',
+      ariaLabel: 'H2: Heading 2',
       isActive: editor.isActive('heading', { level: 2 }),
       onClick: () => editor.chain().focus().toggleHeading({ level: 2 }).run(),
     },
     {
       label: 'H3',
-      ariaLabel: 'Heading 3',
+      ariaLabel: 'H3: Heading 3',
       isActive: editor.isActive('heading', { level: 3 }),
       onClick: () => editor.chain().focus().toggleHeading({ level: 3 }).run(),
     },
@@ -74,7 +74,7 @@ export function EssayToolbar({ editor }: { editor: Editor | null }) {
     },
     {
       label: '1. list',
-      ariaLabel: 'Ordered list',
+      ariaLabel: '1. list: Ordered list',
       isActive: editor.isActive('orderedList'),
       onClick: () => editor.chain().focus().toggleOrderedList().run(),
     },

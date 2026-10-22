@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { TimelineStrip } from './TimelineStrip'
 import type { Annotation } from '@/features/annotation/types'
 function note(overrides: Partial<Annotation> = {}): Annotation {
@@ -10,6 +10,14 @@ function strip(annotations: Annotation[], onSeek = vi.fn()) {
   return render(<TimelineStrip annotations={annotations} videoEl={null} durationSeconds={100} onSeek={onSeek} />)
 }
 describe('display and seek timeline', () => {
+  it('exposes the named timeline as a group containing its unchanged seek controls', () => {
+    strip([note(), note({ id: '6', timing_type: 'point', start_seconds: 25, duration_seconds: 0 })])
+    const group = screen.getByRole('group', { name: 'Annotation timeline' })
+    expect(group).toBe(screen.getByTestId('timeline-strip'))
+    expect(within(group).getByRole('button', { name: /annotation at/i })).toBeVisible()
+    expect(within(group).getByRole('button', { name: /voice note at/i })).toBeVisible()
+    expect(within(group).getAllByRole('button')).toHaveLength(2)
+  })
   it('seeks without exposing drag/resize or starting a mutation', () => {
     const onSeek = vi.fn(); const fetch = vi.spyOn(globalThis, 'fetch')
     strip([note()], onSeek)

@@ -67,6 +67,7 @@ vi.mock('@tiptap/react', async () => {
 
   interface FakeEditor {
     getHTML(): string
+    attributes: Record<string, string>
     getText(): string
     isActive(): boolean
     getAttributes(): Record<string, unknown>
@@ -82,9 +83,10 @@ vi.mock('@tiptap/react', async () => {
   // `useState` here means `commands.setContent` (the conflict-resolution
   // sync path in `EssayEditorPanel`) actually re-renders the fake content,
   // same as the real thing would.
-  function useEditor(config: { content?: string; onUpdate?: (args: { editor: FakeEditor }) => void }) {
+  function useEditor(config: { content?: string; editorProps?: { attributes?: Record<string, string> }; onUpdate?: (args: { editor: FakeEditor }) => void }) {
     const [html, setHtml] = React.useState(config.content ?? '')
     const editor: FakeEditor = {
+      attributes: config.editorProps?.attributes ?? {},
       getHTML: () => html,
       getText: () => html.replace(/<[^>]+>/g, ''),
       isActive: () => false,
@@ -120,7 +122,7 @@ vi.mock('@tiptap/react', async () => {
   }) {
     return (
       <div data-testid={testId}>
-        <div data-testid="essay-fake-content">{editor?.getHTML()}</div>
+        <div data-testid="essay-fake-content" role="textbox" aria-label={editor?.attributes['aria-label']}>{editor?.getHTML()}</div>
         <button type="button" onClick={() => editor?.typeText('<p>typed some words</p>')}>
           Type
         </button>
@@ -179,6 +181,9 @@ describe('EssayEditorPanel', () => {
 
     const badge = await screen.findByTestId('essay-autosave-state')
     expect(badge).toHaveTextContent('idle')
+    // The fake forwards the real editorProps to its editable seam; browser
+    // axe separately verifies the actual ProseMirror textbox.
+    expect(screen.getByRole('textbox', { name: 'Your essay' })).toHaveTextContent('<p>hello</p>')
     // Distinct from annotations' own hook — both can render on screen at
     // once in the Notes/Essay tab strip without colliding.
     expect(screen.queryByTestId('autosave-state')).not.toBeInTheDocument()

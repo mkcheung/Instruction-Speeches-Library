@@ -6,10 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { HighlightedText } from '@/components/search/HighlightedText'
 import { useSearchSpeechesQuery } from '@/features/transcript/transcriptApi'
-import { PageShell } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
 /** Owner-only literal search; keep the existing debounce and caption-convergence refetch. */
 export default function Search() {
+  const scene = useWorkspaceCompanionScene()
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const trimmed = query.trim()
@@ -41,15 +43,9 @@ export default function Search() {
   }
 
   return (
-    <PageShell width="content">
-      <div>
-        <h1 className="text-2xl font-semibold">Search your speeches</h1>
-        <p className="text-sm text-muted-foreground">
-          Search titles, descriptions, and available speech transcripts.
-        </p>
-      </div>
-
-      <Card>
+    <NotebookPage width="content" scene={scene} title="Search your speeches"
+      description="Search titles, descriptions, and available speech transcripts.">
+      <Card className="workspace-notebook-surface workspace-notebook-panel">
         <CardHeader>
           <CardTitle>Search</CardTitle>
           <CardDescription>Find a speech by a word or phrase.</CardDescription>
@@ -86,7 +82,7 @@ export default function Search() {
                 const match = speech.search_match
                 const excerpt = match?.transcript_excerpt
                 return (
-                  <li key={speech.id} className="min-w-0 rounded-lg border border-border px-3 py-2 text-sm [overflow-wrap:anywhere]">
+                  <li key={speech.id} className="workspace-notebook-result min-w-0 text-sm [overflow-wrap:anywhere]">
                     <Link
                       to={`/speeches/${speech.id}`}
                       className="rounded-sm font-medium hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -101,7 +97,7 @@ export default function Search() {
                       </p>
                     )}
                     {excerpt && (
-                      <div className="mt-2">
+                      <div className="workspace-notebook-excerpt">
                         <p className="text-xs font-medium text-muted-foreground">Transcript excerpt</p>
                         <p>
                           {excerpt.truncated_before && '…'}
@@ -117,6 +113,6 @@ export default function Search() {
           )}
         </CardContent>
       </Card>
-    </PageShell>
+    </NotebookPage>
   )
 }

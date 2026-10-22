@@ -68,6 +68,7 @@ function EssayEditorPanelInner({
     extensions: [StarterKit],
     content: initial.essay_html ?? '',
     immediatelyRender: true,
+    editorProps: { attributes: { 'aria-label': 'Your essay' } },
     onUpdate: ({ editor: e }) => editorState.setHtml(e.getHTML()),
   })
 
@@ -114,7 +115,7 @@ function EssayEditorPanelInner({
   }
 
   return (
-    <Card>
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle>Your essay</CardTitle>
@@ -127,7 +128,7 @@ function EssayEditorPanelInner({
             'text-xs',
             editorState.autosaveState === 'conflict' && 'text-[var(--color-danger)]',
             editorState.autosaveState === 'offline' && 'text-[var(--color-danger)]',
-            editorState.autosaveState === 'saved' && AUTOSAVE_SAVED_TEXT_CLASS,
+            editorState.autosaveState === 'saved' && `${AUTOSAVE_SAVED_TEXT_CLASS} workspace-notebook-success`,
             (editorState.autosaveState === 'idle' ||
               editorState.autosaveState === 'dirty' ||
               editorState.autosaveState === 'saving') &&
@@ -156,13 +157,13 @@ function EssayEditorPanelInner({
           >
             <p>Your essay changed elsewhere. Your text is safe — pick how to continue.</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={editorState.keepMine}>
+              <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" size="sm" variant="outline" onClick={editorState.keepMine}>
                 Keep mine
               </Button>
-              <Button type="button" size="sm" variant="outline" onClick={editorState.useTheirs}>
+              <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" size="sm" variant="outline" onClick={editorState.useTheirs}>
                 Use theirs
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={editorState.toggleShowBoth}>
+              <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" size="sm" variant="ghost" onClick={editorState.toggleShowBoth}>
                 {editorState.showBoth ? 'Hide' : 'Show both'}
               </Button>
             </div>
@@ -187,7 +188,9 @@ function EssayEditorPanelInner({
           </div>
         )}
 
-        <EssayToolbar editor={editor} />
+        <div className="workspace-notebook-toolbar">
+          <EssayToolbar editor={editor} />
+        </div>
 
         <div className="rounded-lg border border-border p-3">
           <EditorContent
@@ -205,6 +208,7 @@ function EssayEditorPanelInner({
 
         <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
           <Button
+            className="workspace-notebook-control workspace-notebook-control--primary"
             type="button"
             disabled={plainTextEmpty || isPublishing || isPublished}
             onClick={() => void handlePublish()}

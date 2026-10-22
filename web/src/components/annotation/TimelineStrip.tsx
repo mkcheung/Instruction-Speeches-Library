@@ -29,7 +29,7 @@ export function TimelineStrip({ annotations, videoEl, durationSeconds, onSeek }:
   }, [annotations])
   const rowCount = Math.max(1, ...laid.map(({ row }) => row + 1))
   return <div ref={setPlayheadNode} className="annotation-timeline rounded-md border border-border bg-muted/30"
-    style={{ height: `${rowCount * 1.5}rem` }} data-testid="timeline-strip" aria-label="Annotation timeline">
+    style={{ height: `${rowCount * 1.5}rem` }} data-testid="timeline-strip" role="group" aria-label="Annotation timeline">
     <div className="annotation-timeline__playhead" data-testid="timeline-playhead" />
     {laid.map(({ annotation, row }) => {
       const point = isPointAnnotation(annotation)

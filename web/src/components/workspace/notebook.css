@@ -1,0 +1,545 @@
+/* Rehearsal notebook: opt-in working surfaces, never a global theme. The page
+   defines only notebook names; semantic mappings belong on nonmedia surfaces. */
+.workspace-notebook-page {
+  --workspace-cream: #fff5e6;
+  --workspace-paper: #fffdf6;
+  --workspace-sidebar-paper: #f8ecda;
+  --workspace-ink: #2b211b;
+  --workspace-muted: #66574f;
+  --workspace-burgundy: #8a1720;
+  --workspace-gold: #e9b949;
+  --workspace-teal: #0f6b66;
+  --workspace-outline: #8a7668;
+  --workspace-error: #b91c1c;
+  --workspace-error-paper: #fef2f2;
+  --workspace-success: #166534;
+  --workspace-success-paper: #f0fdf4;
+  flex: 1;
+  min-width: 0;
+  background: var(--workspace-cream);
+}
+
+.workspace-notebook-surface {
+  --color-bg: var(--workspace-paper, #fffdf6);
+  --color-fg: var(--workspace-ink, #2b211b);
+  --color-muted: var(--workspace-muted, #66574f);
+  --color-border: var(--workspace-outline, #8a7668);
+  --color-accent: var(--workspace-teal, #0f6b66);
+  --color-accent-fg: var(--workspace-paper, #fffdf6);
+  --color-success: var(--workspace-success, #166534);
+  --color-danger: var(--workspace-error, #b91c1c);
+  --background: var(--workspace-paper, #fffdf6);
+  --foreground: var(--workspace-ink, #2b211b);
+  --card: var(--workspace-paper, #fffdf6);
+  --card-foreground: var(--workspace-ink, #2b211b);
+  --primary: var(--workspace-teal, #0f6b66);
+  --primary-foreground: var(--workspace-paper, #fffdf6);
+  --secondary: var(--workspace-cream, #fff5e6);
+  --secondary-foreground: var(--workspace-ink, #2b211b);
+  --muted: var(--workspace-cream, #fff5e6);
+  --muted-foreground: var(--workspace-muted, #66574f);
+  --accent: var(--workspace-sidebar-paper, #f8ecda);
+  --accent-foreground: var(--workspace-ink, #2b211b);
+  --destructive: var(--workspace-error, #b91c1c);
+  --border: var(--workspace-outline, #8a7668);
+  --input: var(--workspace-outline, #8a7668);
+  --ring: var(--workspace-teal, #0f6b66);
+  min-width: 0;
+  color-scheme: light;
+  color: var(--foreground);
+  font-family: var(--font-sans, 'Geist Variable', sans-serif);
+}
+
+.workspace-notebook-heading {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.workspace-notebook-heading > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-notebook-heading h1 {
+  color: var(--workspace-ink, #2b211b);
+  font-family: var(--font-landing-title, 'Luckiest Guy', cursive);
+  font-size: 1.875rem;
+  font-weight: 400;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-heading p,
+.workspace-notebook-heading [data-slot='button'] {
+  overflow-wrap: anywhere;
+}
+
+/* PageHeader's action group remains the real action group, but may wrap. */
+.workspace-notebook-heading > :first-child > :last-child {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.workspace-notebook-page .workspace-notebook-panel,
+.workspace-notebook-page.workspace-dashboard .workspace-notebook-panel {
+  min-width: 0;
+  border: 1px solid var(--workspace-outline);
+  border-radius: 4px;
+  background: var(--workspace-paper);
+  box-shadow: 4px 4px 0 #e7d0a5;
+}
+
+/* Card contributes padding/ring/overflow by default. Remove only the opted-in
+   Card's outer padding/ring; retain clipping, spacing and content structure. */
+.workspace-notebook-page [data-slot='card'].workspace-notebook-panel {
+  padding-block: 0;
+  gap: 16px;
+  --tw-ring-shadow: 0 0 #0000;
+}
+
+.workspace-notebook-page .workspace-notebook-panel > [data-slot='card-header'],
+.workspace-notebook-page .workspace-notebook-panel-header {
+  position: relative;
+  min-width: 0;
+  border-left: 5px solid var(--workspace-teal);
+  border-bottom: 1px solid var(--workspace-outline);
+  border-radius: 0;
+  background: #fbf2df;
+  padding: 16px 50px 16px 16px;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-page .workspace-notebook-panel > [data-slot='card-header']::after,
+.workspace-notebook-page .workspace-notebook-panel-header::after {
+  content: '';
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 24px;
+  height: 12px;
+  background: #e9b94980;
+  transform: rotate(-12deg);
+  pointer-events: none;
+}
+
+.workspace-notebook-panel > :is([data-slot='card-header'], [data-slot='card-content'], [data-slot='card-footer']) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-panel > [data-slot='card-content']:first-child {
+  padding-top: 16px;
+}
+
+.workspace-notebook-panel > [data-slot='card-content']:last-child {
+  padding-bottom: 16px;
+}
+
+.workspace-notebook-panel [data-slot='card-title'] {
+  font-family: var(--font-sans, 'Geist Variable', sans-serif);
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-panel > [data-slot='card-footer'] {
+  border-radius: 0;
+}
+
+/* Plain reading/status surfaces can use the same frame without a nested Card. */
+.workspace-notebook-reading,
+.workspace-notebook-status {
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+
+/* These explicitly owned reading surfaces contain native essay-picker,
+   caption seek/edit/retry and transcript buttons without a Button slot.
+   Increase hit targets only; retain their real semantics and visual states. */
+.workspace-notebook-reading button:not(.workspace-notebook-embedded *) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Native seek buttons belong to the existing authoritative commentary list;
+   the direct row structure keeps timeline markers and editor controls out. */
+.workspace-notebook-surface ol[aria-label='Your commentary'] > li > div:first-child > button:not([data-slot='button']),
+.workspace-notebook-panel.workspace-notebook-surface [role='alert'] > button:not([data-slot='button']):not(.workspace-notebook-embedded *) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Only explicit notebook checkbox markers opt their wrapping label into a
+   larger hit area. The native checkbox itself and its semantics are intact. */
+.workspace-notebook-surface label:has(> input.workspace-notebook-control--check[type='checkbox']) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* VoiceRecorder's one native position field is distinct from its waveform,
+   audio preview and the adjacent annotation timeline. */
+.workspace-notebook-panel.workspace-notebook-surface section[aria-label='Record a voice note'] > div > input[type='text'] {
+  min-height: 44px;
+}
+
+.workspace-notebook-page [data-slot='card'].workspace-notebook-poster-card {
+  gap: 0;
+  padding-block: 0;
+}
+
+.workspace-notebook-poster-card > [data-slot='card-content'] {
+  padding: 16px;
+}
+
+/* Speech metadata uses the existing CardHeader below its real poster. It is a
+   quiet metadata area, not another notebook section or decoration on footage. */
+.workspace-notebook-page .workspace-notebook-poster-card > [data-slot='card-header'] {
+  border-left: 0;
+  border-bottom: 0;
+  background: var(--workspace-paper);
+  padding: 16px;
+}
+
+.workspace-notebook-page .workspace-notebook-poster-card > [data-slot='card-header']::after {
+  display: none;
+}
+
+.workspace-notebook-poster-card > :is(img, a) {
+  border-radius: 0;
+}
+
+.workspace-notebook-result {
+  min-width: 0;
+  border: 1px solid var(--workspace-outline);
+  border-left: 4px solid var(--workspace-teal);
+  border-radius: 3px;
+  background: var(--workspace-paper);
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-excerpt {
+  border-left: 2px solid var(--workspace-teal);
+  margin-top: 8px;
+  padding-left: 12px;
+  line-height: 1.6;
+}
+
+/* Exterior paint only: no tokens, inherited foreground/font, padding, filters,
+   transforms or geometry changes on the ancestor containing the player. */
+.workspace-notebook-page .workspace-notebook-media {
+  border-color: var(--workspace-outline);
+  outline: 1px solid var(--workspace-outline);
+  background: var(--workspace-paper);
+}
+
+/* Explicit call-site markers override pale success utility colors even under
+   root .dark; failures and successes retain distinct, readable semantics. */
+.workspace-notebook-page .workspace-notebook-banner {
+  border: 1px solid var(--workspace-error);
+  background: var(--workspace-error-paper);
+  color: var(--workspace-error);
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-page .workspace-notebook-banner--success {
+  border-color: var(--workspace-success);
+  background: var(--workspace-success-paper);
+  color: var(--workspace-success);
+}
+
+.workspace-notebook-surface .workspace-notebook-success {
+  color: var(--workspace-success, #166534);
+}
+
+.workspace-notebook-page .workspace-notebook-danger {
+  border-color: var(--workspace-error);
+  background: var(--workspace-error-paper);
+  box-shadow: none;
+}
+
+.workspace-notebook-page .workspace-notebook-danger > [data-slot='card-header'] {
+  border-left: 0;
+  border-color: var(--workspace-error);
+  background: var(--workspace-error-paper);
+  padding-right: 16px;
+}
+
+.workspace-notebook-page .workspace-notebook-danger > [data-slot='card-header']::after {
+  display: none;
+}
+
+/* Embedded Uppy/cropper/native media is an explicit boundary, not a new theme.
+   Only our own marked controls/slots receive rules below. */
+.workspace-notebook-embedded {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.workspace-notebook-surface :is([data-slot='input'], [data-slot='textarea']):not(.workspace-notebook-embedded *),
+.workspace-notebook-surface .workspace-notebook-control--field {
+  min-width: 0;
+  min-height: 44px;
+  max-width: 100%;
+  border: 1px solid var(--workspace-outline, #8a7668);
+  border-radius: 4px;
+  background: var(--workspace-paper, #fffdf6);
+  color: var(--workspace-ink, #2b211b);
+  font-family: var(--font-sans, 'Geist Variable', sans-serif);
+  font-size: 1rem;
+  box-shadow: none;
+}
+
+.workspace-notebook-surface :is([data-slot='input'], [data-slot='textarea'], .workspace-notebook-control--field)::placeholder {
+  color: var(--workspace-muted, #66574f);
+  opacity: 1;
+}
+
+.workspace-notebook-surface :is([data-slot='button'], [data-slot='tabs-tab']):not(.workspace-notebook-embedded *),
+.workspace-notebook-surface .workspace-notebook-control,
+.workspace-notebook-surface :is(.workspace-notebook-export, .workspace-notebook-delete-trigger, .workspace-notebook-toolbar) [data-slot='button'] {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-surface .workspace-notebook-control,
+.workspace-notebook-surface :is(.workspace-notebook-export, .workspace-notebook-delete-trigger, .workspace-notebook-toolbar) [data-slot='button'] {
+  border-radius: 4px;
+  border: 1px solid var(--workspace-outline, #8a7668);
+  padding: 10px 12px;
+  line-height: 1.4;
+}
+
+/* Native commentary seek rows live in TrackSelector rather than the reading
+   wrapper. Preserve their semantics and media boundary; enlarge targets only. */
+.workspace-notebook-surface :is(ol[aria-label='Commentary transcript'], ol[aria-label='All feedback']) > li > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.workspace-notebook-surface .workspace-notebook-control--primary {
+  border-color: var(--workspace-teal, #0f6b66);
+  background: var(--workspace-teal, #0f6b66);
+  color: var(--workspace-paper, #fffdf6);
+}
+
+.workspace-notebook-surface :is(.workspace-notebook-control--secondary, .workspace-notebook-control--toggle),
+.workspace-notebook-surface :is(.workspace-notebook-export, .workspace-notebook-toolbar) [data-slot='button'] {
+  border-color: var(--workspace-outline, #8a7668);
+  background: var(--workspace-paper, #fffdf6);
+  color: var(--workspace-ink, #2b211b);
+}
+
+.workspace-notebook-surface .workspace-notebook-control--destructive,
+.workspace-notebook-surface .workspace-notebook-delete-trigger [data-slot='button'] {
+  border-color: var(--workspace-error, #b91c1c);
+  background: var(--workspace-error-paper, #fef2f2);
+  color: var(--workspace-error, #b91c1c);
+}
+
+.workspace-notebook-surface .workspace-notebook-control--primary:hover:not(:disabled):not([data-disabled]) {
+  background: #0b5652;
+  border-color: #0b5652;
+}
+
+.workspace-notebook-surface .workspace-notebook-control--secondary:hover:not(:disabled):not([data-disabled]),
+.workspace-notebook-surface .workspace-notebook-control--toggle:not([aria-pressed='true'], [aria-checked='true'], [data-active]):hover:not(:disabled):not([data-disabled]),
+.workspace-notebook-surface .workspace-notebook-export [data-slot='button']:hover:not(:disabled):not([data-disabled]),
+.workspace-notebook-surface .workspace-notebook-toolbar [data-slot='button']:not([aria-pressed='true']):hover:not(:disabled):not([data-disabled]) {
+  background: var(--workspace-sidebar-paper, #f8ecda);
+  border-color: var(--workspace-ink, #2b211b);
+}
+
+.workspace-notebook-surface .workspace-notebook-control--destructive:hover:not(:disabled):not([data-disabled]),
+.workspace-notebook-surface .workspace-notebook-delete-trigger [data-slot='button']:hover:not(:disabled):not([data-disabled]) {
+  background: #fee2e2;
+}
+
+.workspace-notebook-surface .workspace-notebook-control--toggle:is([aria-pressed='true'], [aria-checked='true'], [data-active]) {
+  border-color: var(--workspace-teal, #0f6b66);
+  background: var(--workspace-teal, #0f6b66);
+  color: var(--workspace-paper, #fffdf6);
+  box-shadow: inset 0 -3px currentColor;
+}
+
+.workspace-notebook-surface .workspace-notebook-toolbar [data-slot='button'][aria-pressed='true'] {
+  border-color: var(--workspace-teal, #0f6b66);
+  background: var(--workspace-teal, #0f6b66);
+  color: var(--workspace-paper, #fffdf6);
+  box-shadow: inset 0 -3px currentColor;
+}
+
+.workspace-notebook-surface .workspace-notebook-control--toggle:is([aria-pressed='true'], [aria-checked='true'], [data-active]):hover:not(:disabled):not([data-disabled]),
+.workspace-notebook-surface .workspace-notebook-toolbar [data-slot='button'][aria-pressed='true']:hover:not(:disabled):not([data-disabled]) {
+  border-color: #0b5652;
+  background: #0b5652;
+}
+
+.workspace-notebook-surface :is([data-slot='tabs-list']):not(.workspace-notebook-embedded *) {
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.workspace-notebook-surface [data-slot='tabs-tab']:not(.workspace-notebook-embedded *) {
+  color: var(--workspace-muted, #66574f);
+  border: 1px solid transparent;
+}
+
+.workspace-notebook-surface [data-slot='tabs-tab'][data-active]:not(.workspace-notebook-embedded *) {
+  border-color: var(--workspace-teal, #0f6b66);
+  background: var(--workspace-paper, #fffdf6);
+  color: var(--workspace-ink, #2b211b);
+  box-shadow: inset 0 -3px var(--workspace-teal, #0f6b66);
+}
+
+.workspace-notebook-surface :is([data-slot='button'], [data-slot='input'], [data-slot='textarea'], [data-slot='tabs-tab'], .workspace-notebook-control):focus-visible:not(.workspace-notebook-embedded *) {
+  outline: 2px solid var(--workspace-teal, #0f6b66);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.workspace-notebook-surface :is([data-slot='input'], [data-slot='textarea'], .workspace-notebook-control)[aria-invalid='true']:not(.workspace-notebook-embedded *) {
+  border-color: var(--workspace-error, #b91c1c);
+  outline-color: var(--workspace-error, #b91c1c);
+  box-shadow: none;
+}
+
+.workspace-notebook-surface :is([data-slot='input'], [data-slot='textarea'], .workspace-notebook-control):is(:disabled, [data-disabled]):not(.workspace-notebook-embedded *),
+.workspace-notebook-surface :is(.workspace-notebook-export, .workspace-notebook-delete-trigger, .workspace-notebook-toolbar) [data-slot='button']:is(:disabled, [data-disabled]) {
+  cursor: not-allowed;
+  background: var(--workspace-sidebar-paper, #f8ecda);
+  color: var(--workspace-muted, #66574f);
+  opacity: 1;
+}
+
+.workspace-notebook-surface .workspace-notebook-control[aria-expanded='true'] {
+  outline: 1px solid currentColor;
+  outline-offset: -4px;
+}
+
+.workspace-notebook-surface .workspace-notebook-control--check {
+  accent-color: var(--workspace-teal, #0f6b66);
+}
+
+.workspace-notebook-surface [data-slot='badge']:not(.workspace-notebook-embedded *) {
+  min-height: 24px;
+  height: auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-surface [data-slot='badge'][data-variant='destructive']:not(.workspace-notebook-embedded *) {
+  border-color: var(--workspace-error, #b91c1c);
+  background: var(--workspace-error-paper, #fef2f2);
+  color: var(--workspace-error, #b91c1c);
+}
+
+.workspace-notebook-link {
+  color: var(--workspace-teal, #0f6b66);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.workspace-notebook-link:focus-visible {
+  outline: 2px solid var(--workspace-teal, #0f6b66);
+  outline-offset: 3px;
+}
+
+.workspace-sidebar > .workspace-scene--sidebar {
+  position: sticky;
+  top: 16px;
+  align-self: center;
+}
+
+.workspace-sidebar-links {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workspace-scene--compact {
+  display: none;
+  width: 56px;
+  height: 56px;
+  margin: 0;
+}
+
+@media (max-width: 767px), (max-height: 719px) {
+  .workspace-scene--compact {
+    display: block;
+  }
+}
+
+/* Complete headings/actions and controls take precedence at small phone sizes. */
+@media (max-width: 359px) {
+  .workspace-scene--compact {
+    display: none;
+  }
+
+  /* The existing cropper is exactly 288px. At a 320px viewport the original
+     PageShell also offers 288px, so only this active Photo panel yields its
+     inline frame/padding; the actual canvas and crop interaction stay intact. */
+  .workspace-notebook-page [data-slot='card'].workspace-notebook-photo-panel--cropping {
+    border-inline-width: 0;
+    outline: 1px solid var(--workspace-outline);
+  }
+
+  .workspace-notebook-page .workspace-notebook-photo-panel--cropping > [data-slot='card-content'] {
+    padding-inline: 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .workspace-notebook-page {
+    --workspace-cream: Canvas;
+    --workspace-paper: Canvas;
+    --workspace-sidebar-paper: Canvas;
+    --workspace-ink: CanvasText;
+    --workspace-muted: CanvasText;
+    --workspace-burgundy: Highlight;
+    --workspace-gold: Canvas;
+    --workspace-teal: LinkText;
+    --workspace-outline: CanvasText;
+    --workspace-error: CanvasText;
+    --workspace-error-paper: Canvas;
+    --workspace-success: CanvasText;
+    --workspace-success-paper: Canvas;
+  }
+
+  .workspace-scene.workspace-scene--compact,
+  .workspace-sidebar > .workspace-scene--sidebar {
+    display: none;
+  }
+
+  .workspace-notebook-page .workspace-notebook-panel,
+  .workspace-notebook-page.workspace-dashboard .workspace-notebook-panel {
+    box-shadow: none;
+  }
+
+  .workspace-notebook-page .workspace-notebook-panel > [data-slot='card-header'],
+  .workspace-notebook-page .workspace-notebook-panel-header {
+    background: Canvas;
+  }
+
+  .workspace-notebook-page .workspace-notebook-panel > [data-slot='card-header']::after,
+  .workspace-notebook-page .workspace-notebook-panel-header::after {
+    display: none;
+  }
+
+  .workspace-notebook-surface .workspace-notebook-control--toggle:is([aria-pressed='true'], [aria-checked='true'], [data-active]),
+  .workspace-notebook-surface .workspace-notebook-toolbar [data-slot='button'][aria-pressed='true'],
+  .workspace-notebook-surface [data-slot='tabs-tab'][data-active] {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: -3px;
+  }
+}

@@ -20,6 +20,7 @@ function mockSearch(handler: (q: string) => Response | Promise<Response>) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : input.toString()
     if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+    if (url.endsWith('/api/me')) return jsonResponse({ user: { id: 1, roles: ['member'], username: 'member' } })
     if (url.includes('/speeches/search')) return handler(new URL(url).searchParams.get('q')!)
     throw new Error(`unexpected fetch: ${url}`)
   }))
@@ -238,4 +239,26 @@ describe('Search', () => {
     await screen.findByRole('link', { name: 'Newly indexed speech' })
     expect(count).toBe(2)
   })
+  it('keeps complete long Unicode content, actual excerpt and safe match marks in one reading panel', async () => {
+    const title = 'Rehearsal ' + '演'.repeat(180)
+    const description = 'Description ' + '🌟'.repeat(200)
+    const text = '話'.repeat(220)
+    mockSearch(() => jsonResponse({ results: [speech({ title, description, search_match: {
+      title: [{ text: title, matched: false }], description: [{ text: description, matched: false }],
+      transcript_excerpt: { parts: [{ text, matched: false }, { text: 'rehearsal', matched: true }],
+        truncated_before: true, truncated_after: false },
+    } })] }))
+    const { container } = renderWithProviders(<Search />, { route: '/search' })
+    enter('rehearsal')
+    const link = await screen.findByRole('link', { name: title })
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByText(description)).toBeInTheDocument()
+    expect(link.closest('li')).toHaveTextContent('…' + text + 'rehearsal')
+    expect(container.querySelectorAll('mark')).toHaveLength(1)
+    expect(screen.getByText('rehearsal', { selector: 'mark' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('1 speech matched.')
+    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(1)
+    expect(container.querySelectorAll('main,form')).toHaveLength(0)
+  })
+
 })

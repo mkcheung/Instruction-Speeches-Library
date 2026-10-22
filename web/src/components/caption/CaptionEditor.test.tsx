@@ -73,6 +73,30 @@ describe('CaptionEditor', () => {
     expect(screen.getByTestId('caption-cue-input-cue-0')).toBeInTheDocument()
   })
 
+  it('includes the visible timestamp in the accessible seek name while retaining spoken time and seek behavior', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (urlOf(input).endsWith('/captions')) {
+        return jsonResponse({ captions: {
+          status: 'ready',
+          vtt: 'WEBVTT\n\n00:01:23.000 --> 00:01:25.000\nA later cue.',
+          failure_code: null,
+          updated_at: null,
+          asset_id: null,
+        } })
+      }
+      throw new Error(`unexpected fetch: ${urlOf(input)}`)
+    }))
+    const onSeek = vi.fn()
+    renderWithProviders(<CaptionEditor speechId={1} onSeek={onSeek} />)
+
+    const seek = await screen.findByRole('button', { name: 'Seek to 1:23 (1 minute 23 seconds)' })
+    expect(seek).toHaveTextContent('1:23')
+    expect(seek).toHaveAccessibleName(expect.stringContaining(seek.textContent!.trim()))
+    await userEvent.click(seek)
+    expect(onSeek).toHaveBeenCalledExactlyOnceWith(83)
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
   it('editing a line and blurring saves the fix via a PUT and shows a one-word autosave state', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = urlOf(input)

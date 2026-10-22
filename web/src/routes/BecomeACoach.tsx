@@ -6,7 +6,8 @@ import { CoachApplicationStatusBadge } from '@/components/coach/CoachApplication
 import { useGetMyCoachApplicationQuery, useSubmitCoachApplicationMutation } from '@/features/coachApplication/coachApplicationApi'
 import type { CoachApplication } from '@/features/coachApplication/types'
 import { getErrorStatus } from '@/lib/errorStatus'
-import { PageShell } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
 /**
  * STEP-12-FROZEN-CONTRACT.md §9: `/become-a-coach` — one route, tab/step-
@@ -19,6 +20,7 @@ import { PageShell } from '@/components/layout/PageShell'
  * `POST /api/coach-applications`.
  */
 export default function BecomeACoach() {
+  const scene = useWorkspaceCompanionScene()
   const { data: application, isLoading, isError, error, refetch } = useGetMyCoachApplicationQuery()
   const [restart, { isLoading: isRestarting }] = useSubmitCoachApplicationMutation()
   const [localApplication, setLocalApplication] = useState<CoachApplication | null>(null)
@@ -28,19 +30,21 @@ export default function BecomeACoach() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>
+      <NotebookPage width="form" scene={scene} title="Become a Coach">
+        <p className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status">Loading…</p>
+      </NotebookPage>
     )
   }
 
   if (otherError) {
     return (
-      <PageShell width="form">
-        <Card>
+      <NotebookPage width="form" scene={scene} title="Become a Coach">
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardContent className="py-6 text-sm text-destructive" role="alert">
             Couldn't load your coach application — try again.
           </CardContent>
         </Card>
-      </PageShell>
+      </NotebookPage>
     )
   }
 
@@ -58,7 +62,7 @@ export default function BecomeACoach() {
 
   if (!current || current.status === 'draft') {
     return (
-      <PageShell width="form">
+      <NotebookPage width="form" scene={scene} title="Become a Coach">
         <CoachApplicationForm
           application={current}
           onChanged={(next) => {
@@ -66,14 +70,14 @@ export default function BecomeACoach() {
             refetch()
           }}
         />
-      </PageShell>
+      </NotebookPage>
     )
   }
 
   if (current.status === 'submitted' || current.status === 'under_review') {
     return (
-      <PageShell width="form">
-        <Card>
+      <NotebookPage width="form" scene={scene} title="Become a Coach">
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Your application
@@ -91,14 +95,14 @@ export default function BecomeACoach() {
             </ul>
           </CardContent>
         </Card>
-      </PageShell>
+      </NotebookPage>
     )
   }
 
   if (current.status === 'approved') {
     return (
-      <PageShell width="form">
-        <Card>
+      <NotebookPage width="form" scene={scene} title="Become a Coach">
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               You're a coach
@@ -107,14 +111,14 @@ export default function BecomeACoach() {
             <CardDescription>Your profile now shows a Coach badge.</CardDescription>
           </CardHeader>
         </Card>
-      </PageShell>
+      </NotebookPage>
     )
   }
 
   // rejected or withdrawn
   return (
-    <PageShell width="form">
-      <Card>
+    <NotebookPage width="form" scene={scene} title="Become a Coach">
+      <Card className="workspace-notebook-surface workspace-notebook-panel">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             Your application
@@ -123,11 +127,11 @@ export default function BecomeACoach() {
           {current.decision_reason && <CardDescription>{current.decision_reason}</CardDescription>}
         </CardHeader>
         <CardContent>
-          <Button type="button" onClick={handleRestart} disabled={isRestarting}>
+          <Button className="workspace-notebook-control workspace-notebook-control--primary" type="button" onClick={handleRestart} disabled={isRestarting}>
             {isRestarting ? 'Starting…' : 'Start a new application'}
           </Button>
         </CardContent>
       </Card>
-    </PageShell>
+    </NotebookPage>
   )
 }

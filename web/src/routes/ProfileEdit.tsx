@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { AvatarCropper } from '@/components/onboarding/AvatarCropper'
-import { PageShell } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 import { applyServerErrors, extractServerErrorMessage } from '@/lib/applyServerErrors'
 import { usernameSchema } from '@/lib/validation'
 import { useGetMeQuery } from '@/features/auth/authApi'
@@ -40,6 +41,7 @@ type UsernameFormValues = z.infer<typeof usernameFormSchema>
  * then `/api/u/{username}` for the display fields.
  */
 export default function ProfileEdit() {
+  const scene = useWorkspaceCompanionScene()
   const { data: me, isLoading: isLoadingMe } = useGetMeQuery()
   const username = me?.user.username ?? null
 
@@ -124,27 +126,29 @@ export default function ProfileEdit() {
 
   if (isLoadingMe || isLoadingProfile || !profile || !username) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Loading…
-      </div>
+      <NotebookPage width="form" scene={scene} title="Edit profile">
+        <p className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status">Loading…</p>
+      </NotebookPage>
     )
   }
 
   return (
-    <PageShell width="form">
-      <Card>
+    <NotebookPage width="form" scene={scene} title="Edit profile">
+      <Card className={`workspace-notebook-surface workspace-notebook-panel${croppingFile ? ' workspace-notebook-photo-panel--cropping' : ''}`}>
         <CardHeader>
           <CardTitle>Photo</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col items-center gap-4">
-          <FormBanner message={avatarError} />
+          <FormBanner className="workspace-notebook-banner" message={avatarError} />
           {croppingFile ? (
-            <AvatarCropper
-              file={croppingFile}
-              submitting={isUploadingAvatar}
-              onCancel={() => setCroppingFile(null)}
-              onCropped={handleCropped}
-            />
+            <div className="workspace-notebook-embedded">
+              <AvatarCropper
+                file={croppingFile}
+                submitting={isUploadingAvatar}
+                onCancel={() => setCroppingFile(null)}
+                onCropped={handleCropped}
+              />
+            </div>
           ) : (
             <>
               {profile.avatar_url ? (
@@ -158,6 +162,7 @@ export default function ProfileEdit() {
               )}
               <Input
                 type="file"
+                aria-label="Profile photo"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={(event) => setCroppingFile(event.target.files?.[0] ?? null)}
               />
@@ -166,15 +171,15 @@ export default function ProfileEdit() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="workspace-notebook-surface workspace-notebook-panel">
         <CardHeader>
           <CardTitle>Username</CardTitle>
           <CardDescription>One change allowed every 30 days.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onUsernameSubmit} className="flex flex-col gap-3" noValidate>
-            <FormBanner message={usernameError} />
-            {usernameSavedNotice && <FormBanner variant="success" message="Username updated." />}
+            <FormBanner className="workspace-notebook-banner" message={usernameError} />
+            {usernameSavedNotice && <FormBanner className="workspace-notebook-banner workspace-notebook-banner--success" variant="success" message="Username updated." />}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="username">Username</Label>
               <Input
@@ -184,22 +189,22 @@ export default function ProfileEdit() {
               />
               <FieldMessage message={usernameErrors.username?.message} />
             </div>
-            <Button type="submit" disabled={isSavingUsername} className="self-start">
+            <Button type="submit" disabled={isSavingUsername} className="workspace-notebook-control workspace-notebook-control--primary self-start">
               {isSavingUsername ? 'Saving…' : 'Update username'}
             </Button>
           </form>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="workspace-notebook-surface workspace-notebook-panel">
         <CardHeader>
           <CardTitle>Profile</CardTitle>
           <CardDescription>@{username}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-            <FormBanner message={formError} />
-            {savedNotice && <FormBanner variant="success" message="Saved." />}
+            <FormBanner className="workspace-notebook-banner" message={formError} />
+            {savedNotice && <FormBanner className="workspace-notebook-banner workspace-notebook-banner--success" variant="success" message="Saved." />}
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="display_name">Display name</Label>
@@ -227,16 +232,16 @@ export default function ProfileEdit() {
             </div>
 
             <div className="flex gap-2">
-              <Button type="submit" disabled={isSaving}>
+              <Button className="workspace-notebook-control workspace-notebook-control--primary" type="submit" disabled={isSaving}>
                 {isSaving ? 'Saving…' : 'Save'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => reset()} disabled={isSaving}>
+              <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => reset()} disabled={isSaving}>
                 Reset
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
-    </PageShell>
+    </NotebookPage>
   )
 }

@@ -144,7 +144,7 @@ export function InviteReviewerPanel({
   const lastPage = data?.meta.last_page ?? 1
 
   return (
-    <Card data-testid="invite-reviewer-panel">
+    <Card className="workspace-notebook-surface workspace-notebook-panel" data-testid="invite-reviewer-panel">
       {!hideHeading && (
         <CardHeader>
           <CardTitle>Invite a reviewer</CardTitle>
@@ -157,13 +157,13 @@ export function InviteReviewerPanel({
         )}
         {success ? (
           <>
-            <FormBanner variant="success" message={`Invitation sent to ${selectedReviewer?.name ?? 'the reviewer'}.`} />
-            <div className="flex items-center gap-2">
-              <Button type="button" onClick={inviteSomeoneElse}>
+            <FormBanner className="workspace-notebook-banner workspace-notebook-banner--success" variant="success" message={`Invitation sent to ${selectedReviewer?.name ?? 'the reviewer'}.`} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button className="workspace-notebook-control workspace-notebook-control--primary" type="button" onClick={inviteSomeoneElse}>
                 Invite someone else
               </Button>
               {onClose && (
-                <Button type="button" variant="outline" onClick={onClose}>
+                <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={onClose}>
                   Close
                 </Button>
               )}
@@ -171,7 +171,7 @@ export function InviteReviewerPanel({
           </>
         ) : (
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-            <FormBanner message={formError} />
+            <FormBanner className="workspace-notebook-banner" message={formError} />
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="reviewer-search">Search the reviewer directory</Label>
@@ -183,12 +183,13 @@ export function InviteReviewerPanel({
               />
             </div>
 
-            <div className="flex items-center gap-2" role="group" aria-label="Filter by credential">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by credential">
               {(['', 'member', 'coach'] as const).map((option) => (
                 <Button
                   key={option || 'all'}
                   type="button"
                   size="sm"
+                  className="workspace-notebook-control workspace-notebook-control--toggle"
                   variant={credential === option ? 'default' : 'outline'}
                   aria-pressed={credential === option}
                   onClick={() => changeCredential(option)}
@@ -212,7 +213,7 @@ export function InviteReviewerPanel({
                     onClick={() => handleSelect(reviewer)}
                     aria-pressed={isSelected}
                     className={cn(
-                      'flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                      'workspace-notebook-control workspace-notebook-control--toggle flex flex-wrap gap-2 items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors',
                       isSelected ? 'border-primary bg-primary/5' : 'border-transparent hover:bg-muted',
                     )}
                   >
@@ -234,6 +235,7 @@ export function InviteReviewerPanel({
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="workspace-notebook-control workspace-notebook-control--secondary"
                   disabled={page <= 1 || isSearching}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
@@ -246,6 +248,7 @@ export function InviteReviewerPanel({
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="workspace-notebook-control workspace-notebook-control--secondary"
                   disabled={page >= lastPage || isSearching}
                   onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
                 >
@@ -270,7 +273,7 @@ export function InviteReviewerPanel({
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                className="size-4 rounded border border-input"
+                className="workspace-notebook-control--check size-4 rounded border border-input"
                 {...register('allow_preview')}
               />
               Let them preview the video before accepting
@@ -280,19 +283,19 @@ export function InviteReviewerPanel({
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  className="size-4 rounded border border-input"
+                  className="workspace-notebook-control--check size-4 rounded border border-input"
                   {...register('prior_commentary_shared')}
                 />
                 Share the previous version's feedback (anonymized)
               </label>
             )}
 
-            <div className="flex items-center gap-2">
-              <Button type="submit" disabled={isInviting || !selectedReviewer}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button className="workspace-notebook-control workspace-notebook-control--primary" type="submit" disabled={isInviting || !selectedReviewer}>
                 {isInviting ? 'Sending…' : 'Send invitation'}
               </Button>
               {onClose && (
-                <Button type="button" variant="outline" onClick={onClose}>
+                <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={onClose}>
                   Cancel
                 </Button>
               )}

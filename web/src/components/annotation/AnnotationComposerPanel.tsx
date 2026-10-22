@@ -273,7 +273,7 @@ function AnnotationComposerPanelInner({
   })
 
   return (
-    <Card>
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle>Your commentary</CardTitle>
@@ -281,7 +281,7 @@ function AnnotationComposerPanelInner({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        {isError && <div role="alert" className="text-sm">Could not refresh your feedback. Your draft is retained. <Button type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
+        {isError && <div role="alert" className="text-sm">Could not refresh your feedback. Your draft is retained. <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
         {legacyConflict && <p role="status" className="text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
         <div className="pointer-events-none relative flex min-h-16 flex-col justify-end">
           <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} />
@@ -353,8 +353,8 @@ function AnnotationComposerPanelInner({
 
         <RemovedAnnotationDrafts userId={userId} speechId={speechId} reviewId={reviewId} annotations={data?.annotations} />
 
-        <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-2">
             <ClearAnnotationsDialog
               isPublished={review.first_published_at !== null}
               isClearing={isClearing}
@@ -378,6 +378,7 @@ function AnnotationComposerPanelInner({
                 equivalent button already is. */}
             {['accepted', 'in_progress'].includes(review.status) && (
               <Button
+                className="workspace-notebook-control workspace-notebook-control--destructive"
                 type="button"
                 variant="destructive"
                 disabled={pending || isAbandoning || isClearing || isPublishing || !data || !writable}
@@ -387,15 +388,15 @@ function AnnotationComposerPanelInner({
               </Button>
             )}
           </div>
-          <Button type="button" onClick={() => void handlePublish()} disabled={pending || isPublishing || isClearing || isAbandoning || !data || !writable}>
+          <Button className="workspace-notebook-control workspace-notebook-control--primary" type="button" onClick={() => void handlePublish()} disabled={pending || isPublishing || isClearing || isAbandoning || !data || !writable}>
             {isPublishing ? 'Publishing…' : 'Publish feedback'}
           </Button>
         </div>
         {pending && <p role="status" className="text-sm text-muted-foreground">Add, save, or discard your pending feedback before publishing, clearing notes or abandoning this review.</p>}
         {blocker.state === 'blocked' && <div role="dialog" aria-modal="true" aria-label="Unsaved feedback" className="space-y-2 rounded border border-border p-3">
           <p>You have pending feedback. Keep editing to save it. Text drafts are kept locally when storage is available; unsaved recordings will be lost if you leave.</p>
-          <Button type="button" onClick={() => blocker.reset()}>Keep editing</Button>{' '}
-          <Button type="button" variant="outline" onClick={() => blocker.proceed()}>Leave page</Button>
+          <Button className="workspace-notebook-control workspace-notebook-control--primary" type="button" onClick={() => blocker.reset()}>Keep editing</Button>{' '}
+          <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => blocker.proceed()}>Leave page</Button>
         </div>}
       </CardContent>
     </Card>

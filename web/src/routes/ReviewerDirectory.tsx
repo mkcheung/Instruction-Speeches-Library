@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { PageShell } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,6 +21,7 @@ import { getErrorStatus } from '@/lib/errorStatus'
  * affordance, never the enforcement).
  */
 export default function ReviewerDirectory() {
+  const scene = useWorkspaceCompanionScene()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [credential, setCredential] = useState<'' | 'member' | 'coach'>('')
@@ -59,28 +61,22 @@ export default function ReviewerDirectory() {
   const failed = isError && !forbidden
 
   return (
-    <PageShell width="wide">
-      <div>
-        <h1 className="text-2xl font-semibold">Find reviewers</h1>
-        <p className="text-sm text-muted-foreground">
-          Browse everyone who can review a speech — no open pool, this is the only way to find them.
-        </p>
-      </div>
-
+    <NotebookPage width="wide" scene={scene} title="Find reviewers"
+      description="Browse everyone who can review a speech — no open pool, this is the only way to find them.">
       {forbidden ? (
-        <Card>
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardContent className="py-6 text-sm text-muted-foreground">
             The reviewer directory isn't available to this account.
           </CardContent>
         </Card>
       ) : failed ? (
-        <Card>
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardContent className="py-6 text-sm text-destructive" role="alert">
             Couldn't load the reviewer directory — try again.
           </CardContent>
         </Card>
       ) : (
-        <Card>
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardHeader>
             <CardTitle>Reviewers</CardTitle>
             <CardDescription>{total} {total === 1 ? 'reviewer' : 'reviewers'}</CardDescription>
@@ -96,13 +92,14 @@ export default function ReviewerDirectory() {
               />
             </div>
 
-            <div className="flex items-center gap-2" role="group" aria-label="Filter by credential">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by credential">
               {(['', 'member', 'coach'] as const).map((option) => (
                 <Button
                   key={option || 'all'}
                   type="button"
                   size="sm"
                   variant={credential === option ? 'default' : 'outline'}
+                  className="workspace-notebook-control workspace-notebook-control--toggle"
                   aria-pressed={credential === option}
                   onClick={() => changeCredential(option)}
                 >
@@ -120,9 +117,9 @@ export default function ReviewerDirectory() {
               {reviewers.map((reviewer) => (
                 <li
                   key={reviewer.id}
-                  className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                  className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded border border-border px-3 py-2 text-sm [overflow-wrap:anywhere]"
                 >
-                  <span className="flex flex-col">
+                  <span className="flex min-w-0 flex-col">
                     <span className="font-medium">{reviewer.name}</span>
                     <span className="text-xs text-muted-foreground">@{reviewer.username}</span>
                   </span>
@@ -134,11 +131,12 @@ export default function ReviewerDirectory() {
             </ul>
 
             {lastPage > 1 && (
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="workspace-notebook-control workspace-notebook-control--secondary"
                   disabled={page <= 1 || isLoading}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                 >
@@ -151,6 +149,7 @@ export default function ReviewerDirectory() {
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="workspace-notebook-control workspace-notebook-control--secondary"
                   disabled={page >= lastPage || isLoading}
                   onClick={() => setPage((current) => Math.min(lastPage, current + 1))}
                 >
@@ -161,6 +160,6 @@ export default function ReviewerDirectory() {
           </CardContent>
         </Card>
       )}
-    </PageShell>
+    </NotebookPage>
   )
 }

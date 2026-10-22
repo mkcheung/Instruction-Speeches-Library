@@ -30,6 +30,7 @@ describe('BecomeACoach', () => {
   it('shows the application form when nobody has applied yet (404 from /me)', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
       if (url.endsWith('/api/coach-applications/me')) {
         return jsonResponse({ message: 'No application.' }, 404)
       }
@@ -43,14 +44,15 @@ describe('BecomeACoach', () => {
     expect(screen.getByText(/2000 characters left/i)).toBeInTheDocument()
   })
 
-  it('shows a waiting state with the status badge while submitted/under review', async () => {
+  it.each([['submitted', 'Submitted'], ['under_review', 'Under review']])('shows a waiting state for %s', async (status, label) => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
       if (url.endsWith('/api/coach-applications/me')) {
         return jsonResponse({
           coachApplication: {
             id: 5,
-            status: 'under_review',
+            status,
             statement: 'x',
             decision_reason: null,
             submitted_at: '2026-01-01T00:00:00Z',
@@ -65,13 +67,14 @@ describe('BecomeACoach', () => {
 
     renderWithProviders(<BecomeACoach />, { route: '/become-a-coach' })
 
-    expect(await screen.findByTestId('coach-application-status')).toHaveTextContent('Under review')
+    expect(await screen.findByTestId('coach-application-status')).toHaveTextContent(label)
     expect(screen.getByText('cert.pdf')).toBeInTheDocument()
   })
 
   it('shows the approved state with a Coach badge', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
       if (url.endsWith('/api/coach-applications/me')) {
         return jsonResponse({
           coachApplication: {
@@ -99,6 +102,7 @@ describe('BecomeACoach', () => {
     let applicationStatus = 'rejected'
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
       if (url.endsWith('/api/coach-applications/me')) {
         return jsonResponse({
@@ -142,4 +146,19 @@ describe('BecomeACoach', () => {
       expect(screen.getByLabelText(/why do you want to coach/i)).toBeInTheDocument()
     })
   })
+
+  it('retains the page heading and real error alert when loading the application fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: '1', username: 'member', roles: ['member'] } })
+      if (url.endsWith('/api/coach-applications/me')) return jsonResponse({ message: 'Unavailable.' }, 500)
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+    renderWithProviders(<BecomeACoach />, { route: '/become-a-coach' })
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Become a Coach')
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load your coach application — try again.")
+    expect(screen.queryByRole('button', { name: 'Save draft and continue' })).not.toBeInTheDocument()
+  })
+
 })

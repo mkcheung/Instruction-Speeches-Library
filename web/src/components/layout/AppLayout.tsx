@@ -2,7 +2,9 @@ import { Outlet } from 'react-router-dom'
 import { AppHeader } from '@/components/layout/AppHeader'
 import { AppSidebar } from '@/components/layout/AppSidebar'
 import { RouteErrorBoundary } from '@/components/error/RouteErrorBoundary'
+import { WorkspaceCompanionProvider } from '@/components/workspace/WorkspaceCompanionProvider'
 import '@/components/workspace/workspace.css'
+import '@/components/workspace/notebook.css'
 
 /**
  * D1/D8/S7 (PLAN-APP-HEADER.md) — the layout route `App.tsx` renders once
@@ -23,32 +25,34 @@ import '@/components/workspace/workspace.css'
  */
 export function AppLayout() {
   return (
-    <div className="flex min-h-svh flex-col">
-      <a
-        href="#content"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
-      >
-        Skip to content
-      </a>
-      <AppHeader />
-      <div className="flex flex-1">
-        <AppSidebar />
-        {/* `flex flex-col` here (not just `flex-1`) is what lets R1's
-            swept-out page wrappers use `flex-1` themselves instead of a
-            percentage height — `<main>` has a definite height from being
-            stretched by the row above (S7 trap 2's default
-            `align-items: stretch`), and being a flex column in turn makes
-            that height something a `flex-1` child can grow into. */}
-        <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-          {/* STEP-14: a crash in any one of these routes (SpeechWatch's
-              video annotation overlay above all) stays contained to
-              <main> — the header and sidebar above/beside it keep
-              working. See RouteErrorBoundary.tsx. */}
-          <RouteErrorBoundary>
-            <Outlet />
-          </RouteErrorBoundary>
-        </main>
+    <WorkspaceCompanionProvider>
+      <div className="flex min-h-svh flex-col">
+        <a
+          href="#content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+        >
+          Skip to content
+        </a>
+        <AppHeader />
+        <div className="flex flex-1">
+          <AppSidebar />
+          {/* `flex flex-col` here (not just `flex-1`) is what lets R1's
+              swept-out page wrappers use `flex-1` themselves instead of a
+              percentage height — `<main>` has a definite height from being
+              stretched by the row above (S7 trap 2's default
+              `align-items: stretch`), and being a flex column in turn makes
+              that height something a `flex-1` child can grow into. */}
+          <main id="content" tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
+            {/* STEP-14: a crash in any one of these routes (SpeechWatch's
+                video annotation overlay above all) stays contained to
+                <main> — the header and sidebar above/beside it keep
+                working. See RouteErrorBoundary.tsx. */}
+            <RouteErrorBoundary>
+              <Outlet />
+            </RouteErrorBoundary>
+          </main>
+        </div>
       </div>
-    </div>
+    </WorkspaceCompanionProvider>
   )
 }

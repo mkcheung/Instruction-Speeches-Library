@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { UploadDashboard } from '@/components/speech/UploadDashboard'
-import { PageShell } from '@/components/layout/PageShell'
+import { NotebookPage } from '@/components/workspace/NotebookPage'
+import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { speechCreateSchema, type SpeechCreateFormValues } from '@/lib/validation'
 import { useCreateSpeechMutation, useListSpeechesQuery } from '@/features/speech/speechApi'
@@ -23,6 +24,7 @@ import type { Speech } from '@/features/speech/types'
  * upload endpoints all key off it.
  */
 export default function SpeechCreate() {
+  const scene = useWorkspaceCompanionScene()
   const navigate = useNavigate()
   const [createSpeech, { isLoading: isCreating }] = useCreateSpeechMutation()
   const { data: existing } = useListSpeechesQuery()
@@ -61,36 +63,38 @@ export default function SpeechCreate() {
 
   if (createdSpeech) {
     return (
-      <PageShell width="form">
-        <Card>
+      <NotebookPage width="form" scene={scene} title="Upload a speech">
+        <Card className="workspace-notebook-surface workspace-notebook-panel">
           <CardHeader>
             <CardTitle>Upload "{createdSpeech.title}"</CardTitle>
             <CardDescription>Turn off your wifi mid-upload and it will resume when you're back.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {uploadDone ? (
-              <FormBanner variant="success" message="Uploaded. Processing now — check My speeches for status." />
+              <FormBanner className="workspace-notebook-banner workspace-notebook-banner--success" variant="success" message="Uploaded. Processing now — check My speeches for status." />
             ) : (
-              <UploadDashboard speechId={createdSpeech.id} onAssetReady={() => setUploadDone(true)} />
+              <div className="workspace-notebook-embedded">
+                <UploadDashboard speechId={createdSpeech.id} onAssetReady={() => setUploadDone(true)} />
+              </div>
             )}
-            <Button variant="outline" onClick={() => navigate('/speeches')}>
+            <Button className="workspace-notebook-control workspace-notebook-control--secondary" variant="outline" onClick={() => navigate('/speeches')}>
               Go to my speeches
             </Button>
           </CardContent>
         </Card>
-      </PageShell>
+      </NotebookPage>
     )
   }
 
   return (
-    <PageShell width="form">
-      <Card>
+    <NotebookPage width="form" scene={scene} title="Upload a speech">
+      <Card className="workspace-notebook-surface workspace-notebook-panel">
         <CardHeader>
           <CardTitle>Upload a speech</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-            <FormBanner message={formError} />
+            <FormBanner className="workspace-notebook-banner" message={formError} />
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="title">Title</Label>
@@ -114,7 +118,7 @@ export default function SpeechCreate() {
                 <Label htmlFor="supersedes_id">This replaces an earlier attempt</Label>
                 <select
                   id="supersedes_id"
-                  className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm shadow-xs outline-none dark:bg-input/30"
+                  className="workspace-notebook-control--field h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm shadow-xs outline-none dark:bg-input/30"
                   {...register('supersedes_id', { setValueAs: (v) => (v ? Number(v) : undefined) })}
                 >
                   <option value="">— None —</option>
@@ -141,12 +145,12 @@ export default function SpeechCreate() {
               </div>
             )}
 
-            <Button type="submit" disabled={isCreating}>
+            <Button className="workspace-notebook-control workspace-notebook-control--primary" type="submit" disabled={isCreating}>
               {isCreating ? 'Creating…' : 'Continue to upload'}
             </Button>
           </form>
         </CardContent>
       </Card>
-    </PageShell>
+    </NotebookPage>
   )
 }

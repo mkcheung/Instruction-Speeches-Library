@@ -5,7 +5,7 @@ import type { WorkspaceSceneId } from './types'
 
 export function ActivityScene({ scene, variant }: {
   scene: WorkspaceSceneId
-  variant: 'sidebar' | 'login'
+  variant: 'sidebar' | 'login' | 'compact'
 }) {
   return (
     <div

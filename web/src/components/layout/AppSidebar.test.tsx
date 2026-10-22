@@ -44,6 +44,9 @@ describe('AppSidebar workspace navigation', () => {
     expect(within(nav).getByRole('link', { current: 'page' })).toHaveTextContent('My reviews')
     const frame = container.querySelector('[data-workspace-scene="reviews"]')
     expect(frame).toHaveAttribute('aria-hidden', 'true')
+    const linkGroup = nav.firstElementChild
+    expect(linkGroup).toHaveClass('workspace-sidebar-links')
+    expect(linkGroup?.children).toHaveLength(items.length)
     expect(nav.lastElementChild).toBe(frame)
     if (identity.roles.some((role) => role === 'admin' || role === 'super_admin')) {
       expect(within(nav).getByRole('link', { name: 'Admin panel' })).toHaveAttribute('rel', 'noreferrer')

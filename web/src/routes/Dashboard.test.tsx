@@ -186,10 +186,14 @@ describe('Dashboard', () => {
    * already-onboarded user here — the confirmation has to survive that
    * hop or verifying looks like a no-op. */
   it('shows the email-verified banner when ?verified=1 is present', async () => {
-    stubReviews({})
+    const fetchMock = stubReviews({})
     renderWithProviders(<Dashboard />, { route: '/dashboard?verified=1' })
 
-    expect(await screen.findByText('Email verified.')).toBeInTheDocument()
+    const banner = await screen.findByText('Email verified.')
+    const heading = screen.getByRole('heading', { level: 1, name: 'My reviews' })
+    expect(banner.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me'))).toHaveLength(1)
   })
 
   it('shows no banner without the query param', async () => {
@@ -358,7 +362,7 @@ describe('Dashboard', () => {
     })
     renderWithProviders(<Dashboard />, { route: '/dashboard' })
 
-    expect(screen.getByText('Loading…')).toHaveClass('workspace-dashboard')
+    expect(screen.getByText('Loading…').closest('.workspace-notebook-page')).toHaveClass('workspace-dashboard')
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => urlOf(input).endsWith('/api/reviews'))).toBe(true))
     finishReviews(jsonResponse({ message: 'Temporarily unavailable.' }, 503))
 

@@ -38,12 +38,13 @@ describe('MySpeeches', () => {
   beforeEach(() => clearCookies())
   afterEach(() => vi.unstubAllGlobals())
 
-  function stubFetch() {
+  function stubFetch(speeches: unknown[] = [READY_SPEECH], pending?: Promise<Response>) {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
       if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.endsWith('/api/me')) return jsonResponse({ user: { id: 1, roles: ['member'], username: 'member' } })
       if (url.includes('/api/speeches') && !url.match(/\/\d/)) {
-        return jsonResponse({ speeches: [READY_SPEECH], meta: { current_page: 1, last_page: 1, total: 1 } })
+        return pending ?? jsonResponse({ speeches, meta: { current_page: 1, last_page: 1, total: speeches.length } })
       }
       if (url.includes('/api/queue/transcode-depth')) {
         return jsonResponse({ depth: 0 })
@@ -93,4 +94,43 @@ describe('MySpeeches', () => {
 
     await waitFor(() => expect(screen.getByTestId('speech-delete-dialog')).toBeInTheDocument())
   })
+  it('retains a real portrait poster, full long title, and one usable card/menu per speech', async () => {
+    const title = 'A very long rehearsal title ' + '無'.repeat(180)
+    stubFetch([
+      { ...READY_SPEECH, title, poster: { url: '/portrait.jpg', width: 360, height: 640,
+        variants: [{ url: '/portrait.webp', width: 360, format: 'webp' }] } },
+      { ...READY_SPEECH, id: 8, title: 'Still processing', primary_video: { ...READY_SPEECH.primary_video, status: 'processing' } },
+    ])
+    const { container } = renderWithProviders(<MySpeeches />, { route: '/speeches' })
+    const watch = await screen.findByRole('link', { name: 'Watch' })
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Upload a speech' })).toHaveAttribute('href', '/speeches/new')
+    expect(screen.getByText(title)).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-slot="card"]')).toHaveLength(2)
+    const card = watch.closest('[data-slot="card"]') as HTMLElement
+    const image = card.querySelector('picture img')!
+    expect(image).toHaveAttribute('src', '/portrait.jpg')
+    expect(image).toHaveAttribute('width', '360')
+    expect(image).toHaveAttribute('height', '640')
+    expect(card.querySelector('picture')).toHaveStyle({ aspectRatio: '360 / 640' })
+    expect(within(card).getByRole('button', { name: 'Speech options' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Watch' })).toHaveLength(1)
+    expect(screen.getByText('Processing')).toBeInTheDocument()
+    expect(container.querySelectorAll('main,form')).toHaveLength(0)
+  })
+
+  it('keeps one route heading through loading and the honest empty state', async () => {
+    let finish!: (response: Response) => void
+    stubFetch([], new Promise<Response>((resolve) => { finish = resolve }))
+    renderWithProviders(<MySpeeches />, { route: '/speeches' })
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'My speeches' })).toBeInTheDocument()
+    expect(screen.queryByText('No speeches yet.')).not.toBeInTheDocument()
+    finish(jsonResponse({ speeches: [], meta: { current_page: 1, last_page: 1, total: 0 } }))
+    expect(await screen.findByText('No speeches yet.')).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Upload a speech' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Watch' })).not.toBeInTheDocument()
+  })
+
 })

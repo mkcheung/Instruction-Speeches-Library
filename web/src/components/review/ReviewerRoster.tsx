@@ -141,8 +141,8 @@ function RosterRow({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-2 py-3">
+    <Card className="workspace-notebook-surface workspace-notebook-panel">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 py-3">
         <CardTitle className="text-sm font-medium">
           {reviewerLabel(review.reviewer) ?? 'Former reviewer'}
         </CardTitle>
@@ -153,7 +153,7 @@ function RosterRow({
           <p className="text-sm text-muted-foreground">{closedSubLabel(review)}</p>
         )}
         {actions !== 'none' && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <RevokeReviewDialog review={review} mode="revoke" isSubmitting={isRevoking} onConfirm={handleRevoke} />
             {actions === 'both' && (
               <RevokeReviewDialog
