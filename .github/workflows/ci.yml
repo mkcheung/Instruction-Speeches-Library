@@ -196,9 +196,26 @@ jobs:
         # of either hanging indefinitely or failing the whole job on one
         # bad mirror response; `timeout-minutes` below remains the outer
         # backstop in case the loop itself misbehaves.
-        timeout-minutes: 25
+        #
+        # A retry must also wait for the previous attempt's `apt-get` to
+        # let go of the dpkg lock. `--with-deps` runs apt as root via sudo,
+        # so when `timeout` ends an attempt mid-download the apt-get it
+        # started can outlive it, and every later attempt then fails
+        # instantly with "Could not get lock /var/lib/dpkg/lock-frontend ...
+        # held by process N (apt-get)" (observed on the PR #38 e2e run: all
+        # three attempts burned in ~40s). Waiting on the lock lets the
+        # orphaned apt-get finish its download instead.
+        timeout-minutes: 30
         run: |
+          wait_for_apt() {
+            for _ in $(seq 36); do
+              sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/lib/apt/lists/lock >/dev/null 2>&1 || return 0
+              echo "Waiting for a running apt-get to release the dpkg lock..." >&2
+              sleep 5
+            done
+          }
           for attempt in 1 2 3; do
+            wait_for_apt
             if timeout 7m npx playwright install --with-deps chromium firefox webkit; then
               exit 0
             fi
