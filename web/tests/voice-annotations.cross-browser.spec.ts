@@ -20,6 +20,8 @@ test('forced reported-supported/start-throws MIME fallback reaches a local previ
   })
 
   await openSpeech(page, VOICE.coachSpeechId)
+  // The recorder lives in the Voice note tool, which must be chosen first.
+  await page.getByRole('tablist', { name: 'Add commentary' }).getByRole('tab', { name: /^Voice note/ }).click()
   const recorder = page.getByRole('region', { name: 'Record a voice note' })
   await recorder.getByRole('button', { name: /^Record/ }).click()
   await recorder.getByRole('button', { name: 'Stop' }).click()

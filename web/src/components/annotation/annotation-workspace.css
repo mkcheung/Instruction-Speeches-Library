@@ -1,0 +1,678 @@
+/* Annotation authoring workspace: appearance only (geometry lives in the TSX).
+ *
+ * Every rule is scoped beneath `.aw-root`. Colours come from the Rehearsal
+ * Notebook custom properties defined by notebook.css (--workspace-*); each use
+ * carries a light fallback so the root is still readable outside a notebook
+ * page. Paper stays opaque and light under OS dark preference and `.dark`.
+ *
+ * CLASS CONTRACT FOR AnnotationComposerPanel (T4)
+ * -----------------------------------------------
+ * .aw-root          Single wrapper around the whole authoring area (tool tabs,
+ *                   panels, timeline, actions, Saved notes). Sets paper, ink,
+ *                   token remapping, min-width:0, text wrapping. Required.
+ * .aw-section       Any titled block inside the root (tools, timeline, saved).
+ *                   Adjacent sections get a quiet divider.
+ * .aw-section-title Heading element (h3/h4) of a section. Small, ink, no frame.
+ * .aw-tool-tabs     The "Text note | Voice note" TabsList (put it on TabsList
+ *                   className). Quiet underline strip, deliberately weaker than
+ *                   the outer Notes/Essay/Transcript tabs.
+ * .aw-tool-tab      Each TabsTab of that list. Selected = Base UI [data-active]
+ *                   / aria-selected, shown by underline + weight (not colour only).
+ * .aw-tool-badge    Small state chip inside .aw-tool-tab (e.g. "Draft",
+ *                   "Recording", "Unsaved"). Always include text; add
+ *                   data-tone="error" for a pending/uncertain error.
+ * .aw-tool-panel    Each TabsPanel (visible tool). Every panel gets it.
+ *                   Inactive keepMounted panels are removed from layout and the
+ *                   accessibility tree via [hidden], [data-hidden] (Base UI sets
+ *                   both `hidden` and `data-hidden` on inactive panels) or
+ *                   [data-state="hidden"]; display:none is forced with !important
+ *                   so no author display utility can reveal them.
+ * .aw-actions       Container for publication / review actions (Save, Publish,
+ *                   Submit review). Separated from creation tools by a rule and
+ *                   spacing; wraps on narrow screens.
+ * .aw-saved         Wrapper of the Saved notes region (the AnnotationList).
+ * .aw-notice        Status text/box for deferred selection, hold, uncertain
+ *                   state. Add data-tone="error" | "success" | "info"(default).
+ *                   Always render with a text prefix or icon; the left bar and
+ *                   border style are shape cues, not colour alone.
+ * .aw-lock-hint     (class-unique, also works OUTSIDE .aw-root) Short explanation that a control/tool is locked (e.g.
+ *                   recorder lock, edited-row lock). Italic-free, dashed
+ *                   left rule, muted-but-AA text.
+ *
+ * Emitted classes by T1-T3 that are styled here (all under .aw-root):
+ *   awt-timeline, awt-lane(--text/--voice), awt-lane-label(--text/--voice),
+ *   awt-track, awt-axis, awt-playhead, awt-stem, awt-tick,
+ *   awt-marker(--text/--voice/--erased/--draft/--selected/--current),
+ *   awt-marker-glyph; data-kind / data-selected / data-current / data-temporary.
+ *   Row/list/recorder components use Tailwind utilities; they are restyled via
+ *   structural selectors: ol[aria-label="Your commentary"] > li,
+ *   [aria-label="Record a voice note"], nav[aria-label="Saved notes pages"],
+ *   [role="status"], [role="alert"], [aria-expanded], [data-slot="button"],
+ *   [data-slot="tabs-*"], audio, input, textarea.
+ */
+
+.aw-root {
+  --aw-paper: var(--workspace-paper, #fffdf6);
+  --aw-paper-2: var(--workspace-sidebar-paper, #f8ecda);
+  --aw-cream: var(--workspace-cream, #fff5e6);
+  --aw-ink: var(--workspace-ink, #2b211b);
+  --aw-muted: var(--workspace-muted, #66574f);
+  --aw-line: var(--workspace-outline, #8a7668);
+  --aw-quiet-line: color-mix(in srgb, var(--aw-line) 40%, transparent);
+  --aw-teal: var(--workspace-teal, #0f6b66);
+  --aw-burgundy: var(--workspace-burgundy, #8a1720);
+  --aw-error: var(--workspace-error, #b91c1c);
+  --aw-error-paper: var(--workspace-error-paper, #fef2f2);
+  --aw-success: var(--workspace-success, #166534);
+  --aw-success-paper: var(--workspace-success-paper, #f0fdf4);
+
+  /* Remap the shared UI tokens for everything inside, regardless of .dark. */
+  --color-bg: var(--aw-paper);
+  --color-fg: var(--aw-ink);
+  --color-muted: var(--aw-muted);
+  --color-border: var(--aw-line);
+  --color-accent: var(--aw-teal);
+  --color-danger: var(--aw-error);
+  --background: var(--aw-paper);
+  --foreground: var(--aw-ink);
+  --muted: var(--aw-paper-2);
+  --muted-foreground: var(--aw-muted);
+  --accent: var(--aw-paper-2);
+  --accent-foreground: var(--aw-ink);
+  --primary: var(--aw-teal);
+  --primary-foreground: var(--aw-paper);
+  --border: var(--aw-line);
+  --input: var(--aw-line);
+  --ring: var(--aw-teal);
+  --destructive: var(--aw-error);
+
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  color-scheme: light;
+  color: var(--aw-ink);
+  background-color: var(--aw-paper);
+  border: 1px solid var(--aw-line);
+  border-radius: 4px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+
+.aw-root *,
+.aw-root *::before,
+.aw-root *::after {
+  box-sizing: border-box;
+}
+
+/* Reading areas wrap arbitrary user text; media elements stay inside. */
+.aw-root :is(p, li, span, label, h3, h4, button) {
+  overflow-wrap: anywhere;
+}
+.aw-root :is(audio, video, img, canvas) {
+  max-width: 100%;
+}
+.aw-root audio {
+  width: 100%;
+}
+
+/* ---------- sections ---------- */
+.aw-root .aw-section {
+  min-width: 0;
+  padding-block: 12px;
+}
+.aw-root .aw-section + .aw-section {
+  border-top: 1px solid var(--aw-quiet-line);
+}
+.aw-root .aw-section-title {
+  margin: 0 0 8px;
+  color: var(--aw-ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* ---------- controls ---------- */
+.aw-root :is(input:not([type='checkbox'], [type='radio']), textarea, select) {
+  min-width: 0;
+  max-width: 100%;
+  border: 1px solid var(--aw-line);
+  border-radius: 4px;
+  background-color: #fff;
+  color: var(--aw-ink);
+}
+.aw-root ::placeholder {
+  color: var(--aw-muted);
+  opacity: 1;
+}
+.aw-root :is(input, textarea, select):disabled {
+  background-color: var(--aw-paper-2);
+  color: var(--aw-muted);
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.aw-root :is(input, textarea)[aria-invalid='true'] {
+  border-color: var(--aw-error);
+  border-width: 2px;
+}
+.aw-root [data-slot='button'] {
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+.aw-root [data-slot='button']:disabled,
+.aw-root [data-slot='button'][aria-disabled='true'] {
+  opacity: 1;
+  background-color: var(--aw-paper-2);
+  color: var(--aw-muted);
+  border: 1px dashed var(--aw-line);
+  cursor: not-allowed;
+}
+.aw-root [data-slot='button'][class*='bg-destructive/'] {
+  background-color: #fdeaea;
+  color: #8f1111; /* 7.6:1 on #fdeaea */
+  border: 1px solid #8f1111;
+}
+.aw-root [data-slot='button'][class*='bg-destructive/']:hover:not(:disabled) {
+  background-color: #f9d5d5;
+  color: #7a0d0d; /* 8.0:1 on #f9d5d5 */
+}
+.aw-root [data-slot='button'][class*='bg-destructive/']:disabled {
+  background-color: var(--aw-paper-2);
+  color: #5c4a42; /* muted, dashed border from the disabled rule */
+  border: 1px dashed var(--aw-line);
+}
+
+/* Disclosure toggles keep full-size targets and show state with a marker. */
+.aw-root button[aria-expanded] {
+  min-height: 44px;
+  min-width: 44px;
+}
+.aw-root button[aria-expanded]:not([data-slot='button'])::after {
+  content: ' \25BE';
+  content: ' \25BE' / '';
+}
+.aw-root button[aria-expanded='true']:not([data-slot='button'])::after {
+  content: ' \25B4';
+  content: ' \25B4' / '';
+}
+
+/* ---------- focus ---------- */
+.aw-root :is(button, a, input, textarea, select, audio, [role='tab'], [tabindex]):focus-visible,
+.aw-root .aw-tool-panel:focus-visible {
+  outline: 3px solid var(--aw-teal);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--aw-paper);
+}
+
+/* ---------- tool tabs (quiet) ---------- */
+.aw-root .aw-tool-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  width: 100%;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--aw-quiet-line);
+}
+.aw-root .aw-tool-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--aw-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.aw-root .aw-tool-tab:hover {
+  color: var(--aw-ink);
+  background: color-mix(in srgb, var(--aw-paper-2) 60%, transparent);
+}
+.aw-root .aw-tool-tab[data-active],
+.aw-root .aw-tool-tab[aria-selected='true'] {
+  color: var(--aw-ink);
+  font-weight: 700;
+  border-bottom-color: var(--aw-teal);
+  background: transparent;
+  box-shadow: none;
+}
+.aw-root .aw-tool-tab[data-disabled],
+.aw-root .aw-tool-tab[aria-disabled='true'] {
+  color: var(--aw-muted);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+.aw-root .aw-tool-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  min-height: 18px;
+  border: 1px solid var(--aw-line);
+  border-radius: 999px;
+  background: var(--aw-paper-2);
+  color: var(--aw-ink);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.aw-root .aw-tool-badge[data-tone='error'] {
+  border-color: var(--aw-error);
+  border-style: double;
+  border-width: 3px;
+  background: var(--aw-error-paper);
+  color: var(--aw-error);
+}
+
+/* ---------- tool panels ---------- */
+.aw-root .aw-tool-panel {
+  min-width: 0;
+  padding-top: 12px;
+}
+.aw-root .aw-tool-panel:is([hidden], [data-hidden], [data-state='hidden']) {
+  display: none !important;
+}
+
+/* ---------- actions ---------- */
+.aw-root .aw-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 2px solid var(--aw-quiet-line);
+}
+
+/* ---------- notices and hints ---------- */
+.aw-root .aw-notice,
+.aw-root :is([role='status'], [role='alert']):not(.sr-only) {
+  color: var(--aw-ink);
+}
+.aw-root .aw-notice {
+  display: block;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--aw-line);
+  border-left: 5px solid var(--aw-teal);
+  border-radius: 3px;
+  background: var(--aw-paper-2);
+  font-size: 0.875rem;
+}
+.aw-root .aw-notice[data-tone='error'] {
+  border-color: var(--aw-error);
+  border-left-style: double;
+  border-left-width: 6px;
+  background: var(--aw-error-paper);
+}
+.aw-root .aw-notice[data-tone='success'] {
+  border-color: var(--aw-success);
+  background: var(--aw-success-paper);
+}
+.aw-root [role='alert']:not(.sr-only) {
+  color: var(--aw-error);
+  font-weight: 600;
+}
+.aw-lock-hint {
+  margin: 4px 0 0;
+  padding-left: 8px;
+  border-left: 2px dashed var(--aw-line);
+  color: var(--aw-muted, var(--workspace-muted, #66574f));
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+.aw-root :is(.text-muted-foreground, .text-xs):not(.text-destructive, [class*='text-red'], [role='alert'], [data-slot='button']) {
+  color: var(--aw-muted);
+}
+.aw-root .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- recorder card (T1) ---------- */
+.aw-root section[aria-label='Record a voice note'] {
+  border: 1px solid var(--aw-quiet-line);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--aw-paper-2) 45%, var(--aw-paper));
+  padding: 12px;
+}
+
+/* ---------- saved notes ---------- */
+.aw-root .aw-saved {
+  min-width: 0;
+}
+.aw-root .aw-saved ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  gap: 0;
+}
+.aw-root ol[aria-label='Your commentary'] {
+  gap: 0;
+}
+.aw-root ol[aria-label='Your commentary'] > li {
+  min-width: 0;
+  padding-block: 4px;
+}
+.aw-root ol[aria-label='Your commentary'] > li + li {
+  border-top: 1px solid var(--aw-quiet-line);
+}
+/* The <li> itself carries the Tailwind frame; flatten it to a quiet row. */
+.aw-root ol[aria-label='Your commentary'] > li {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 4px;
+  --tw-ring-shadow: 0 0 #0000;
+}
+.aw-root ol[aria-label='Your commentary'] > li[aria-current='true'] {
+  box-shadow: inset 4px 0 0 var(--aw-teal);
+  padding-left: 12px;
+}
+.aw-root ol[aria-label='Your commentary'] > li[data-selected='true'] {
+  outline: 2px solid var(--aw-ink);
+  outline-offset: -2px;
+  box-shadow: inset 4px 0 0 var(--aw-burgundy);
+  padding-left: 12px;
+}
+.aw-root ol[aria-label='Your commentary'] > li[data-selected='true'][aria-current='true'] {
+  box-shadow: inset 4px 0 0 var(--aw-burgundy), inset 8px 0 0 var(--aw-teal);
+  padding-left: 16px;
+}
+.aw-root ol[aria-label='Your commentary'] [hidden] {
+  display: none !important;
+}
+.aw-root nav[aria-label='Saved notes pages'] {
+  padding-top: 8px;
+  border-top: 1px solid var(--aw-quiet-line);
+}
+
+/* ---------- timeline (awt-) ---------- */
+.aw-root .awt-timeline {
+  border: 1px solid var(--aw-quiet-line);
+  border-radius: 4px;
+  background-color: var(--aw-cream);
+  max-width: 100%;
+  overflow: visible;
+  padding: 8px 20px 8px 4px;
+}
+.aw-root .awt-lane-label {
+  color: var(--aw-ink);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.aw-root .awt-lane-label--text { color: var(--aw-teal); }
+.aw-root .awt-lane-label--voice { color: var(--aw-burgundy); }
+.aw-root .awt-lane {
+  min-width: 0;
+}
+.aw-root .awt-track {
+  background-color: var(--aw-line);
+}
+.aw-root .awt-tick {
+  color: var(--aw-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text lane: teal range bands. */
+.aw-root .awt-marker--text {
+  border: 1px solid var(--aw-teal);
+  background-color: color-mix(in srgb, var(--aw-teal) 28%, var(--aw-paper));
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+.aw-root .awt-marker--text:hover {
+  background-color: color-mix(in srgb, var(--aw-teal) 45%, var(--aw-paper));
+}
+.aw-root .awt-marker--draft {
+  border: 2px dashed var(--aw-teal);
+  background-image: repeating-linear-gradient(
+    135deg, transparent 0 4px, color-mix(in srgb, var(--aw-teal) 25%, transparent) 4px 6px);
+  background-color: var(--aw-paper);
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Voice lane: round burgundy glyph chips, clearly unlike teal bands. */
+.aw-root .awt-stem {
+  background-color: color-mix(in srgb, var(--aw-burgundy) 45%, transparent);
+}
+.aw-root .awt-marker--voice,
+.aw-root .awt-marker--erased {
+  border: 2px solid var(--aw-burgundy);
+  background-color: var(--aw-paper);
+  color: var(--aw-burgundy);
+  border-radius: 999px;
+  box-shadow: 1px 1px 0 #e7d0a5;
+  cursor: pointer;
+  padding: 0;
+}
+.aw-root .awt-marker--voice:hover {
+  background-color: color-mix(in srgb, var(--aw-burgundy) 12%, var(--aw-paper));
+}
+.aw-root .awt-marker--erased {
+  border-style: dotted;
+  color: var(--aw-muted);
+  border-color: var(--aw-muted);
+  box-shadow: none;
+}
+.aw-root .awt-marker-glyph {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.25;
+}
+
+/* Selected / current: shape cues in addition to colour. */
+.aw-root .awt-marker--selected {
+  outline: 3px solid var(--aw-ink);
+  outline-offset: 2px;
+  z-index: 3;
+}
+.aw-root .awt-marker--text.awt-marker--selected,
+.aw-root .awt-marker--draft.awt-marker--selected {
+  background-color: color-mix(in srgb, var(--aw-teal) 55%, var(--aw-paper));
+}
+.aw-root .awt-marker--voice.awt-marker--selected {
+  background-color: var(--aw-burgundy);
+  color: var(--aw-paper);
+}
+.aw-root .awt-marker--current:not(.awt-marker--selected) {
+  box-shadow: 0 0 0 2px var(--aw-paper), 0 0 0 4px var(--aw-teal);
+}
+.aw-root .awt-marker:focus-visible {
+  outline: 3px solid var(--aw-teal);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--aw-paper);
+  z-index: 4;
+}
+/* Selected + focused: keep the ink outline, move the teal focus ring outside it. */
+.aw-root .awt-marker--selected:focus-visible,
+.aw-root .awt-marker[data-selected='true']:focus-visible {
+  outline: 3px solid var(--aw-ink);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--aw-paper), 0 0 0 8px var(--aw-teal);
+}
+
+/* Playhead: solid line with a top cap so it is a shape, not only red. */
+.aw-root .awt-playhead {
+  background-color: var(--aw-error);
+}
+.aw-root .awt-playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: inherit;
+  transform: translate(-50%, -2px) rotate(45deg);
+}
+
+/* ---------- narrow screens ---------- */
+@media (max-width: 479px) {
+  .aw-root {
+    padding: 8px;
+  }
+  .aw-root .aw-tool-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .aw-root .aw-tool-tab {
+    justify-content: center;
+    padding: 0 6px;
+  }
+  .aw-root .aw-actions > * {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .aw-root .awt-lane-label {
+    font-size: 0.6875rem;
+  }
+}
+
+/* ---------- motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .aw-root *,
+  .aw-root *::before,
+  .aw-root *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- forced colors: shape and outline carry meaning ---------- */
+@media (forced-colors: active) {
+  .aw-root {
+    border: 1px solid CanvasText;
+    background-color: Canvas;
+    color: CanvasText;
+    forced-color-adjust: auto;
+  }
+  .aw-root .aw-section + .aw-section,
+  .aw-root .aw-actions,
+  .aw-root nav[aria-label='Saved notes pages'],
+  .aw-root ol[aria-label='Your commentary'] > li + li {
+    border-top-color: CanvasText;
+  }
+  .aw-root .aw-tool-tabs {
+    border-bottom-color: CanvasText;
+  }
+  .aw-root .aw-tool-tab[data-active],
+  .aw-root .aw-tool-tab[aria-selected='true'] {
+    border-bottom: 4px solid Highlight;
+    color: HighlightText;
+    background-color: Highlight;
+  }
+  .aw-root .aw-tool-badge {
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .aw-root .aw-tool-badge[data-tone='error'] {
+    border: 3px double CanvasText;
+  }
+  .aw-root .aw-notice {
+    border: 1px solid CanvasText;
+    border-left: 6px solid CanvasText;
+    background: Canvas;
+  }
+  .aw-root .aw-notice[data-tone='error'] {
+    border-left-style: double;
+  }
+  .aw-lock-hint {
+    border-left: 2px dashed CanvasText;
+    color: CanvasText;
+  }
+  .aw-root [data-slot='button']:disabled,
+  .aw-root [data-slot='button'][aria-disabled='true'],
+  .aw-root :is(input, textarea, select):disabled,
+  .aw-root .aw-tool-tab[aria-disabled='true'] {
+    border: 1px dashed GrayText;
+    color: GrayText;
+    background: Canvas;
+  }
+  .aw-root :is(button, a, input, textarea, select, audio, [role='tab'], [tabindex]):focus-visible,
+  .aw-root .awt-marker:focus-visible {
+    outline: 3px solid Highlight;
+    box-shadow: none;
+  }
+  .aw-root .awt-marker--selected:focus-visible,
+  .aw-root .awt-marker[data-selected='true']:focus-visible {
+    outline: 4px solid Highlight;
+    box-shadow: 0 0 0 7px CanvasText;
+  }
+  .aw-root .awt-timeline {
+    border: 1px solid CanvasText;
+    background-color: Canvas;
+  }
+  .aw-root .awt-track {
+    background-color: CanvasText;
+  }
+  .aw-root .awt-marker {
+    forced-color-adjust: none;
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .aw-root .awt-marker--text {
+    border: 2px solid CanvasText;
+  }
+  .aw-root .awt-marker--draft {
+    border: 2px dashed CanvasText;
+    background-image: none;
+  }
+  .aw-root .awt-marker--voice {
+    border: 2px solid CanvasText;
+  }
+  .aw-root .awt-marker--erased {
+    border: 2px dotted CanvasText;
+    color: GrayText;
+  }
+  .aw-root .awt-marker--selected {
+    outline: 4px solid Highlight;
+    outline-offset: 2px;
+    background-color: Highlight;
+    color: HighlightText;
+  }
+  .aw-root .awt-marker--current:not(.awt-marker--selected) {
+    box-shadow: none;
+    outline: 2px double CanvasText;
+    outline-offset: 2px;
+  }
+  .aw-root .awt-stem {
+    background-color: CanvasText;
+  }
+  .aw-root .awt-playhead,
+  .aw-root .awt-playhead::before {
+    forced-color-adjust: none;
+    background-color: Highlight;
+  }
+  .aw-root ol[aria-label='Your commentary'] > li[aria-current='true'] {
+    box-shadow: none;
+    border-left: 4px solid CanvasText;
+  }
+  .aw-root ol[aria-label='Your commentary'] > li[data-selected='true'] {
+    outline: 3px solid Highlight;
+    box-shadow: none;
+    border-left: 8px double CanvasText;
+  }
+  .aw-root [data-slot='button'][class*='bg-destructive/'] {
+    border: 1px solid CanvasText;
+    color: ButtonText;
+    background: ButtonFace;
+  }
+}

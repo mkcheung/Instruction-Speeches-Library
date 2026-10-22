@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { API_URL, APP_URL, FIXTURE_PASSWORD, USERS, VOICE } from './fixtures.js'
+import { installDeterministicRecorder } from './voice-test-helpers.js'
 
 /**
  * STEP-15 / IMPLEMENTATION-PLANS.md §7.7.4, CP-15-accessibility-gates.md.
@@ -96,7 +97,13 @@ test('annotation (authoring) screen has no critical/serious accessibility violat
   // more than once" nuance, since this screen's whole point is changing
   // over time (CP-06). Best-effort: which row is first depends on seed
   // order, same as the baseline capture script.
-  const editButton = page.getByRole('button', { name: 'Edit' }).first()
+  // Saved notes starts folded; open it, then use the first text row's Edit
+  // (accessible name "Edit, annotation at <time>"; voice rows say "Edit transcript").
+  const savedToggle = page.getByRole('button', { name: /^Saved notes \(\d+\)$/ })
+  await expect(savedToggle).toBeVisible({ timeout: 30_000 })
+  await savedToggle.click()
+  await scanAndAssert(page, 'annotation/saved-notes-open')
+  const editButton = page.getByRole('button', { name: /^Edit, annotation at / }).first()
   if ((await editButton.count()) > 0) {
     await editButton.click()
     await expect(page.getByTestId('annotation-editor').last()).toBeVisible({ timeout: 10_000 })
@@ -320,6 +327,9 @@ interface NotebookFixtureOptions {
   reviewer?: boolean
   // Opt in to one consistent reviewer/speech/annotation identity; legacy dashboard fixtures stay unchanged.
   reviewerOverlay?: boolean
+  // 13 saved mixed annotations (text + voice, erased/historical points, processing/failed
+  // transcripts) for the review-22 reviewer, who is also a Coach so the Voice tool exists.
+  notebookTools?: boolean
   missingCaptions?: boolean
   writtenBody?: string
   feedback?: boolean
@@ -334,7 +344,7 @@ const notebookDate = '2026-10-01T12:00:00Z'
 const notebookTitle = 'Finding a clear voice ' + 'LongSpeechTitle'.repeat(12)
 function notebookUser(options: NotebookFixtureOptions) {
   return { id: options.reviewer ? '2' : '1', email: 'notebook@example.test', first_name: 'Morgan', last_name: 'Member',
-    username: 'notebook-member', display_name: 'Morgan Member', roles: [], email_verified: true,
+    username: 'notebook-member', display_name: 'Morgan Member', roles: options.notebookTools ? ['coach'] : [], email_verified: true,
     onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 120_000, quota_bytes: 5_000_000, uploads_in_flight: 0 }
 }
 function notebookSpeech(options: NotebookFixtureOptions) {
@@ -343,6 +353,32 @@ function notebookSpeech(options: NotebookFixtureOptions) {
     delivered_on: null, change_note: null, created_at: notebookDate, captions_enabled: true,
     primary_video: { id: 90, kind: 'video', status: options.notReady ? 'processing' : 'ready', failure_code: null, duration_seconds: '3',
       width: options.portrait ? 360 : 640, height: options.portrait ? 640 : 360, poster_time_seconds: null } }
+}
+// Ids that own ready audio in the notebookTools set; only these may resolve a playback URL.
+const notebookToolsAudioIds = ['notebook-voice', 'tools-voice-historic', 'tools-voice-ready-2', 'tools-voice-ready-3']
+// Chronological: 13 notes = pages of 6, 6 and 1. Text ranges never overlap points; 2.45-3.0 stays free for a live draft.
+function notebookToolsAnnotations() {
+  const text = (id: string, start: number, end: number, body: string) => ({ id, timing_type: 'range', start_seconds: start,
+    duration_seconds: Math.round((end - start) * 1000) / 1000, kind: 'observation', topic: null, body, lock_version: 1, client_uuid: id, voice: null })
+  const voice = (id: string, start: number, body: string, status: { audio_status: string; transcript_status: string } | null, timing: 'point' | null = 'point') => ({
+    id, timing_type: timing, start_seconds: start, duration_seconds: 4, kind: 'observation', topic: null, body, lock_version: 1, client_uuid: id,
+    voice: status === null ? null : { asset_id: 100 + Math.round(start * 100), ...status, failure_code: status.transcript_status === 'failed' ? 'fixture_transcript_failed' : null } })
+  const ready = { audio_status: 'ready', transcript_status: 'ready' }
+  return [
+    text('tools-text-01', 0, .2, 'Open with a steady breath before the first word.'),
+    voice('tools-voice-processing', .22, '', { audio_status: 'ready', transcript_status: 'processing' }),
+    text('tools-text-02', .25, .35, 'Slow down on this phrase.'),
+    text('notebook-written', .4, .9, 'Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.'),
+    voice('tools-voice-failed', .95, '', { audio_status: 'ready', transcript_status: 'failed' }),
+    voice('tools-voice-erased', 1, 'This transcript survives the erased audio.', null),
+    voice('notebook-voice', 1.2, 'Your opening sounds warm and confident.', ready),
+    voice('tools-voice-historic', 1.4, 'Historical note recorded before timing types existed.', ready, null),
+    text('tools-text-03', 1.5, 1.7, 'Let the story land before moving on.'),
+    voice('tools-voice-ready-2', 1.8, 'This pause works well.', ready),
+    text('tools-text-04', 1.9, 2, 'Good eye contact here.'),
+    text('tools-text-05', 2.1, 2.2, 'Lift the pitch slightly to close the thought.'),
+    voice('tools-voice-ready-3', 2.3, 'A strong, memorable finish.', ready),
+  ]
 }
 function notebookReview(options: NotebookFixtureOptions) {
   return { id: 22, status: 'in_progress', invitation_message: 'Please consider my opening.', allow_preview: false,
@@ -369,7 +405,8 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     '/api/speeches/9/captions', '/api/speeches/9/transcript', '/api/speeches/9/reviews', '/api/speeches/9/review-roster',
     '/api/speeches/9/annotations', '/api/speeches/9/annotations/notebook-voice/voice-playback-url', '/api/speeches/9/essay', '/api/me/preferences/commentary-playback/9',
     '/api/me/preferences/voice-commentary/9', ...(options.reviewerOverlay ? ['/api/reviews'] : [])]
-  if (!handled.includes(path)) return undefined
+  const toolsAudioPath = options.notebookTools && notebookToolsAudioIds.some((id) => path === `/api/speeches/9/annotations/${id}/voice-playback-url`)
+  if (!handled.includes(path) && !toolsAudioPath) return undefined
   if (options.mode === 'error') return { status: 500, body: { message: 'Presentation fixture failure.' } }
   const speech = notebookSpeech(options), review = notebookReview(options), empty = options.mode === 'empty'
   switch (path) {
@@ -397,16 +434,19 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     case '/api/speeches/9/transcript': return { body: { transcript: { body: 'Find your voice.', segments: [{ start: 0, end: 3, text: 'Find your voice.' }],
       word_count: 3, words_per_minute: 60, language: 'en', model: 'fixture', source: 'whisper', updated_at: notebookDate, caption_revision: 'notebook-revision' } } }
     case '/api/speeches/9/reviews': return { body: { reviews: [review] } }
-    case '/api/speeches/9/review-roster': return { body: { reviews: [{ ...review, annotations_count: options.feedback ? 2 : 0, published_annotations_count: options.feedback ? 2 : 0, revoked_by_is_self: false }] } }
+    case '/api/speeches/9/review-roster': return { body: { reviews: [{ ...review, annotations_count: options.feedback ? (options.notebookTools ? 13 : 2) : 0, published_annotations_count: options.feedback ? (options.notebookTools ? 13 : 2) : 0, revoked_by_is_self: false }] } }
     case '/api/speeches/9/annotations':
       if (options.reviewerOverlay && url.searchParams.get('review_id') !== String(review.id)) return { status: 403, body: { message: 'Unexpected fixture review denied.' } }
-      return { body: { review_id: options.reviewerOverlay ? review.id : Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback ? [
+      return { body: { review_id: options.reviewerOverlay ? review.id : Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback && options.notebookTools ? notebookToolsAnnotations() : options.feedback ? [
       { id: 'notebook-written', timing_type: 'range', start_seconds: options.reviewerOverlay ? .4 : 0, duration_seconds: options.reviewerOverlay ? .5 : .8, kind: 'observation', topic: null,
         body: options.writtenBody ?? (options.reviewerOverlay ? 'Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.' : 'Pause briefly before the opening sentence.'), lock_version: 1, client_uuid: 'notebook-written', voice: null },
       { id: 'notebook-voice', timing_type: 'point', start_seconds: 1.2, duration_seconds: 10, kind: 'observation', topic: null,
         body: 'Your opening sounds warm and confident.', lock_version: 1, client_uuid: 'notebook-voice',
         voice: { asset_id: 92, audio_status: 'ready', transcript_status: 'ready', failure_code: null } },
     ] : [] } }
+    case '/api/speeches/9/annotations/tools-voice-historic/voice-playback-url':
+    case '/api/speeches/9/annotations/tools-voice-ready-2/voice-playback-url':
+    case '/api/speeches/9/annotations/tools-voice-ready-3/voice-playback-url':
     case '/api/speeches/9/annotations/notebook-voice/voice-playback-url': return { body: { audio: { url: `${APP_URL}/__notebook/voice.m4a`, expires_at: '2030-01-01T00:00:00Z' } } }
     case '/api/speeches/9/essay': return { body: { essay: { essay_html: '<p>A clear opening.</p>', essay_text: 'A clear opening.', essay_words: 4,
       essay_published_at: null, essay_updated_at: notebookDate, essay_lock_version: 0 } } }
@@ -504,6 +544,8 @@ test.describe('reviewer overlay presentation accessibility (isolated frontend)',
         await page.goto(`${APP_URL}/speeches/9`)
         const tabs = page.getByRole('tablist', { name: 'Your feedback' })
         await expect(tabs).toBeVisible({ timeout: 30_000 })
+        // Saved notes starts folded; open it so the populated list is part of every scan below.
+        await page.getByRole('button', { name: 'Saved notes (2)', exact: true }).click()
         const list = page.getByRole('list', { name: 'Your commentary', exact: true })
         await expect(list).toHaveCount(1)
         await expect(list.getByText(/Pause briefly before the opening sentence/)).toBeVisible()
@@ -532,9 +574,107 @@ test.describe('reviewer overlay presentation accessibility (isolated frontend)',
         }
         await expect(list).toHaveCount(1)
         await expect(editor.getByRole('textbox', { name: 'Commentary', exact: true })).toHaveValue('Private live reviewer draft for accessibility checks.')
-        await expect(list.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+        await expect(list.getByRole('button', { name: 'Edit, annotation at 0 seconds', exact: true })).toBeVisible()
         expect(unexpected).toEqual([])
       } finally { await context.close() }
     })
   }
+})
+
+// Populated annotation notebook tools: exact built assets, fail-closed APIs and the review-22 identity
+// with 13 saved mixed notes (see notebookToolsAnnotations). Same WCAG tags, same `.video-js` exclusion
+// and the same serious/critical gate as every scan above; no rule is excluded or relaxed.
+test.describe('annotation notebook tools', () => {
+  test.setTimeout(360_000)
+  const savedToggle = (page: Page) => page.getByRole('button', { name: 'Saved notes (13)', exact: true })
+  async function openPopulated(browser: import('@playwright/test').Browser, width: number, dark: boolean, recorder = false) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce', colorScheme: dark ? 'dark' : 'light' })
+    const unexpected = await isolateWorkspaceAxeApi(context, { reviewer: true, reviewerOverlay: true, feedback: true, notebookTools: true, missingCaptions: true })
+    const page = await context.newPage()
+    if (recorder) await installDeterministicRecorder(page)
+    await page.goto(`${APP_URL}/speeches/9`)
+    await expect(page.getByRole('tablist', { name: 'Add commentary' })).toBeVisible({ timeout: 30_000 })
+    await expect(savedToggle(page)).toBeVisible({ timeout: 30_000 })
+    await page.evaluate((enabled) => document.documentElement.classList.toggle('dark', enabled), dark)
+    return { context, page, unexpected }
+  }
+
+  for (const width of [375, 1440]) {
+    for (const dark of [false, true]) {
+      test(`populated tools, folded and open Saved notes, pages, details and editing at ${width}px ${dark ? 'dark' : 'light'}`, async ({ browser }) => {
+        const { context, page, unexpected } = await openPopulated(browser, width, dark)
+        const label = (state: string) => `annotation-tools/${state}/${width}/${dark ? 'dark' : 'light'}`
+        const tools = page.getByRole('tablist', { name: 'Add commentary' })
+        const row = (id: string) => page.locator(`li[data-annotation-id="${id}"]`)
+        const pager = page.getByRole('navigation', { name: 'Saved notes pages', exact: true })
+        try {
+          await scanNotebookAndAssert(page, label('folded/text-tool'))
+          await tools.getByRole('tab', { name: /^Voice note/ }).click()
+          await expect(page.getByRole('region', { name: 'Record a voice note', exact: true })).toBeVisible()
+          await scanNotebookAndAssert(page, label('folded/voice-tool'))
+          await savedToggle(page).click()
+          await expect(page.getByRole('list', { name: 'Your commentary', exact: true })).toHaveCount(1)
+          await scanNotebookAndAssert(page, label('open/voice-tool/page-1'))
+          await tools.getByRole('tab', { name: /^Text note/ }).click()
+          await expect(page.getByRole('region', { name: 'New annotation', exact: true })).toBeVisible()
+          await scanNotebookAndAssert(page, label('open/text-tool/page-1'))
+
+          // Page 1 detail variants: processing, failed (with retry) and erased-audio rows, plus a text row.
+          await row('tools-text-01').getByRole('button', { name: 'Show details, annotation at 0 seconds', exact: true }).click()
+          await row('tools-voice-processing').getByRole('button', { name: 'Show details, voice note at 0 seconds', exact: true }).click()
+          await row('tools-voice-failed').getByRole('button', { name: 'Show details, voice note at 0 seconds', exact: true }).click()
+          await row('tools-voice-erased').getByRole('button', { name: 'Show details, voice note at 1 second', exact: true }).click()
+          await expect(row('tools-voice-failed').getByRole('button', { name: 'Retry transcript, voice note at 0 seconds', exact: true })).toBeVisible()
+          await scanNotebookAndAssert(page, label('open/page-1/expanded-details'))
+
+          await pager.getByRole('button', { name: 'Next', exact: true }).click()
+          await expect(pager).toContainText('Notes 7–12 of 13 · Page 2 of 3')
+          await scanNotebookAndAssert(page, label('open/page-2'))
+          const voice = row('notebook-voice')
+          await voice.getByRole('button', { name: 'Show details, voice note at 1 second', exact: true }).click()
+          await voice.getByRole('button', { name: 'Preview audio, voice note at 1 second', exact: true }).click()
+          await expect(voice.locator('audio[aria-label="Voice note audio"]')).toHaveCount(1)
+          await scanNotebookAndAssert(page, label('open/page-2/expanded-voice-with-audio'))
+
+          await pager.getByRole('button', { name: 'Previous', exact: true }).click()
+          await row('tools-text-01').getByRole('button', { name: 'Edit, annotation at 0 seconds', exact: true }).click()
+          await expect(page.getByRole('region', { name: 'Editing annotation', exact: true })).toBeVisible()
+          await expect(pager).toContainText('Editing page held')
+          await scanNotebookAndAssert(page, label('editing/held-page'))
+          await page.getByRole('region', { name: 'Editing annotation', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click()
+          await expect(page.getByRole('region', { name: 'Editing annotation', exact: true })).toHaveCount(0)
+          await scanNotebookAndAssert(page, label('open/after-edit'))
+          expect(unexpected).toEqual([])
+        } finally { await context.close() }
+      })
+    }
+  }
+
+  test('live draft, requesting/recording lock and a stopped recording keep the unchanged axe gate', async ({ browser }) => {
+    const { context, page, unexpected } = await openPopulated(browser, 1440, false, true)
+    try {
+      const tools = page.getByRole('tablist', { name: 'Add commentary' })
+      const form = page.getByRole('region', { name: 'New annotation', exact: true })
+      await form.getByRole('textbox', { name: 'Start', exact: true }).fill('2.45')
+      await form.getByRole('textbox', { name: 'End', exact: true }).fill('3')
+      await form.getByRole('textbox', { name: 'Commentary', exact: true }).fill('Draft with unsaved state for the scan.')
+      await expect(tools.getByRole('tab', { name: 'Text note · Unsaved', exact: true })).toBeVisible()
+      await scanNotebookAndAssert(page, 'annotation-tools/unsaved-text-draft')
+      await tools.getByRole('tab', { name: /^Voice note/ }).click()
+      const recorder = page.getByRole('region', { name: 'Record a voice note', exact: true })
+      const video = page.locator('video[data-testid="speech-video"]')
+      await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+      await video.evaluate((element: HTMLVideoElement) => { element.pause() })
+      await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('2.7')
+      await recorder.getByRole('button', { name: /^Record/ }).click()
+      await expect(recorder.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+      await expect(tools.getByRole('tab', { name: 'Voice note · Recording', exact: true })).toBeVisible()
+      await scanNotebookAndAssert(page, 'annotation-tools/recording-lock')
+      await recorder.getByRole('button', { name: 'Stop', exact: true }).click()
+      await expect(recorder.getByLabel('Voice note preview')).toBeVisible()
+      await expect(tools.getByRole('tab', { name: 'Voice note · Unsaved recording', exact: true })).toBeVisible()
+      await scanNotebookAndAssert(page, 'annotation-tools/stopped-recording')
+      expect(unexpected).toEqual([])
+    } finally { await context.close() }
+  })
 })

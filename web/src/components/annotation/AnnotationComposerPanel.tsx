@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useBlocker, useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
-import { TimelineStrip } from '@/components/annotation/TimelineStrip'
+import { TimelineStrip, type TimelineMarkerActivation } from '@/components/annotation/TimelineStrip'
+import '@/components/annotation/annotation-workspace.css'
 import { Composer } from '@/components/annotation/Composer'
-import { VoiceRecorder } from '@/components/annotation/VoiceRecorder'
-import { AnnotationList } from '@/components/annotation/AnnotationList'
+import { VoiceRecorder, type VoiceRecorderSessionReport } from '@/components/annotation/VoiceRecorder'
+import { AnnotationList, type AnnotationRevealRequest, type AcknowledgedSave } from '@/components/annotation/AnnotationList'
 import { RemovedAnnotationDrafts } from '@/components/annotation/RemovedAnnotationDrafts'
 import { ClearAnnotationsDialog } from '@/components/annotation/ClearAnnotationsDialog'
 import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
@@ -38,6 +39,26 @@ import type { Review } from '@/features/review/types'
  * whichever rows are actively being typed into or dragged — so the live
  * preview always shows what's on screen, not just what's persisted.
  */
+export interface AnnotationComposerPanelProps {
+  speechId: number
+  review: Review
+  videoEl: HTMLVideoElement | null
+  durationSeconds: number
+  userId: string | undefined
+  canRecordVoice: boolean
+  onSeek: (seconds: number) => void
+  previewTarget: HTMLElement | null
+  previewEnabled: boolean
+  previewAnchor: 'top' | 'default'
+  /** True while the outer "Notes" reviewer tab is selected (default true). Gates C/Alt+C capture,
+   *  the saved list's audio, and the recorder's preview audio. Does NOT gate the overlay portal. */
+  authoringActive?: boolean
+  /** Reports whether THIS panel's current recorder session is requesting the microphone or
+   *  recording (blocksToolSwitch). Fires on mount and on change; fires false when the panel
+   *  (or its user/speech/review scope) goes away. */
+  onRecordingLockChange?: (locked: boolean) => void
+}
+
 export function AnnotationComposerPanel({
   speechId,
   review,
@@ -49,18 +70,9 @@ export function AnnotationComposerPanel({
   previewTarget,
   previewEnabled,
   previewAnchor,
-}: {
-  speechId: number
-  review: Review
-  videoEl: HTMLVideoElement | null
-  durationSeconds: number
-  userId: string | undefined
-  canRecordVoice: boolean
-  onSeek: (seconds: number) => void
-  previewTarget: HTMLElement | null
-  previewEnabled: boolean
-  previewAnchor: 'top' | 'default'
-}) {
+  authoringActive = true,
+  onRecordingLockChange,
+}: AnnotationComposerPanelProps) {
   return (
     <ToastProvider>
       <AnnotationComposerPanelInner
@@ -75,6 +87,8 @@ export function AnnotationComposerPanel({
         previewTarget={previewTarget}
         previewEnabled={previewEnabled}
         previewAnchor={previewAnchor}
+        authoringActive={authoringActive}
+        onRecordingLockChange={onRecordingLockChange}
       />
       <Toaster />
     </ToastProvider>
@@ -92,18 +106,9 @@ function AnnotationComposerPanelInner({
   previewTarget,
   previewEnabled,
   previewAnchor,
-}: {
-  speechId: number
-  review: Review
-  videoEl: HTMLVideoElement | null
-  durationSeconds: number
-  userId: string | undefined
-  canRecordVoice: boolean
-  onSeek: (seconds: number) => void
-  previewTarget: HTMLElement | null
-  previewEnabled: boolean
-  previewAnchor: 'top' | 'default'
-}) {
+  authoringActive = true,
+  onRecordingLockChange,
+}: AnnotationComposerPanelProps) {
   const reviewId = review.id
   const { data, currentData, isError, isFetching, isSuccess, error, refetch } = useGetAnnotationsQuery(
     { speechId, reviewId },
@@ -287,101 +292,255 @@ function AnnotationComposerPanelInner({
     }
   }
 
-  // IMPLEMENTATION-PLANS.md §7.7.6: the reviewer-authoring half of the
-  // keyboard map. `merged`, not `serverRows` — §7.7.6's `[`/`]` seek
-  // relative to the playhead within the SAME set the live preview shows,
-  // drafts included, same reasoning as every other call site in this
-  // component that reads `merged` rather than re-deriving its own ordering.
+  // ---- tool tabs (local, never persisted; scope reset by the keyed Inner) -------------------
+  type Tool = 'text' | 'voice'
+  const [selectedTool, setSelectedTool] = useState<Tool>('text')
+  const tool: Tool = canRecordVoice ? selectedTool : 'text'
+
+  // Text provenance: only the Composer's own pending ids. Voice provenance: recorder session reports.
+  const [textPendingIds, setTextPendingIds] = useState<ReadonlySet<string>>(() => new Set())
+  const handleTextPending = useCallback((id: string, isPending: boolean) => {
+    setTextPendingIds((previous) => {
+      if (previous.has(id) === isPending) return previous
+      const next = new Set(previous)
+      if (isPending) next.add(id); else next.delete(id)
+      return next
+    })
+    handlePendingChange(id, isPending)
+  }, [handlePendingChange])
+  const textPending = textPendingIds.size > 0
+
+  const [recorderReports, setRecorderReports] = useState<Record<string, VoiceRecorderSessionReport>>({})
+  const recorderSessionsRef = useRef(new Set<string>())
+  const handleSessionState = useCallback((sessionId: string, report: VoiceRecorderSessionReport | null) => {
+    if (report === null) recorderSessionsRef.current.delete(sessionId); else recorderSessionsRef.current.add(sessionId)
+    setRecorderReports((previous) => {
+      if (report === null) {
+        if (!(sessionId in previous)) return previous
+        const next = { ...previous }
+        delete next[sessionId]
+        return next
+      }
+      const old = previous[sessionId]
+      if (old && old.phase === report.phase && old.pending === report.pending
+        && old.hasRecording === report.hasRecording && old.blocksToolSwitch === report.blocksToolSwitch) return previous
+      return { ...previous, [sessionId]: report }
+    })
+  }, [])
+  const voiceReports = Object.values(recorderReports)
+  const recorderLocked = canRecordVoice && voiceReports.some((report) => report.blocksToolSwitch)
+  const voiceReport = voiceReports[0]
+  const voiceBadge: { text: string; error: boolean } | null = !canRecordVoice || !voiceReport ? null
+    : voiceReport.phase === 'saving' ? { text: 'Saving', error: false }
+    : voiceReport.phase === 'uncertain' ? { text: 'Retry upload', error: true }
+    : voiceReport.phase === 'requesting' ? { text: 'Requesting microphone', error: false }
+    : voiceReport.phase === 'recording' ? { text: 'Recording', error: false }
+    : voiceReport.hasRecording ? { text: 'Unsaved recording', error: voiceReport.phase === 'error' }
+    : null
+  const textBadge = textPending ? 'Unsaved' : null
+
+  // Exact-session recording lock report for the route (SpeechWatch).
+  const lockCallbackRef = useRef(onRecordingLockChange)
+  useEffect(() => { lockCallbackRef.current = onRecordingLockChange })
+  useEffect(() => { lockCallbackRef.current?.(recorderLocked) }, [recorderLocked])
+  useEffect(() => () => { lockCallbackRef.current?.(false) }, [])
+
+  const [draftBlocked, setDraftBlocked] = useState(false)
+  // The draft-marker explanation belongs to one lock; drop it the moment the lock releases.
+  if (draftBlocked && !recorderLocked) setDraftBlocked(false)
+  const handleToolChange = (value: unknown) => {
+    if (value !== 'text' && value !== 'voice') return
+    if (recorderLocked && value !== 'voice') return
+    if (value === 'voice' && !canRecordVoice) return
+    setDraftBlocked(false)
+    setSelectedTool(value)
+  }
+
+  // ---- Saved notes disclosure, selection, reveal, acknowledged saves ---------------------------
+  const [savedOpen, setSavedOpen] = useState(false)
+  const savedLockedRef = useRef(false)
+  const handleSavedOpenChange = useCallback((value: boolean) => {
+    if (!value && savedLockedRef.current) return
+    setSavedOpen(value)
+  }, [])
+  const handleHoldChange = useCallback((hold: { locked: boolean }) => { savedLockedRef.current = hold.locked }, [])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const tokenRef = useRef(0)
+  const [revealRequest, setRevealRequest] = useState<AnnotationRevealRequest | null>(null)
+  const [acknowledgedSave, setAcknowledgedSave] = useState<AcknowledgedSave | null>(null)
+  const handleComposerSaved = useCallback((saved: Annotation) => {
+    setAcknowledgedSave({ id: saved.id, token: ++tokenRef.current })
+  }, [])
+  const handleVoiceSaved = useCallback((saved: Annotation, sessionId: string) => {
+    if (!recorderSessionsRef.current.has(sessionId)) return
+    setAcknowledgedSave({ id: saved.id, token: ++tokenRef.current })
+  }, [])
+
+  // Draft-marker reveal: select Text, then focus the owned Text tool region once visible.
+  const textRegionRef = useRef<HTMLDivElement | null>(null)
+  const [draftReveal, setDraftReveal] = useState(0)
+  const handledDraftReveal = useRef(0)
+  useEffect(() => {
+    if (draftReveal === 0 || handledDraftReveal.current === draftReveal || tool !== 'text') return
+    handledDraftReveal.current = draftReveal
+    textRegionRef.current?.focus()
+  }, [draftReveal, tool])
+
+  const handleMarkerActivate = useCallback((activation: TimelineMarkerActivation) => {
+    // TimelineStrip already performed the single seek; never seek again here.
+    if (activation.temporary) {
+      if (recorderLocked) { setDraftBlocked(true); return }
+      setDraftBlocked(false)
+      setSelectedTool('text')
+      setDraftReveal((value) => value + 1)
+      return
+    }
+    setRevealRequest({ id: activation.id, token: ++tokenRef.current })
+  }, [recorderLocked])
+
+  // C / Alt+C: stamp the Text composer only. Omitted entirely when inactive, unwritable or locked.
+  const captureAllowed = authoringActive && writable && !recorderLocked && composerSetToPlayhead !== undefined
+  const handleCapture = useCallback(() => {
+    setDraftBlocked(false)
+    setSelectedTool('text')
+    composerSetToPlayhead?.()
+  }, [composerSetToPlayhead])
   useKeyboardShortcuts({
     videoEl,
     annotations: merged,
     onSeek,
-    setToPlayhead: composerSetToPlayhead,
+    setToPlayhead: captureAllowed ? handleCapture : undefined,
   })
 
+  const voiceTabLabel = voiceBadge ? `Voice note · ${voiceBadge.text}` : 'Voice note'
+  const textTabLabel = textBadge ? `Text note · ${textBadge}` : 'Text note'
+  const toolsHeadingId = `${useId()}-tools`
+
   return (
-    <Card className="workspace-notebook-surface workspace-notebook-panel">
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle>Your commentary</CardTitle>
-          <CardDescription>Choose Start and End, enter commentary, then add the annotation. Publish when your feedback is ready.</CardDescription>
+    <div className="aw-root flex flex-col gap-2" data-testid="annotation-workspace">
+        <div className="aw-section">
+          <h3 className="aw-section-title">Your commentary</h3>
+          <p className="text-sm text-muted-foreground">
+            {tool === 'voice'
+              ? 'Choose a position, record your voice note, then save it. Publish when your feedback is ready.'
+              : 'Choose Start and End, enter commentary, then add the annotation. Publish when your feedback is ready.'}
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {isError && <div role="alert" className="text-sm">Could not refresh your feedback. Your draft is retained. <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
-        {legacyConflict && <p role="status" className="text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
+        {isError && <div role="alert" className="aw-notice text-sm" data-tone="error">Could not refresh your feedback. Your draft is retained. <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
+        {legacyConflict && <p role="status" className="aw-notice text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
         {previewTarget && previewEnabled && !previewAccessDenied && !previewAccessBlocked && createPortal(
           <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} anchor={previewAnchor} />,
           previewTarget,
         )}
 
-        <TimelineStrip
-          annotations={merged}
-          speechId={speechId}
-          reviewId={reviewId}
-          videoEl={videoEl}
-          durationSeconds={durationSeconds}
-          onSeek={onSeek}
-        />
+        <div className="aw-section">
+          <TimelineStrip
+            annotations={merged}
+            speechId={speechId}
+            reviewId={reviewId}
+            videoEl={videoEl}
+            durationSeconds={durationSeconds}
+            onSeek={onSeek}
+            onMarkerActivate={handleMarkerActivate}
+            selectedId={selectedId}
+            draftIds={draftIds}
+            activeIds={activeIds}
+          />
+        </div>
 
-        <Composer
-          speechId={speechId}
-          reviewId={reviewId}
-          videoEl={videoEl}
-          userId={userId}
-          durationMs={durationMs}
-          annotations={data?.annotations}
-          writable={writable}
-          onPendingChange={handlePendingChange}
-          onLiveChange={handleLiveChange}
-          onLiveRemove={handleLiveRemove}
-          onEditorReady={handleComposerEditorReady}
-        />
-
-        {canRecordVoice && (
-          <VoiceRecorder speechId={speechId} reviewId={reviewId} videoEl={videoEl} durationMs={durationMs} annotations={data?.annotations} writable={writable} onPendingChange={handlePendingChange} />
-        )}
+        <div className="aw-section">
+          <h4 className="aw-section-title" id={toolsHeadingId}>Add commentary</h4>
+          <Tabs value={tool} onValueChange={handleToolChange}>
+            {canRecordVoice && (
+              <TabsList className="aw-tool-tabs" aria-label="Add commentary">
+                <TabsTab value="text" className="aw-tool-tab" disabled={recorderLocked} aria-label={textTabLabel}>
+                  Text note
+                  {textBadge && <span className="aw-tool-badge" aria-hidden="true"> {textBadge}</span>}
+                </TabsTab>
+                <TabsTab value="voice" className="aw-tool-tab" aria-label={voiceTabLabel}>
+                  Voice note
+                  {voiceBadge && <span className="aw-tool-badge" data-tone={voiceBadge.error ? 'error' : undefined} aria-hidden="true"> {voiceBadge.text}</span>}
+                </TabsTab>
+              </TabsList>
+            )}
+            {recorderLocked && <p role="status" className="aw-lock-hint text-sm">
+              {draftBlocked
+                ? 'Stop recording, then open the unsaved text draft. Your draft is unchanged.'
+                : 'Stop recording to switch to Text note.'}
+            </p>}
+            <TabsPanel value="text" keepMounted className="aw-tool-panel" {...(canRecordVoice ? {} : { 'aria-labelledby': toolsHeadingId })}>
+              <div ref={textRegionRef} tabIndex={-1} role="group" aria-label="Text note tool" className="outline-none">
+                <Composer
+                  speechId={speechId}
+                  reviewId={reviewId}
+                  videoEl={videoEl}
+                  userId={userId}
+                  durationMs={durationMs}
+                  annotations={data?.annotations}
+                  writable={writable}
+                  onPendingChange={handleTextPending}
+                  onLiveChange={handleLiveChange}
+                  onLiveRemove={handleLiveRemove}
+                  onEditorReady={handleComposerEditorReady}
+                  onSaved={handleComposerSaved}
+                />
+              </div>
+            </TabsPanel>
+            {canRecordVoice && (
+              <TabsPanel value="voice" keepMounted className="aw-tool-panel">
+                <VoiceRecorder
+                  speechId={speechId}
+                  reviewId={reviewId}
+                  videoEl={videoEl}
+                  durationMs={durationMs}
+                  annotations={data?.annotations}
+                  writable={writable}
+                  onPendingChange={handlePendingChange}
+                  onSessionStateChange={handleSessionState}
+                  onAcknowledgedSave={handleVoiceSaved}
+                  active={authoringActive && tool === 'voice'}
+                />
+              </TabsPanel>
+            )}
+          </Tabs>
+        </div>
 
         {voiceRows.length > 6 && (
-          <p role="status" className="text-sm text-muted-foreground">
+          <p role="status" className="aw-notice text-sm text-muted-foreground">
             This review has {voiceRows.length} voice notes adding about {Math.ceil(voiceDuration)} seconds of interruptions.
           </p>
         )}
 
-        {/* IMPLEMENTATION-PLANS.md §7.7.1: DECIDED — this list is the
-            coach-side AUTHORITATIVE ACCESSIBLE SURFACE for the authoring
-            screen (§8.6's "always available, <ol>, chronological,
-            timecoded, aria-current on the playing row, click-to-seek"),
-            not a gap where a second `Transcript` instance belongs.
-            `Transcript.tsx`'s own `<ol aria-label="Commentary
-            transcript">` is the SPEAKER-side surface (mounted via
-            `TrackSelector`, inside `SpeechWatch.tsx`'s owner-only branch)
-            and intentionally has no coach-side counterpart here — adding
-            one would duplicate the coach's own notes into two lists on one
-            screen and collide with that same `aria-label` under
-            Playwright's strict mode. The "always available" property
-            depends on the `keepMounted` added to this panel's `TabsPanel`
-            in `SpeechWatch.tsx` (Base UI unmounts an inactive panel, and
-            `AnnotationList`, by default) — without it this list, like
-            `Transcript`'s, is removed from the DOM the instant the coach
-            switches to Essay or Transcript. */}
-        <AnnotationList
-          annotations={serverRows}
-          speechId={speechId}
-          reviewId={reviewId}
-          videoEl={videoEl}
-          userId={userId}
-          durationMs={durationMs}
-          onPendingChange={handlePendingChange}
-          currentId={currentId}
-          onSeek={onSeek}
-          onLiveChange={handleLiveChange}
-          onLiveRemove={handleLiveRemove}
-        />
+        {/* The ONE authoritative accessible list (paged, chronological, timecoded) for the authoring
+            screen; see AnnotationList's contract. It stays mounted when Saved notes is folded and
+            when the outer Notes tab is hidden (SpeechWatch keeps this panel mounted). */}
+        <div className="aw-section aw-saved">
+          <AnnotationList
+            id="annotation-saved-notes"
+            headingLevel={4}
+            annotations={serverRows}
+            speechId={speechId}
+            reviewId={reviewId}
+            videoEl={videoEl}
+            userId={userId}
+            durationMs={durationMs}
+            onPendingChange={handlePendingChange}
+            currentId={currentId}
+            onSeek={onSeek}
+            onLiveChange={handleLiveChange}
+            onLiveRemove={handleLiveRemove}
+            open={savedOpen}
+            onOpenChange={handleSavedOpenChange}
+            active={authoringActive}
+            revealRequest={revealRequest}
+            onSelectedChange={setSelectedId}
+            acknowledgedSave={acknowledgedSave}
+            onHoldChange={handleHoldChange}
+          />
+          <RemovedAnnotationDrafts userId={userId} speechId={speechId} reviewId={reviewId} annotations={data?.annotations} />
+        </div>
 
-        <RemovedAnnotationDrafts userId={userId} speechId={speechId} reviewId={reviewId} annotations={data?.annotations} />
-
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
+        <div className="aw-actions aw-section flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <ClearAnnotationsDialog
               isPublished={review.first_published_at !== null}
@@ -426,7 +585,6 @@ function AnnotationComposerPanelInner({
           <Button className="workspace-notebook-control workspace-notebook-control--primary" type="button" onClick={() => blocker.reset()}>Keep editing</Button>{' '}
           <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => blocker.proceed()}>Leave page</Button>
         </div>}
-      </CardContent>
-    </Card>
+    </div>
   )
 }

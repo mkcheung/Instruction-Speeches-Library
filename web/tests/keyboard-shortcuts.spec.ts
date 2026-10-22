@@ -49,7 +49,10 @@ async function openNotesTab(page: Page): Promise<void> {
   // very first "visible" moment can catch a remount's fresh, momentarily-
   // empty `serverRows` before its own fetch resolves) — waiting for the
   // full known count, not just item #1, is what actually survives that.
-  await expect(page.getByRole('list', { name: 'Your commentary' }).getByRole('listitem')).toHaveCount(8)
+  // The saved list is a folded, six-per-page disclosure now, so its rows are neither all in the
+  // DOM-visible tree nor a count to assert. The disclosure's total is the complete dataset the
+  // `[`/`]` navigation runs over; it is rendered only after the full annotation fetch settles.
+  await expect(page.getByRole('button', { name: 'Saved notes (8)', exact: true })).toBeVisible()
   // Defaults to "notes" already (`SpeechWatch.tsx`'s `<Tabs defaultValue="notes">`)
   // — no click needed, and clicking a tab would itself leave focus on a
   // <button>, which is exactly the activation-target case `Space`'s own

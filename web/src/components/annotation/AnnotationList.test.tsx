@@ -48,6 +48,7 @@ function renderList(annotations: Annotation[]) {
           speechId={1}
           reviewId={9}
           videoEl={null}
+          open
           autoPause={false}
           currentId={null}
           onSeek={() => {}}
@@ -95,6 +96,7 @@ describe('AnnotationList — delete then Undo', () => {
     const user = userEvent.setup()
     renderList([annotation()])
 
+    await user.click(screen.getByRole('button', { name: /show details/i }))
     await user.click(screen.getByRole('button', { name: /delete annotation/i }))
 
     // Delete fires right away — NOT deferred until the toast expires.
@@ -132,6 +134,7 @@ describe('AnnotationList — delete then Undo', () => {
     const user = userEvent.setup()
     renderList([annotation()])
 
+    await user.click(screen.getByRole('button', { name: /show details/i }))
     await user.click(screen.getByRole('button', { name: /delete annotation/i }))
     await waitFor(() => expect(createAttempts).toBe(0))
 
@@ -164,7 +167,8 @@ describe('AnnotationList — delete then Undo', () => {
 
     const user = userEvent.setup()
     renderList([annotation({ voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'ready', failure_code: null } })])
-    await user.click(screen.getByRole('button', { name: 'Delete' }))
+    await user.click(screen.getByRole('button', { name: /show details/i }))
+    await user.click(screen.getByRole('button', { name: /delete voice note/i }))
     await user.click(await screen.findByRole('button', { name: 'Undo' }))
 
     await waitFor(() => expect(calls).toEqual([

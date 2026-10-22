@@ -1,0 +1,193 @@
+<div id="annotation-options">
+  <style>
+    #annotation-options { --an-paper:#fffdf6; --an-cream:#fff5e6; --an-ink:#2b211b; --an-muted:#66574f; --an-line:#8a7668; --an-teal:#0f6b66; --an-gold:#e9b949; --an-red:#8a1720; font-family:Arial,sans-serif; color:var(--an-ink); color-scheme:light; }
+    #annotation-options * { box-sizing:border-box; }
+    #annotation-options button, #annotation-options input, #annotation-options textarea { font:inherit; color:inherit; }
+    #annotation-options button { cursor:pointer; min-height:44px; padding:8px 12px; background:var(--an-paper); border:1px solid var(--an-line); border-radius:6px; }
+    #annotation-options button:disabled { cursor:default; opacity:.55; }
+    #annotation-options [hidden] { display:none !important; }
+    #annotation-options .an-choices { display:flex; gap:8px; flex-wrap:wrap; padding:12px; background:var(--an-cream); border:1px solid var(--an-line); border-bottom:0; }
+    #annotation-options button[aria-pressed="true"], #annotation-options .an-primary { background:var(--an-teal); color:var(--an-paper); border-color:var(--an-teal); }
+    #annotation-options .an-workspace { background:var(--an-cream); border:1px solid var(--an-line); padding:16px; }
+    #annotation-options .an-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+    #annotation-options .an-heading h3 { font:inherit; font-weight:500; margin:0; }
+    #annotation-options .an-kicker { color:var(--an-red); }
+    #annotation-options .an-paper { background:var(--an-paper); border:1px solid var(--an-line); border-radius:4px; box-shadow:3px 3px 0 #e7d0a5; }
+    #annotation-options .an-timeline { padding:12px; margin-bottom:16px; }
+    #annotation-options .an-time-header { display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+    #annotation-options .an-lane { display:grid; grid-template-columns:44px minmax(0,1fr); align-items:center; gap:6px; }
+    #annotation-options .an-track { position:relative; container-type:inline-size; height:48px; background:linear-gradient(transparent 23px,#e9e0d1 23px,#e9e0d1 27px,transparent 27px); }
+    #annotation-options .an-playhead { position:absolute; left:30%; top:0; bottom:0; width:2px; background:var(--an-red); pointer-events:none; z-index:2; }
+    #annotation-options .an-marker { position:absolute; top:2px; height:44px; min-width:0; padding:0; border:0; background:transparent; }
+    #annotation-options .an-marker span { display:block; height:14px; background:var(--an-teal); border-radius:3px; }
+    #annotation-options .an-voice { width:36px; transform:translateX(-50%); }
+    #annotation-options .an-voice span { display:flex; justify-content:center; align-items:center; width:28px; height:28px; margin:auto; border-radius:50%; background:var(--an-gold); color:var(--an-ink); }
+    #annotation-options .an-axis { display:flex; justify-content:space-between; margin-left:50px; color:var(--an-muted); }
+    #annotation-options .an-tool-switch { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    #annotation-options .an-editor { padding:16px; }
+    #annotation-options .an-editor-title { display:flex; align-items:center; gap:8px; font-weight:500; margin-bottom:12px; }
+    #annotation-options .an-editor-title i { flex:none; }
+    #annotation-options .an-fields { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+    #annotation-options label { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    #annotation-options input, #annotation-options textarea { width:100%; min-width:0; background:var(--an-paper); border:1px solid var(--an-line); border-radius:4px; padding:10px; min-height:44px; }
+    #annotation-options textarea { resize:vertical; min-height:90px; }
+    #annotation-options .an-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+    #annotation-options .an-help { color:var(--an-muted); margin-top:12px; }
+    #annotation-options .an-voice-form label { max-width:260px; }
+    #annotation-options .an-audio-state { display:flex; align-items:center; gap:10px; padding:16px 0; }
+    #annotation-options .an-record-dot { width:10px; height:10px; border-radius:50%; background:var(--an-red); }
+    #annotation-options details > summary { cursor:pointer; padding:14px 12px; min-height:48px; font-weight:500; }
+    #annotation-options details[open] > summary { border-bottom:1px solid var(--an-line); }
+    #annotation-options .an-accordion > details { margin-bottom:10px; }
+    #annotation-options .an-saved { margin-top:14px; }
+    #annotation-options .an-notes { padding:0 12px; }
+    #annotation-options .an-notes ol { margin:0; padding:0; list-style:none; }
+    #annotation-options .an-note { border-bottom:1px solid #d9ccbd; padding:10px 0; }
+    #annotation-options .an-note summary { padding:6px 0; font-weight:400; display:list-item; overflow-wrap:anywhere; }
+    #annotation-options .an-note[open] summary { border:0; }
+    #annotation-options .an-note-body { padding:8px 0; overflow-wrap:anywhere; }
+    #annotation-options .an-note-type { display:inline-flex; align-items:center; gap:5px; color:var(--an-teal); }
+    #annotation-options .an-note[data-kind="voice"] .an-note-type { color:var(--an-ink); }
+    #annotation-options .an-pagination { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:12px 0; }
+    #annotation-options .an-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:16px; }
+    #annotation-options .an-status { color:var(--an-muted); padding-top:8px; min-height:1em; }
+    @media(max-width:420px) { #annotation-options .an-workspace {padding:10px;} #annotation-options .an-fields {grid-template-columns:1fr;} #annotation-options .an-editor {padding:12px;} }
+  </style>
+  <div class="an-choices" aria-label="Compare annotation layouts">
+    <button type="button" data-layout="tabs" aria-pressed="true">A · Notebook tabs</button>
+    <button type="button" data-layout="accordion" aria-pressed="false">B · Accordion</button>
+    <button type="button" data-layout="focus" aria-pressed="false">C · Timeline desk</button>
+  </div>
+  <div class="an-workspace">
+    <div class="an-heading"><h3>Your commentary</h3><span class="an-kicker">Rehearsal notebook</span></div>
+    <div class="an-timeline an-paper" role="group" aria-label="Illustrative annotation timeline">
+      <div class="an-time-header"><span>Speech timeline</span><span data-clock>0:18 / 1:00</span></div>
+      <div class="an-lane"><span>Text</span><div class="an-track">
+        <div class="an-playhead"></div>
+        <button type="button" class="an-marker" style="left:6.3%;width:10%" data-note="1" aria-label="Text note, 0:03.823 to 0:09.823"><span></span></button>
+        <button type="button" class="an-marker" style="left:28.4%;width:3.333%" data-note="3" aria-label="Text note, 0:17.021 to 0:19.021"><span></span></button>
+        <button type="button" class="an-marker" style="left:47.2%;width:4.167%" data-note="4" aria-label="Text note, 0:28.332 to 0:30.832"><span></span></button>
+        <button type="button" class="an-marker" style="left:56.667%;width:6.667%" data-note="5" aria-label="Text note, 0:34 to 0:38"><span></span></button>
+        <button type="button" class="an-marker" style="left:76.667%;width:5%" data-note="7" aria-label="Text note, 0:46 to 0:49"><span></span></button>
+        <button type="button" class="an-marker" style="left:88.333%;width:8.333%" data-note="8" aria-label="Text note, 0:53 to 0:58"><span></span></button>
+      </div></div>
+      <div class="an-lane"><span>Voice</span><div class="an-track">
+        <div class="an-playhead"></div>
+        <button type="button" class="an-marker an-voice" style="left:17.6%" data-note="2" aria-label="Voice note at 0:10.543"><span><i data-lucide="volume-2" aria-hidden="true"></i></span></button>
+        <button type="button" class="an-marker an-voice" style="left:70%" data-note="6" aria-label="Voice note at 0:42"><span><i data-lucide="volume-2" aria-hidden="true"></i></span></button>
+      </div></div>
+      <div class="an-axis"><span>0:00</span><span>0:30</span><span>1:00</span></div>
+    </div>
+    <div class="an-tool-switch" data-tools aria-label="Commentary tools">
+      <button type="button" data-mode="text" aria-pressed="true">✎ Text note</button>
+      <button type="button" data-mode="voice" aria-pressed="false">Voice note</button>
+      <button type="button" data-mode="saved" aria-pressed="false" hidden>Saved notes · 8</button>
+    </div>
+    <div class="an-accordion" data-accordion hidden>
+      <details class="an-paper" data-section="text"><summary>✎ Write a text note</summary><div data-text-slot></div></details>
+      <details class="an-paper" data-section="voice"><summary>Record a voice note</summary><div data-voice-slot></div></details>
+      <details class="an-paper" data-section="saved"><summary>Saved notes · 8</summary><div data-accordion-saved-slot></div></details>
+    </div>
+    <div data-stage>
+      <div class="an-editor an-paper" data-text>
+        <div class="an-editor-title"><i data-lucide="pencil" aria-hidden="true"></i>Write a text note</div>
+        <div class="an-fields"><label>Start<input value="0:31.000" aria-label="Example text start"></label><label>End<input value="0:33.000" aria-label="Example text end"></label></div>
+        <label>Commentary<textarea placeholder="What would you like the speaker to try?" aria-label="Example commentary"></textarea></label>
+        <div class="an-actions"><button type="button" class="an-primary" data-example="Text note preview">Add text note</button><button type="button" data-current>Use current time for Start</button></div>
+        <div class="an-help">Private until you publish.</div>
+      </div>
+      <div class="an-editor an-paper an-voice-form" data-voice hidden>
+        <div class="an-editor-title"><i data-lucide="mic" aria-hidden="true"></i>Record a voice note</div>
+        <label>At speech time<input value="0:40.000" aria-label="Example voice position"></label>
+        <div class="an-actions"><button type="button" data-current>Use current time</button></div>
+        <div class="an-audio-state"><span class="an-record-dot"></span><span>Ready to record · example</span></div>
+        <button type="button" class="an-primary" data-example="Recording preview; microphone is not active">Record voice note</button>
+        <div class="an-help">A voice note belongs to one point in the speech.</div>
+      </div>
+      <div data-focus-saved-slot hidden></div>
+    </div>
+    <details class="an-saved an-paper" data-saved-wrapper>
+      <summary>Saved notes · 8</summary><div data-default-saved-slot></div>
+    </details>
+    <div class="an-notes" data-notes>
+      <ol aria-label="Illustrative saved commentary"></ol>
+      <div class="an-pagination" aria-label="Saved note pages"><button type="button" data-page="-1" disabled>Previous</button><span data-page-label>1–4 of 8</span><button type="button" data-page="1">Next</button></div>
+    </div>
+    <div class="an-footer"><span>8 notes · private feedback</span><button type="button" class="an-primary" data-example="Publish preview; no changes made">Publish feedback</button></div>
+    <div class="an-status" role="status" data-status>Design example · no changes to your speech</div>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById('annotation-options');
+      const q = (s) => root.querySelector(s);
+      const all = (s) => [...root.querySelectorAll(s)];
+      const text = q('[data-text]'), voice = q('[data-voice]'), notes = q('[data-notes]');
+      let layout = 'tabs', mode = 'text', page = 0;
+      const rows = [
+        {id:1, kind:'text', time:'0:03.823–0:09.823', summary:'Create an opening with your niece.', body:'She really responds and folds her arm over yours. :-)'},
+        {id:2, kind:'voice', time:'0:10.543', summary:'Try slowing down at this point.', body:'Explore how your voice works with your movement on stage.'},
+        {id:3, kind:'text', time:'0:17.021–0:19.021', summary:'Try a more natural woof.', body:'Your niece seems to like that.'},
+        {id:4, kind:'text', time:'0:28.332–0:30.832', summary:'Aim for a more dog-like sound.', body:'A short, playful sound could work well here.'},
+        {id:5, kind:'text', time:'0:34.000–0:38.000', summary:'Leave room for the audience to respond.', body:'Hold a short pause after the next sentence.'},
+        {id:6, kind:'voice', time:'0:42.000', summary:'Keep your voice warm.', body:'Continue the conversational tone through the final example.'},
+        {id:7, kind:'text', time:'0:46.000–0:49.000', summary:'Make eye contact before continuing.', body:'Look up, pause, and begin the last thought.'},
+        {id:8, kind:'text', time:'0:53.000–0:58.000', summary:'Give the ending a little space.', body:'Let the final sentence land before you move.'}
+      ];
+      function renderNotes(selected) {
+        q('ol').replaceChildren();
+        rows.slice(page*4,page*4+4).forEach((row) => {
+          const li=document.createElement('li'), d=document.createElement('details'), s=document.createElement('summary');
+          d.className='an-note'; d.dataset.kind=row.kind; d.dataset.row=String(row.id);
+          const badge=document.createElement('span'); badge.className='an-note-type'; badge.textContent=(row.kind==='voice'?'Voice':'Text')+' · '+row.time;
+          s.append(badge,document.createTextNode(' — '+row.summary)); d.append(s);
+          const body=document.createElement('div'); body.className='an-note-body'; body.textContent=row.body; d.append(body);
+          const seek=document.createElement('button');seek.type='button';seek.textContent='Go to '+row.time.split('–')[0];
+          seek.addEventListener('click',()=>selectNote(row.id));body.append(document.createElement('br'),seek);
+          const b=document.createElement('button'); b.type='button'; b.textContent=row.kind==='voice'?'Preview voice note':'Edit text note';
+          b.addEventListener('click',()=>{q('[data-status]').textContent='Illustrative note '+row.id+' selected; no changes made.';}); body.append(document.createElement('br'),b);
+          d.open=row.id===selected; li.append(d); q('ol').append(li);
+        });
+        q('[data-page-label]').textContent=(page*4+1)+'–'+Math.min(page*4+4,rows.length)+' of '+rows.length;
+        q('[data-page="-1"]').disabled=page===0; q('[data-page="1"]').disabled=(page+1)*4>=rows.length;
+      }
+      function place() {
+        const accordion=layout==='accordion';
+        q('[data-accordion]').hidden=!accordion; q('[data-tools]').hidden=accordion; q('[data-stage]').hidden=accordion;
+        q('[data-saved-wrapper]').hidden=layout!=='tabs';
+        q('[data-mode="saved"]').hidden=layout!=='focus';
+        q('[data-mode="text"]').textContent=layout==='focus'?'+ Text note':'✎ Text note';
+        q('[data-mode="voice"]').textContent=layout==='focus'?'+ Voice note':'Voice note';
+        (accordion?q('[data-text-slot]'):q('[data-stage]')).append(text);
+        (accordion?q('[data-voice-slot]'):q('[data-stage]')).append(voice);
+        (accordion?q('[data-accordion-saved-slot]'):layout==='tabs'?q('[data-default-saved-slot]'):q('[data-focus-saved-slot]')).append(notes);
+        text.hidden=!accordion&&mode!=='text'; voice.hidden=!accordion&&mode!=='voice';
+        q('[data-focus-saved-slot]').hidden=layout!=='focus'||mode!=='saved';
+        all('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
+        if(accordion) all('[data-section]').forEach(d=>{d.open=d.dataset.section===mode;});
+      }
+      all('[data-layout]').forEach(b=>b.addEventListener('click',()=>{
+        layout=b.dataset.layout; if(layout==='tabs'&&mode==='saved')mode='text';
+        all('[data-layout]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); place();
+      }));
+      all('[data-mode]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode; place();}));
+      all('[data-section]').forEach(d=>d.addEventListener('toggle',()=>{
+        if(layout==='accordion'&&d.open){mode=d.dataset.section;all('[data-section]').forEach(x=>{if(x!==d)x.open=false;});}
+      }));
+      all('[data-page]').forEach(b=>b.addEventListener('click',()=>{page+=Number(b.dataset.page);renderNotes();q('[data-status]').textContent='Showing illustrative notes '+(page*4+1)+'–'+Math.min(page*4+4,rows.length)+'.';}));
+      function selectNote(id) {
+        const row=rows.find(x=>x.id===id); page=Math.floor((id-1)/4);renderNotes(id);
+        if(layout==='tabs')q('[data-saved-wrapper]').open=true;else {mode='saved';place();}
+        const time=Number(row.time.split('–')[0].split(':')[1]);
+        all('.an-playhead').forEach(p=>{p.style.left=(time/60*100)+'%';});
+        q('[data-clock]').textContent=row.time.split('–')[0]+' / 1:00';
+        q('[data-status]').textContent='Selected '+row.kind+' note at '+row.time+'.';
+      }
+      all('[data-note]').forEach(b=>b.addEventListener('click',()=>selectNote(Number(b.dataset.note))));
+      all('[data-example]').forEach(b=>b.addEventListener('click',()=>{q('[data-status]').textContent=b.dataset.example+' — design example only.';}));
+      all('[data-current]').forEach(b=>b.addEventListener('click',()=>{
+        (b.closest('[data-voice]')?voice:text).querySelector('input').value=q('[data-clock]').textContent.split(' / ')[0];
+      }));
+      renderNotes(); place();
+    })();
+  </script>
+</div>
