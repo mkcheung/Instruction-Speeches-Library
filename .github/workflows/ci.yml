@@ -126,7 +126,14 @@ jobs:
   # proxy fixes are both known false-failure sources for the raw-Vite
   # setup this job used to use; the built-bundle path removes both.
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`: that label now resolves to Ubuntu 26.04
+    # ("resolute"), whose packages are still missing from GitHub's Azure
+    # mirror — `playwright install --with-deps` then crawls through
+    # `Ign:` lines for each package before falling back to
+    # archive.ubuntu.com, outlasting every retry's 7-minute `timeout`
+    # (PR #38: 14 minutes, three failed attempts). 24.04 is the release
+    # this job's mirror/browser-deps path was already working on.
+    runs-on: ubuntu-24.04
     # See the `test` job's identical comment — this job is heavier (Docker
     # builds, the full E2E stack, Playwright) but observed runs, including
     # failing ones, have all finished well under 10 minutes; 45 is
