@@ -318,6 +318,10 @@ test.describe('option C presentation accessibility (isolated frontend)', () => {
 // unknown requests still fail closed in the surrounding interceptor.
 interface NotebookFixtureOptions {
   reviewer?: boolean
+  // Opt in to one consistent reviewer/speech/annotation identity; legacy dashboard fixtures stay unchanged.
+  reviewerOverlay?: boolean
+  missingCaptions?: boolean
+  writtenBody?: string
   feedback?: boolean
   playbackMode?: 'all' | 'written' | 'voice' | 'off'
   notReady?: boolean
@@ -364,11 +368,12 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     '/api/privacy/exports', '/api/coach-applications/me', '/api/speeches/9', '/api/speeches/9/assets/90/playback-url',
     '/api/speeches/9/captions', '/api/speeches/9/transcript', '/api/speeches/9/reviews', '/api/speeches/9/review-roster',
     '/api/speeches/9/annotations', '/api/speeches/9/annotations/notebook-voice/voice-playback-url', '/api/speeches/9/essay', '/api/me/preferences/commentary-playback/9',
-    '/api/me/preferences/voice-commentary/9']
+    '/api/me/preferences/voice-commentary/9', ...(options.reviewerOverlay ? ['/api/reviews'] : [])]
   if (!handled.includes(path)) return undefined
   if (options.mode === 'error') return { status: 500, body: { message: 'Presentation fixture failure.' } }
   const speech = notebookSpeech(options), review = notebookReview(options), empty = options.mode === 'empty'
   switch (path) {
+    case '/api/reviews': return { body: { invited: [], in_progress: [review], published: [], revoked: [] } }
     case '/api/speeches': return { body: { speeches: empty ? [] : [speech], meta: { current_page: 1, last_page: 1, total: empty ? 0 : 1 } } }
     case '/api/reviewers': return { body: { reviewers: empty ? [] : [
       { id: 3, name: 'Avery Reviewer', username: 'avery-reviewer', credential: 'coach', avatar_url: null },
@@ -387,15 +392,17 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     } }] } }
     case '/api/speeches/9': return { body: { speech } }
     case '/api/speeches/9/assets/90/playback-url': return { body: { url: `${APP_URL}/__notebook/speech.mp4` } }
-    case '/api/speeches/9/captions': return { body: { captions: { status: 'ready', asset_id: 91, failure_code: null, updated_at: notebookDate,
+    case '/api/speeches/9/captions': if (options.missingCaptions) return { body: { captions: { status: 'failed', asset_id: 91, failure_code: 'fixture_captions_unavailable', updated_at: notebookDate } } }; return { body: { captions: { status: 'ready', asset_id: 91, failure_code: null, updated_at: notebookDate,
       revision: 'notebook-revision', vtt: 'WEBVTT\n\n00:00.000 --> 00:03.000\nFind your voice.\n' } } }
     case '/api/speeches/9/transcript': return { body: { transcript: { body: 'Find your voice.', segments: [{ start: 0, end: 3, text: 'Find your voice.' }],
       word_count: 3, words_per_minute: 60, language: 'en', model: 'fixture', source: 'whisper', updated_at: notebookDate, caption_revision: 'notebook-revision' } } }
     case '/api/speeches/9/reviews': return { body: { reviews: [review] } }
     case '/api/speeches/9/review-roster': return { body: { reviews: [{ ...review, annotations_count: options.feedback ? 2 : 0, published_annotations_count: options.feedback ? 2 : 0, revoked_by_is_self: false }] } }
-    case '/api/speeches/9/annotations': return { body: { review_id: Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback ? [
-      { id: 'notebook-written', timing_type: 'range', start_seconds: 0, duration_seconds: .8, kind: 'observation', topic: null,
-        body: 'Pause briefly before the opening sentence.', lock_version: 1, client_uuid: 'notebook-written', voice: null },
+    case '/api/speeches/9/annotations':
+      if (options.reviewerOverlay && url.searchParams.get('review_id') !== String(review.id)) return { status: 403, body: { message: 'Unexpected fixture review denied.' } }
+      return { body: { review_id: options.reviewerOverlay ? review.id : Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback ? [
+      { id: 'notebook-written', timing_type: 'range', start_seconds: options.reviewerOverlay ? .4 : 0, duration_seconds: options.reviewerOverlay ? .5 : .8, kind: 'observation', topic: null,
+        body: options.writtenBody ?? (options.reviewerOverlay ? 'Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.' : 'Pause briefly before the opening sentence.'), lock_version: 1, client_uuid: 'notebook-written', voice: null },
       { id: 'notebook-voice', timing_type: 'point', start_seconds: 1.2, duration_seconds: 10, kind: 'observation', topic: null,
         body: 'Your opening sounds warm and confident.', lock_version: 1, client_uuid: 'notebook-voice',
         voice: { asset_id: 92, audio_status: 'ready', transcript_status: 'ready', failure_code: null } },
@@ -482,6 +489,52 @@ test.describe('notebook presentation accessibility (isolated frontend)', () => {
         }
         expect(reviewerUnexpected).toEqual([])
       } finally { await reviewerContext.close() }
+    })
+  }
+})
+
+test.describe('reviewer overlay presentation accessibility (isolated frontend)', () => {
+  test.setTimeout(180_000)
+  for (const width of [375, 1440]) {
+    test(`populated reviewer Notes, live draft and kept-mounted tabs retain unchanged axe gate at ${width}px`, async ({ browser }) => {
+      const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+      const unexpected = await isolateWorkspaceAxeApi(context, { reviewer: true, reviewerOverlay: true, feedback: true, missingCaptions: true })
+      const page = await context.newPage()
+      try {
+        await page.goto(`${APP_URL}/speeches/9`)
+        const tabs = page.getByRole('tablist', { name: 'Your feedback' })
+        await expect(tabs).toBeVisible({ timeout: 30_000 })
+        const list = page.getByRole('list', { name: 'Your commentary', exact: true })
+        await expect(list).toHaveCount(1)
+        await expect(list.getByText(/Pause briefly before the opening sentence/)).toBeVisible()
+        const editor = page.getByRole('region', { name: 'New annotation', exact: true })
+        await editor.getByRole('textbox', { name: 'Start', exact: true }).fill('1.5')
+        await editor.getByRole('textbox', { name: 'End', exact: true }).fill('2.5')
+        await editor.getByRole('textbox', { name: 'Commentary', exact: true }).fill('Private live reviewer draft for accessibility checks.')
+        await expect(editor.getByRole('button', { name: 'Add annotation', exact: true })).toBeEnabled()
+        const video = page.locator('video[data-testid="speech-video"]')
+        await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+        await video.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = 1.8 })
+        const stack = page.getByTestId('reviewer-preview-target').getByTestId('overlay-stack')
+        await expect(stack).toHaveAttribute('aria-hidden', 'true')
+        await expect(stack.locator('.annotation-overlay[data-draft="true"]')).toHaveCSS('opacity', '1')
+        // Keep WCAG tags, the third-party .video-js exclusion and the existing
+        // critical/serious gate. The actual Notes/editor remain fully scanned.
+        for (const dark of [false, true]) {
+          await page.emulateMedia({ colorScheme: dark ? 'dark' : 'light' })
+          await page.evaluate((enabled) => document.documentElement.classList.toggle('dark', enabled), dark)
+          for (const tab of ['Notes', 'Essay', 'Transcript', 'Notes']) {
+            await tabs.getByRole('tab', { name: tab, exact: true }).click()
+            await expect(tabs.getByRole('tab', { name: tab, exact: true })).toHaveAttribute('aria-selected', 'true')
+            await expect(page.getByTestId('overlay-stack')).toHaveCount(tab === 'Notes' ? 1 : 0)
+            await scanNotebookAndAssert(page, `reviewer-overlay/${tab}/${width}/${dark ? 'dark' : 'light'}`)
+          }
+        }
+        await expect(list).toHaveCount(1)
+        await expect(editor.getByRole('textbox', { name: 'Commentary', exact: true })).toHaveValue('Private live reviewer draft for accessibility checks.')
+        await expect(list.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+        expect(unexpected).toEqual([])
+      } finally { await context.close() }
     })
   }
 })

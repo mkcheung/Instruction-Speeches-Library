@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useBlocker, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,9 @@ export function AnnotationComposerPanel({
   userId,
   canRecordVoice,
   onSeek,
+  previewTarget,
+  previewEnabled,
+  previewAnchor,
 }: {
   speechId: number
   review: Review
@@ -53,6 +57,9 @@ export function AnnotationComposerPanel({
   userId: string | undefined
   canRecordVoice: boolean
   onSeek: (seconds: number) => void
+  previewTarget: HTMLElement | null
+  previewEnabled: boolean
+  previewAnchor: 'top' | 'default'
 }) {
   return (
     <ToastProvider>
@@ -65,6 +72,9 @@ export function AnnotationComposerPanel({
         userId={userId}
         canRecordVoice={canRecordVoice}
         onSeek={onSeek}
+        previewTarget={previewTarget}
+        previewEnabled={previewEnabled}
+        previewAnchor={previewAnchor}
       />
       <Toaster />
     </ToastProvider>
@@ -79,6 +89,9 @@ function AnnotationComposerPanelInner({
   userId,
   canRecordVoice,
   onSeek,
+  previewTarget,
+  previewEnabled,
+  previewAnchor,
 }: {
   speechId: number
   review: Review
@@ -87,12 +100,26 @@ function AnnotationComposerPanelInner({
   userId: string | undefined
   canRecordVoice: boolean
   onSeek: (seconds: number) => void
+  previewTarget: HTMLElement | null
+  previewEnabled: boolean
+  previewAnchor: 'top' | 'default'
 }) {
   const reviewId = review.id
-  const { data, isError, refetch } = useGetAnnotationsQuery(
+  const { data, currentData, isError, isFetching, isSuccess, error, refetch } = useGetAnnotationsQuery(
     { speechId, reviewId },
     { pollingInterval: 3000, skipPollingIfUnfocused: true },
   )
+  const previewAccessDenied = isError && error && 'status' in error
+    && [401, 403, 404, 410].includes(Number(error.status))
+  const [previewAccessBlocked, setPreviewAccessBlocked] = useState(false)
+  // A retry clears RTK's isError while retaining the denied cached rows.
+  // Keep the preview blocked until a completed, matching response succeeds;
+  // adjust during render so retained text cannot flash between commits.
+  if (previewAccessDenied && !previewAccessBlocked) {
+    setPreviewAccessBlocked(true)
+  } else if (previewAccessBlocked && !isError && isSuccess && !isFetching && currentData?.review_id === reviewId) {
+    setPreviewAccessBlocked(false)
+  }
   const serverRows = useMemo(() => data?.annotations ?? [], [data])
   const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null
   const writable = ['accepted', 'in_progress', 'published'].includes(review.status) && !review.revoked_at
@@ -283,9 +310,10 @@ function AnnotationComposerPanelInner({
       <CardContent className="flex flex-col gap-4">
         {isError && <div role="alert" className="text-sm">Could not refresh your feedback. Your draft is retained. <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
         {legacyConflict && <p role="status" className="text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
-        <div className="pointer-events-none relative flex min-h-16 flex-col justify-end">
-          <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} />
-        </div>
+        {previewTarget && previewEnabled && !previewAccessDenied && !previewAccessBlocked && createPortal(
+          <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} anchor={previewAnchor} />,
+          previewTarget,
+        )}
 
         <TimelineStrip
           annotations={merged}

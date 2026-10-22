@@ -571,6 +571,10 @@ test.describe('option C presentation (isolated frontend)', () => {
 // unknown requests still fail closed in the surrounding interceptor.
 interface NotebookFixtureOptions {
   reviewer?: boolean
+  // Opt in to one consistent reviewer/speech/annotation identity; legacy dashboard fixtures stay unchanged.
+  reviewerOverlay?: boolean
+  missingCaptions?: boolean
+  writtenBody?: string
   feedback?: boolean
   playbackMode?: 'all' | 'written' | 'voice' | 'off'
   notReady?: boolean
@@ -617,11 +621,12 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     '/api/privacy/exports', '/api/coach-applications/me', '/api/speeches/9', '/api/speeches/9/assets/90/playback-url',
     '/api/speeches/9/captions', '/api/speeches/9/transcript', '/api/speeches/9/reviews', '/api/speeches/9/review-roster',
     '/api/speeches/9/annotations', '/api/speeches/9/annotations/notebook-voice/voice-playback-url', '/api/speeches/9/essay', '/api/me/preferences/commentary-playback/9',
-    '/api/me/preferences/voice-commentary/9']
+    '/api/me/preferences/voice-commentary/9', ...(options.reviewerOverlay ? ['/api/reviews'] : [])]
   if (!handled.includes(path)) return undefined
   if (options.mode === 'error') return { status: 500, body: { message: 'Presentation fixture failure.' } }
   const speech = notebookSpeech(options), review = notebookReview(options), empty = options.mode === 'empty'
   switch (path) {
+    case '/api/reviews': return { body: { invited: [], in_progress: [review], published: [], revoked: [] } }
     case '/api/speeches': return { body: { speeches: empty ? [] : [speech], meta: { current_page: 1, last_page: 1, total: empty ? 0 : 1 } } }
     case '/api/reviewers': return { body: { reviewers: empty ? [] : [
       { id: 3, name: 'Avery Reviewer', username: 'avery-reviewer', credential: 'coach', avatar_url: null },
@@ -640,15 +645,17 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
     } }] } }
     case '/api/speeches/9': return { body: { speech } }
     case '/api/speeches/9/assets/90/playback-url': return { body: { url: `${APP_URL}/__notebook/speech.mp4` } }
-    case '/api/speeches/9/captions': return { body: { captions: { status: 'ready', asset_id: 91, failure_code: null, updated_at: notebookDate,
+    case '/api/speeches/9/captions': if (options.missingCaptions) return { body: { captions: { status: 'failed', asset_id: 91, failure_code: 'fixture_captions_unavailable', updated_at: notebookDate } } }; return { body: { captions: { status: 'ready', asset_id: 91, failure_code: null, updated_at: notebookDate,
       revision: 'notebook-revision', vtt: 'WEBVTT\n\n00:00.000 --> 00:03.000\nFind your voice.\n' } } }
     case '/api/speeches/9/transcript': return { body: { transcript: { body: 'Find your voice.', segments: [{ start: 0, end: 3, text: 'Find your voice.' }],
       word_count: 3, words_per_minute: 60, language: 'en', model: 'fixture', source: 'whisper', updated_at: notebookDate, caption_revision: 'notebook-revision' } } }
     case '/api/speeches/9/reviews': return { body: { reviews: [review] } }
     case '/api/speeches/9/review-roster': return { body: { reviews: [{ ...review, annotations_count: options.feedback ? 2 : 0, published_annotations_count: options.feedback ? 2 : 0, revoked_by_is_self: false }] } }
-    case '/api/speeches/9/annotations': return { body: { review_id: Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback ? [
-      { id: 'notebook-written', timing_type: 'range', start_seconds: 0, duration_seconds: .8, kind: 'observation', topic: null,
-        body: 'Pause briefly before the opening sentence.', lock_version: 1, client_uuid: 'notebook-written', voice: null },
+    case '/api/speeches/9/annotations':
+      if (options.reviewerOverlay && url.searchParams.get('review_id') !== String(review.id)) return { status: 403, body: { message: 'Unexpected fixture review denied.' } }
+      return { body: { review_id: options.reviewerOverlay ? review.id : Number(url.searchParams.get('review_id')), reviewer: review.reviewer, annotations: options.feedback ? [
+      { id: 'notebook-written', timing_type: 'range', start_seconds: options.reviewerOverlay ? .4 : 0, duration_seconds: options.reviewerOverlay ? .5 : .8, kind: 'observation', topic: null,
+        body: options.writtenBody ?? (options.reviewerOverlay ? 'Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.' : 'Pause briefly before the opening sentence.'), lock_version: 1, client_uuid: 'notebook-written', voice: null },
       { id: 'notebook-voice', timing_type: 'point', start_seconds: 1.2, duration_seconds: 10, kind: 'observation', topic: null,
         body: 'Your opening sounds warm and confident.', lock_version: 1, client_uuid: 'notebook-voice',
         voice: { asset_id: 92, audio_status: 'ready', transcript_status: 'ready', failure_code: null } },
@@ -1116,4 +1123,192 @@ test.describe('notebook presentation (isolated frontend)', () => {
       } finally { await context.close() }
     })
   }
+})
+
+// Geometry uses the actual player host and displayed footage, including portrait
+// and fullscreen. Unbounded text is compared with the owner baseline separately.
+async function expectReviewerFrame(page: Page, overlay: import('@playwright/test').Locator, anchor: 'top' | 'default') {
+  await presentationExpect(overlay).toHaveCSS('opacity', '1')
+  const geometry = await overlay.evaluate((element) => {
+    const host = element.closest('.owner-commentary-host')!, player = element.closest('.video-js')!
+    const video = player.querySelector('video')!, frame = element.closest('.owner-feedback-frame')!
+    const bounds = (node: Element) => {
+      const r = node.getBoundingClientRect()
+      return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }
+    }
+    const root = getComputedStyle(document.documentElement), css = getComputedStyle(host)
+    return { overlay: bounds(element), stack: bounds(element.parentElement!), frame: bounds(frame), video: bounds(video), aspect: video.videoWidth / video.videoHeight,
+      actualHost: host.parentElement === player, notebookAncestor: Boolean(element.closest('.workspace-notebook-surface')),
+      art: player.querySelectorAll('[data-workspace-scene]').length,
+      tokens: ['--background', '--foreground', '--color-bg', '--color-fg'].map((token) => ({ token, host: css.getPropertyValue(token), root: root.getPropertyValue(token) })) }
+  })
+  presentationExpect(geometry.actualHost).toBe(true)
+  presentationExpect(geometry.notebookAncestor).toBe(false)
+  presentationExpect(geometry.art).toBe(0)
+  presentationExpect(geometry.frame.width / geometry.frame.height).toBeCloseTo(geometry.aspect, 2)
+  const footageWidth = Math.min(geometry.video.width, geometry.video.height * geometry.aspect)
+  presentationExpect(geometry.frame.width).toBeCloseTo(footageWidth, 0)
+  presentationExpect(geometry.frame.height).toBeCloseTo(footageWidth / geometry.aspect, 0)
+  presentationExpect(geometry.overlay.x).toBeGreaterThanOrEqual(geometry.frame.x)
+  presentationExpect(geometry.overlay.right).toBeLessThanOrEqual(geometry.frame.right + 1)
+  presentationExpect(geometry.overlay.y).toBeGreaterThanOrEqual(geometry.frame.y)
+  presentationExpect(geometry.overlay.bottom).toBeLessThanOrEqual(geometry.frame.bottom - 47)
+  if (anchor === 'top') presentationExpect(geometry.overlay.y).toBeCloseTo(geometry.frame.y + 12, 0)
+  // Inactive rows retain layout during fades and the render window. Compare
+  // the stack's clearance, then require the active note to stay within it.
+  else presentationExpect(geometry.stack.bottom).toBeCloseTo(geometry.frame.bottom - 48, 0)
+  for (const token of geometry.tokens) presentationExpect(token.host, token.token).toBe(token.root)
+  presentationExpect(await page.locator('.video-js [data-workspace-scene]').count()).toBe(0)
+  return geometry
+}
+
+test.describe('reviewer overlay presentation (isolated frontend)', () => {
+  test.setTimeout(240_000)
+  for (const portrait of [false, true]) {
+    test(`native ${portrait ? 'portrait without captions' : 'landscape with subtitles'} preserves timing, drafts, frame and fullscreen`, async ({ browser }) => {
+      const media = await createNotebookMedia(browser, portrait)
+      const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+      const mocked = await interceptPresentationApi(context, true, { reviewer: true, reviewerOverlay: true, feedback: true, portrait, media, missingCaptions: portrait })
+      const page = await context.newPage()
+      try {
+        await page.goto(`${APP_URL}/speeches/9`)
+        const video = page.locator('video[data-testid="speech-video"]'), tabs = page.getByRole('tablist', { name: 'Your feedback' })
+        const target = page.getByTestId('reviewer-preview-target'), stack = target.getByTestId('overlay-stack')
+        const saved = target.getByTestId('overlay-notebook-written')
+        await presentationExpect(tabs).toBeVisible()
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => [element.videoWidth, element.videoHeight])).toEqual(portrait ? [360, 640] : [640, 360])
+        const originalVideo = await video.elementHandle()
+        await presentationExpect(target).toHaveCount(1)
+        await presentationExpect(stack).toHaveAttribute('aria-hidden', 'true')
+        await presentationExpect(stack).toHaveCSS('pointer-events', 'none')
+        await presentationExpect(page.getByTestId('overlay-stack')).toHaveCount(1)
+        const card = page.locator('[data-slot="card"]').filter({ has: page.getByRole('list', { name: 'Your commentary', exact: true }) })
+        await presentationExpect(card.getByTestId('overlay-stack')).toHaveCount(0)
+        await presentationExpect(card.locator('[data-slot="card-content"] > :first-child')).toHaveAttribute('data-testid', 'timeline-strip')
+        await presentationExpect(page.getByRole('list', { name: 'Your commentary', exact: true })).toHaveCount(1)
+        await presentationExpect(page.getByRole('group', { name: 'Annotation timeline', exact: true })).toBeVisible()
+        const editor = page.getByRole('region', { name: 'New annotation', exact: true, includeHidden: true })
+        await presentationExpect(editor).toBeVisible()
+        // Wrong review IDs must not yield plausible annotations in this fixture.
+        const denied = await page.evaluate(async (api) => {
+          const response = await fetch(`${api}/api/speeches/9/annotations?review_id=2`, { credentials: 'include' })
+          return { status: response.status, body: await response.json() }
+        }, API_URL)
+        presentationExpect(denied).toEqual({ status: 403, body: { message: 'Unexpected fixture review denied.' } })
+        if (portrait) await presentationExpect(page.getByText('Captions unavailable.', { exact: true })).toBeVisible()
+        else {
+          const toggle = page.getByTestId('captions-toggle')
+          await presentationExpect(toggle).toBeVisible()
+          if (await toggle.getAttribute('aria-pressed') === 'true') await toggle.click()
+        }
+        await presentationExpect(target.locator('xpath=..')).toHaveAttribute('data-anchor', 'default')
+        await video.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = .1 })
+        await presentationExpect(saved).toHaveCSS('opacity', '0')
+        await video.evaluate(async (element: HTMLVideoElement) => { element.muted = true; await element.play() })
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime), { intervals: [25] }).toBeGreaterThan(.43)
+        await video.evaluate((element: HTMLVideoElement) => { element.pause() })
+        await presentationExpect(saved).toHaveText('Pause briefly before the opening sentence. Give the audience a moment to settle, then begin with a warm and confident voice.')
+        const inside = await expectReviewerFrame(page, saved, 'default')
+        presentationExpect(inside.overlay.height).toBeGreaterThan(40)
+        const colors = await video.evaluate((element: HTMLVideoElement) => {
+          const canvas = document.createElement('canvas'); canvas.width = element.videoWidth; canvas.height = element.videoHeight
+          const ctx = canvas.getContext('2d')!; ctx.drawImage(element, 0, 0)
+          const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data, colors = new Set<string>()
+          for (let i = 0; i < data.length; i += 400) colors.add(`${data[i]},${data[i + 1]},${data[i + 2]}`)
+          return colors.size
+        })
+        presentationExpect(colors).toBeGreaterThan(3)
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = 1.3 })
+        await presentationExpect(saved).toHaveAttribute('data-visible', 'false')
+        await presentationExpect(saved).toHaveCSS('opacity', '0')
+        const voicePoint = target.getByTestId('overlay-notebook-voice')
+        await presentationExpect(voicePoint).toHaveAttribute('data-visible', 'false')
+        await presentationExpect(voicePoint).toHaveCSS('opacity', '0')
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = .6 })
+        await expectReviewerFrame(page, saved, 'default')
+        if (!portrait) {
+          await page.getByTestId('captions-toggle').click()
+          await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => Array.from(element.textTracks).some((track) => track.kind === 'captions' && track.mode === 'showing'))).toBe(true)
+          await presentationExpect(target.locator('xpath=..')).toHaveAttribute('data-anchor', 'top')
+          await expectReviewerFrame(page, saved, 'top')
+          await page.getByTestId('captions-toggle').click()
+          await presentationExpect(target.locator('xpath=..')).toHaveAttribute('data-anchor', 'default')
+        }
+        await editor.getByRole('textbox', { name: 'Start', exact: true }).fill('1.5')
+        await editor.getByRole('textbox', { name: 'End', exact: true }).fill('2.5')
+        const draftInput = editor.getByRole('textbox', { name: 'Commentary', exact: true, includeHidden: true }), originalInput = await draftInput.elementHandle()
+        await draftInput.fill('A private draft in a free interval.')
+        await presentationExpect(editor.getByRole('button', { name: 'Add annotation', exact: true })).toBeEnabled()
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = 1.8 })
+        const draft = target.locator('.annotation-overlay[data-draft="true"]')
+        await presentationExpect(draft).toHaveCount(1)
+        await presentationExpect(draft).toHaveAttribute('data-testid', /^overlay-tmp_/)
+        await presentationExpect(draft).toHaveCSS('border-top-style', 'dashed')
+        await expectReviewerFrame(page, draft, 'default')
+        await draftInput.fill('Updated private draft, still unsaved.')
+        await presentationExpect(draft).toHaveText('Updated private draft, still unsaved.')
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => Array.from(element.textTracks).filter((track) => track.kind === 'metadata' && track.label === 'annotation-engine').length)).toBe(1)
+        const track = await video.evaluateHandle((element: HTMLVideoElement) => Array.from(element.textTracks).find((item) => item.label === 'annotation-engine'))
+        for (const tab of ['Essay', 'Transcript', 'Notes']) {
+          await tabs.getByRole('tab', { name: tab, exact: true }).click()
+          await presentationExpect(target).toHaveCount(1)
+          await presentationExpect(page.getByTestId('overlay-stack')).toHaveCount(tab === 'Notes' ? 1 : 0)
+          presentationExpect(await video.evaluate((element, original) => element === original, originalVideo)).toBe(true)
+          presentationExpect(await video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(1.8, 1)
+          presentationExpect(await draftInput.evaluate((element, original) => element === original, originalInput)).toBe(true)
+        }
+        await presentationExpect(draftInput).toHaveValue('Updated private draft, still unsaved.')
+        presentationExpect(await video.evaluate((element: HTMLVideoElement, original) => Array.from(element.textTracks).find((item) => item.label === 'annotation-engine') === original, track)).toBe(true)
+        for (const width of [375, 1440]) {
+          await page.setViewportSize({ width, height: 900 })
+          await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+          await page.evaluate(() => document.documentElement.classList.add('dark'))
+          await expectReviewerFrame(page, draft, 'default')
+          await expectNoPageOverflow(page)
+          await page.screenshot({ path: test.info().outputPath(`reviewer-${portrait ? 'portrait' : 'landscape'}-${width}.png`), fullPage: true })
+        }
+        await page.locator('.vjs-fullscreen-control').click()
+        await page.waitForFunction(() => Boolean(document.fullscreenElement), undefined, { timeout: 1500 }).catch(() => undefined)
+        const fullscreen = await page.evaluate(() => Boolean(document.fullscreenElement))
+        if (fullscreen) {
+          await presentationExpect(page.locator(':fullscreen [data-testid="reviewer-preview-target"] .annotation-overlay[data-draft="true"]')).toHaveCSS('opacity', '1')
+          await expectReviewerFrame(page, draft, 'default')
+          await presentationExpect(page.locator(':fullscreen .vjs-fullscreen-control')).toBeVisible()
+          await page.locator(':fullscreen .vjs-fullscreen-control').click()
+          await presentationExpect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(false)
+        }
+        const evidence = test.info().outputPath('reviewer-native-capabilities.json')
+        await writeFile(evidence, JSON.stringify({ fullscreenEntered: fullscreen, nativeVideoOnlyFullscreenAndPipHtml: 'not claimed', physicalMicrophoneAndIphone: 'not exercised' }, null, 2))
+        await test.info().attach('reviewer-native-capabilities', { path: evidence, contentType: 'application/json' })
+        presentationExpect(mocked.unexpected).toEqual([])
+      } finally { await context.close() }
+    })
+  }
+
+  test('long unbroken note records existing owner overflow without changing shared CSS', async ({ browser }) => {
+    const measurements: { reviewer: boolean; width: number; height: number; frameHeight: number; scrollWidth: number; clientWidth: number; overflowWrap: string }[] = []
+    const writtenBody = 'UnbrokenCommentary'.repeat(350)
+    for (const reviewer of [false, true]) {
+      const context = await browser.newContext({ viewport: { width: 375, height: 900 }, reducedMotion: 'reduce' })
+      const mocked = await interceptPresentationApi(context, true, { reviewer, reviewerOverlay: reviewer, feedback: true, missingCaptions: true, writtenBody, playbackMode: 'written' })
+      const page = await context.newPage()
+      try {
+        await page.goto(`${APP_URL}/speeches/9`)
+        const video = page.locator('video[data-testid="speech-video"]')
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+        await video.evaluate((element: HTMLVideoElement) => { element.pause(); element.currentTime = .6 })
+        const overlay = page.locator('.owner-commentary-host').getByTestId('overlay-notebook-written')
+        await presentationExpect(overlay).toHaveCSS('opacity', '1')
+        measurements.push({ reviewer, ...await overlay.evaluate((element) => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height,
+          frameHeight: element.closest('.owner-feedback-frame')!.getBoundingClientRect().height, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
+          overflowWrap: getComputedStyle(element).overflowWrap })) })
+        presentationExpect(mocked.unexpected).toEqual([])
+      } finally { await context.close() }
+    }
+    presentationExpect(measurements[1].overflowWrap).toBe(measurements[0].overflowWrap)
+    for (const result of measurements) presentationExpect(result.scrollWidth).toBeGreaterThan(result.clientWidth)
+    const evidence = test.info().outputPath('reviewer-owner-existing-overflow.json')
+    await writeFile(evidence, JSON.stringify({ limitation: 'Existing shared overlay CSS lacks unbroken-word containment; separately scoped CSS work is required.', measurements }, null, 2))
+    await test.info().attach('reviewer-owner-existing-overflow', { path: evidence, contentType: 'application/json' })
+  })
 })

@@ -84,13 +84,32 @@ export function OverlayPositioner({
   )
 }
 
+type PlaybackSource = {
+  key: string
+  speechId: number
+  assetId: number
+  url: string
+  generation: number
+}
+
+type ReadyPlayback = {
+  source: PlaybackSource
+  player: Player
+  video: HTMLVideoElement
+}
+
+type PreviewRegistration = { identity: string; node: HTMLDivElement; token: symbol }
+
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
   const { data: speech, isLoading, error } = useGetSpeechQuery(speechId, { skip: !speechId })
   const { data: me } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
-  const [initialUrl, setInitialUrl] = useState<string | null>(null)
+  const [playbackSource, setPlaybackSource] = useState<PlaybackSource | null>(null)
+  const initialUrl = playbackSource?.url ?? null
+  const [readyPlayback, setReadyPlayback] = useState<ReadyPlayback | null>(null)
+  const [previewRegistration, setPreviewRegistration] = useState<PreviewRegistration | null>(null)
   const playerRef = useRef<Player | null>(null)
   // Render-triggering state, deliberately not a bare ref — §8.2: a ref
   // mutation doesn't re-render, so `useTimedAnnotations` (inside
@@ -122,21 +141,52 @@ export default function SpeechWatch() {
 
   const asset = speech?.primary_video
 
-  const refreshUrl = useCallback(async () => {
-    if (!asset) throw new Error('No playable asset.')
-    const result = await fetchPlaybackUrl({ speechId, assetId: asset.id }).unwrap()
-    return result.url
-  }, [fetchPlaybackUrl, speechId, asset])
+  // A retained RTK result is useful for stable rendering, but cannot identify
+  // a new playback request while the route is resolving a different speech.
+  const currentSpeech = Number.isSafeInteger(speechId) && speechId > 0 &&
+    !isLoading && !error && !!speech && Number(speech.id) === speechId
+  const requestSpeechId = currentSpeech && asset?.status === 'ready' ? speechId : null
+  const requestAssetId = requestSpeechId !== null ? asset!.id : null
 
   useEffect(() => {
-    if (asset?.status === 'ready') {
-      refreshUrl().then(setInitialUrl).catch(() => setInitialUrl(null))
-    }
-    // Only re-fetch when the asset identity/status changes — refreshUrl
-    // itself handles mid-playback TTL expiry, this effect is just "load
-    // the first URL."
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asset?.id, asset?.status])
+    if (requestSpeechId === null || requestAssetId === null) return
+    let cancelled = false
+    const key = `${requestSpeechId}:${requestAssetId}`
+    fetchPlaybackUrl({ speechId: requestSpeechId, assetId: requestAssetId }).unwrap()
+      .then(({ url }) => {
+        if (cancelled) return
+        setPlaybackSource((previous) => previous?.key === key && previous.url === url
+          ? previous
+          : { key, speechId: requestSpeechId, assetId: requestAssetId, url,
+            generation: (previous?.generation ?? 0) + 1 })
+      })
+      .catch(() => {
+        if (cancelled) return
+        // A same-source refresh retains its mounted editor. A genuinely new
+        // source's initial failure returns to the existing not-ready surface.
+        setPlaybackSource((previous) => previous?.key === key ? previous : null)
+      })
+    return () => { cancelled = true }
+  }, [fetchPlaybackUrl, requestSpeechId, requestAssetId])
+
+  // VideoPlayer keeps the latest callback for refreshes. Bind that callback
+  // to the source actually rendered, including when A is retained on route B.
+  const refreshUrl = useCallback(async () => {
+    if (!playbackSource) throw new Error('No playable asset.')
+    const result = await fetchPlaybackUrl({
+      speechId: playbackSource.speechId, assetId: playbackSource.assetId,
+    }).unwrap()
+    return result.url
+  }, [fetchPlaybackUrl, playbackSource])
+
+  const onPlayerReady = useCallback((player: Player) => {
+    if (!playbackSource || player.isDisposed()) return
+    const video = getVideoElement(player)
+    if (!video) return
+    playerRef.current = player
+    setVideoEl(video)
+    setReadyPlayback({ source: playbackSource, player, video })
+  }, [playbackSource])
 
   // W2/W4: `videoEl` is a real `<video>` element (`getVideoElement`) — its
   // own `loadedmetadata` gives the true, display-correct ratio (autorotate
@@ -189,7 +239,9 @@ export default function SpeechWatch() {
   // that builds it) — captions attach onto the existing player instance.
   useEffect(() => {
     const player = playerRef.current
-    if (!player || !videoEl) return
+    // The previous ready binding can outlive source disposal until the new
+    // player's deferred ready callback supplies its concrete video element.
+    if (!player || !videoEl || player.isDisposed() || getVideoElement(player) !== videoEl) return
     setCaptionsTrack(player, captionsBlobUrl ? { src: captionsBlobUrl, label: 'English' } : null)
     setCaptionsTrackState(getCaptionsTrack(player))
     // `sourceRefreshToken` is otherwise unread here — its only job is to
@@ -236,11 +288,32 @@ export default function SpeechWatch() {
   // the owner and for a still-loading `speech`.
   const { review: myReview } = useMyReviewForSpeech(speechId, !isOwner && !!speech)
 
-  // This is decorative display state only. RTK Query may retain speech A's
-  // data while the same mounted route requests B; never attribute A's tools
-  // to B, or publish context for an unresolved/denied request.
-  const currentSpeech = Number.isInteger(speechId) && speechId > 0 &&
-    !isLoading && !error && !!speech && Number(speech.id) === speechId
+  // RTK Query can retain A during navigation to B. The new preview needs
+  // the current route, resolved source generation and actual ready tech to
+  // agree before a reviewer target can be published.
+  const sourceMatches = currentSpeech && asset?.status === 'ready' &&
+    playbackSource?.speechId === speechId && playbackSource.assetId === asset.id
+  // State records provenance; concrete player/tech checks also reject a ready
+  // binding left behind after VideoPlayer disposes/recreates its source.
+  const sourceReady = sourceMatches && readyPlayback?.source.key === playbackSource?.key &&
+    readyPlayback?.source.generation === playbackSource?.generation &&
+    !readyPlayback.player.isDisposed() && getVideoElement(readyPlayback.player) === readyPlayback.video
+  const previewIdentity = sourceReady && me?.user && !isOwner && myReview &&
+    myReview.speech?.id === speechId && myReview.revoked_at === null &&
+    ['accepted', 'in_progress', 'published'].includes(myReview.status)
+    ? `${me.user.id}:${speechId}:${asset!.id}:${myReview.id}` : null
+  const registerPreviewTarget = useCallback((node: HTMLDivElement | null) => {
+    if (!node || !previewIdentity) return
+    const registration = { identity: previewIdentity, node, token: Symbol('reviewer preview') }
+    setPreviewRegistration(registration)
+    // React 19 runs this exact registration's cleanup. An older cleanup
+    // cannot clear its replacement, even within the same preview identity.
+    return () => setPreviewRegistration((current) =>
+      current?.token === registration.token && current.node === node ? null : current)
+  }, [previewIdentity])
+  const previewTarget = previewIdentity && previewRegistration?.identity === previewIdentity
+    ? previewRegistration.node : null
+
   const feedbackVisible = isOwner || (!!myReview && asset?.status === 'ready' && !!initialUrl)
   const scenes: Record<string, WorkspaceSceneId> = {
     notes: 'reviews', essay: 'edit', transcript: 'search', reviewers: 'reviewers',
@@ -391,19 +464,17 @@ export default function SpeechWatch() {
               }
             >
               <VideoPlayer
+                key={playbackSource!.key}
                 initialUrl={initialUrl}
                 refreshUrl={refreshUrl}
                 poster={speech.poster?.url}
-                onPlayerReady={(player) => {
-                  playerRef.current = player
-                  setVideoEl(getVideoElement(player))
-                }}
+                onPlayerReady={onPlayerReady}
                 onSourceRefreshed={() => setSourceRefreshToken((token) => token + 1)}
                 onHtmlFullscreenChange={(fullscreen) => {
                   setHtmlFullscreen(fullscreen)
                   if (!fullscreen) setFullscreenControlsOpen(false)
                 }}
-                presentation={isOwner && (
+                presentation={isOwner ? (
                 <>
                   <div className="owner-feedback-frame" style={{ '--video-ar': videoAr } as React.CSSProperties}>
                     <OverlayPositioner anchor={captionsAnchor}>
@@ -439,7 +510,13 @@ export default function SpeechWatch() {
                     <CommentaryPlaybackControls {...playbackControlProps} showVoiceControls={false} />
                   </details>}
                 </>
-                )}
+                ) : previewIdentity ? (
+                  <div className="owner-feedback-frame" style={{ '--video-ar': videoAr } as React.CSSProperties}>
+                    <OverlayPositioner anchor={captionsAnchor}>
+                      <div data-testid="reviewer-preview-target" className="pointer-events-none" ref={registerPreviewTarget} />
+                    </OverlayPositioner>
+                  </div>
+                ) : null}
               />
             </div>
           ) : (
@@ -634,6 +711,9 @@ export default function SpeechWatch() {
             <AnnotationComposerPanel
               speechId={speechId}
               review={myReview}
+              previewTarget={previewTarget}
+              previewEnabled={reviewerTab === 'notes' && !!previewIdentity}
+              previewAnchor={captionsAnchor}
               videoEl={videoEl}
               durationSeconds={
                 asset.duration_seconds !== null ? Number(asset.duration_seconds) : 0
