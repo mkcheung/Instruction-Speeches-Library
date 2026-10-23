@@ -594,7 +594,14 @@ test.describe('notebook presentation accessibility (isolated frontend)', () => {
             await page.getByRole('textbox', { name: 'Search text' }).fill('voice')
             await expect(page.getByText('Transcript excerpt', { exact: true })).toBeVisible()
           }
-          if (path === '/speeches/9') await expect(page.getByRole('tablist', { name: 'Speech tools' })).toBeVisible()
+          if (path === '/speeches/9') {
+            await expect(page.getByRole('tablist', { name: 'Speech tools' })).toBeVisible()
+            // Caption readiness follows the tablist (the same lag the reviewer path below waits out). A toggle
+            // that mounts, or flips to its pressed colours, after the transition wait is scanned mid-fade at
+            // blended colours (1.69:1 in CI), so let the real pressed toggle arrive before scanning.
+            await expect.poll(() => page.locator('video[data-testid="speech-video"]').evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+            await expect(page.getByTestId('captions-toggle')).toHaveAttribute('aria-pressed', 'true')
+          }
           await scanNotebookAndAssert(page, `notebook/${path}/${width}/light`)
           await page.emulateMedia({ colorScheme: 'dark' })
           await page.evaluate(() => document.documentElement.classList.add('dark'))
