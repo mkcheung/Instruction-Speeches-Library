@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useStore } from 'react-redux'
+import type { AppDispatch, RootState } from '@/app/store'
 import { Link, useParams } from 'react-router-dom'
 import type Player from 'video.js/dist/types/player'
 import { NotebookPage } from '@/components/workspace/NotebookPage'
@@ -12,6 +14,7 @@ import { VideoPlayer } from '@/components/speech/VideoPlayer'
 import { InviteReviewerPanel } from '@/components/review/InviteReviewerPanel'
 import { ReviewerRoster } from '@/components/review/ReviewerRoster'
 import { TrackSelector } from '@/components/review/TrackSelector'
+import { OwnerVideoTools, type OwnerTimelineStatus } from '@/components/review/OwnerVideoTools'
 import { CommentaryPlaybackControls, VoicePlaybackControls } from '@/components/review/CommentaryPlaybackControls'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
@@ -31,6 +34,8 @@ import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { canRecordVoiceForRoles } from '@/lib/voiceRoles'
 import { useMyReviewForSpeech } from '@/hooks/useMyReviewForSpeech'
+import { reviewApi } from '@/features/review/reviewApi'
+import type { Review, ReviewSections } from '@/features/review/types'
 import { useCaptionsJob, useCaptionsBlobUrl } from '@/hooks/useCaptionsJob'
 import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutation } from '@/features/speech/speechApi'
 import type { SpeechSprite } from '@/features/speech/types'
@@ -103,11 +108,128 @@ type PreviewRegistration = { identity: string; node: HTMLDivElement; token: symb
 /** Recording lock report, keyed to the `${user}:${speech}:${review}` session that sent it. */
 type RecordingLock = { scopeKey: string; locked: boolean }
 
+const isTerminal = (error: unknown) => [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0)
+
+function accessReview(sections: ReviewSections | undefined, speechId: number): Review | undefined {
+  return Object.values(sections ?? {}).flat().find((review) => review.speech?.id === speechId &&
+    review.revoked_at === null && ['accepted', 'in_progress', 'published'].includes(review.status))
+}
+
+type TimelineValidation = {
+  scope: string | null
+  reviewId: number | null
+  epoch: number
+  baselineReviewRequestId: string | null
+  terminalToken: string | null
+  proofReviewId: number | null
+  attempted: boolean
+  pending: boolean
+}
+
+/**
+ * listMyReviews has a user-agnostic cache key and normally omits reviewer.id.
+ * Its retained rows therefore cannot authorize this new control. A bounded,
+ * unsubscribed request proves this committed user/speech epoch instead. This
+ * observes the existing query without creating a second subscription.
+ */
+function useReviewerTimelineValidation({
+  scope, reviewId, speechId, authSpeechReady, denied,
+}: {
+  scope: string | null; reviewId: number | null; speechId: number
+  authSpeechReady: boolean; denied: string | null
+}) {
+  const store = useStore<RootState>()
+  const dispatch = store.dispatch as AppDispatch
+  const query = reviewApi.endpoints.listMyReviews.useQueryState(undefined)
+  const [validation, setValidation] = useState<TimelineValidation>({
+    scope, reviewId, epoch: 0, baselineReviewRequestId: query.requestId ?? null,
+    terminalToken: null, proofReviewId: null, attempted: false, pending: false,
+  })
+  // A void-key request already present on entry can belong to another
+  // account. Neither its success nor its denial authorizes this epoch. Its
+  // denial must still allow our one fresh, independently proven request.
+  const terminalToken = denied ?? (query.status === 'rejected' && isTerminal(query.error) && query.requestId !== validation.baselineReviewRequestId
+    ? `review:${query.requestId}:${getErrorStatus(query.error)}` : null)
+  // Render adjustment prevents old proof appearing for one commit when auth,
+  // route/review identity or a terminal denial changes. A later 500 cannot
+  // restore erased proof. Fresh results may reconcile the review id first.
+  if (validation.scope !== scope || (validation.reviewId !== reviewId && validation.proofReviewId !== reviewId)) {
+    setValidation({ scope, reviewId, epoch: validation.epoch + 1, baselineReviewRequestId: query.requestId ?? null, terminalToken: null,
+      proofReviewId: null, attempted: false, pending: false })
+  } else if (terminalToken !== null && validation.terminalToken !== terminalToken) {
+    setValidation({ ...validation, epoch: validation.epoch + 1, terminalToken,
+      proofReviewId: null, attempted: true, pending: false })
+  }
+  const committed = useRef<{
+    scope: string | null; epoch: number; speechId: number; allowed: boolean
+  } | null>(null)
+  const attempt = useRef<{ scope: string; epoch: number } | null>(null)
+  useLayoutEffect(() => {
+    const current = { scope, epoch: validation.epoch, speechId, allowed: authSpeechReady }
+    committed.current = current
+    return () => { if (committed.current === current) committed.current = null }
+  }, [scope, validation.epoch, speechId, authSpeechReady])
+
+  const verify = useCallback(() => {
+    const context = committed.current
+    if (!context?.scope || !context.allowed ||
+      (attempt.current?.scope === context.scope && attempt.current.epoch === context.epoch)) return
+    const verification = { scope: context.scope, epoch: context.epoch }
+    attempt.current = verification
+    setValidation((current) => current.scope === verification.scope && current.epoch === verification.epoch
+      ? { ...current, attempted: true, pending: true } : current)
+    const stillCurrent = () => {
+      const latest = committed.current
+      return latest?.scope === verification.scope && latest.epoch === verification.epoch && latest.allowed
+    }
+    void (async () => {
+      try {
+        // forceRefetch alone can join an older account's in-flight void-key
+        // request. Wait without aborting its subscribers, then prove that OUR
+        // request actually entered pending with a distinct requestId.
+        const older = dispatch(reviewApi.util.getRunningQueryThunk('listMyReviews', undefined))
+        if (older) await older
+        if (!stillCurrent()) return
+        const previous = reviewApi.endpoints.listMyReviews.select()(store.getState())
+        const request = dispatch(reviewApi.endpoints.listMyReviews.initiate(undefined, {
+          subscribe: false, forceRefetch: true,
+        }))
+        const started = reviewApi.endpoints.listMyReviews.select()(store.getState())
+        const fresh = started.status === 'pending' && started.requestId === request.requestId &&
+          started.requestId !== previous.requestId
+        await request
+        if (!stillCurrent() || !fresh) return
+        const completed = reviewApi.endpoints.listMyReviews.select()(store.getState())
+        if (completed.status !== 'fulfilled' || completed.requestId !== request.requestId) return
+        const found = accessReview(completed.data, context.speechId)
+        if (!found) return
+        setValidation((current) => current.scope === verification.scope && current.epoch === verification.epoch
+          ? { ...current, reviewId: found.id, proofReviewId: found.id } : current)
+      } finally {
+        if (attempt.current === verification) attempt.current = null
+        setValidation((current) => current.scope === verification.scope && current.epoch === verification.epoch
+          ? { ...current, pending: false } : current)
+      }
+    })()
+  }, [dispatch, store])
+
+  useEffect(() => {
+    if (scope && authSpeechReady && !validation.attempted) verify()
+  }, [scope, authSpeechReady, validation.attempted, verify])
+  return {
+    validated: scope !== null && validation.scope === scope && reviewId !== null &&
+      validation.proofReviewId === reviewId && terminalToken === null,
+    epoch: validation.epoch,
+    pending: validation.pending,
+    retry: scope && authSpeechReady ? verify : undefined,
+  }
+}
+
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
-  const { data: speech, isLoading, error } = useGetSpeechQuery(speechId, { skip: !speechId })
-  const { data: me } = useGetMeQuery()
+  const { data: speech, isLoading, error, requestId: speechRequestId } = useGetSpeechQuery(speechId, { skip: !speechId })
+  const { data: me, error: meError, isLoading: meLoading, isFetching: meFetching, requestId: authRequestId } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
   const [playbackSource, setPlaybackSource] = useState<PlaybackSource | null>(null)
   const initialUrl = playbackSource?.url ?? null
@@ -138,6 +260,9 @@ export default function SpeechWatch() {
   // not just after the initial job completion or an edit.
   const [sourceRefreshToken, setSourceRefreshToken] = useState(0)
   const [ownerTab, setOwnerTab] = useState('notes')
+  const ownerNotesTabRef = useRef<HTMLButtonElement | null>(null)
+  const focusOwnerNotesRef = useRef(false)
+  const [validatedOwnerKey, setValidatedOwnerKey] = useState<string | null>(null)
   const [reviewerTab, setReviewerTab] = useState('notes')
   const [recordingLock, setRecordingLock] = useState<RecordingLock | null>(null)
   const [htmlFullscreen, setHtmlFullscreen] = useState(false)
@@ -265,10 +390,69 @@ export default function SpeechWatch() {
   const roles = me?.user.roles ?? []
   const canRecordVoice = canRecordVoiceForRoles(roles)
 
-  // Called unconditionally (Rules of Hooks) even before `speech` has
-  // loaded — `enabled: isOwner` keeps its queries skipped until then.
-  const commentary = useCommentaryTrack(speechId, isOwner ? videoEl : null, isOwner, me?.user.id,
+  // Ownership may survive a same-context transient refresh, but cached data
+  // cannot establish a new context or restore one after terminal denial.
+  const ownerCandidate = Number.isSafeInteger(speechId) && speechId > 0 &&
+    Number(speech?.id) === speechId && isOwner && asset
+    ? `${me!.user.id}:${speechId}:${asset.id}` : null
+  const ownerDenied = [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0) ||
+    [401, 403, 404, 410].includes(getErrorStatus(meError) ?? 0)
+  const ownerResolved = !isLoading && !error && !meLoading && !meError
+  const ownerScope = !ownerDenied && ownerCandidate !== null &&
+    (ownerResolved || validatedOwnerKey === ownerCandidate) ? ownerCandidate : null
+  // Adjust during render so a terminal response invalidates the remembered
+  // context immediately; a later 500 cannot resurrect the old permission.
+  if (validatedOwnerKey !== ownerScope) setValidatedOwnerKey(ownerScope)
+
+  // Shared media provenance, independent of the branch's authorization policy.
+  // A ready state record alone can outlive a disposed/recreated concrete tech.
+  const concreteReady = !!playbackSource && readyPlayback?.source.key === playbackSource.key &&
+    readyPlayback.source.generation === playbackSource.generation &&
+    videoEl === readyPlayback.video &&
+    !readyPlayback.player.isDisposed() && getVideoElement(readyPlayback.player) === readyPlayback.video
+  const ownerSourceMatches = ownerScope !== null && asset?.status === 'ready' &&
+    playbackSource?.speechId === speechId && playbackSource.assetId === asset.id
+  const ownerPlaybackReady = ownerSourceMatches && concreteReady
+  const ownerVideo = ownerPlaybackReady ? readyPlayback!.video : null
+
+  // Keep the one canonical hook mounted. Bind only the current concrete video;
+  // same-identity preparation retains utility/picker state without binding A to B.
+  const commentary = useCommentaryTrack(speechId, ownerVideo, ownerScope !== null, me?.user.id,
     htmlFullscreen ? fullscreenControlsOpen : ownerTab === 'notes')
+  const commentaryDenied = [401, 403, 404, 410].includes(getErrorStatus(commentary.error) ?? 0) ||
+    commentary.preference.accessDenied
+  let ownerTimelineStatus: OwnerTimelineStatus
+  if (commentaryDenied) ownerTimelineStatus = 'unavailable'
+  else if (commentary.optionsLoading || commentary.preference.loading) ownerTimelineStatus = 'loading'
+  else if (commentary.preference.loadError || !commentary.preference.ready) ownerTimelineStatus = 'unavailable'
+  else if (commentary.selected === 'none') ownerTimelineStatus = commentary.error ? 'unavailable' : 'no-selection'
+  else if (!commentary.fetchedReviewerName) ownerTimelineStatus = commentary.error ? 'unavailable' : 'loading'
+  else if (commentary.error && commentary.allAnnotations.length === 0) ownerTimelineStatus = 'unavailable'
+  else if (commentary.mode === 'off') ownerTimelineStatus = 'off'
+  else if (commentary.allAnnotations.length === 0) ownerTimelineStatus = 'empty'
+  else if (commentary.navigationAnnotations.length === 0) ownerTimelineStatus = 'mode-empty'
+  else ownerTimelineStatus = 'ready'
+  const ownerReviewerLabel = commentaryDenied ? null :
+    commentary.options.find((option) => option.key === commentary.selected)?.label ?? null
+  const ownerDuration = Number(asset?.duration_seconds)
+  const ownerDurationSeconds = Number.isFinite(ownerDuration) && ownerDuration > 0 ? ownerDuration : 0
+  useEffect(() => {
+    if (ownerTab === 'notes' && focusOwnerNotesRef.current) {
+      focusOwnerNotesRef.current = false
+      ownerNotesTabRef.current?.focus()
+    }
+  }, [ownerTab])
+  const openOwnerNotes = () => {
+    if (ownerTab === 'notes') ownerNotesTabRef.current?.focus()
+    else {
+      focusOwnerNotesRef.current = true
+      setOwnerTab('notes')
+    }
+  }
+  const seekOwnerTimeline = (seconds: number) => {
+    if (ownerPlaybackReady && readyPlayback && !readyPlayback.player.isDisposed() &&
+      getVideoElement(readyPlayback.player) === readyPlayback.video) commentary.seek(seconds)
+  }
   const playbackControlProps = {
     mode: commentary.mode,
     onModeChange: commentary.selectMode,
@@ -299,9 +483,7 @@ export default function SpeechWatch() {
     playbackSource?.speechId === speechId && playbackSource.assetId === asset.id
   // State records provenance; concrete player/tech checks also reject a ready
   // binding left behind after VideoPlayer disposes/recreates its source.
-  const sourceReady = sourceMatches && readyPlayback?.source.key === playbackSource?.key &&
-    readyPlayback?.source.generation === playbackSource?.generation &&
-    !readyPlayback.player.isDisposed() && getVideoElement(readyPlayback.player) === readyPlayback.video
+  const sourceReady = sourceMatches && concreteReady
   const previewIdentity = sourceReady && me?.user && !isOwner && myReview &&
     myReview.speech?.id === speechId && myReview.revoked_at === null &&
     ['accepted', 'in_progress', 'published'].includes(myReview.status)
@@ -323,6 +505,49 @@ export default function SpeechWatch() {
   const reviewerScopeKey = me?.user && myReview ? `${me.user.id}:${speechId}:${myReview.id}` : null
   const reviewerRecordingLocked = reviewerScopeKey !== null &&
     recordingLock?.scopeKey === reviewerScopeKey && recordingLock.locked
+  const reviewerValidationScope = me?.user && !meLoading && !isLoading && !isOwner &&
+    Number(speech?.id) === speechId && myReview?.speech?.id === speechId &&
+    myReview.revoked_at === null && ['accepted', 'in_progress', 'published'].includes(myReview.status)
+    ? `${me.user.id}:${speechId}` : null
+  const reviewerNavigation = useReviewerTimelineValidation({
+    scope: reviewerValidationScope, reviewId: myReview?.id ?? null, speechId,
+    authSpeechReady: !meLoading && !meFetching && !meError && !isLoading && !error,
+    denied: isTerminal(meError) ? `auth:${authRequestId}:${getErrorStatus(meError)}`
+      : isTerminal(error) ? `speech:${speechRequestId}:${getErrorStatus(error)}` : null,
+  })
+  // A background auth request retains data while its current account is
+  // unresolved. Keep same-account proof, but lend it no navigation authority
+  // until that request settles and the committed identity still matches.
+  const ownerScrubReady = ownerPlaybackReady && !meFetching
+  const reviewerScrubReady = reviewerNavigation.validated && !meLoading && !meFetching && !isLoading &&
+    !isTerminal(meError) && !isTerminal(error) && Number(speech?.id) === speechId &&
+    asset?.status === 'ready' && playbackSource?.speechId === speechId &&
+    playbackSource.assetId === asset.id && concreteReady
+  const ownerScrubKey = `${ownerScope}:${playbackSource?.generation}:${sourceRefreshToken}`
+  const reviewerScrubKey = `${reviewerValidationScope}:${myReview?.id}:${asset?.id}:${reviewerNavigation.epoch}:${playbackSource?.generation}:${sourceRefreshToken}`
+  type LiveScrubBinding = { key: string; video: HTMLVideoElement; player: Player; seek: (seconds: number) => void }
+  const liveScrub = useRef<{ owner: LiveScrubBinding | null; reviewer: LiveScrubBinding | null } | null>(null)
+  // Only committed route/auth/source state can authorize a captured callback.
+  // Layout synchronization closes the interval before passive effects run and
+  // never publishes an abandoned concurrent render into the event path.
+  useLayoutEffect(() => {
+    const current = {
+      owner: ownerScrubReady && readyPlayback
+        ? { key: ownerScrubKey, video: readyPlayback.video, player: readyPlayback.player, seek: commentary.seek } : null,
+      reviewer: reviewerScrubReady && reviewerTab === 'notes' && !reviewerRecordingLocked && readyPlayback
+        ? { key: reviewerScrubKey, video: readyPlayback.video, player: readyPlayback.player,
+          seek: (seconds: number) => seekVideo(readyPlayback.video, seconds) } : null,
+    }
+    liveScrub.current = current
+    return () => { if (liveScrub.current === current) liveScrub.current = null }
+  })
+  const seekScrub = (role: 'owner' | 'reviewer', key: string, seconds: number) => {
+    const latest = liveScrub.current?.[role]
+    if (!latest || latest.key !== key || latest.video !== readyPlayback?.video ||
+      latest.player !== readyPlayback.player || latest.player !== playerRef.current ||
+      latest.player.isDisposed() || getVideoElement(latest.player) !== latest.video) return
+    latest.seek(seconds)
+  }
   const onRecordingLockChange = useCallback((locked: boolean) => {
     if (reviewerScopeKey === null) return
     setRecordingLock((current) => {
@@ -493,7 +718,7 @@ export default function SpeechWatch() {
                   setHtmlFullscreen(fullscreen)
                   if (!fullscreen) setFullscreenControlsOpen(false)
                 }}
-                presentation={isOwner ? (
+                presentation={isOwner && ownerPlaybackReady ? (
                 <>
                   <div className="owner-feedback-frame" style={{ '--video-ar': videoAr } as React.CSSProperties}>
                     <OverlayPositioner anchor={captionsAnchor}>
@@ -576,8 +801,18 @@ export default function SpeechWatch() {
               someone else's speech) and, for a portrait speech with a
               sprite, ~324px of chrome a reviewer never needed to pay for
               at all. Gating it removes both at once. */}
-          {isOwner && asset?.status === 'ready' && initialUrl && (
-            <PosterFramePicker speechId={speechId} assetId={asset.id} playerRef={playerRef} sprite={speech.sprite} />
+          {ownerSourceMatches && (
+            <OwnerVideoTools scopeKey={ownerScope!} playbackReady={ownerPlaybackReady}
+              videoEl={ownerVideo} navigationAnnotations={commentary.navigationAnnotations}
+              activeIds={commentary.activeIds} durationSeconds={ownerDurationSeconds}
+              reviewerLabel={ownerReviewerLabel} mode={commentary.mode} status={ownerTimelineStatus}
+              refreshError={!commentaryDenied && commentary.allAnnotations.length > 0 &&
+                (!!error || !!meError || !!commentary.error || !!commentary.preference.loadError)}
+              onSeek={seekOwnerTimeline} onOpenNotes={openOwnerNotes}
+              scrub={{ bindingKey: ownerScrubKey, enabled: ownerScrubReady, active: true,
+                onSeek: (seconds) => seekScrub('owner', ownerScrubKey, seconds) }}
+              frameSelector={<PosterFramePicker speechId={speechId} assetId={asset!.id}
+                playerRef={playerRef} sprite={speech.sprite} disabled={!ownerPlaybackReady} />} />
           )}
         </CardContent>
       </Card>
@@ -594,7 +829,7 @@ export default function SpeechWatch() {
               max-content, so without a cap it has no reason to wrap and a
               fourth tab would simply overflow a narrow phone. */}
           <TabsList aria-label="Speech tools" className="flex-wrap max-w-full">
-            <TabsTab value="notes">Notes</TabsTab>
+            <TabsTab value="notes" ref={ownerNotesTabRef}>Notes</TabsTab>
             <TabsTab value="essay">Essay</TabsTab>
             <TabsTab value="transcript">Transcript</TabsTab>
             <TabsTab value="reviewers">Reviewers</TabsTab>
@@ -751,6 +986,11 @@ export default function SpeechWatch() {
               previewAnchor={captionsAnchor}
               authoringActive={reviewerTab === 'notes'}
               onRecordingLockChange={onRecordingLockChange}
+              scrub={{ bindingKey: reviewerScrubKey, enabled: reviewerScrubReady,
+                active: reviewerTab === 'notes', onSeek: (seconds) => seekScrub('reviewer', reviewerScrubKey, seconds) }}
+              timelineNavigation={!reviewerNavigation.validated ? {
+                pending: reviewerNavigation.pending, retry: reviewerNavigation.retry,
+              } : undefined}
               videoEl={videoEl}
               durationSeconds={
                 asset.duration_seconds !== null ? Number(asset.duration_seconds) : 0
@@ -798,11 +1038,13 @@ export function PosterFramePicker({
   assetId,
   playerRef,
   sprite,
+  disabled = false,
 }: {
   speechId: number
   assetId: number
   playerRef: React.RefObject<Player | null>
   sprite?: SpeechSprite
+  disabled?: boolean
 }) {
   const [setPosterFrame, { isLoading }] = useSetPosterFrameMutation()
   const [feedback, setFeedback] = useState<string | null>(null)
@@ -810,6 +1052,8 @@ export function PosterFramePicker({
 
   const applyTime = useCallback(
     async (timeSeconds: number, cellIndex: number | null = null) => {
+      const player = playerRef.current
+      if (disabled || isLoading || !player || player.isDisposed()) return
       setPendingCell(cellIndex)
       setFeedback(null)
       try {
@@ -821,12 +1065,12 @@ export function PosterFramePicker({
         setPendingCell(null)
       }
     },
-    [setPosterFrame, speechId, assetId],
+    [setPosterFrame, speechId, assetId, playerRef, disabled, isLoading],
   )
 
   const handleUseCurrentFrame = () => {
     const player = playerRef.current
-    if (!player) return
+    if (disabled || isLoading || !player || player.isDisposed()) return
     const currentTime = player.currentTime() ?? 0
     void applyTime(currentTime)
   }
@@ -850,7 +1094,7 @@ export function PosterFramePicker({
   return (
     <div className="workspace-notebook-surface flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" size="sm" variant="outline" className="workspace-notebook-control workspace-notebook-control--secondary" disabled={isLoading} onClick={handleUseCurrentFrame}>
+        <Button type="button" size="sm" variant="outline" className="workspace-notebook-control workspace-notebook-control--secondary" disabled={disabled || isLoading} onClick={handleUseCurrentFrame}>
           {isLoading && pendingCell === null ? 'Updating…' : 'Use current frame'}
         </Button>
         {feedback && <span className="text-xs text-muted-foreground">{feedback}</span>}
@@ -871,7 +1115,7 @@ export function PosterFramePicker({
               <button
                 key={cellIndex}
                 type="button"
-                disabled={isLoading}
+                disabled={disabled || isLoading}
                 onClick={() => void applyTime(timeSeconds, cellIndex)}
                 className={cn(
                   'shrink-0 rounded border border-transparent bg-no-repeat hover:border-primary disabled:opacity-50',

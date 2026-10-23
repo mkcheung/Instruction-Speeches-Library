@@ -128,11 +128,58 @@ beforeEach(() => {
 })
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   for (const target of targets.splice(0)) target.remove()
 })
 
 describe('annotation workspace tools', () => {
+  it('scrubs without stamping the draft or revealing saved commentary, including a nonwritable review', () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 44, right: 200, bottom: 44, x: 0, y: 0, toJSON: () => ({}),
+    })
+    const video = document.createElement('video')
+    Object.defineProperties(video, { duration: { value: 100 }, readyState: { value: 1 } })
+    video.currentTime = 3
+    const scrubSeek = vi.fn()
+    const panel = mountPanel({ videoEl: video,
+      scrub: { bindingKey: '3:1:9:source1', enabled: true, active: true, onSeek: scrubSeek } })
+    fillDraft()
+    const before = startField().value
+    fireEvent.keyDown(screen.getByRole('slider'), { key: 'ArrowRight' })
+    expect(scrubSeek).toHaveBeenCalledExactlyOnceWith(4)
+    expect(panel.onSeek).not.toHaveBeenCalled()
+    expect(startField().value).toBe(before)
+    expect(listProps().revealRequest).toBeNull()
+    panel.update({ review: { id: 9, status: 'abandoned' } as Review })
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-disabled', 'false')
+    fireEvent.keyDown(screen.getByRole('slider'), { key: 'End' })
+    expect(scrubSeek).toHaveBeenLastCalledWith(100)
+  })
+
+  it.each(['requesting', 'recording'])('blocks scrub navigation during %s and while Notes is inactive', (phase) => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, width: 200, height: 44, right: 200, bottom: 44, x: 0, y: 0, toJSON: () => ({}),
+    })
+    const video = document.createElement('video')
+    Object.defineProperties(video, { duration: { value: 100 }, readyState: { value: 1 } })
+    const scrubSeek = vi.fn()
+    const panel = mountPanel({ videoEl: video,
+      scrub: { bindingKey: '3:1:9:source1', enabled: true, active: true, onSeek: scrubSeek } })
+    const slider = screen.getByRole('slider')
+    fireEvent.click(tab(/^Voice note/))
+    expect(slider).toHaveAttribute('aria-disabled', 'false')
+    report(phase, { blocksToolSwitch: true })
+    expect(slider).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(slider, { key: 'End' })
+    expect(scrubSeek).not.toHaveBeenCalled()
+    report('idle')
+    panel.update({ authoringActive: false })
+    expect(slider).toHaveAttribute('aria-disabled', 'true')
+    panel.update({ authoringActive: true })
+    expect(slider).toHaveAttribute('aria-disabled', 'false')
+  })
+
   it('shows one tool at a time, defaulting to Text, and keeps the same instances across repeated switches', () => {
     mountPanel()
     expect(screen.getByRole('tablist', { name: 'Add commentary' })).toBeInTheDocument()

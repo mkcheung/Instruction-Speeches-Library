@@ -235,6 +235,19 @@
   background: var(--workspace-paper);
 }
 
+/* The media card keeps Card's default block padding so the player's geometry
+   is untouched, which leaves a strip of bare paper above its header. Pull the
+   header up over that padding and add the same amount back inside it, so the
+   header paints to the card edge while the title and the video stay put. */
+.workspace-notebook-page .workspace-notebook-media > [data-slot='card-header']:first-child {
+  margin-top: calc(var(--card-spacing, 16px) * -1);
+  padding-top: calc(16px + var(--card-spacing, 16px));
+}
+
+.workspace-notebook-page .workspace-notebook-media > [data-slot='card-header']:first-child::after {
+  top: calc(14px + var(--card-spacing, 16px));
+}
+
 /* Explicit call-site markers override pale success utility colors even under
    root .dark; failures and successes retain distinct, readable semantics. */
 .workspace-notebook-page .workspace-notebook-banner {

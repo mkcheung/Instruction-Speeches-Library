@@ -1,0 +1,258 @@
+/* Owner utilities only. Geometry remains in TimelineStrip; no authoring root or media rules. */
+.owner-video-tools {
+  --ovt-paper: var(--workspace-paper, #fffdf6);
+  --ovt-cream: var(--workspace-cream, #fff5e6);
+  --ovt-ink: var(--workspace-ink, #2b211b);
+  --ovt-muted: var(--workspace-muted, #66574f);
+  --ovt-line: var(--workspace-outline, #8a7668);
+  --ovt-teal: var(--workspace-teal, #0f6b66);
+  --ovt-burgundy: var(--workspace-burgundy, #8a1720);
+  min-width: 0;
+  max-width: 100%;
+  color-scheme: light;
+  color: var(--ovt-ink);
+  background: var(--ovt-paper);
+  border: 1px solid var(--ovt-line);
+  border-radius: 4px;
+  padding: 12px;
+  gap: 12px;
+}
+.owner-video-tools .owner-video-tools__tabs {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  border-bottom: 1px solid var(--ovt-line);
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+.owner-video-tools.workspace-notebook-surface .owner-video-tools__tab[data-slot='tabs-tab'] {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 8px 0;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--ovt-muted);
+  box-shadow: none;
+  overflow-wrap: anywhere;
+  transition: none;
+}
+.owner-video-tools.workspace-notebook-surface .owner-video-tools__tab[data-slot='tabs-tab'][aria-selected='true'] {
+  border-bottom-color: var(--ovt-teal);
+  background: transparent;
+  color: var(--ovt-ink);
+  font-weight: 700;
+  box-shadow: none;
+}
+.owner-video-tools .owner-video-tools__panel { min-width: 0; max-width: 100%; }
+/* Base UI keepMounted must remain hidden even with flex/grid utility classes. */
+.owner-video-tools > .owner-video-tools__panel:is([hidden], [data-hidden], [data-state='hidden']) {
+  display: none !important;
+}
+.owner-video-tools .owner-video-tools__context {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.owner-video-tools .owner-video-tools__context p { margin: 0; overflow-wrap: anywhere; }
+.owner-video-tools .owner-video-tools__notes {
+  min-height: 44px;
+  padding: 8px 4px;
+  color: var(--ovt-teal);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.owner-video-tools .owner-video-tools__help,
+.owner-video-tools .owner-video-tools__notice {
+  color: var(--ovt-muted);
+  font-size: 0.875rem;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.owner-video-tools .owner-video-tools__notice { border-left: 3px solid var(--ovt-line); padding-left: 8px; }
+.owner-video-tools .awt-timeline {
+  max-width: 100%;
+  padding: 8px 20px 8px 4px;
+  border: 1px solid var(--ovt-line);
+  border-radius: 4px;
+  background: var(--ovt-cream);
+}
+.owner-video-tools .awt-lane { min-width: 0; }
+.owner-video-tools .awt-lane-label { color: var(--ovt-ink); font-weight: 600; }
+.owner-video-tools .awt-lane-label--text { color: var(--ovt-teal); }
+.owner-video-tools .awt-lane-label--voice { color: var(--ovt-burgundy); }
+.owner-video-tools .awt-track { background: var(--ovt-line); }
+.owner-video-tools .awt-tick { color: var(--ovt-muted); font-variant-numeric: tabular-nums; }
+/* Only the new 44px row is interactive; its grip never covers note markers. */
+.owner-video-tools .awt-scrubber {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  z-index: 1;
+  border: 1px solid var(--ovt-line);
+  border-radius: 3px;
+  background: var(--ovt-paper);
+  color: var(--ovt-ink);
+  cursor: ew-resize;
+  user-select: none;
+}
+.owner-video-tools .awt-scrubber::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 33px;
+  height: 1px;
+  background: var(--ovt-line);
+  pointer-events: none;
+}
+.owner-video-tools .awt-scrubber-grip {
+  box-sizing: border-box;
+  top: 26px;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ovt-burgundy);
+  border-radius: 3px;
+  background: var(--ovt-paper);
+  color: var(--ovt-burgundy);
+  transform: translateX(-50%);
+}
+.owner-video-tools .awt-scrubber-grip::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 3px;
+  width: 2px;
+  background: currentColor;
+  box-shadow: 4px 0 0 currentColor;
+  pointer-events: none;
+}
+.owner-video-tools .awt-scrubber-time {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  max-height: 24px;
+  padding-inline: 2px;
+  overflow: hidden;
+  color: var(--ovt-ink);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 12px;
+  text-align: center;
+  overflow-wrap: normal;
+  pointer-events: none;
+}
+.owner-video-tools .awt-scrubber-help {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.owner-video-tools .awt-scrubber[data-dragging='true'] {
+  border-color: var(--ovt-burgundy);
+  background: var(--ovt-cream);
+  cursor: grabbing;
+}
+.owner-video-tools .awt-scrubber[data-dragging='true'] .awt-scrubber-grip {
+  background: var(--ovt-burgundy);
+  color: var(--ovt-paper);
+}
+.owner-video-tools .awt-scrubber[aria-disabled='true'] {
+  border-style: dashed;
+  color: var(--ovt-muted);
+  cursor: not-allowed;
+}
+.owner-video-tools .awt-scrubber[aria-disabled='true'] :is(.awt-scrubber-time, .awt-scrubber-grip) {
+  color: var(--ovt-muted);
+}
+.owner-video-tools .awt-scrubber[aria-disabled='true'] .awt-scrubber-grip {
+  border-color: var(--ovt-muted);
+  border-style: dashed;
+}
+.owner-video-tools .awt-marker { padding: 0; cursor: pointer; }
+.owner-video-tools .awt-marker--text {
+  border: 1px solid var(--ovt-teal);
+  background: color-mix(in srgb, var(--ovt-teal) 28%, var(--ovt-paper));
+}
+.owner-video-tools .awt-marker--text:hover { background: color-mix(in srgb, var(--ovt-teal) 45%, var(--ovt-paper)); }
+.owner-video-tools .awt-marker--voice,
+.owner-video-tools .awt-marker--erased {
+  border: 2px solid var(--ovt-burgundy);
+  color: var(--ovt-burgundy);
+  background: var(--ovt-paper);
+}
+.owner-video-tools .awt-marker--voice:hover { background: color-mix(in srgb, var(--ovt-burgundy) 12%, var(--ovt-paper)); }
+.owner-video-tools .awt-marker--erased { border-style: dotted; border-color: var(--ovt-muted); color: var(--ovt-muted); }
+.owner-video-tools .awt-stem { background: color-mix(in srgb, var(--ovt-burgundy) 45%, transparent); }
+.owner-video-tools .awt-marker--current { box-shadow: 0 0 0 2px var(--ovt-paper), 0 0 0 4px var(--ovt-teal); }
+.owner-video-tools .awt-playhead { background: var(--ovt-burgundy); }
+.owner-video-tools .awt-playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -2px;
+  width: 6px;
+  height: 6px;
+  background: inherit;
+}
+.owner-video-tools.workspace-notebook-surface :is(.owner-video-tools__tab, .owner-video-tools__notes, .awt-marker, .awt-scrubber):focus-visible {
+  outline: 3px solid var(--ovt-teal);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--ovt-paper);
+  z-index: 4;
+}
+.owner-video-tools.workspace-notebook-surface .awt-scrubber:focus-visible {
+  outline-offset: -3px;
+  box-shadow: none;
+}
+@media (forced-colors: active) {
+  .owner-video-tools { border-color: CanvasText; color: CanvasText; background: Canvas; }
+  .owner-video-tools.workspace-notebook-surface .owner-video-tools__tab[data-slot='tabs-tab'],
+  .owner-video-tools :is(.owner-video-tools__notes, .owner-video-tools__help, .owner-video-tools__notice, .awt-lane-label, .awt-tick) { color: CanvasText; }
+  .owner-video-tools.workspace-notebook-surface .owner-video-tools__tab[data-slot='tabs-tab'][aria-selected='true'] { border-bottom-color: Highlight; color: CanvasText; }
+  .owner-video-tools .awt-timeline { background: Canvas; border-color: CanvasText; }
+  .owner-video-tools :is(.awt-track, .awt-stem, .awt-playhead) { background: CanvasText; }
+  .owner-video-tools .awt-marker { background: Canvas; color: ButtonText; border-color: ButtonText; }
+  .owner-video-tools .awt-marker--text { background: Highlight; }
+  .owner-video-tools .awt-marker--current { outline: 2px solid Highlight; outline-offset: 2px; }
+  .owner-video-tools.workspace-notebook-surface :is(.owner-video-tools__tab, .owner-video-tools__notes, .awt-marker, .awt-scrubber):focus-visible { outline-color: Highlight; box-shadow: none; }
+  .owner-video-tools .awt-scrubber,
+  .owner-video-tools .awt-scrubber[data-dragging='true'] {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
+  .owner-video-tools .awt-scrubber::before { background: CanvasText; }
+  .owner-video-tools .awt-scrubber-time { color: CanvasText; }
+  .owner-video-tools .awt-scrubber-grip {
+    forced-color-adjust: none;
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  .owner-video-tools .awt-scrubber[data-dragging='true'] .awt-scrubber-grip {
+    border-color: ButtonText;
+    border-style: double;
+    border-radius: 0;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  .owner-video-tools .awt-scrubber[aria-disabled='true'],
+  .owner-video-tools .awt-scrubber[aria-disabled='true'] :is(.awt-scrubber-time, .awt-scrubber-grip) {
+    border-color: GrayText;
+    color: GrayText;
+  }
+  .owner-video-tools.workspace-notebook-surface .awt-scrubber:focus-visible { outline-color: CanvasText; box-shadow: none; }
+}
