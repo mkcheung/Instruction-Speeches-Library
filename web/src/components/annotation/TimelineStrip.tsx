@@ -14,6 +14,8 @@
  *   "Unsaved text draft"). They live in the Text lane and are never classified as saved.
  * - activeIds?: ids that are "current" at the playhead (time-driven). Only these get
  *   aria-current="true" (matching list rows); selection never does.
+ * - scrub?: independent current-source navigation authority. Opts into a dedicated
+ *   44px first row; never invokes marker callbacks. Omit to preserve three rows.
  * - speechId / reviewId / onLiveRetime / onRetimeError: legacy, accepted and ignored.
  *
  * Unknown/zero duration: markers are spread evenly by chronological index (bounded rows,
@@ -42,6 +44,8 @@ import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
 import { compareByStartThenId } from '@/lib/annotationOrder'
 import { Volume2, VolumeX } from 'lucide-react'
+import { TimelineScrubber, type TimelineScrubCapability } from './TimelineScrubber'
+export type { TimelineScrubCapability } from './TimelineScrubber'
 
 export type TimelineMarkerKind = 'text' | 'voice' | 'erased-voice' | 'draft'
 
@@ -66,9 +70,10 @@ const safe = (n: number) => (Number.isFinite(n) ? n : 0)
 const clampPct = (n: number) => (Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0)
 
 export function TimelineStrip({
-  annotations, videoEl, durationSeconds, onSeek, onMarkerActivate, selectedId = null, draftIds, activeIds,
+  annotations, videoEl, durationSeconds, onSeek, onMarkerActivate, selectedId = null, draftIds, activeIds, scrub,
 }: {
   annotations: readonly Annotation[]
+  scrub?: TimelineScrubCapability
   speechId?: number
   reviewId?: number
   videoEl: HTMLVideoElement | null
@@ -190,13 +195,14 @@ export function TimelineStrip({
 
   const textHeight = `${textRows * TEXT_ROW_REM}rem`
   const voiceHeight = `${voiceRows * VOICE_ROW_REM}rem`
-  const gridRows = `${textHeight} ${voiceHeight} auto`
+  const gridRows = `${scrub ? '44px ' : ''}${textHeight} ${voiceHeight} auto`
+  const rowOffset = scrub ? 1 : 0
 
   return <div className="awt-timeline relative grid gap-y-1 rounded-md border border-border bg-muted/30 py-1 pr-3"
     style={{ gridTemplateColumns: `${GUTTER} minmax(0, 1fr)`, gridTemplateRows: gridRows }}
     data-testid="timeline-strip" role="group" aria-label="Annotation timeline">
-    <div className="awt-lane-label awt-lane-label--text col-start-1 row-start-1 flex items-center pl-2 text-xs font-medium" style={{ minWidth: 0 }}>Text</div>
-    <div className="awt-lane awt-lane--text relative col-start-2 row-start-1" data-testid="timeline-lane-text" style={{ height: textHeight }}>
+    <div className="awt-lane-label awt-lane-label--text col-start-1 row-start-1 flex items-center pl-2 text-xs font-medium" style={{ minWidth: 0, gridRowStart: 1 + rowOffset }}>Text</div>
+    <div className="awt-lane awt-lane--text relative col-start-2 row-start-1" data-testid="timeline-lane-text" style={{ height: textHeight, gridRowStart: 1 + rowOffset }}>
       <div className="awt-track absolute inset-x-0 top-1/2 h-px bg-border" aria-hidden="true" />
       {textItems.map(({ annotation, row, left, width, temporary }, i) => {
         const kind: TimelineMarkerKind = temporary ? 'draft' : 'text'
@@ -209,8 +215,8 @@ export function TimelineStrip({
       })}
     </div>
 
-    <div className="awt-lane-label awt-lane-label--voice col-start-1 row-start-2 flex items-center pl-2 text-xs font-medium" style={{ minWidth: 0 }}>Voice</div>
-    <div ref={voiceTrackRef} className="awt-lane awt-lane--voice relative col-start-2 row-start-2" data-testid="timeline-lane-voice" style={{ height: voiceHeight }}>
+    <div className="awt-lane-label awt-lane-label--voice col-start-1 row-start-2 flex items-center pl-2 text-xs font-medium" style={{ minWidth: 0, gridRowStart: 2 + rowOffset }}>Voice</div>
+    <div ref={voiceTrackRef} className="awt-lane awt-lane--voice relative col-start-2 row-start-2" data-testid="timeline-lane-voice" style={{ height: voiceHeight, gridRowStart: 2 + rowOffset }}>
       <div className="awt-track absolute inset-x-0 top-1/2 h-px bg-border" aria-hidden="true" />
       {voiceItems.map(({ annotation, row, left }, i) => {
         const erased = annotation.voice === null
@@ -230,7 +236,7 @@ export function TimelineStrip({
       })}
     </div>
 
-    <div className="col-start-2 row-start-3 flex justify-between text-xs text-muted-foreground" data-testid="timeline-ticks" aria-hidden="true">
+    <div className="col-start-2 row-start-3 flex justify-between text-xs text-muted-foreground" data-testid="timeline-ticks" aria-hidden="true" style={{ gridRowStart: 3 + rowOffset }}>
       {duration > 0
         ? [0, duration / 2, duration].map((t, i) => <span key={i} className="awt-tick">{formatTimecode(t)}</span>)
         : <span className="awt-tick">{formatTimecode(0)}</span>}
@@ -238,9 +244,10 @@ export function TimelineStrip({
 
     {/* Playhead overlay: spans both lanes and the ticks, only over the data axis (gutter excluded). */}
     <div ref={setAxis} className="awt-axis pointer-events-none relative col-start-2 row-span-3 row-start-1" data-testid="timeline-axis"
-      style={{ ['--playhead-percent' as string]: '0%' }}>
+      style={{ ['--playhead-percent' as string]: '0%', gridRow: `1 / span ${3 + rowOffset}` }}>
+      {scrub && <TimelineScrubber videoEl={videoEl} capability={scrub} axisRef={axisRef} />}
       <div className="awt-playhead absolute inset-y-0 w-0.5 -translate-x-px bg-[var(--color-danger)]" data-testid="timeline-playhead"
-        style={{ left: 'var(--playhead-percent, 0%)' }} />
+        style={{ left: 'var(--scrub-preview-percent, var(--playhead-percent, 0%))' }} />
     </div>
   </div>
 }

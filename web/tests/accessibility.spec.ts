@@ -204,7 +204,10 @@ async function isolateWorkspaceAxeApi(context: BrowserContext, notebook?: Notebo
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.url().slice(blobPrefix.length))) {
       return route.continue()
     }
-    if (notebook && url.origin === new URL(APP_URL).origin && ['/__notebook/speech.mp4', '/__notebook/voice.m4a'].includes(url.pathname)) return notebookMediaResponse(route, notebook)
+    if (notebook && url.origin === new URL(APP_URL).origin && ['/__notebook/speech.mp4', '/__notebook/voice.m4a'].includes(url.pathname)) {
+      if (notebook.draggable && url.pathname === '/__notebook/voice.m4a' && notebook.scrubWire) notebook.scrubWire.voiceMediaRequests += 1
+      return notebookMediaResponse(route, notebook)
+    }
     if (url.origin === new URL(APP_URL).origin) {
       if (!builtRoot) return route.continue()
       // Fail closed for non-GET requests and for traversal, symlinks outside
@@ -253,6 +256,34 @@ async function isolateWorkspaceAxeApi(context: BrowserContext, notebook?: Notebo
       return json({ user })
     }
     if (notebook) {
+      if (notebook.draggable && notebook.scrubWire) {
+        const wire = notebook.scrubWire
+        if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method())) wire.mutations.push(`${request.method()} ${url.pathname}`)
+        if (request.method() === 'GET' && url.pathname === '/api/reviews') {
+          wire.reviewRequests += 1
+          const status = await wire.reviewReply?.(wire.reviewRequests) ?? 200
+          // Real ReviewResource list rows omit reviewer, including reviewer.id.
+          const review = Object.fromEntries(Object.entries(notebookReview(notebook)).filter(([key]) => key !== 'reviewer'))
+          return json(status === 200 ? { invited: [], in_progress: [review], published: [], revoked: [] }
+            : { message: 'Isolated review validation failure.' }, status)
+        }
+        if (request.method() === 'GET' && url.pathname === '/api/speeches/9/assets/90/playback-url') {
+          wire.playbackRequests += 1
+          await wire.playbackReply?.(wire.playbackRequests)
+        }
+      }
+      if (notebook.ownerVideoTools && url.pathname === '/api/speeches/9/assets/90/poster-frame' && request.method() === 'POST') {
+        const body = request.postDataJSON() as Record<string, unknown>
+        if (Object.keys(body).length !== 1 || typeof body.time_seconds !== 'number' || !Number.isFinite(body.time_seconds) || body.time_seconds < 0 || body.time_seconds > 3) {
+          unexpected.push(`Invalid poster body: ${request.postData()}`)
+          return json({ message: 'Invalid isolated poster request.' }, 422)
+        }
+        notebook.ownerWire?.posterRequests.push({ path: url.pathname, body: { time_seconds: body.time_seconds } })
+        const status = await notebook.ownerWire?.posterReply?.() ?? 200
+        return json(status === 200 ? { asset: { ...notebookSpeech(notebook).primary_video, poster_time_seconds: body.time_seconds } }
+          : { message: 'Isolated poster failure.' }, status)
+      }
+      if (notebook.ownerVideoTools && /^\/api\/speeches\/9\/annotations\/owner-[ab]-voice\/voice-playback-url$/.test(url.pathname)) await notebook.ownerWire?.voiceReply?.()
       const response = notebookResponse(url, request.method(), notebook, request.method() === 'PATCH' ? request.postDataJSON() as Record<string, unknown> : undefined)
       if (response) return json(response.body, response.status ?? 200)
     }
@@ -323,7 +354,27 @@ test.describe('option C presentation accessibility (isolated frontend)', () => {
 
 // Test-local wire fixtures only. Every response follows the current API slice;
 // unknown requests still fail closed in the surrounding interceptor.
+interface OwnerToolsWire {
+  posterRequests: Array<{ path: string; body: { time_seconds: number } }>
+  posterReply?: () => Promise<number>
+  voiceReply?: () => Promise<void>
+}
+interface ScrubWire {
+  reviewRequests: number
+  playbackRequests: number
+  voiceMediaRequests: number
+  mutations: string[]
+  reviewReply?: (request: number) => Promise<number>
+  playbackReply?: (request: number) => Promise<void>
+}
 interface NotebookFixtureOptions {
+  draggable?: boolean
+  scrubWire?: ScrubWire
+  noSelectedReview?: boolean
+  // Strict owner-only wire contract; legacy presentation fixtures retain their existing behavior.
+  ownerVideoTools?: boolean
+  ownerVariant?: 'empty' | 'denied'
+  ownerWire?: OwnerToolsWire
   reviewer?: boolean
   // Opt in to one consistent reviewer/speech/annotation identity; legacy dashboard fixtures stay unchanged.
   reviewerOverlay?: boolean
@@ -344,7 +395,7 @@ const notebookDate = '2026-10-01T12:00:00Z'
 const notebookTitle = 'Finding a clear voice ' + 'LongSpeechTitle'.repeat(12)
 function notebookUser(options: NotebookFixtureOptions) {
   return { id: options.reviewer ? '2' : '1', email: 'notebook@example.test', first_name: 'Morgan', last_name: 'Member',
-    username: 'notebook-member', display_name: 'Morgan Member', roles: options.notebookTools ? ['coach'] : [], email_verified: true,
+    username: 'notebook-member', display_name: 'Morgan Member', roles: options.ownerVideoTools && options.reviewer ? ['coach', 'admin'] : options.notebookTools ? ['coach'] : [], email_verified: true,
     onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 120_000, quota_bytes: 5_000_000, uploads_in_flight: 0 }
 }
 function notebookSpeech(options: NotebookFixtureOptions) {
@@ -352,7 +403,9 @@ function notebookSpeech(options: NotebookFixtureOptions) {
     description: 'A rehearsal about confidence, opening clearly and connecting with the audience.',
     delivered_on: null, change_note: null, created_at: notebookDate, captions_enabled: true,
     primary_video: { id: 90, kind: 'video', status: options.notReady ? 'processing' : 'ready', failure_code: null, duration_seconds: '3',
-      width: options.portrait ? 360 : 640, height: options.portrait ? 640 : 360, poster_time_seconds: null } }
+      width: options.portrait ? 360 : 640, height: options.portrait ? 640 : 360, poster_time_seconds: null },
+    ...(options.ownerVideoTools ? { sprite: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aHZkAAAAASUVORK5CYII=',
+      columns: 5, rows: 2, frame_width: 800, frame_height: options.portrait ? 568 : 180, duration_seconds: '3' } } : {}) }
 }
 // Ids that own ready audio in the notebookTools set; only these may resolve a playback URL.
 const notebookToolsAudioIds = ['notebook-voice', 'tools-voice-historic', 'tools-voice-ready-2', 'tools-voice-ready-3']
@@ -387,8 +440,49 @@ function notebookReview(options: NotebookFixtureOptions) {
     speech: { id: 9, ulid: 'notebook-speech', title: notebookTitle, owner_name: 'Morgan Member' },
     reviewer: { id: options.reviewer ? 2 : 3, username: 'avery-reviewer', name: 'Avery Reviewer' } }
 }
+// Two published tracks have different row identities and timing, never draft-inclusive rows.
+function ownerToolsTracks(options: NotebookFixtureOptions) {
+  const first = { ...notebookReview(options), status: 'published', first_published_at: notebookDate,
+    last_published_at: notebookDate, annotations_count: options.ownerVariant === 'empty' ? 0 : 6,
+    published_annotations_count: options.ownerVariant === 'empty' ? 0 : 6, revoked_by_is_self: false }
+  return [first, { ...first, id: 23, last_published_at: '2026-09-30T12:00:00Z',
+    reviewer: { id: 4, username: 'jamie-member', name: 'Jamie Member' } }]
+}
+function ownerToolsRows(reviewId: number) {
+  const prefix = reviewId === 22 ? 'owner-a' : 'owner-b', shift = reviewId === 22 ? 0 : .1
+  const row = (id: string, start: number, duration: number, timing: 'point' | 'range', body: string, audio = false) => ({
+    id: `${prefix}-${id}`, timing_type: timing, start_seconds: start, duration_seconds: duration,
+    kind: 'observation', topic: null, body, lock_version: 1, client_uuid: `${prefix}-${id}`,
+    voice: audio ? { asset_id: reviewId + 100, audio_status: 'ready', transcript_status: 'ready', failure_code: null } : null,
+  })
+  return [row('edge', 0, 0, 'point', 'Erased boundary transcript.'),
+    row('text', .4 + shift, .5, 'range', `${prefix} published written feedback.`),
+    row('erased', 1 + shift, 0, 'point', 'The transcript survives erased audio.'),
+    row('voice', 1.2 + shift, 10, 'point', `${prefix} published voice transcript.`, true),
+    row('late', 2.2 + shift, .3, 'range', `${prefix} final written feedback.`),
+    row('end', 2.99, 0, 'point', 'Erased ending transcript.')]
+}
+function ownerToolsResponse(url: URL, method: string, options: NotebookFixtureOptions): { body: unknown; status?: number } | undefined {
+  if (!options.ownerVideoTools || method !== 'GET') return undefined
+  const tracks = ownerToolsTracks(options)
+  switch (url.pathname) {
+    case '/api/speeches/9/reviews': return { body: { reviews: tracks } }
+    case '/api/speeches/9/review-roster': return { body: { reviews: options.noSelectedReview ? [] : tracks } }
+    case '/api/speeches/9/annotations': {
+      const review = tracks.find((track) => String(track.id) === url.searchParams.get('review_id'))
+      if (!review || [...url.searchParams.keys()].some((key) => key !== 'review_id')) return { status: 403, body: { message: 'Unexpected owner review denied.' } }
+      if (options.ownerVariant === 'denied') return { status: 403, body: { message: 'Commentary unavailable.' } }
+      return { body: { review_id: review.id, reviewer: review.reviewer,
+        annotations: options.ownerVariant === 'empty' ? [] : ownerToolsRows(review.id) } }
+    }
+    case '/api/speeches/9/annotations/owner-a-voice/voice-playback-url':
+    case '/api/speeches/9/annotations/owner-b-voice/voice-playback-url': return { body: { audio: { url: `${APP_URL}/__notebook/voice.m4a`, expires_at: '2030-01-01T00:00:00Z' } } }
+  }
+}
 function notebookResponse(url: URL, method: string, options: NotebookFixtureOptions, body?: Record<string, unknown>): { body: unknown; status?: number } | undefined {
   const path = url.pathname
+  const ownerResponse = ownerToolsResponse(url, method, options)
+  if (ownerResponse) return ownerResponse
   if (method === 'PATCH' && /^\/api\/me\/preferences\/commentary-playback\/9$/.test(path)) {
     // State-changing requests stay entirely within this browser fixture.
     if (['all', 'written', 'voice', 'off'].includes(String(body?.mode))) options.playbackMode = body!.mode as NotebookFixtureOptions['playbackMode']
@@ -522,6 +616,10 @@ test.describe('notebook presentation accessibility (isolated frontend)', () => {
         await reviewerPage.goto(`${APP_URL}/speeches/9`)
         const tabs = reviewerPage.getByRole('tablist', { name: 'Your feedback' })
         await expect(tabs).toBeVisible({ timeout: 30_000 })
+        // Caption readiness can follow the tabs. Let the real enabled toggle arrive before
+        // scanNotebookAndAssert waits its finite color transition; do not scan a late mount mid-fade.
+        await expect.poll(() => reviewerPage.locator('video[data-testid="speech-video"]').evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+        await expect(reviewerPage.getByTestId('captions-toggle')).toHaveAttribute('aria-pressed', 'true')
         for (const tab of ['Notes', 'Essay', 'Transcript']) {
           await tabs.getByRole('tab', { name: tab, exact: true }).click()
           await expect(tabs.getByRole('tab', { name: tab, exact: true })).toHaveAttribute('aria-selected', 'true')
@@ -677,4 +775,82 @@ test.describe('annotation notebook tools', () => {
       expect(unexpected).toEqual([])
     } finally { await context.close() }
   })
+})
+
+// Populated owner timeline is below .video-js and is covered by every unchanged axe scan.
+test.describe('owner video tools accessibility (isolated frontend)', () => {
+  test.setTimeout(240_000)
+  for (const width of [320, 375, 768, 1440]) {
+    test(`both populated utility panels pass unchanged axe gate at ${width}px`, async ({ browser }) => {
+      const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+      const unexpected = await isolateWorkspaceAxeApi(context, { ownerVideoTools: true, feedback: true, ownerWire: { posterRequests: [] } })
+      const page = await context.newPage()
+      try {
+        await page.goto(`${APP_URL}/speeches/9`, { waitUntil: 'domcontentloaded' })
+        await expect.poll(() => page.locator('video[data-testid="speech-video"]').evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+        await expect(page.getByTestId('captions-toggle')).toHaveAttribute('aria-pressed', 'true')
+        const tools = page.getByRole('tablist', { name: 'Video tools', exact: true })
+        const timeline = page.locator('.owner-video-tools__timeline')
+        await expect(timeline.getByTestId('range-marker-owner-a-text')).toBeVisible({ timeout: 30_000 })
+        await expect(timeline.locator('.awt-marker')).toHaveCount(6)
+        expect(await timeline.evaluate((node) => node.closest('.video-js') === null)).toBe(true)
+        // Forced-colors geometry/keyboard remains covered in app-shell at all four widths.
+        // WebKit's translucent system Highlight on Canvas flags the unchanged global header;
+        // this populated utility scan keeps the existing light/dark axe matrix and full-page gate.
+        for (const theme of ['light', 'system-dark', 'explicit-dark']) {
+          await page.emulateMedia({ colorScheme: theme === 'system-dark' ? 'dark' : 'light', forcedColors: 'none', reducedMotion: 'reduce' })
+          await page.evaluate((dark) => document.documentElement.classList.toggle('dark', dark), theme === 'explicit-dark')
+          for (const label of ['Commentary timeline', 'Frame selector']) {
+            await tools.getByRole('tab', { name: label, exact: true }).click()
+            await expect(tools.getByRole('tab', { name: label, exact: true })).toHaveAttribute('aria-selected', 'true')
+            if (label === 'Commentary timeline') await expect(timeline.locator('.awt-marker')).toHaveCount(6)
+            else await expect(page.getByRole('button', { name: 'Use current frame', exact: true })).toBeVisible()
+            await scanNotebookAndAssert(page, `owner-video-tools/${width}/${theme}/${label}`)
+          }
+        }
+        expect(unexpected).toEqual([])
+      } finally { await page.close(); await context.close() }
+    })
+  }
+})
+
+// Both populated timeline callers retain the full-page axe gate; the real video chrome
+// keeps its existing .video-js exclusion, while the new slider remains fully scanned.
+test.describe('draggable timeline playhead accessibility (isolated frontend)', () => {
+  test.setTimeout(180_000)
+  for (const width of [375, 1440]) for (const reviewer of [false, true]) {
+    test(`${reviewer ? 'reviewer Notes' : 'owner both panels'} populated slider passes unchanged axe at ${width}px`, async ({ browser }) => {
+      const wire: ScrubWire = { reviewRequests: 0, playbackRequests: 0, voiceMediaRequests: 0, mutations: [] }
+      const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+      const unexpected = await isolateWorkspaceAxeApi(context, { draggable: true, scrubWire: wire, reviewer, reviewerOverlay: reviewer,
+        notebookTools: reviewer, ownerVideoTools: !reviewer, feedback: true, playbackMode: 'all' })
+      const page = await context.newPage()
+      try {
+        await page.goto(`${APP_URL}/speeches/9`, { waitUntil: 'domcontentloaded' })
+        await expect.poll(() => page.locator('video[data-testid="speech-video"]').evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+        await expect(page.getByTestId('captions-toggle')).toHaveAttribute('aria-pressed', 'true')
+        const slider = page.getByRole('slider', { name: 'Video position', exact: true })
+        await expect(slider).toHaveAttribute('aria-disabled', 'false')
+        const timeline = reviewer ? page.locator('.aw-root').getByTestId('timeline-strip') : page.locator('.owner-video-tools__timeline')
+        await expect(timeline.locator('.awt-marker')).toHaveCount(reviewer ? 13 : 6)
+        expect(await slider.evaluate((node) => node.closest('.video-js') === null)).toBe(true)
+        if (reviewer) expect(wire.reviewRequests).toBe(2)
+        // Forced-colors native geometry/focus is exercised at four widths in app-shell.
+        // The existing shared-header system Highlight/Canvas limitation remains outside this scope.
+        for (const theme of ['light', 'system-dark', 'explicit-dark']) {
+          await page.emulateMedia({ colorScheme: theme === 'system-dark' ? 'dark' : 'light', reducedMotion: 'reduce' })
+          await page.evaluate((dark) => document.documentElement.classList.toggle('dark', dark), theme === 'explicit-dark')
+          const panels = reviewer ? ['Notes'] : ['Commentary timeline', 'Frame selector']
+          for (const panel of panels) {
+            await page.getByRole('tablist', { name: reviewer ? 'Your feedback' : 'Video tools' }).getByRole('tab', { name: panel, exact: true }).click()
+            if (panel !== 'Frame selector') await expect(slider).toBeVisible()
+            else await expect(slider).toBeHidden()
+            await scanNotebookAndAssert(page, `draggable-playhead/${reviewer ? 'reviewer' : 'owner'}/${width}/${theme}/${panel}`)
+          }
+        }
+        expect(wire.mutations).toEqual([])
+        expect(unexpected).toEqual([])
+      } finally { await page.close(); await context.close() }
+    })
+  }
 })

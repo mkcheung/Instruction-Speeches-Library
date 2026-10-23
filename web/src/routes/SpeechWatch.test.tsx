@@ -5,6 +5,7 @@ import { reviewApi } from '@/features/review/reviewApi'
 import { authApi } from '@/features/auth/authApi'
 import { annotationApi } from '@/features/annotation/annotationApi'
 import { VideoPlayer } from '@/components/speech/VideoPlayer'
+import type { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -130,13 +131,13 @@ vi.mock('@/components/annotation/VoiceRecorder', async () => {
 // Wraps the REAL panel, recording the props SpeechWatch passes so tests can
 // drive the lock callback and assert authoringActive.
 const panelSpy = vi.hoisted(() => ({
-  props: [] as Array<{ authoringActive?: boolean; onRecordingLockChange?: (locked: boolean) => void }>,
+  props: [] as Array<ComponentProps<typeof AnnotationComposerPanel>>,
 }))
 beforeEach(() => { panelSpy.props = [] })
 vi.mock('@/components/annotation/AnnotationComposerPanel', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/annotation/AnnotationComposerPanel')>()
   return { ...actual, AnnotationComposerPanel: (props: ComponentProps<typeof actual.AnnotationComposerPanel>) => {
-    panelSpy.props.push({ authoringActive: props.authoringActive, onRecordingLockChange: props.onRecordingLockChange })
+    panelSpy.props.push(props)
     return <actual.AnnotationComposerPanel {...props} />
   } }
 })
@@ -186,7 +187,7 @@ function urlOf(input: RequestInfo | URL): string {
 }
 
 function fakePlayer(currentTime: number): Player {
-  return { currentTime: () => currentTime } as unknown as Player
+  return { currentTime: () => currentTime, isDisposed: () => false } as unknown as Player
 }
 
 const sprite: SpeechSprite = {
@@ -251,6 +252,7 @@ describe('PosterFramePicker', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const playerRef = createRef<Player | null>()
+    ;(playerRef as { current: Player | null }).current = fakePlayer(0)
 
     const user = userEvent.setup()
     renderWithProviders(<PosterFramePicker speechId={1} assetId={9} playerRef={playerRef} sprite={sprite} />)
@@ -264,6 +266,26 @@ describe('PosterFramePicker', () => {
       const called = fetchMock.mock.calls.some(([input]) => urlOf(input).includes('/api/speeches/1/assets/9/poster-frame'))
       expect(called).toBe(true)
     })
+  })
+})
+
+
+// Even programmatic activation cannot submit against an unavailable media binding.
+describe('PosterFramePicker unavailable playback', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  it.each(['disabled', 'missing', 'disposed'])('guards both actions when playback is %s', (state) => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const playerRef = createRef<Player | null>()
+    if (state !== 'missing') playerRef.current = {
+      currentTime: () => 7, isDisposed: () => state === 'disposed',
+    } as unknown as Player
+    renderWithProviders(<PosterFramePicker speechId={1} assetId={9} playerRef={playerRef}
+      sprite={sprite} disabled={state === 'disabled'} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Use current frame' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use frame at 30.0s' }))
+    expect(fetchMock).not.toHaveBeenCalled()
+    if (state === 'disabled') screen.getAllByRole('button').forEach((button) => expect(button).toBeDisabled())
   })
 })
 
@@ -958,6 +980,180 @@ describe('SpeechWatch reviewers tab', () => {
     return input
   }
 
+  it('validates review rows without reviewer identity and guards captured scrub callbacks across source refresh', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let reviews = 0
+    let completeValidation!: (response: Response) => void
+    const rows = { in_progress: [{ ...reviewerReview(), reviewer: undefined }] }
+    mock.mockImplementation(async (input) => {
+      if (pathOf(input) === '/api/reviews') {
+        reviews += 1
+        return reviews === 2 ? new Promise<Response>((resolve) => { completeValidation = resolve }) : json(rows)
+      }
+      return original(input)
+    })
+    renderWatch()
+    await screen.findByRole('region', { name: 'New annotation' })
+    await waitFor(() => expect(reviews).toBe(2))
+    expect(latestPanel().scrub?.enabled).toBe(false)
+    act(() => completeValidation(json(rows)))
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(true))
+    enterDraft()
+    const source = activePlayer()
+    const captured = latestPanel().scrub!
+    act(() => captured.onSeek(33))
+    expect(source.video.currentTime).toBe(33)
+    expect(screen.getByLabelText('Start')).toHaveValue('10')
+    await act(async () => { await source.refresh() })
+    await waitFor(() => expect(latestPanel().scrub?.bindingKey).not.toBe(captured.bindingKey))
+    act(() => captured.onSeek(45))
+    expect(source.video.currentTime).toBe(33)
+    act(() => latestPanel().scrub!.onSeek(46))
+    expect(source.video.currentTime).toBe(46)
+    expect(reviews).toBe(2)
+  })
+
+  it('bounds a failed reviewer navigation check and permits one explicit pending retry', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let reviews = 0
+    let finishRetry!: (response: Response) => void
+    const rows = { in_progress: [{ ...reviewerReview(), reviewer: undefined }] }
+    mock.mockImplementation(async (input) => {
+      if (pathOf(input) === '/api/reviews') {
+        reviews += 1
+        if (reviews === 1) return json(rows)
+        if (reviews === 2) return json({ message: 'Temporary failure' }, 500)
+        return new Promise<Response>((resolve) => { finishRetry = resolve })
+      }
+      return original(input)
+    })
+    const view = renderWatch()
+    const retry = await screen.findByRole('button', { name: 'Retry timeline navigation' })
+    await waitFor(() => { expect(reviews).toBe(2); expect(retry).toBeEnabled() })
+    expect(latestPanel().scrub?.enabled).toBe(false)
+    act(() => { view.store.dispatch(authApi.util.updateQueryData('getMe', undefined, (data) => { data.user.display_name = 'Same account' })) })
+    expect(reviews).toBe(2)
+    fireEvent.click(retry)
+    await waitFor(() => { expect(reviews).toBe(3); expect(retry).toBeDisabled() })
+    fireEvent.click(retry)
+    expect(reviews).toBe(3)
+    act(() => finishRetry(json(rows)))
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(true))
+    expect(screen.queryByRole('button', { name: 'Retry timeline navigation' })).not.toBeInTheDocument()
+  })
+
+  it('withholds reviewer scrub callbacks during retained-data auth refresh and resumes the same proof without another review GET', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let reviews = 0
+    let refreshAuth = false
+    let completeAuth!: (response: Response) => void
+    mock.mockImplementation(async (input) => {
+      if (pathOf(input) === '/api/reviews') reviews += 1
+      if (pathOf(input) === '/api/me' && refreshAuth) return new Promise<Response>((resolve) => { completeAuth = resolve })
+      return original(input)
+    })
+    const view = renderWatch()
+    await waitFor(() => expect(latestPanel()?.scrub?.enabled).toBe(true))
+    const source = activePlayer()
+    const captured = latestPanel().scrub!
+    expect(reviews).toBe(2)
+    refreshAuth = true
+    let authRequest!: Promise<unknown>
+    act(() => { authRequest = view.store.dispatch(authApi.endpoints.getMe.initiate(undefined, {
+      subscribe: false, forceRefetch: true,
+    })) })
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(false))
+    expect(authApi.endpoints.getMe.select()(view.store.getState())).toMatchObject({
+      status: 'pending', data: { user: { id: String(OWNER_ID) } },
+    })
+    act(() => { captured.onSeek(80); latestPanel().scrub!.onSeek(81) })
+    expect(source.video.currentTime).toBe(0)
+    await act(async () => {
+      completeAuth(json({ user: { ...userPayload(String(OWNER_ID)).user, roles: ['coach'] } }))
+      await authRequest
+    })
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(true))
+    expect(latestPanel().scrub?.bindingKey).toBe(captured.bindingKey)
+    expect(reviews).toBe(2)
+    act(() => latestPanel().scrub!.onSeek(42))
+    expect(source.video.currentTime).toBe(42)
+  })
+
+  it('starts fresh validation for a new user despite the previous account’s cached review denial', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let reviews = 0
+    let completeNewUser!: (response: Response) => void
+    const rows = { in_progress: [{ ...reviewerReview(), reviewer: undefined }] }
+    mock.mockImplementation(async (input) => {
+      if (pathOf(input) === '/api/reviews') {
+        reviews += 1
+        if (reviews <= 2) return json(rows)
+        if (reviews === 3) return json({ message: 'Previous account denied' }, 403)
+        return new Promise<Response>((resolve) => { completeNewUser = resolve })
+      }
+      return original(input)
+    })
+    const view = renderWatch()
+    await waitFor(() => expect(latestPanel()?.scrub?.enabled).toBe(true))
+    const oldCallback = latestPanel().scrub!.onSeek
+    const source = activePlayer()
+    await act(async () => { await view.store.dispatch(reviewApi.endpoints.listMyReviews.initiate(undefined, {
+      subscribe: false, forceRefetch: true,
+    })) })
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(false))
+    act(() => { view.store.dispatch(authApi.util.updateQueryData('getMe', undefined, (data) => { data.user.id = '99' })) })
+    await waitFor(() => expect(reviews).toBe(4))
+    expect(latestPanel().scrub?.enabled).toBe(false)
+    act(() => oldCallback(41))
+    expect(source.video.currentTime).toBe(0)
+    act(() => completeNewUser(json(rows)))
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(true))
+    act(() => latestPanel().scrub!.onSeek(42))
+    expect(source.video.currentTime).toBe(42)
+    expect(reviews).toBe(4)
+  })
+
+  it('keeps a current terminal review denial latched through a failed retry until fresh success', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    let reviews = 0
+    let completeRetry!: (response: Response) => void
+    const rows = { in_progress: [{ ...reviewerReview(), reviewer: undefined }] }
+    mock.mockImplementation(async (input) => {
+      if (pathOf(input) === '/api/reviews') {
+        reviews += 1
+        if (reviews <= 2) return json(rows)
+        if (reviews === 3) return json({ message: 'Denied' }, 403)
+        if (reviews === 4) return json({ message: 'Transient failure' }, 500)
+        return new Promise<Response>((resolve) => { completeRetry = resolve })
+      }
+      return original(input)
+    })
+    const view = renderWatch()
+    await waitFor(() => expect(latestPanel()?.scrub?.enabled).toBe(true))
+    const captured = latestPanel().scrub!
+    await act(async () => { await view.store.dispatch(reviewApi.endpoints.listMyReviews.initiate(undefined, {
+      subscribe: false, forceRefetch: true,
+    })) })
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry timeline navigation' }))
+    await waitFor(() => { expect(reviews).toBe(4); expect(screen.getByRole('button', { name: 'Retry timeline navigation' })).toBeEnabled() })
+    act(() => captured.onSeek(31))
+    expect(activePlayer().video.currentTime).toBe(0)
+    expect(latestPanel().scrub?.enabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry timeline navigation' }))
+    await waitFor(() => expect(reviews).toBe(5))
+    expect(latestPanel().scrub?.enabled).toBe(false)
+    act(() => completeRetry(json(rows)))
+    await waitFor(() => expect(latestPanel().scrub?.enabled).toBe(true))
+    expect(latestPanel().scrub?.bindingKey).not.toBe(captured.bindingKey)
+    expect(reviews).toBe(5)
+  })
+
   it('waits for concrete player readiness and keeps one reviewer portal and draft across Notes, Essay and Transcript', async () => {
     playerHarness.autoReady = false
     const mock = stubReviewerFetch()
@@ -1367,6 +1563,286 @@ describe('SpeechWatch reviewers tab', () => {
     expect(b.player.remoteTextTracks()).toHaveLength(1)
     expect(screen.getByTestId('speech-video')).toBe(b.video)
     expect(playerHarness.instances).toHaveLength(2)
+  })
+
+  describe('owner video tools integration', () => {
+    function stubOwnerTools(mode = 'all') {
+      const mock = stubWatchFetch({ speech: { ...speechFixture(), sprite }, roster: [rosterReview()] })
+      const original = mock.getMockImplementation()!
+      const rows = [writtenNote('owner-text', 'Owner text body'), {
+        ...writtenNote('owner-voice', 'Owner voice transcript'), timing_type: 'point', start_seconds: 12,
+        voice: { asset_id: 70, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
+      }, { ...writtenNote('owner-erased', 'Erased audio transcript'), timing_type: 'point', start_seconds: 22 }]
+      mock.mockImplementation(async (input) => {
+        const path = pathOf(input)
+        if (path.startsWith('/api/me/preferences/commentary-playback/')) return json({
+          commentary_playback: { speech_id: 17, mode, source: 'saved' },
+        })
+        if (path === '/api/speeches/17/annotations') return json({ review_id: 1,
+          reviewer: { id: 7, name: 'Coach Seven' }, annotations: rows })
+        return original(input)
+      })
+      return mock
+    }
+    async function readyTools() {
+      const tabs = await screen.findByRole('tablist', { name: 'Video tools' })
+      const tools = tabs.closest('.owner-video-tools') as HTMLElement
+      await waitFor(() => expect(within(tools).queryByText('Loading commentary…')).not.toBeInTheDocument())
+      return tools
+    }
+    async function refetchSpeech(view: ReturnType<typeof renderWatch>) {
+      await act(async () => { await view.store.dispatch(speechApi.endpoints.getSpeech.initiate(17,
+        { forceRefetch: true, subscribe: false })).unwrap().catch(() => {}) })
+    }
+    const markers = (tools: HTMLElement) => [...tools.querySelectorAll<HTMLButtonElement>('.awt-marker')]
+
+    it.each(['admin', 'coach', 'member', 'guest'])('does not grant owner utilities to a non-owner %s', async (role) => {
+      const mock = stubWatchFetch({ speech: speechFixture({ userId: 4242 }) })
+      const original = mock.getMockImplementation()!
+      mock.mockImplementation((input) => pathOf(input) === '/api/me' ? Promise.resolve(role === 'guest'
+        ? json({ message: 'Unauthenticated' }, 401)
+        : json({ user: { ...userPayload(String(OWNER_ID)).user, roles: [role] } })) : original(input))
+      renderWatch()
+      await screen.findByTestId('speech-video')
+      expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Use current frame' })).not.toBeInTheDocument()
+    })
+
+    it.each([false, true])('distinguishes no selection from a successfully empty selected review (selected=%s)', async (selected) => {
+      stubWatchFetch({ speech: speechFixture(), roster: selected ? [rosterReview()] : [] })
+      renderWatch()
+      const tools = await readyTools()
+      await waitFor(() => expect(within(tools).getByText(selected
+        ? 'This reviewer has no published commentary yet.'
+        : 'Choose a reviewer in Notes to see their commentary.')).toBeVisible())
+      expect(markers(tools)).toHaveLength(0)
+    })
+
+    it('retains its mounted utility while initial concrete readiness is pending, then enables markers and frame actions', async () => {
+      stubOwnerTools()
+      playerHarness.autoReady = false
+      renderWatch()
+      const tools = await readyTools()
+      expect(markers(tools)).toHaveLength(0)
+      expect(within(tools).getByText(/Preparing video. Timeline navigation/)).toBeVisible()
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      const button = screen.getByRole('button', { name: 'Use current frame' })
+      expect(button).toBeDisabled()
+      const player = activePlayer()
+      act(player.ready)
+      await waitFor(() => expect(button).not.toBeDisabled())
+      expect(screen.getByRole('tablist', { name: 'Video tools' }).closest('.owner-video-tools')).toBe(tools)
+      expect(screen.getByRole('tab', { name: 'Frame selector' })).toHaveAttribute('aria-selected', 'true')
+      fireEvent.click(screen.getByRole('tab', { name: 'Commentary timeline' }))
+      await waitFor(() => expect(markers(tools)).toHaveLength(3))
+    })
+
+    it.each([403, 500])('shows unavailable rather than a successful empty review on a selected-track %s error with no authorized rows', async (status) => {
+      const mock = stubOwnerTools()
+      const original = mock.getMockImplementation()!
+      mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17/annotations'
+        ? Promise.resolve(json({ message: 'Unavailable' }, status)) : original(input))
+      renderWatch()
+      const tools = await readyTools()
+      await waitFor(() => expect(within(tools).getByText('Commentary is unavailable. Open Notes for details.')).toBeVisible())
+      expect(markers(tools)).toHaveLength(0)
+      expect(within(tools).queryByText(/Coach Seven/)).not.toBeInTheDocument()
+      expect(within(tools).queryByText('This reviewer has no published commentary yet.')).not.toBeInTheDocument()
+    })
+
+    it('keeps the player, captions, reviewer and playback mode through independent utility and speech tabs', async () => {
+      const mock = stubOwnerTools()
+      const view = renderWatch()
+      const tools = await readyTools()
+      await waitFor(() => expect(markers(tools)).toHaveLength(3))
+      const player = activePlayer()
+      player.video.currentTime = 31
+      const notes = screen.getByRole('tab', { name: 'Notes' })
+      const mode = screen.getByRole('radio', { name: 'Text + audio' })
+      const requests = mock.mock.calls.filter(([input]) => pathOf(input).endsWith('/annotations')).length
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      expect(screen.getByRole('button', { name: 'Use current frame' })).toBeVisible()
+      fireEvent.click(screen.getByRole('tab', { name: 'Essay' }))
+      expect(screen.getByRole('tab', { name: 'Frame selector' })).toHaveAttribute('aria-selected', 'true')
+      fireEvent.click(screen.getByRole('tab', { name: 'Commentary timeline' }))
+      expect(activePlayer()).toBe(player)
+      expect(player.video.currentTime).toBe(31)
+      expect(mode).toBeChecked()
+      expect(view.container.querySelectorAll('video')).toHaveLength(1)
+      expect(mock.mock.calls.filter(([input]) => pathOf(input).endsWith('/annotations'))).toHaveLength(requests)
+      fireEvent.click(screen.getByRole('button', { name: 'Open Notes' }))
+      expect(notes).toHaveAttribute('aria-selected', 'true')
+      expect(notes).toHaveFocus()
+      expect(screen.getByRole('radio', { name: /Coach Seven/ })).toBeChecked()
+    })
+
+    it.each([['all', 3], ['written', 2], ['voice', 1], ['off', 0]] as const)(
+      'uses the canonical %s projection without leaking other mode markers', async (mode, count) => {
+        stubOwnerTools(mode)
+        renderWatch()
+        const tools = await readyTools()
+        await waitFor(() => expect(within(tools).getByText(mode === 'off'
+          ? 'Commentary is off. Open Notes to enable it.' : /Coach Seven/)).toBeInTheDocument())
+        expect(markers(tools)).toHaveLength(count)
+        if (mode === 'voice') expect(markers(tools)[0]).toHaveAttribute('data-kind', 'voice')
+        if (mode === 'written') expect(markers(tools).some((marker) => marker.dataset.kind === 'erased-voice')).toBe(true)
+        expect(within(tools).queryByText('Owner text body')).not.toBeInTheDocument()
+        expect(within(tools).queryByText('Owner voice transcript')).not.toBeInTheDocument()
+      })
+
+    it('seeks once through the existing binding without a poster request or starting paused video', async () => {
+      const mock = stubOwnerTools()
+      renderWatch()
+      const tools = await readyTools()
+      await waitFor(() => expect(markers(tools)).toHaveLength(3))
+      const player = activePlayer()
+      const play = vi.spyOn(player.video, 'play')
+      fireEvent.click(markers(tools)[0])
+      expect(player.video.currentTime).toBe(2)
+      expect(play).not.toHaveBeenCalled()
+      expect(mock.mock.calls.some(([input]) => pathOf(input).includes('poster-frame'))).toBe(false)
+    })
+
+    it.each([200, 500])('preserves a pending frame request and its %s result through hidden tabs, failed invalidation and source recreation', async (postStatus) => {
+      const mock = stubOwnerTools()
+      const original = mock.getMockImplementation()!
+      let finishPost!: (response: Response) => void
+      const pendingPost = new Promise<Response>((resolve) => { finishPost = resolve })
+      let speechFailure = false
+      let playbackUrl = 'https://example.com/signed.mp4'
+      mock.mockImplementation((input) => {
+        const path = pathOf(input)
+        if (path.endsWith('/poster-frame')) return pendingPost
+        if (path === '/api/speeches/17' && speechFailure) return Promise.resolve(json({ message: 'Temporary failure' }, 500))
+        if (path.endsWith('/playback-url')) return Promise.resolve(json({ url: playbackUrl }))
+        return original(input)
+      })
+      const view = renderWatch()
+      const tools = await readyTools()
+      const first = activePlayer()
+      first.video.currentTime = 18.75
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      const button = screen.getByRole('button', { name: 'Use current frame' })
+      fireEvent.click(button)
+      await waitFor(() => expect(button).toHaveTextContent('Updating…'))
+      fireEvent.click(screen.getByRole('tab', { name: 'Commentary timeline' }))
+      expect(button).not.toBeVisible()
+      speechFailure = true
+      await act(async () => { finishPost(json({ asset: { id: 42 } }, postStatus)); await pendingPost })
+      const message = postStatus === 200 ? 'Poster updating…' : 'Could not update poster.'
+      await waitFor(() => expect(within(tools).getByText(message)).toBeInTheDocument())
+      await waitFor(() => expect(speechApi.endpoints.getSpeech.select(17)(view.store.getState()).isError).toBe(true))
+      expect(screen.getByRole('tablist', { name: 'Video tools' }).closest('.owner-video-tools')).toBe(tools)
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      expect(screen.getByRole('button', { name: 'Use current frame' })).toBe(button)
+      expect(within(tools).getByText(message)).toBeVisible()
+      speechFailure = false
+      playbackUrl = 'https://example.com/recreated.mp4'
+      playerHarness.autoReady = false
+      await refetchSpeech(view)
+      await waitFor(() => expect(first.disposed).toBe(true))
+      expect(screen.getByRole('tab', { name: 'Frame selector' })).toHaveAttribute('aria-selected', 'true')
+      expect(button).toBeDisabled()
+      expect(within(tools).getByText(message)).toBeVisible()
+      fireEvent.click(button)
+      expect(mock.mock.calls.filter(([input]) => pathOf(input).endsWith('/poster-frame'))).toHaveLength(1)
+      const replacement = activePlayer()
+      act(first.ready)
+      expect(button).toBeDisabled()
+      act(replacement.ready)
+      await waitFor(() => expect(button).not.toBeDisabled())
+      expect(screen.getByRole('button', { name: 'Use current frame' })).toBe(button)
+      const requests = mock.mock.calls.filter(([input]) => pathOf(input).endsWith('/poster-frame'))
+      expect(requests).toHaveLength(1)
+      expect(pathOf(requests[0][0])).toBe('/api/speeches/17/assets/42/poster-frame')
+      expect(await (requests[0][0] as Request).clone().json()).toEqual({ time_seconds: 18.75 })
+    })
+
+    it('reads the current player time after returning to frames and never seeks for sprite selection', async () => {
+      const mock = stubOwnerTools()
+      const original = mock.getMockImplementation()!
+      const times: number[] = []
+      mock.mockImplementation(async (input) => {
+        if (pathOf(input).endsWith('/poster-frame')) {
+          const request = input as Request
+          const body = await request.clone().json()
+          times.push(body.time_seconds)
+          return json({ asset: { id: 42 } })
+        }
+        return original(input)
+      })
+      renderWatch()
+      await readyTools()
+      const player = activePlayer()
+      player.video.currentTime = 5
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      fireEvent.click(screen.getByRole('tab', { name: 'Commentary timeline' }))
+      player.video.currentTime = 26.25
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Use current frame' }))
+      await waitFor(() => expect(times).toEqual([26.25]))
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Use frame at 30.0s' })).not.toBeDisabled())
+      fireEvent.click(screen.getByRole('button', { name: 'Use frame at 30.0s' }))
+      await waitFor(() => expect(times).toEqual([26.25, 30]))
+      expect(player.video.currentTime).toBe(26.25)
+    })
+
+    it.each([401, 403, 404, 410])('invalidates a retained owner speech scope after %s and requires successful resolution before restoring tools', async (status) => {
+      const mock = stubOwnerTools()
+      const original = mock.getMockImplementation()!
+      const view = renderWatch()
+      await readyTools()
+      let speechStatus = status
+      mock.mockImplementation((input) => pathOf(input) === '/api/speeches/17'
+        ? Promise.resolve(json({ message: 'Unavailable' }, speechStatus)) : original(input))
+      await refetchSpeech(view)
+      expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+      speechStatus = 500
+      await refetchSpeech(view)
+      expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+      mock.mockImplementation(original)
+      await refetchSpeech(view)
+      await readyTools()
+      expect(screen.getByRole('tab', { name: 'Commentary timeline' })).toHaveAttribute('aria-selected', 'true')
+    })
+
+    it.each([401, 403, 404, 410])('suppresses owner tools on retained getMe %s and cannot revive them on a later 500', async (status) => {
+      const mock = stubOwnerTools()
+      const original = mock.getMockImplementation()!
+      const view = renderWatch()
+      await readyTools()
+      let authStatus = status
+      mock.mockImplementation((input) => pathOf(input) === '/api/me'
+        ? Promise.resolve(json({ message: 'Unavailable' }, authStatus)) : original(input))
+      const refetchMe = async () => {
+        await act(async () => { await view.store.dispatch(authApi.endpoints.getMe.initiate(undefined,
+          { forceRefetch: true, subscribe: false })).unwrap().catch(() => {}) })
+      }
+      await refetchMe()
+      expect(authApi.endpoints.getMe.select()(view.store.getState()).data?.user.id).toBe(String(OWNER_ID))
+      expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+      authStatus = 500
+      await refetchMe()
+      expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+      mock.mockImplementation(original)
+      await refetchMe()
+      await readyTools()
+    })
+
+    it('retains an already validated owner utility during a nonterminal authentication refresh error', async () => {
+      const mock = stubOwnerTools()
+      const original = mock.getMockImplementation()!
+      const view = renderWatch()
+      const tools = await readyTools()
+      fireEvent.click(screen.getByRole('tab', { name: 'Frame selector' }))
+      mock.mockImplementation((input) => pathOf(input) === '/api/me'
+        ? Promise.resolve(json({ message: 'Temporary auth failure' }, 500)) : original(input))
+      await act(async () => { await view.store.dispatch(authApi.endpoints.getMe.initiate(undefined,
+        { forceRefetch: true, subscribe: false })).unwrap().catch(() => {}) })
+      expect(screen.getByRole('tablist', { name: 'Video tools' }).closest('.owner-video-tools')).toBe(tools)
+      expect(screen.getByRole('tab', { name: 'Frame selector' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('button', { name: 'Use current frame' })).not.toBeDisabled()
+    })
   })
 
   describe('outer reviewer tab guard', () => {

@@ -22,6 +22,38 @@ const setDuration = (el: HTMLVideoElement, d: number) => { (el as unknown as { d
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 describe('labeled lanes', () => {
+  it('preserves the three-row standalone layout and exact marker geometry when navigation is absent', () => {
+    strip([note(), point()])
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+    expect(screen.getByTestId('timeline-strip').style.gridTemplateRows).toBe('1.5rem 1.75rem auto')
+    expect(screen.getByTestId('timeline-axis').style.gridRow).toBe('1 / span 3')
+    expect(screen.getByTestId('range-marker-5').style.left).toBe('10%')
+    expect(screen.getByTestId('range-marker-5').style.width).toBe('6%')
+    expect(screen.getByTestId('voice-marker-6').style.left).toBe('25%')
+  })
+  it('opts into one 44px axis row without changing marker geometry or marker activation', () => {
+    const markerSeek = vi.fn(); const reveal = vi.fn(); const scrubSeek = vi.fn()
+    strip([note(), point()], { onSeek: markerSeek, onMarkerActivate: reveal,
+      scrub: { bindingKey: 'user/speech/asset/generation', enabled: false, active: true, onSeek: scrubSeek } })
+    const slider = screen.getByRole('slider', { name: 'Video position' })
+    expect(screen.getByTestId('timeline-axis')).toContainElement(slider)
+    expect(slider.style.height).toBe('44px')
+    expect(screen.getByTestId('timeline-strip').style.gridTemplateRows).toBe('44px 1.5rem 1.75rem auto')
+    expect(screen.getByTestId('timeline-axis').style.gridRow).toBe('1 / span 4')
+    expect(screen.getByTestId('timeline-lane-text').style.gridRowStart).toBe('2')
+    expect(screen.getByTestId('timeline-lane-voice').style.gridRowStart).toBe('3')
+    expect(screen.getByTestId('timeline-ticks').style.gridRowStart).toBe('4')
+    expect(screen.getByTestId('range-marker-5').style.left).toBe('10%')
+    expect(screen.getByTestId('range-marker-5').style.width).toBe('6%')
+    expect(screen.getByTestId('voice-marker-6').style.left).toBe('25%')
+    fireEvent.pointerDown(screen.getByTestId('range-marker-5'), { clientX: 200 })
+    fireEvent.pointerMove(screen.getByTestId('range-marker-5'), { clientX: 400 })
+    fireEvent.pointerUp(screen.getByTestId('range-marker-5'), { clientX: 400 })
+    fireEvent.click(screen.getByTestId('range-marker-5'))
+    expect(markerSeek).toHaveBeenCalledExactlyOnceWith(10)
+    expect(reveal).toHaveBeenCalledOnce()
+    expect(scrubSeek).not.toHaveBeenCalled()
+  })
   it('renders Text and Voice lanes with markers in the right lane and named buttons', () => {
     strip([note(), point()])
     const group = screen.getByRole('group', { name: 'Annotation timeline' })

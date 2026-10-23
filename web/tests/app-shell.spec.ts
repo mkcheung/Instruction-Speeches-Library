@@ -239,7 +239,10 @@ async function interceptPresentationApi(context: BrowserContext, initiallyAuthen
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.url().slice(blobPrefix.length))) {
       return route.continue()
     }
-    if (notebook && url.origin === new URL(APP_URL).origin && ['/__notebook/speech.mp4', '/__notebook/voice.m4a'].includes(url.pathname)) return notebookMediaResponse(route, notebook)
+    if (notebook && url.origin === new URL(APP_URL).origin && ['/__notebook/speech.mp4', '/__notebook/voice.m4a'].includes(url.pathname)) {
+      if (notebook.draggable && url.pathname === '/__notebook/voice.m4a' && notebook.scrubWire) notebook.scrubWire.voiceMediaRequests += 1
+      return notebookMediaResponse(route, notebook)
+    }
     if (url.origin === new URL(APP_URL).origin) {
       if (!builtRoot) return route.continue()
       // Fail closed for non-GET requests and for traversal, symlinks outside
@@ -290,6 +293,35 @@ async function interceptPresentationApi(context: BrowserContext, initiallyAuthen
       return json({ user: presentationUser })
     }
     if (notebook) {
+      if (notebook.draggable && notebook.scrubWire) {
+        const wire = notebook.scrubWire
+        if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(request.method())) wire.mutations.push(`${request.method()} ${url.pathname}`)
+        if (request.method() === 'GET' && url.pathname === '/api/reviews') {
+          wire.reviewRequests += 1
+          const status = await wire.reviewReply?.(wire.reviewRequests) ?? 200
+          // Real ReviewResource list rows omit reviewer, including reviewer.id.
+          const review = Object.fromEntries(Object.entries(notebookReview(notebook)).filter(([key]) => key !== 'reviewer'))
+          return json(status === 200 ? { invited: [], in_progress: [review], published: [], revoked: [] }
+            : { message: 'Isolated review validation failure.' }, status)
+        }
+        if (request.method() === 'GET' && url.pathname === '/api/speeches/9/assets/90/playback-url') {
+          wire.playbackRequests += 1
+          await wire.playbackReply?.(wire.playbackRequests)
+        }
+      }
+      if (notebook.ownerVideoTools && url.pathname === '/api/speeches/9/assets/90/poster-frame' && request.method() === 'POST') {
+        const body = request.postDataJSON() as Record<string, unknown>
+        if (Object.keys(body).length !== 1 || typeof body.time_seconds !== 'number' || !Number.isFinite(body.time_seconds) || body.time_seconds < 0 || body.time_seconds > 3) {
+          unexpected.push(`Invalid poster body: ${request.postData()}`)
+          return json({ message: 'Invalid isolated poster request.' }, 422)
+        }
+        notebook.ownerWire?.posterRequests.push({ path: url.pathname, body: { time_seconds: body.time_seconds } })
+        const status = await notebook.ownerWire?.posterReply?.() ?? 200
+        if (notebook.draggable && status === 401) authenticated = false
+        return json(status === 200 ? { asset: { ...notebookSpeech(notebook).primary_video, poster_time_seconds: body.time_seconds } }
+          : { message: 'Isolated poster failure.' }, status)
+      }
+      if (notebook.ownerVideoTools && /^\/api\/speeches\/9\/annotations\/owner-[ab]-voice\/voice-playback-url$/.test(url.pathname)) await notebook.ownerWire?.voiceReply?.()
       const response = notebookResponse(url, request.method(), notebook, request.method() === 'PATCH' ? request.postDataJSON() as Record<string, unknown> : undefined)
       if (response) return json(response.body, response.status ?? 200)
     }
@@ -570,7 +602,27 @@ test.describe('option C presentation (isolated frontend)', () => {
 
 // Test-local wire fixtures only. Every response follows the current API slice;
 // unknown requests still fail closed in the surrounding interceptor.
+interface OwnerToolsWire {
+  posterRequests: Array<{ path: string; body: { time_seconds: number } }>
+  posterReply?: () => Promise<number>
+  voiceReply?: () => Promise<void>
+}
+interface ScrubWire {
+  reviewRequests: number
+  playbackRequests: number
+  voiceMediaRequests: number
+  mutations: string[]
+  reviewReply?: (request: number) => Promise<number>
+  playbackReply?: (request: number) => Promise<void>
+}
 interface NotebookFixtureOptions {
+  draggable?: boolean
+  scrubWire?: ScrubWire
+  noSelectedReview?: boolean
+  // Strict owner-only wire contract; legacy presentation fixtures retain their existing behavior.
+  ownerVideoTools?: boolean
+  ownerVariant?: 'empty' | 'denied'
+  ownerWire?: OwnerToolsWire
   reviewer?: boolean
   // Opt in to one consistent reviewer/speech/annotation identity; legacy dashboard fixtures stay unchanged.
   reviewerOverlay?: boolean
@@ -591,7 +643,7 @@ const notebookDate = '2026-10-01T12:00:00Z'
 const notebookTitle = 'Finding a clear voice ' + 'LongSpeechTitle'.repeat(12)
 function notebookUser(options: NotebookFixtureOptions) {
   return { id: options.reviewer ? '2' : '1', email: 'notebook@example.test', first_name: 'Morgan', last_name: 'Member',
-    username: 'notebook-member', display_name: 'Morgan Member', roles: options.notebookTools ? ['coach'] : [], email_verified: true,
+    username: 'notebook-member', display_name: 'Morgan Member', roles: options.ownerVideoTools && options.reviewer ? ['coach', 'admin'] : options.notebookTools ? ['coach'] : [], email_verified: true,
     onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 120_000, quota_bytes: 5_000_000, uploads_in_flight: 0 }
 }
 function notebookSpeech(options: NotebookFixtureOptions) {
@@ -599,7 +651,9 @@ function notebookSpeech(options: NotebookFixtureOptions) {
     description: 'A rehearsal about confidence, opening clearly and connecting with the audience.',
     delivered_on: null, change_note: null, created_at: notebookDate, captions_enabled: true,
     primary_video: { id: 90, kind: 'video', status: options.notReady ? 'processing' : 'ready', failure_code: null, duration_seconds: '3',
-      width: options.portrait ? 360 : 640, height: options.portrait ? 640 : 360, poster_time_seconds: null } }
+      width: options.portrait ? 360 : 640, height: options.portrait ? 640 : 360, poster_time_seconds: null },
+    ...(options.ownerVideoTools ? { sprite: { url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aHZkAAAAASUVORK5CYII=',
+      columns: 5, rows: 2, frame_width: 800, frame_height: options.portrait ? 568 : 180, duration_seconds: '3' } } : {}) }
 }
 // Ids that own ready audio in the notebookTools set; only these may resolve a playback URL.
 const notebookToolsAudioIds = ['notebook-voice', 'tools-voice-historic', 'tools-voice-ready-2', 'tools-voice-ready-3']
@@ -634,8 +688,49 @@ function notebookReview(options: NotebookFixtureOptions) {
     speech: { id: 9, ulid: 'notebook-speech', title: notebookTitle, owner_name: 'Morgan Member' },
     reviewer: { id: options.reviewer ? 2 : 3, username: 'avery-reviewer', name: 'Avery Reviewer' } }
 }
+// Two published tracks have different row identities and timing, never draft-inclusive rows.
+function ownerToolsTracks(options: NotebookFixtureOptions) {
+  const first = { ...notebookReview(options), status: 'published', first_published_at: notebookDate,
+    last_published_at: notebookDate, annotations_count: options.ownerVariant === 'empty' ? 0 : 6,
+    published_annotations_count: options.ownerVariant === 'empty' ? 0 : 6, revoked_by_is_self: false }
+  return [first, { ...first, id: 23, last_published_at: '2026-09-30T12:00:00Z',
+    reviewer: { id: 4, username: 'jamie-member', name: 'Jamie Member' } }]
+}
+function ownerToolsRows(reviewId: number) {
+  const prefix = reviewId === 22 ? 'owner-a' : 'owner-b', shift = reviewId === 22 ? 0 : .1
+  const row = (id: string, start: number, duration: number, timing: 'point' | 'range', body: string, audio = false) => ({
+    id: `${prefix}-${id}`, timing_type: timing, start_seconds: start, duration_seconds: duration,
+    kind: 'observation', topic: null, body, lock_version: 1, client_uuid: `${prefix}-${id}`,
+    voice: audio ? { asset_id: reviewId + 100, audio_status: 'ready', transcript_status: 'ready', failure_code: null } : null,
+  })
+  return [row('edge', 0, 0, 'point', 'Erased boundary transcript.'),
+    row('text', .4 + shift, .5, 'range', `${prefix} published written feedback.`),
+    row('erased', 1 + shift, 0, 'point', 'The transcript survives erased audio.'),
+    row('voice', 1.2 + shift, 10, 'point', `${prefix} published voice transcript.`, true),
+    row('late', 2.2 + shift, .3, 'range', `${prefix} final written feedback.`),
+    row('end', 2.99, 0, 'point', 'Erased ending transcript.')]
+}
+function ownerToolsResponse(url: URL, method: string, options: NotebookFixtureOptions): { body: unknown; status?: number } | undefined {
+  if (!options.ownerVideoTools || method !== 'GET') return undefined
+  const tracks = ownerToolsTracks(options)
+  switch (url.pathname) {
+    case '/api/speeches/9/reviews': return { body: { reviews: tracks } }
+    case '/api/speeches/9/review-roster': return { body: { reviews: options.noSelectedReview ? [] : tracks } }
+    case '/api/speeches/9/annotations': {
+      const review = tracks.find((track) => String(track.id) === url.searchParams.get('review_id'))
+      if (!review || [...url.searchParams.keys()].some((key) => key !== 'review_id')) return { status: 403, body: { message: 'Unexpected owner review denied.' } }
+      if (options.ownerVariant === 'denied') return { status: 403, body: { message: 'Commentary unavailable.' } }
+      return { body: { review_id: review.id, reviewer: review.reviewer,
+        annotations: options.ownerVariant === 'empty' ? [] : ownerToolsRows(review.id) } }
+    }
+    case '/api/speeches/9/annotations/owner-a-voice/voice-playback-url':
+    case '/api/speeches/9/annotations/owner-b-voice/voice-playback-url': return { body: { audio: { url: `${APP_URL}/__notebook/voice.m4a`, expires_at: '2030-01-01T00:00:00Z' } } }
+  }
+}
 function notebookResponse(url: URL, method: string, options: NotebookFixtureOptions, body?: Record<string, unknown>): { body: unknown; status?: number } | undefined {
   const path = url.pathname
+  const ownerResponse = ownerToolsResponse(url, method, options)
+  if (ownerResponse) return ownerResponse
   if (method === 'PATCH' && /^\/api\/me\/preferences\/commentary-playback\/9$/.test(path)) {
     // State-changing requests stay entirely within this browser fixture.
     if (['all', 'written', 'voice', 'off'].includes(String(body?.mode))) options.playbackMode = body!.mode as NotebookFixtureOptions['playbackMode']
@@ -1674,4 +1769,814 @@ test.describe('annotation notebook tools', () => {
       presentationExpect(t.mocked.unexpected).toEqual([])
     } finally { await t.context.close() }
   })
+})
+
+// Actual built route/player/controllers; every API mutation is fulfilled in this test context.
+test.describe('owner video tools (isolated frontend)', () => {
+  test.setTimeout(180_000)
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((done) => { resolve = done })
+    return { promise, resolve }
+  }
+  async function openOwner(browser: Browser, options: NotebookFixtureOptions = {}, width = 1440) {
+    const wire: OwnerToolsWire = options.ownerWire ?? { posterRequests: [] }
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+    context.setDefaultTimeout(10_000)
+    const mocked = await interceptPresentationApi(context, true, { ...options, ownerVideoTools: true, feedback: true, ownerWire: wire })
+    const page = await context.newPage()
+    await page.goto(`${APP_URL}/speeches/9`)
+    const video = page.locator('video[data-testid="speech-video"]')
+    const tools = page.getByRole('tablist', { name: 'Video tools', exact: true })
+    if (options.notReady) await presentationExpect(page.getByText('Not ready to play yet.', { exact: true })).toBeVisible()
+    else await presentationExpect(video).toBeVisible()
+    if (!options.notReady && !options.reviewer) await presentationExpect(tools).toBeVisible()
+    const timeline = page.locator('.owner-video-tools__timeline')
+    const marker = (id: string) => timeline.getByTestId(id)
+    return { wire, context, mocked, page, video, tools, timeline, marker }
+  }
+  async function expectHiddenPanelHasNoTargets(panel: import('@playwright/test').Locator) {
+    await presentationExpect(panel).toBeHidden()
+    presentationExpect(await panel.locator('button, input, a[href], [tabindex]').evaluateAll((nodes) => nodes.filter((node) => node.getClientRects().length > 0).length)).toBe(0)
+  }
+
+  for (const portrait of [false, true]) {
+    test(`native ${portrait ? 'portrait' : 'landscape'} player, voice and pending poster survive utility changes`, async ({ browser }) => {
+      console.log('[owner-tools/native] encoding', portrait ? 'portrait' : 'landscape')
+      const media = await createNotebookMedia(browser, portrait)
+      const t = await openOwner(browser, { portrait, media })
+      const { page, video, tools, timeline, wire } = t
+      const releaseGates: Array<() => void> = []
+      try {
+        await presentationExpect(t.marker('range-marker-owner-a-text')).toBeVisible()
+        await presentationExpect(timeline.locator('.awt-marker')).toHaveCount(6)
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => [element.videoWidth, element.videoHeight])).toEqual(portrait ? [360, 640] : [640, 360])
+        const original = await video.elementHandle()
+        const initial = await video.evaluate((element: HTMLVideoElement) => {
+          element.pause(); element.muted = true
+          element.dataset.ownerLoads = '0'; element.dataset.ownerSeeks = '0'
+          element.addEventListener('loadedmetadata', () => { element.dataset.ownerLoads = String(Number(element.dataset.ownerLoads) + 1) })
+          element.addEventListener('seeking', () => { element.dataset.ownerSeeks = String(Number(element.dataset.ownerSeeks) + 1) })
+          return { src: element.currentSrc, duration: element.duration, tracks: element.textTracks.length }
+        })
+        const captions = page.getByTestId('captions-toggle')
+        if (await captions.getAttribute('aria-pressed') !== 'true') await captions.click()
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = .6 })
+        await presentationExpect(t.marker('range-marker-owner-a-text')).toHaveAttribute('aria-current', 'true')
+        await presentationExpect.poll(() => timeline.getByTestId('timeline-axis').evaluate((node) => parseFloat((node as HTMLElement).style.getPropertyValue('--playhead-percent')))).toBeGreaterThan(15)
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = .95 })
+        await presentationExpect(t.marker('range-marker-owner-a-text')).not.toHaveAttribute('aria-current', 'true')
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+        const beforeSeek = Number(await video.getAttribute('data-owner-seeks'))
+        await t.marker('range-marker-owner-a-text').focus()
+        await page.keyboard.press('Enter')
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(.4, 2)
+        await presentationExpect.poll(async () => Number(await video.getAttribute('data-owner-seeks')) - beforeSeek).toBe(1)
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+        presentationExpect(Number(await video.getAttribute('data-owner-seeks')) - beforeSeek).toBe(1)
+        presentationExpect(wire.posterRequests).toEqual([])
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = .9 })
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+        console.log('[owner-tools/native] first user play')
+        await page.locator('.vjs-big-play-button').click({ timeout: 10_000 })
+        await presentationExpect(page.getByText('Playing voice commentary', { exact: true })).toBeVisible()
+        await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+        await presentationExpect(page.getByText('Playing voice commentary', { exact: true })).toBeVisible()
+        await page.getByRole('button', { name: 'Pause commentary', exact: true }).click()
+        await presentationExpect(page.getByText('Voice commentary paused', { exact: true })).toBeVisible()
+        await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+        await presentationExpect(page.getByText('Voice commentary paused', { exact: true })).toBeVisible()
+        await t.marker('range-marker-owner-a-late').click()
+        await presentationExpect(page.getByText('Voice commentary paused', { exact: true })).toHaveCount(0)
+        presentationExpect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(2.2, 2)
+
+        console.log('[owner-tools/native] voice states and cancellation passed')
+        // The picker stays mounted while pending, including its feedback after hidden settlement.
+        await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+        const pending = deferred<number>()
+        releaseGates.push(() => pending.resolve(200))
+        wire.posterReply = () => pending.promise
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = 1.75 })
+        await page.getByRole('button', { name: 'Use current frame', exact: true }).click()
+        await presentationExpect.poll(() => wire.posterRequests.length).toBe(1)
+        presentationExpect(wire.posterRequests[0]).toEqual({ path: '/api/speeches/9/assets/90/poster-frame', body: { time_seconds: 1.75 } })
+        await presentationExpect(page.getByRole('button', { name: 'Updating…', exact: true })).toBeDisabled()
+        await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+        await presentationExpect(page.getByText('Poster updating…', { exact: true })).toBeHidden()
+        pending.resolve(200)
+        await presentationExpect(page.getByText('Poster updating…', { exact: true })).toHaveCount(1)
+        await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+        await presentationExpect(page.getByText('Poster updating…', { exact: true })).toBeVisible()
+        const failure = deferred<number>()
+        releaseGates.push(() => failure.resolve(503))
+        wire.posterReply = () => failure.promise
+        await video.evaluate((element: HTMLVideoElement) => { element.currentTime = 1.95 })
+        await page.getByRole('button', { name: 'Use current frame', exact: true }).click()
+        await presentationExpect.poll(() => wire.posterRequests.length).toBe(2)
+        presentationExpect(wire.posterRequests[1].body).toEqual({ time_seconds: 1.95 })
+        await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+        failure.resolve(503)
+        await presentationExpect(page.getByText('Could not update poster.', { exact: true })).toHaveCount(1)
+        await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+        await presentationExpect(page.getByText('Could not update poster.', { exact: true })).toBeVisible()
+        wire.posterReply = undefined
+        const spriteTime = await video.evaluate((element: HTMLVideoElement) => element.currentTime)
+        await page.getByRole('button', { name: 'Use frame at 0.9s', exact: true }).click()
+        await presentationExpect.poll(() => wire.posterRequests.length).toBe(3)
+        presentationExpect(wire.posterRequests[2].body.time_seconds).toBeCloseTo(.9, 8)
+        presentationExpect(await video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(spriteTime, 2)
+        await presentationExpect(page.getByText('Poster updating…', { exact: true })).toBeVisible()
+        await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+        presentationExpect(await video.evaluate((element, old) => element === old, original)).toBe(true)
+        await presentationExpect(video).toHaveCount(1)
+        presentationExpect(await video.evaluate((element: HTMLVideoElement) => ({ src: element.currentSrc, duration: element.duration, tracks: element.textTracks.length }))).toEqual(initial)
+        await presentationExpect(video).toHaveAttribute('data-owner-loads', '0')
+        await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => Array.from(element.textTracks).some((track) => track.mode === 'showing'))).toBe(true)
+        console.log('[owner-tools/native] poster requests and identity passed')
+        const geometry = await page.locator('.owner-video-tools').evaluate((node) => {
+          const media = document.querySelector('.video-js')!, caption = document.querySelector('[data-testid="captions-toggle"]')!
+          return { outside: !node.closest('.video-js'), below: node.getBoundingClientRect().top >= Math.max(media.getBoundingClientRect().bottom, caption.getBoundingClientRect().bottom) }
+        })
+        presentationExpect(geometry).toEqual({ outside: true, below: true })
+        await page.screenshot({ path: test.info().outputPath(`owner-tools-native-${portrait ? 'portrait' : 'landscape'}.png`), fullPage: true })
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } catch (error) { console.log('[owner-tools/native-body]', error); throw error }
+      finally { releaseGates.forEach((release) => release()); await page.close(); await t.context.close() }
+    })
+  }
+
+  test('two exact published tracks crossfade, preserve utility selection and obey all four projections', async ({ browser }) => {
+    const t = await openOwner(browser)
+    const { page, tools, timeline } = t
+    try {
+      await presentationExpect(t.marker('range-marker-owner-a-text')).toBeVisible()
+      await presentationExpect(timeline.locator('[data-temporary], [data-kind="draft"]')).toHaveCount(0)
+      await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+      const tracks = page.getByRole('radiogroup', { name: 'Choose commentary track' })
+      await tracks.getByText('Jamie Member', { exact: false }).click()
+      await presentationExpect(tools.getByRole('tab', { name: 'Frame selector', exact: true })).toHaveAttribute('aria-selected', 'true')
+      await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+      await presentationExpect(t.marker('range-marker-owner-a-text')).toHaveCount(0)
+      await presentationExpect(t.marker('range-marker-owner-b-text')).toBeVisible()
+      await presentationExpect(timeline).toContainText('Jamie Member · Text + audio')
+      const playback = page.getByRole('radiogroup', { name: 'Commentary playback' })
+      for (const [label, total, text, voice] of [['Written notes only', 5, 2, 3], ['Audio only', 1, 0, 1], ['Off', 0, 0, 0], ['Text + audio', 6, 2, 4]] as const) {
+        await playback.getByText(label, { exact: true }).click()
+        await presentationExpect(timeline.locator('.awt-marker')).toHaveCount(total)
+        await presentationExpect(timeline.locator('[data-kind="text"]')).toHaveCount(text)
+        await presentationExpect(timeline.locator('[data-kind="voice"], [data-kind="erased-voice"]')).toHaveCount(voice)
+        if (label === 'Off') await presentationExpect(timeline.getByText('Commentary is off. Open Notes to enable it.', { exact: true })).toBeVisible()
+        if (label === 'Audio only') await presentationExpect(timeline).not.toContainText('published voice transcript')
+      }
+      await presentationExpect(t.marker('voice-marker-owner-b-erased')).toHaveAttribute('data-kind', 'erased-voice')
+      await presentationExpect(t.marker('voice-marker-owner-b-erased')).toHaveAccessibleName(/audio unavailable/)
+      await page.getByRole('tablist', { name: 'Speech tools', exact: true }).getByRole('tab', { name: 'Essay', exact: true }).click()
+      await timeline.getByRole('button', { name: 'Open Notes', exact: true }).click()
+      const notes = page.getByRole('tablist', { name: 'Speech tools', exact: true }).getByRole('tab', { name: 'Notes', exact: true })
+      await presentationExpect(notes).toHaveAttribute('aria-selected', 'true')
+      await presentationExpect(notes).toBeFocused()
+      presentationExpect(t.wire.posterRequests).toEqual([])
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { await t.context.close() }
+  })
+
+  test('loading voice survives tab changes and one marker seek cancels it without autoplay', async ({ browser }) => {
+    const loading = deferred<void>()
+    const wire: OwnerToolsWire = { posterRequests: [], voiceReply: () => loading.promise }
+    const t = await openOwner(browser, { media: await createNotebookMedia(browser, false), ownerWire: wire })
+    try {
+      await presentationExpect(t.marker('range-marker-owner-a-text')).toBeVisible()
+      await t.video.evaluate((element: HTMLVideoElement) => { element.muted = true; element.currentTime = .9 })
+      await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+      await t.page.locator('.vjs-big-play-button').click({ timeout: 10_000 })
+      await presentationExpect(t.page.getByText('Loading voice commentary…', { exact: true })).toBeVisible()
+      await t.tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+      await presentationExpect(t.page.getByText('Loading voice commentary…', { exact: true })).toBeVisible()
+      await t.tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+      await t.marker('range-marker-owner-a-late').click()
+      await presentationExpect(t.page.getByText('Loading voice commentary…', { exact: true })).toHaveCount(0)
+      loading.resolve()
+      await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeCloseTo(2.2, 2)
+      presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+      await presentationExpect(t.page.getByText('Playing voice commentary', { exact: true })).toHaveCount(0)
+      presentationExpect(wire.posterRequests).toEqual([])
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } catch (error) { console.log('[owner-tools/loading-body]', error); throw error }
+    finally { loading.resolve(); await t.page.close(); await t.context.close() }
+  })
+
+  for (const width of [320, 375, 768, 1440]) {
+    test(`responsive keyboard and hidden panels at ${width}px in light, system dark, explicit dark and forced colors`, async ({ browser }) => {
+      const t = await openOwner(browser, {}, width)
+      try {
+        await presentationExpect(t.marker('range-marker-owner-a-text')).toBeVisible()
+        const panels = t.page.locator('.owner-video-tools > [role="tabpanel"]')
+        await presentationExpect(panels).toHaveCount(2)
+        for (const theme of ['light', 'system-dark', 'explicit-dark', 'forced-colors']) {
+          await t.page.emulateMedia({ colorScheme: theme === 'system-dark' ? 'dark' : 'light', forcedColors: theme === 'forced-colors' ? 'active' : 'none', reducedMotion: 'reduce' })
+          await t.page.evaluate((dark) => document.documentElement.classList.toggle('dark', dark), theme === 'explicit-dark')
+          await t.tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+          await expectHiddenPanelHasNoTargets(panels.nth(1))
+          await expectTargetSizes(t.page, '.owner-video-tools__tab, .owner-video-tools__notes')
+          await expectNoPageOverflow(t.page)
+          const bounds = await t.timeline.evaluate((root) => {
+            const r = root.getBoundingClientRect()
+            return Array.from(root.querySelectorAll('.awt-marker')).every((node) => { const b = node.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1 })
+          })
+          presentationExpect(bounds).toBe(true)
+          await t.tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).focus()
+          await t.page.keyboard.press('ArrowRight')
+          await presentationExpect(t.tools.getByRole('tab', { name: 'Frame selector', exact: true })).toBeFocused()
+          await t.page.keyboard.press('Enter')
+          await expectHiddenPanelHasNoTargets(panels.nth(0))
+          await presentationExpect(t.page.getByRole('button', { name: 'Use current frame', exact: true })).toBeVisible()
+          await expectNoPageOverflow(t.page)
+        }
+        await t.page.screenshot({ path: test.info().outputPath(`owner-tools-${width}.png`), fullPage: true })
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { await t.context.close() }
+    })
+  }
+
+  for (const variant of ['empty', 'denied', 'processing', 'reviewer'] as const) {
+    test(`${variant} source has the correct owner-only state without false markers`, async ({ browser }) => {
+      const t = await openOwner(browser, { ownerVariant: variant === 'empty' || variant === 'denied' ? variant : undefined, notReady: variant === 'processing', reviewer: variant === 'reviewer' })
+      try {
+        if (variant === 'processing' || variant === 'reviewer') await presentationExpect(t.tools).toHaveCount(0)
+        else {
+          await presentationExpect(t.timeline).toContainText(variant === 'empty' ? 'This reviewer has no published commentary yet.' : 'Commentary is unavailable. Open Notes for details.')
+          await presentationExpect(t.timeline.locator('.awt-marker')).toHaveCount(0)
+        }
+        presentationExpect(t.wire.posterRequests).toEqual([])
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { await t.context.close() }
+    })
+  }
+})
+
+// Release-only navigation uses native input/media; API journals below never reach a backend.
+test.describe('draggable timeline playhead (isolated frontend)', () => {
+  test.setTimeout(120_000)
+  let media: Buffer
+  test.beforeAll(async ({ browser }) => { media = await createNotebookMedia(browser, false) })
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((done) => { resolve = done })
+    return { promise, resolve }
+  }
+  async function openScrub(browser: Browser, reviewer = false, options: NotebookFixtureOptions = {}, width = 1440, hasTouch = false, recorder = false) {
+    const wire: ScrubWire = options.scrubWire ?? { reviewRequests: 0, playbackRequests: 0, voiceMediaRequests: 0, mutations: [] }
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce', hasTouch })
+    context.setDefaultTimeout(10_000)
+    const fixture = { media, reviewer, reviewerOverlay: reviewer, notebookTools: reviewer, ownerVideoTools: !reviewer,
+      feedback: true, playbackMode: 'written' as const, ...options, draggable: true, scrubWire: wire }
+    const mocked = await interceptPresentationApi(context, true, fixture)
+    const page = await context.newPage()
+    if (recorder) await installDeterministicRecorder(page)
+    await page.goto(`${APP_URL}/speeches/9`, { waitUntil: 'domcontentloaded' })
+    const video = page.locator('video[data-testid="speech-video"]')
+    await presentationExpect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+    await presentationExpect(page.getByTestId('captions-toggle')).toHaveAttribute('aria-pressed', 'true')
+    const slider = page.getByRole('slider', { name: 'Video position', exact: true })
+    await presentationExpect(slider).toBeVisible()
+    await slider.evaluate((node) => {
+      const video = document.querySelector<HTMLVideoElement>('video[data-testid="speech-video"]')!
+      const entries: unknown[] = []
+      const record = (event: Event) => {
+        const rect = node.getBoundingClientRect()
+        entries.push({ event: event.type, time: video.currentTime, duration: video.duration, paused: video.paused, ended: video.ended,
+          dragging: node.getAttribute('data-dragging'), x: rect.x, y: rect.y, visibility: document.visibilityState })
+        ;(node as HTMLElement).dataset.scrubEvents = JSON.stringify(entries.slice(-18))
+      }
+      node.addEventListener('pointerdown', (event) => {
+        (node as HTMLElement).dataset.pointerGrip = String(event.target instanceof Element && !!event.target.closest('.awt-scrubber-grip'))
+      })
+      for (const name of ['pointerdown', 'pointermove', 'pointerup', 'lostpointercapture', 'blur']) node.addEventListener(name, record)
+      for (const name of ['loadstart', 'emptied', 'error', 'loadedmetadata', 'durationchange']) video.addEventListener(name, record)
+      window.addEventListener('blur', record)
+      document.addEventListener('visibilitychange', record)
+    })
+    await video.evaluate((element: HTMLVideoElement) => {
+      element.muted = true; element.pause()
+      element.dataset.scrubSeeks = '0'; element.dataset.scrubMetadata = '0'; element.dataset.scrubResets = '0'
+      element.addEventListener('seeking', () => { element.dataset.scrubSeeks = String(Number(element.dataset.scrubSeeks) + 1) })
+      element.addEventListener('loadedmetadata', () => { element.dataset.scrubMetadata = String(Number(element.dataset.scrubMetadata) + 1) })
+      for (const name of ['loadstart', 'emptied', 'error']) element.addEventListener(name, () => { element.dataset.scrubResets = String(Number(element.dataset.scrubResets) + 1) })
+    })
+    return { context, page, video, slider, wire, fixture, mocked,
+      timeline: reviewer ? page.locator('.aw-root').getByTestId('timeline-strip') : page.locator('.owner-video-tools__timeline') }
+  }
+  type Scrub = Awaited<ReturnType<typeof openScrub>>
+  const time = (t: Scrub) => t.video.evaluate((element: HTMLVideoElement) => element.currentTime)
+  const seeks = async (t: Scrub) => Number(await t.video.getAttribute('data-scrub-seeks'))
+  async function ready(t: Scrub) {
+    await presentationExpect(t.slider).toHaveAttribute('aria-disabled', 'false')
+    // Media readiness is independent of commentary. Wait the populated/empty UI state
+    // before measuring a gesture so the genuine loading-notice reflow has finished.
+    if (t.fixture.reviewer) await presentationExpect(t.timeline.getByTestId('range-marker-tools-text-01')).toBeVisible()
+    else if (t.fixture.noSelectedReview) await presentationExpect(t.timeline).toContainText('Choose a reviewer in Notes')
+    else if (t.fixture.ownerVariant === 'empty') await presentationExpect(t.timeline).toContainText('no published commentary yet')
+    else if (t.fixture.ownerVariant === 'denied') await presentationExpect(t.timeline).toContainText('Commentary is unavailable')
+    else if (t.fixture.playbackMode === 'off') await presentationExpect(t.timeline).toContainText('Commentary is off. Open Notes')
+    else await presentationExpect(t.timeline.getByTestId('range-marker-owner-a-text')).toBeVisible()
+  }
+  async function position(t: Scrub, seconds: number) {
+    await t.video.evaluate((element: HTMLVideoElement, target) => { element.pause(); element.currentTime = target }, seconds)
+    await presentationExpect.poll(() => time(t)).toBeCloseTo(seconds, 2)
+    await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+    // Native seeking settles before the existing rAF necessarily paints the grip. Wait for that actual writer.
+    await presentationExpect.poll(() => t.timeline.getByTestId('timeline-axis').evaluate((node) => {
+      const video = document.querySelector<HTMLVideoElement>('video[data-testid="speech-video"]')!
+      return Math.abs(parseFloat((node as HTMLElement).style.getPropertyValue('--playhead-percent')) - video.currentTime / video.duration * 100)
+    })).toBeLessThan(.1)
+  }
+  async function axis(t: Scrub) {
+    await t.slider.scrollIntoViewIfNeeded()
+    const box = await t.slider.boundingBox()
+    if (!box) throw new Error('No visible scrub axis')
+    return { ...box, y: box.y + box.height / 2 }
+  }
+  async function begin(t: Scrub, fraction: number) {
+    const box = await axis(t)
+    await t.page.mouse.move(box.x + box.width * fraction, box.y)
+    await t.page.mouse.down()
+    await presentationExpect(t.slider).toHaveAttribute('data-dragging', 'true')
+    return box
+  }
+  async function committed(t: Scrub, before: number, seconds?: number) {
+    await presentationExpect.poll(() => seeks(t)).toBe(before + 1)
+    await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+    presentationExpect(await seeks(t)).toBe(before + 1)
+    if (seconds !== undefined) await presentationExpect.poll(() => time(t)).toBeCloseTo(seconds, 1)
+  }
+  async function close(t: Scrub) { await t.page.mouse.up().catch(() => undefined); await t.page.close(); await t.context.close() }
+
+  for (const reviewer of [false, true]) {
+    test(`${reviewer ? 'reviewer' : 'owner'} native drag previews paused/playing time and seeks only on release`, async ({ browser }) => {
+      const t = await openScrub(browser, reviewer)
+      try {
+        await ready(t)
+        const original = await t.video.elementHandle()
+        const metadata = await t.video.evaluate((element: HTMLVideoElement) => [element.duration, element.textTracks.length, element.currentSrc])
+        if (reviewer) {
+          await t.page.getByRole('textbox', { name: 'Start', exact: true }).fill('2.45')
+          await t.page.getByRole('textbox', { name: 'Commentary', exact: true }).fill('Unsaved text must not be stamped or revealed by scrubbing.')
+        }
+        await position(t, .6)
+        const before = await seeks(t), mutations = [...t.wire.mutations]
+        const box = await axis(t), grip = await t.slider.locator('.awt-scrubber-grip').boundingBox()
+        if (!grip) throw new Error('No grip')
+        const grab = grip.x + grip.width / 2 + 3
+        const grabY = grip.y + grip.height / 2
+        await t.page.mouse.move(grab, grabY); await t.page.mouse.down()
+        await presentationExpect(t.slider).toHaveAttribute('data-pointer-grip', 'true')
+        await presentationExpect(t.slider).toHaveAttribute('data-dragging', 'true')
+        const initialCandidate = Number(await t.slider.getAttribute('aria-valuenow'))
+        presentationExpect(initialCandidate).toBeCloseTo(.6, 1)
+        await t.page.mouse.move(grab + box.width * .3, grabY, { steps: 6 })
+        const candidate = Number(await t.slider.getAttribute('aria-valuenow'))
+        presentationExpect(candidate).toBeGreaterThan(1)
+        presentationExpect(await time(t)).toBeCloseTo(.6, 2)
+        presentationExpect(await seeks(t)).toBe(before)
+        await presentationExpect(t.slider.locator('.awt-scrubber-time')).toContainText('Release to seek')
+        await t.page.mouse.up()
+        await committed(t, before, candidate)
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+
+        // First actual user play uses Video.js's visible initial button.
+        await position(t, .1)
+        await t.page.locator('.vjs-big-play-button').click({ timeout: 10_000 })
+        await presentationExpect.poll(() => time(t)).toBeGreaterThan(.15)
+        const playingBefore = await seeks(t)
+        await axis(t)
+        const heldGrip = await t.slider.locator('.awt-scrubber-grip').boundingBox()
+        if (!heldGrip) throw new Error('No playing grip')
+        await t.page.mouse.move(heldGrip.x + heldGrip.width / 2, heldGrip.y + heldGrip.height / 2); await t.page.mouse.down()
+        await presentationExpect(t.slider).toHaveAttribute('data-pointer-grip', 'true')
+        const held = await time(t)
+        await t.page.waitForTimeout(180)
+        presentationExpect(await time(t)).toBeGreaterThan(held)
+        await presentationExpect(t.slider).toHaveAttribute('data-dragging', 'true')
+        presentationExpect(await seeks(t)).toBe(playingBefore)
+        await t.page.mouse.up()
+        await t.page.waitForTimeout(50)
+        presentationExpect(await seeks(t)).toBe(playingBefore)
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+        const rail = await begin(t, .7)
+        const snapshot = () => t.slider.evaluate((node) => {
+          const video = document.querySelector<HTMLVideoElement>('video[data-testid="speech-video"]')!
+          const rect = node.getBoundingClientRect()
+          return { dragging: node.getAttribute('data-dragging'), value: node.getAttribute('aria-valuenow'),
+            disabled: node.getAttribute('aria-disabled'), rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            time: video.currentTime, duration: video.duration, source: video.currentSrc, paused: video.paused,
+            preview: node.parentElement!.style.getPropertyValue('--scrub-preview-percent'), events: (node as HTMLElement).dataset.scrubEvents }
+        })
+        const gestureStart = await snapshot()
+        await t.page.mouse.move(rail.x + rail.width * .8, rail.y, { steps: 5 })
+        console.log('[scrub-playing/before-release]', JSON.stringify({ reviewer, start: { ...gestureStart, events: undefined }, current: { ...await snapshot(), events: undefined } }))
+        presentationExpect(await seeks(t)).toBe(playingBefore)
+        await t.page.mouse.up()
+        console.log('[scrub-playing/after-release]', JSON.stringify({ ...await snapshot(), events: undefined }))
+        await committed(t, playingBefore)
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(false)
+        await t.video.evaluate((element: HTMLVideoElement) => element.pause())
+        presentationExpect(t.wire.mutations).toEqual(mutations)
+        presentationExpect(await t.video.evaluate((element, old) => element === old, original)).toBe(true)
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => [element.duration, element.textTracks.length, element.currentSrc])).toEqual(metadata)
+        await presentationExpect(t.video).toHaveAttribute('data-scrub-metadata', '0')
+        if (reviewer) {
+          await presentationExpect(t.page.getByRole('textbox', { name: 'Start', exact: true })).toHaveValue('2.45')
+          await presentationExpect(t.page.getByRole('button', { name: 'Saved notes (13)', exact: true })).toBeVisible()
+          await presentationExpect(t.page.getByRole('list', { name: 'Your commentary', exact: true })).toBeHidden()
+          presentationExpect(t.wire.reviewRequests).toBe(2)
+        }
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { await close(t) }
+    })
+
+    test(`${reviewer ? 'reviewer' : 'owner'} rail endpoints, keyboard and Escape preserve shortcuts and marker behavior`, async ({ browser }) => {
+      const t = await openScrub(browser, reviewer)
+      try {
+        await ready(t); await position(t, .5)
+        if (reviewer) await t.page.getByRole('textbox', { name: 'Start', exact: true }).fill('2.45')
+        const mutations = [...t.wire.mutations]
+        let count = await seeks(t)
+        const box = await begin(t, .5)
+        await t.page.mouse.move(box.x - 40, box.y); await t.page.mouse.up()
+        await committed(t, count, 0)
+        count = await seeks(t)
+        await t.slider.focus(); await t.page.keyboard.press('ArrowRight')
+        await committed(t, count, 1)
+        count = await seeks(t)
+        await t.page.keyboard.press('PageUp')
+        await committed(t, count, Number(await t.slider.getAttribute('aria-valuemax')))
+        count = await seeks(t)
+        await t.page.keyboard.press('Home'); await committed(t, count, 0)
+        count = await seeks(t)
+        const focusedTime = await time(t)
+        for (const key of ['Space', 'Enter', 'c', 'j', 'l', '[', ']', ',', '.']) {
+          await presentationExpect(t.slider).toBeFocused()
+          await t.page.keyboard.press(key)
+        }
+        const focus = await t.page.evaluate(() => ({ tag: document.activeElement?.tagName, role: document.activeElement?.getAttribute('role') }))
+        presentationExpect(await seeks(t), JSON.stringify({ focus, events: await t.slider.getAttribute('data-scrub-events') })).toBe(count)
+        presentationExpect(await time(t)).toBeCloseTo(focusedTime, 2)
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+        if (reviewer) await presentationExpect(t.page.getByRole('textbox', { name: 'Start', exact: true })).toHaveValue('2.45')
+        await begin(t, .8); await t.page.keyboard.press('Escape'); await t.page.mouse.up()
+        presentationExpect(await seeks(t)).toBe(count)
+        await presentationExpect(t.slider).not.toHaveAttribute('data-dragging', 'true')
+        presentationExpect(await t.timeline.getByTestId('timeline-axis').evaluate((node) => (node as HTMLElement).style.getPropertyValue('--scrub-preview-percent'))).toBe('')
+        await position(t, .6)
+        count = await seeks(t)
+        const marker = t.timeline.getByTestId(reviewer ? 'range-marker-tools-text-01' : 'range-marker-owner-a-text')
+        await marker.click()
+        await committed(t, count, reviewer ? 0 : .4)
+        if (reviewer) await presentationExpect(t.page.getByRole('list', { name: 'Your commentary', exact: true })).toBeVisible()
+        presentationExpect(t.wire.mutations).toEqual(mutations)
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { await close(t) }
+    })
+  }
+
+  for (const reviewer of [false, true]) {
+    test(`${reviewer ? 'reviewer' : 'owner'} route replacement retires captured media before late pointer release`, async ({ browser }) => {
+      const t = await openScrub(browser, reviewer)
+      try {
+        await ready(t); await position(t, .5)
+        const retired = await t.video.elementHandle()
+        if (!retired) throw new Error('No native video to retire')
+        const mutations = [...t.wire.mutations]
+        await begin(t, .8)
+        // Activate an actual React Router link without releasing the captured mouse.
+        await t.page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'My speeches', exact: true }).evaluate((node: HTMLElement) => node.click())
+        await presentationExpect(t.page).toHaveURL(`${APP_URL}/speeches`)
+        await presentationExpect.poll(() => retired.evaluate((element) => element.isConnected)).toBe(false)
+        await t.page.getByRole('link', { name: 'Watch', exact: true }).evaluate((node: HTMLElement) => node.click())
+        await presentationExpect(t.page).toHaveURL(`${APP_URL}/speeches/9`)
+        await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(2)
+        await ready(t)
+        presentationExpect(await t.video.evaluate((element, old) => element === old, retired)).toBe(false)
+        await t.video.evaluate((element: HTMLVideoElement) => {
+          element.pause(); element.dataset.scrubSeeks = '0'
+          element.addEventListener('seeking', () => { element.dataset.scrubSeeks = String(Number(element.dataset.scrubSeeks) + 1) })
+        })
+        const oldTime = await retired.evaluate((element: HTMLVideoElement) => element.currentTime)
+        const oldSeeks = await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)
+        const freshTime = await time(t)
+        await t.page.mouse.up()
+        await t.page.waitForTimeout(80)
+        presentationExpect(await time(t)).toBe(freshTime)
+        presentationExpect(await seeks(t)).toBe(0)
+        presentationExpect(await retired.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(oldTime)
+        presentationExpect(await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)).toBe(oldSeeks)
+        presentationExpect(t.wire.mutations).toEqual(mutations)
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { await close(t) }
+    })
+  }
+
+  test('owner poster session denial retires captured media before late pointer release', async ({ browser }) => {
+    const poster = deferred<number>(), ownerWire: OwnerToolsWire = { posterRequests: [], posterReply: () => poster.promise }
+    const t = await openScrub(browser, false, { ownerWire })
+    try {
+      await ready(t); await position(t, .5)
+      const retired = await t.video.elementHandle()
+      if (!retired) throw new Error('No native video to retire')
+      const tools = t.page.getByRole('tablist', { name: 'Video tools' })
+      await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+      await t.page.getByRole('button', { name: 'Use current frame', exact: true }).click()
+      await presentationExpect.poll(() => ownerWire.posterRequests.length).toBe(1)
+      await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+      await ready(t)
+      const mutations = [...t.wire.mutations]
+      await begin(t, .8)
+      poster.resolve(401)
+      await presentationExpect(t.page).toHaveURL(/\/login(?:\?|$)/)
+      await presentationExpect(t.page.getByRole('heading', { name: 'Log in', exact: true })).toBeVisible()
+      await presentationExpect.poll(() => retired.evaluate((element) => element.isConnected)).toBe(false)
+      const oldTime = await retired.evaluate((element: HTMLVideoElement) => element.currentTime)
+      const oldSeeks = await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)
+      await t.page.mouse.up()
+      await t.page.waitForTimeout(80)
+      presentationExpect(await retired.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(oldTime)
+      presentationExpect(await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)).toBe(oldSeeks)
+      await presentationExpect(t.video).toHaveCount(0)
+      presentationExpect(ownerWire.posterRequests).toHaveLength(1)
+      presentationExpect(t.wire.mutations).toEqual(mutations)
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { poster.resolve(401); await close(t) }
+  })
+
+  for (const state of ['off', 'empty', 'no-selection'] as const) {
+    test(`owner ${state} still navigates without exposing markers or new review requests`, async ({ browser }) => {
+      const t = await openScrub(browser, false, { playbackMode: state === 'off' ? 'off' : 'written',
+        ownerVariant: state === 'empty' ? 'empty' : undefined, noSelectedReview: state === 'no-selection' })
+      try {
+        await ready(t); await position(t, .2)
+        await presentationExpect(t.timeline.locator('.awt-marker')).toHaveCount(0)
+        const count = await seeks(t), mutations = [...t.wire.mutations], reviews = t.wire.reviewRequests
+        const box = await begin(t, .6)
+        presentationExpect(await seeks(t)).toBe(count)
+        await t.page.mouse.up(); await committed(t, count, Number(await t.slider.getAttribute('aria-valuemax')) * .6)
+        presentationExpect(box.height).toBe(44)
+        presentationExpect(t.wire.reviewRequests).toBe(reviews)
+        presentationExpect(t.wire.mutations).toEqual(mutations)
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { await close(t) }
+    })
+  }
+
+  test('owner hidden captured release preserves pending poster and does not mark unread feedback', async ({ browser }) => {
+    const poster = deferred<number>(), ownerWire: OwnerToolsWire = { posterRequests: [], posterReply: () => poster.promise }
+    const t = await openScrub(browser, false, { ownerWire })
+    try {
+      await ready(t); await position(t, .5)
+      const tools = t.page.getByRole('tablist', { name: 'Video tools' })
+      await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
+      await t.page.getByRole('button', { name: 'Use current frame', exact: true }).click()
+      await presentationExpect.poll(() => ownerWire.posterRequests.length).toBe(1)
+      await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()
+      await t.page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Essay', exact: true }).click()
+      await t.page.evaluate(() => localStorage.clear())
+      const count = await seeks(t), stored = await t.page.evaluate(() => JSON.stringify(localStorage)), mutations = [...t.wire.mutations]
+      await begin(t, .7)
+      // Real tab activation while a pointer remains captured; hidden/inert cancels it.
+      await tools.getByRole('tab', { name: 'Frame selector', exact: true }).evaluate((node: HTMLElement) => node.click())
+      await t.page.mouse.up()
+      presentationExpect(await seeks(t)).toBe(count)
+      await presentationExpect(t.slider).toBeHidden()
+      poster.resolve(200)
+      await presentationExpect(t.page.getByText('Poster updating…', { exact: true })).toBeVisible()
+      presentationExpect(ownerWire.posterRequests).toHaveLength(1)
+      presentationExpect(t.wire.mutations).toEqual(mutations)
+      presentationExpect(await t.page.evaluate(() => JSON.stringify(localStorage))).toBe(stored)
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { poster.resolve(200); await close(t) }
+  })
+
+  test('reviewer waits for one fresh validation GET without reviewer.id and retries only explicitly', async ({ browser }) => {
+    const validation = deferred<number>(), retry = deferred<number>()
+    const wire: ScrubWire = { reviewRequests: 0, playbackRequests: 0, voiceMediaRequests: 0, mutations: [],
+      reviewReply: (count) => count === 2 ? validation.promise : count === 3 ? retry.promise : Promise.resolve(200) }
+    const t = await openScrub(browser, true, { scrubWire: wire })
+    try {
+      await presentationExpect.poll(() => wire.reviewRequests).toBe(2)
+      await presentationExpect(t.slider).toHaveAttribute('aria-disabled', 'true')
+      await t.page.waitForTimeout(100)
+      presentationExpect(wire.reviewRequests).toBe(2)
+      validation.resolve(500)
+      const action = t.page.getByRole('button', { name: 'Retry timeline navigation', exact: true })
+      await presentationExpect(action).toBeEnabled()
+      await presentationExpect(t.slider).toHaveAttribute('aria-disabled', 'true')
+      await action.click()
+      await presentationExpect(action).toBeDisabled()
+      await presentationExpect.poll(() => wire.reviewRequests).toBe(3)
+      retry.resolve(200); await ready(t)
+      await position(t, .6)
+      const count = await seeks(t)
+      await t.slider.focus(); await t.page.keyboard.press('ArrowRight'); await committed(t, count, 1.6)
+      presentationExpect(wire.reviewRequests).toBe(3)
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally { validation.resolve(500); retry.resolve(200); await close(t) }
+  })
+
+  test('reviewer requesting/recording and inactive Notes guard capture without changing drafts or recording anchor', async ({ browser }) => {
+    const t = await openScrub(browser, true, {}, 1440, false, true)
+    try {
+      await ready(t)
+      // Hold the browser-local deterministic recorder's microphone request.
+      await t.page.evaluate(() => {
+        const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+        let release!: () => void
+        const gate = new Promise<void>((done) => { release = done })
+        Object.assign(globalThis, { __releaseScrubMic: release })
+        navigator.mediaDevices.getUserMedia = async (constraints) => { await gate; return original(constraints) }
+      })
+      const editor = t.page.getByRole('region', { name: 'New annotation', exact: true })
+      await editor.getByRole('textbox', { name: 'Start', exact: true }).fill('2.45')
+      await editor.getByRole('textbox', { name: 'Commentary', exact: true }).fill('Text draft preserved while navigating.')
+      await t.page.getByRole('tablist', { name: 'Add commentary' }).getByRole('tab', { name: /^Voice note/ }).click()
+      const recorder = t.page.getByRole('region', { name: 'Record a voice note' })
+      await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('2.7')
+      const count = await seeks(t)
+      await begin(t, .6)
+      await recorder.getByRole('button', { name: /^Record/ }).evaluate((node: HTMLElement) => node.click())
+      await presentationExpect(t.slider).toHaveAttribute('aria-disabled', 'true')
+      await t.page.mouse.up()
+      presentationExpect(await seeks(t)).toBe(count)
+      await t.page.evaluate(() => (globalThis as typeof globalThis & { __releaseScrubMic: () => void }).__releaseScrubMic())
+      await presentationExpect(recorder.getByRole('button', { name: 'Stop', exact: true })).toBeVisible()
+      // The existing recorder normalizes the same 2.7s anchor when permission resolves.
+      await presentationExpect(recorder.getByRole('textbox', { name: 'Voice note position' })).toHaveValue('0:02.700')
+      const anchor = await recorder.getByRole('textbox', { name: 'Voice note position' }).inputValue()
+      await presentationExpect(t.slider).toHaveAttribute('aria-disabled', 'true')
+      await recorder.getByRole('button', { name: 'Stop', exact: true }).click()
+      await ready(t)
+      await presentationExpect(recorder.getByRole('textbox', { name: 'Voice note position' })).toHaveValue(anchor)
+      const preview = recorder.getByLabel('Voice note preview'), original = await preview.elementHandle()
+      await begin(t, .8)
+      await t.page.getByRole('tablist', { name: 'Your feedback' }).getByRole('tab', { name: 'Essay', exact: true }).evaluate((node: HTMLElement) => node.click())
+      await t.page.mouse.up()
+      await presentationExpect(t.slider).toBeHidden()
+      presentationExpect(await seeks(t)).toBe(count)
+      await t.page.getByRole('tablist', { name: 'Your feedback' }).getByRole('tab', { name: 'Notes', exact: true }).click()
+      presentationExpect(await preview.evaluate((node, old) => node === old, original)).toBe(true)
+      await presentationExpect(t.page.getByRole('textbox', { name: 'Start', exact: true, includeHidden: true })).toHaveValue('2.45')
+      presentationExpect(t.wire.mutations).toEqual([])
+      presentationExpect(t.mocked.unexpected).toEqual([])
+    } finally {
+      await t.page.evaluate(() => (globalThis as typeof globalThis & { __releaseScrubMic?: () => void }).__releaseScrubMic?.()).catch(() => undefined)
+      await close(t)
+    }
+  })
+
+  for (const state of ['loading', 'playing', 'paused'] as const) {
+    test(`native ${state} voice continues during preview, Escape cancels preview, commit cancels voice once`, async ({ browser }) => {
+      const audioUrl = deferred<void>()
+      const ownerWire: OwnerToolsWire = { posterRequests: [], ...(state === 'loading' ? { voiceReply: () => audioUrl.promise } : {}) }
+      const t = await openScrub(browser, false, { playbackMode: 'all', ownerWire })
+      try {
+        await ready(t); await position(t, .9)
+        await t.page.locator('.vjs-big-play-button').click({ timeout: 10_000 })
+        await presentationExpect(t.page.getByText(state === 'loading' ? 'Loading voice commentary…' : 'Playing voice commentary', { exact: true })).toBeVisible()
+        if (state === 'paused') await t.page.getByRole('button', { name: 'Pause commentary', exact: true }).click()
+        const status = state === 'paused' ? 'Voice commentary paused' : state === 'loading' ? 'Loading voice commentary…' : 'Playing voice commentary'
+        const count = await seeks(t), originalTime = await time(t), mutations = [...t.wire.mutations]
+        await begin(t, .8)
+        await presentationExpect(t.page.getByText(status, { exact: true })).toBeVisible()
+        presentationExpect(await seeks(t)).toBe(count)
+        await t.page.keyboard.press('Escape'); await t.page.mouse.up()
+        await presentationExpect(t.page.getByText(status, { exact: true })).toBeVisible()
+        presentationExpect(await time(t)).toBeCloseTo(originalTime, 2)
+        // Escape must not propagate to the controller's Skip/resume shortcut.
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+        const box = await begin(t, .7)
+        await t.page.mouse.move(box.x + box.width * .75, box.y, { steps: 5 })
+        const candidate = Number(await t.slider.getAttribute('aria-valuenow'))
+        await t.page.mouse.up(); await committed(t, count, candidate)
+        await presentationExpect(t.page.getByText(status, { exact: true })).toHaveCount(0)
+        const audioRequests = t.wire.voiceMediaRequests
+        audioUrl.resolve()
+        await t.page.waitForTimeout(100)
+        if (state === 'loading') presentationExpect(t.wire.voiceMediaRequests).toBe(audioRequests)
+        presentationExpect(await t.video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true)
+        presentationExpect(t.wire.mutations).toEqual(mutations)
+        presentationExpect(ownerWire.posterRequests).toEqual([])
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { audioUrl.resolve(); await close(t) }
+    })
+  }
+
+  for (const reviewer of [false, true]) {
+    test(`${reviewer ? 'reviewer' : 'owner'} same-element native source error/reset cancels capture and discards late release`, async ({ browser }) => {
+      const refresh = deferred<void>()
+      const wire: ScrubWire = { reviewRequests: 0, playbackRequests: 0, voiceMediaRequests: 0, mutations: [],
+        playbackReply: (request) => request > 1 ? refresh.promise : Promise.resolve() }
+      const t = await openScrub(browser, reviewer, { scrubWire: wire })
+      try {
+        await ready(t); await position(t, .6)
+        const original = await t.video.elementHandle(), reviews = wire.reviewRequests
+        await begin(t, .8)
+        // Invalid local bytes cause genuine native emptied/loadstart/error, then the existing
+        // adapter asks its intercepted playback-url endpoint for a replacement of this source.
+        await t.video.evaluate((element: HTMLVideoElement) => { element.src = 'data:video/mp4;base64,AA=='; element.load() })
+        await presentationExpect.poll(async () => Number(await t.video.getAttribute('data-scrub-resets'))).toBeGreaterThan(0)
+        await presentationExpect(t.slider).toHaveAttribute('aria-disabled', 'true')
+        await presentationExpect(t.slider).not.toHaveAttribute('data-dragging', 'true')
+        await presentationExpect.poll(() => wire.playbackRequests).toBeGreaterThan(1)
+        refresh.resolve()
+        await ready(t)
+        presentationExpect(await t.video.evaluate((node, old) => node === old, original)).toBe(true)
+        const current = await time(t), count = await seeks(t)
+        await t.page.mouse.up()
+        await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+        presentationExpect(await seeks(t)).toBe(count)
+        presentationExpect(await time(t)).toBeCloseTo(current, 2)
+        presentationExpect(wire.reviewRequests).toBe(reviews)
+        presentationExpect(wire.mutations).toEqual([])
+        presentationExpect(t.mocked.unexpected).toEqual([])
+      } finally { refresh.resolve(); await close(t) }
+    })
+  }
+
+  for (const reviewer of [false, true]) {
+    test(`${reviewer ? 'reviewer' : 'owner'} continuous native touch drag previews and commits once`, async ({ browser, browserName }) => {
+      test.skip(browserName !== 'chromium', 'Playwright WebKit exposes tap only, without a continuous touch-move protocol; physical iPhone/iPad horizontal drag, vertical scroll and pinch remain manual.')
+      const t = await openScrub(browser, reviewer, {}, 375, true)
+      try {
+        await ready(t); await position(t, .4)
+        const cdp = await t.context.newCDPSession(t.page), box = await axis(t), count = await seeks(t), mutations = [...t.wire.mutations]
+        const point = (fraction: number) => ({ x: box.x + box.width * fraction, y: box.y, id: 11, radiusX: 4, radiusY: 4, force: 1 })
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point(.3)] })
+        await presentationExpect(t.slider).toHaveAttribute('data-dragging', 'true')
+        for (const fraction of [.4, .5, .6, .7]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point(fraction)] })
+        presentationExpect(await time(t)).toBeCloseTo(.4, 2)
+        presentationExpect(await seeks(t)).toBe(count)
+        const finalTarget = Number(await t.slider.getAttribute('aria-valuemax')) * .7
+        // CDP acknowledges input before the last native move is necessarily delivered to the page.
+        await presentationExpect.poll(async () => Number(await t.slider.getAttribute('aria-valuenow'))).toBeCloseTo(finalTarget, 2)
+        const candidate = Number(await t.slider.getAttribute('aria-valuenow'))
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+        await committed(t, count, candidate)
+        presentationExpect(t.wire.mutations).toEqual(mutations)
+        presentationExpect(t.mocked.unexpected).toEqual([])
+        await cdp.detach()
+      } finally { await close(t) }
+    })
+  }
+
+  for (const width of [320, 375, 768, 1440]) {
+    test(`both roles keep a bounded focusable 44px row and reachable markers at ${width}px across themes`, async ({ browser }) => {
+      for (const reviewer of [false, true]) {
+        const t = await openScrub(browser, reviewer, {}, width)
+        try {
+          await ready(t)
+          for (const theme of ['light', 'system-dark', 'explicit-dark', 'forced-colors']) {
+            await t.page.emulateMedia({ colorScheme: theme === 'system-dark' ? 'dark' : 'light', forcedColors: theme === 'forced-colors' ? 'active' : 'none', reducedMotion: 'reduce' })
+            await t.page.evaluate((dark) => document.documentElement.classList.toggle('dark', dark), theme === 'explicit-dark')
+            await t.slider.focus()
+            await presentationExpect(t.slider).toBeFocused()
+            const geometry = await t.slider.evaluate((element) => {
+              const row = element.getBoundingClientRect(), timeline = element.closest('[data-testid="timeline-strip"]')!
+              const text = timeline.querySelector('[data-testid="timeline-lane-text"]')!.getBoundingClientRect()
+              return { height: row.height, width: row.width, clear: row.bottom <= text.top + 1,
+                markers: Array.from(timeline.querySelectorAll<HTMLElement>('.awt-marker')).every((marker) => marker.tabIndex === 0 && marker.getClientRects().length > 0) }
+            })
+            presentationExpect(geometry.height).toBe(44)
+            presentationExpect(geometry.width).toBeGreaterThan(44)
+            presentationExpect(geometry.clear).toBe(true)
+            presentationExpect(geometry.markers).toBe(true)
+            await expectNoPageOverflow(t.page)
+            for (const key of ['Home', 'End']) {
+              await t.page.keyboard.press(key)
+              const target = key === 'Home' ? 0 : Number(await t.slider.getAttribute('aria-valuemax'))
+              await presentationExpect.poll(() => time(t)).toBeCloseTo(target, 2)
+              await presentationExpect.poll(() => t.video.evaluate((element: HTMLVideoElement) => element.seeking)).toBe(false)
+              await presentationExpect.poll(() => t.timeline.getByTestId('timeline-axis').evaluate((node) => {
+                const video = document.querySelector<HTMLVideoElement>('video[data-testid="speech-video"]')!
+                return Math.abs(parseFloat((node as HTMLElement).style.getPropertyValue('--playhead-percent')) - video.currentTime / video.duration * 100)
+              })).toBeLessThan(.1)
+              const bounded = await t.slider.evaluate((node) => {
+                const row = node.getBoundingClientRect()
+                return ['.awt-scrubber-grip', '.awt-scrubber-time'].every((selector) => {
+                  const child = node.querySelector(selector)!.getBoundingClientRect()
+                  return child.left >= row.left - 1 && child.right <= row.right + 1 && child.top >= row.top - 1 && child.bottom <= row.bottom + 1
+                })
+              })
+              presentationExpect(bounded, `${theme}/${key}: grip and time label stay inside the 44px row`).toBe(true)
+            }
+            await position(t, .2)
+            const count = await seeks(t)
+            await t.page.keyboard.press('ArrowRight')
+            await committed(t, count)
+            await position(t, .2)
+          }
+          await t.page.screenshot({ path: test.info().outputPath(`scrub-${reviewer ? 'reviewer' : 'owner'}-${width}.png`), fullPage: true })
+          presentationExpect(t.mocked.unexpected).toEqual([])
+        } finally { await close(t) }
+      }
+    })
+  }
 })

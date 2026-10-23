@@ -4,7 +4,7 @@ import { useBlocker, useNavigate } from 'react-router-dom'
 import { Tabs, TabsList, TabsTab, TabsPanel } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
-import { TimelineStrip, type TimelineMarkerActivation } from '@/components/annotation/TimelineStrip'
+import { TimelineStrip, type TimelineMarkerActivation, type TimelineScrubCapability } from '@/components/annotation/TimelineStrip'
 import '@/components/annotation/annotation-workspace.css'
 import { Composer } from '@/components/annotation/Composer'
 import { VoiceRecorder, type VoiceRecorderSessionReport } from '@/components/annotation/VoiceRecorder'
@@ -47,6 +47,9 @@ export interface AnnotationComposerPanelProps {
   userId: string | undefined
   canRecordVoice: boolean
   onSeek: (seconds: number) => void
+  /** Scrubbing never uses marker activation or stamps the current composer. */
+  scrub?: TimelineScrubCapability
+  timelineNavigation?: { pending: boolean; retry?: () => void }
   previewTarget: HTMLElement | null
   previewEnabled: boolean
   previewAnchor: 'top' | 'default'
@@ -67,6 +70,8 @@ export function AnnotationComposerPanel({
   userId,
   canRecordVoice,
   onSeek,
+  scrub,
+  timelineNavigation,
   previewTarget,
   previewEnabled,
   previewAnchor,
@@ -84,6 +89,8 @@ export function AnnotationComposerPanel({
         userId={userId}
         canRecordVoice={canRecordVoice}
         onSeek={onSeek}
+        scrub={scrub}
+        timelineNavigation={timelineNavigation}
         previewTarget={previewTarget}
         previewEnabled={previewEnabled}
         previewAnchor={previewAnchor}
@@ -103,6 +110,8 @@ function AnnotationComposerPanelInner({
   userId,
   canRecordVoice,
   onSeek,
+  scrub,
+  timelineNavigation,
   previewTarget,
   previewEnabled,
   previewAnchor,
@@ -427,6 +436,11 @@ function AnnotationComposerPanelInner({
           </p>
         </div>
         {isError && <div role="alert" className="aw-notice text-sm" data-tone="error">Could not refresh your feedback. Your draft is retained. <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline" onClick={() => void refetch()}>Retry loading notes</Button></div>}
+        {timelineNavigation && <div role="status" className="aw-notice text-sm text-muted-foreground">
+          {timelineNavigation.pending ? 'Checking timeline navigation…' : 'Timeline navigation is unavailable.'}
+          {timelineNavigation.retry && <Button className="workspace-notebook-control workspace-notebook-control--secondary" type="button" variant="outline"
+            disabled={timelineNavigation.pending} onClick={timelineNavigation.retry}>Retry timeline navigation</Button>}
+        </div>}
         {legacyConflict && <p role="status" className="aw-notice text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
         {previewTarget && previewEnabled && !previewAccessDenied && !previewAccessBlocked && createPortal(
           <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} anchor={previewAnchor} />,
@@ -441,6 +455,8 @@ function AnnotationComposerPanelInner({
             videoEl={videoEl}
             durationSeconds={durationSeconds}
             onSeek={onSeek}
+            scrub={scrub && { ...scrub, enabled: scrub.enabled && authoringActive && !recorderLocked,
+              active: scrub.active && authoringActive }}
             onMarkerActivate={handleMarkerActivate}
             selectedId={selectedId}
             draftIds={draftIds}
