@@ -14,6 +14,9 @@ function mockHeaderData({ unread = 2, pending = 1 } = {}) {
       id: '42', first_name: 'Milo', last_name: 'Member', display_name: 'Milo Member',
       roles: [], username: 'e2e-member',
     } }
+    else if (url.endsWith('/api/u/e2e-member')) body = { profile: {
+      id: 42, username: 'e2e-member', display_name: 'Milo Member', avatar_url: null,
+    } }
     else if (url.endsWith('/api/notifications')) body = { notifications: [], unread_count: unread }
     else if (url.includes('/api/connections?state=pending')) body = {
       connections: Array.from({ length: pending }, (_, index) => ({ id: index + 7, peer: { name: 'Cora Coach' } })),
