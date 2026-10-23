@@ -313,6 +313,27 @@ async function loaded(prefix = 'a') {
   await waitFor(() => expect(screen.getByTestId(`range-marker-${prefix}-text`)).toBeInTheDocument(), { timeout: 2500 })
   return tools()
 }
+// CI-only failure on the third `it.each` case ("paused") never showed the
+// loading status, and RTL's own dump is cut off inside decorative SVG before it
+// reaches the commentary controls. On failure, report just the facts that
+// decide whether the controller ever started: every status line and the
+// commentary-playback radios (disabled = preference not ready/enabled yet).
+async function findVoiceStatus(text: string, video: HTMLVideoElement) {
+  try {
+    return await screen.findByText(text, undefined, { timeout: 4000 })
+  } catch (error) {
+    const radios = screen.queryAllByRole('radio').map((radio) => {
+      const input = radio as HTMLInputElement
+      return `${input.value}:${input.checked ? 'on' : 'off'}${input.disabled ? ':disabled' : ''}`
+    })
+    throw new Error(`${(error as Error).message.split('\n')[0]}\nvoice diagnostics: ${JSON.stringify({
+      statuses: screen.queryAllByRole('status').map((node) => node.textContent),
+      radios,
+      currentTime: video.currentTime,
+      paused: video.paused,
+    })}`, { cause: error })
+  }
+}
 function currentPlayer() {
   const active = playerHarness.instances.filter((instance) => !instance.disposed)
   expect(active).toHaveLength(1)
@@ -1064,7 +1085,7 @@ describe('draggable timeline owner cache, source and native voice boundaries', (
     const play = vi.spyOn(instance.video, 'play').mockImplementation(async () => { paused = false })
     vi.spyOn(instance.video, 'pause').mockImplementation(() => { paused = true })
     act(() => { instance.advance(11.5); instance.video.dispatchEvent(new Event('play')); instance.advance(12.1) })
-    await screen.findByText('Loading voice commentary…', undefined, { timeout: 4000 })
+    await findVoiceStatus('Loading voice commentary…', instance.video)
     if (voiceState !== 'loading') {
       await act(async () => { audioUrl.resolve(json({ audio: { url: 'https://media.example.test/voice.mp3', expires_at: '2099-01-01T00:00:00Z' } })); await audioUrl.promise })
       await screen.findByText('Playing voice commentary', undefined, { timeout: 4000 })
