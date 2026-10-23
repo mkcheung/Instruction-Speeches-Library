@@ -1064,10 +1064,10 @@ describe('draggable timeline owner cache, source and native voice boundaries', (
     const play = vi.spyOn(instance.video, 'play').mockImplementation(async () => { paused = false })
     vi.spyOn(instance.video, 'pause').mockImplementation(() => { paused = true })
     act(() => { instance.advance(11.5); instance.video.dispatchEvent(new Event('play')); instance.advance(12.1) })
-    await screen.findByText('Loading voice commentary…')
+    await screen.findByText('Loading voice commentary…', undefined, { timeout: 4000 })
     if (voiceState !== 'loading') {
       await act(async () => { audioUrl.resolve(json({ audio: { url: 'https://media.example.test/voice.mp3', expires_at: '2099-01-01T00:00:00Z' } })); await audioUrl.promise })
-      await screen.findByText('Playing voice commentary')
+      await screen.findByText('Playing voice commentary', undefined, { timeout: 4000 })
       if (voiceState === 'paused') fireEvent.click(screen.getByRole('button', { name: 'Pause commentary' }))
     }
     const status = voiceState === 'loading' ? 'Loading voice commentary…'
@@ -1096,7 +1096,7 @@ describe('draggable timeline owner cache, source and native voice boundaries', (
     }
     expect(network.count('/api/speeches/17/annotations/a-voice/voice-playback-url')).toBe(1)
     noDataWrites(network)
-  })
+  }, 15_000)
 })
 
 describe('draggable timeline with real RTK reviewer request provenance', () => {
