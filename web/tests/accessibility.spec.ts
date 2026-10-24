@@ -48,6 +48,17 @@ async function login(page: Page, email: string): Promise<void> {
 }
 
 async function scanAndAssert(page: Page, screenLabel: string): Promise<void> {
+  // Let finite colour transitions finish first: a button fading in is otherwise scanned at blended colours
+  // (observed in CI as a 1.05:1 "violation" on `.workspace-notebook-control` that vanished on retry). Nothing
+  // about the axe tags, exclusions or impact gate below changes.
+  await page.evaluate(async () => {
+    for (let round = 0; round < 3; round++) {
+      const animations = document.getAnimations().filter((animation) => animation.playState === 'running'
+        && Number.isFinite(animation.effect?.getComputedTiming().endTime))
+      if (!animations.length) break
+      await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)))
+    }
+  })
   const builder = new AxeBuilder({ page }).withTags(AXE_TAGS)
   for (const selector of EXCLUDE_SELECTORS) {
     builder.exclude(selector)
@@ -304,6 +315,12 @@ async function isolateWorkspaceAxeApi(context: BrowserContext, notebook?: Notebo
           requested_at: '2026-10-01T12:00:00Z', responded_at: null, connected_at: null,
           peer: { id: 2, name: 'Avery Speaker', username: 'avery-speaker', avatar_url: null },
         }], meta: { next_cursor: null } })
+        // The header's account chip reads its own public profile for the saved photo (UserMenu.tsx); no photo, so
+        // it keeps the initials fallback these scans were written against.
+        case '/api/u/workspace-axe-member': return json({ profile: {
+          id: user.id, username: user.username, display_name: user.display_name, bio: null, pronouns: null,
+          location: null, avatar_url: null, credential: 'member',
+        } })
       }
     }
     unexpected.push(`${request.method()} ${url.pathname}`)
