@@ -1,12 +1,16 @@
 import { Route, Routes } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import PublicProfile from '@/routes/PublicProfile'
 import ProfileAbout from '@/routes/ProfileAbout'
 import ProfileReviewsLeft from '@/routes/ProfileReviewsLeft'
 import ProfileReviewsReceived from '@/routes/ProfileReviewsReceived'
 import NotFound from '@/routes/NotFound'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { authApi } from '@/features/auth/authApi'
+import type { MeResponse } from '@/features/auth/types'
+import type { PublicProfile as Profile } from '@/features/profile/types'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -426,5 +430,125 @@ describe('PublicProfile', () => {
 
     expect(await screen.findByText('Jordan Reyes')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /back to dashboard/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('profile connection eligibility', () => {
+  const cora: Profile = { id: 9003, username: 'e2e-coach', display_name: 'Cora Coach', pronouns: null,
+    bio: null, location: null, avatar_url: null, credential: 'coach' }
+  const milo: Profile = { ...cora, id: 9004, username: 'e2e-member', display_name: 'Milo Member', credential: 'member' }
+  function identity(target: Profile): MeResponse {
+    return { user: { id: String(target.id), username: target.username, display_name: target.display_name!,
+      email: target.username+'@e2e.test', first_name: null, last_name: null, roles: ['member'],
+      email_verified: true, onboarding_completed: true, onboarding_step: 4,
+      storage_bytes_used: 0, quota_bytes: 1024, uploads_in_flight: 0 } }
+  }
+  function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((done) => { resolve = done })
+    return { promise, resolve }
+  }
+  function mockConnectionApi(me: () => Response | Promise<Response>) {
+    const writes: Array<{ url: string; body: unknown }> = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input.toString())
+      const url = new URL(request.url)
+      if (url.pathname === '/api/me') return me()
+      if (url.pathname === '/sanctum/csrf-cookie') return new Response(null, { status: 204 })
+      if (request.method === 'POST' && url.pathname === '/api/connections') {
+        writes.push({ url: url.pathname, body: await request.clone().json() })
+        return jsonResponse({ connection: { id: 1, state: 'pending' } }, 201)
+      }
+      if (url.pathname === '/api/connections') return jsonResponse(emptyRail)
+      const target = [cora, milo].find((p) => url.pathname === '/api/u/'+p.username)
+      if (target) return jsonResponse({ profile: target })
+      throw new Error('Unexpected profile request: '+url.pathname)
+    }))
+    return writes
+  }
+
+  beforeEach(clearCookies)
+  afterEach(() => { vi.unstubAllGlobals(); clearCookies() })
+
+  it('never offers Connect on the viewer own profile, comparing string session IDs with numeric profile IDs', async () => {
+    const writes = mockConnectionApi(() => jsonResponse(identity(cora)))
+    renderProfileApp('/u/e2e-coach')
+    await screen.findByRole('link', { name: /back to dashboard/i })
+    expect(await screen.findByRole('heading', { name: 'Cora Coach' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument()
+    expect(writes).toEqual([])
+  })
+
+  it('uses immutable user IDs to recognize the owner even when the session username is stale', async () => {
+    const me = identity(cora)
+    me.user.username = 'old-coach-handle'
+    mockConnectionApi(() => jsonResponse(me))
+    renderProfileApp('/u/e2e-coach')
+    await screen.findByRole('link', { name: /back to dashboard/i })
+    await screen.findByRole('heading', { name: 'Cora Coach' })
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+  })
+
+  it('still lets a different signed-in user send a request to the viewed profile', async () => {
+    const user = userEvent.setup()
+    const writes = mockConnectionApi(() => jsonResponse(identity(milo)))
+    renderProfileApp('/u/e2e-coach')
+    await user.click(await screen.findByRole('button', { name: 'Connect' }))
+    await user.type(screen.getByPlaceholderText('Say hello…'), 'Let us practice together.')
+    await user.click(screen.getByRole('button', { name: 'Send request' }))
+    await waitFor(() => expect(writes).toEqual([{ url: '/api/connections', body: { user_id: 9003, note: 'Let us practice together.' } }]))
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Send a connection request' })).not.toBeInTheDocument())
+  })
+
+  it('does not flash Connect while the viewer identity is still loading', async () => {
+    const pending = deferred<Response>()
+    const writes = mockConnectionApi(() => pending.promise)
+    renderProfileApp('/u/e2e-coach')
+    await screen.findByRole('heading', { name: 'Cora Coach' })
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    await act(async () => { pending.resolve(jsonResponse(identity(cora))); await pending.promise })
+    await screen.findByRole('link', { name: /back to dashboard/i })
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    expect(writes).toEqual([])
+  })
+
+  it('keeps the public profile readable without connection actions for anonymous visitors', async () => {
+    mockConnectionApi(() => jsonResponse({ message: 'Unauthenticated.' }, 401))
+    const { store } = renderProfileApp('/u/e2e-coach')
+    await screen.findByRole('heading', { name: 'Cora Coach' })
+    await waitFor(() => expect(authApi.endpoints.getMe.select()(store.getState()).status).toBe('rejected'))
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Profile sections' })).toBeVisible()
+  })
+
+  it('closes an open request while auth refresh is unresolved, then keeps it absent for the owner', async () => {
+    const user = userEvent.setup(), pending = deferred<Response>()
+    let calls = 0
+    const writes = mockConnectionApi(() => ++calls === 1 ? jsonResponse(identity(milo)) : pending.promise)
+    const { store } = renderProfileApp('/u/e2e-coach')
+    await user.click(await screen.findByRole('button', { name: 'Connect' }))
+    await user.type(screen.getByPlaceholderText('Say hello…'), 'A draft for a different viewer.')
+    let refresh!: Promise<unknown>
+    act(() => { refresh = store.dispatch(authApi.endpoints.getMe.initiate(undefined, { subscribe: false, forceRefetch: true })) })
+    await waitFor(() => expect(authApi.endpoints.getMe.select()(store.getState()).status).toBe('pending'))
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send request' })).not.toBeInTheDocument()
+    await act(async () => { pending.resolve(jsonResponse(identity(cora))); await refresh })
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    expect(writes).toEqual([])
+  })
+
+  it('removes the request form when navigating from another person to the viewer own profile', async () => {
+    const user = userEvent.setup()
+    const writes = mockConnectionApi(() => jsonResponse(identity(milo)))
+    const { router } = renderProfileApp('/u/e2e-coach')
+    await user.click(await screen.findByRole('button', { name: 'Connect' }))
+    await user.type(screen.getByPlaceholderText('Say hello…'), 'A draft for Cora.')
+    await act(async () => { await router.navigate('/u/e2e-member') })
+    await screen.findByRole('heading', { name: 'Milo Member' })
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send request' })).not.toBeInTheDocument()
+    expect(writes).toEqual([])
   })
 })

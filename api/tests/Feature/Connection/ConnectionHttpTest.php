@@ -4,6 +4,16 @@ use App\Models\Connection;
 use App\Models\User;
 use Database\Seeders\RoleSeeder;
 
+it('rejects a self-connection over HTTP without creating a connection', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->postJson('/api/connections', ['user_id' => $user->id])
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'You cannot connect with yourself.');
+
+    expect(Connection::query()->count())->toBe(0);
+});
+
 it('walks a connection through request -> accept over HTTP', function () {
     $a = User::factory()->create();
     $b = User::factory()->create();

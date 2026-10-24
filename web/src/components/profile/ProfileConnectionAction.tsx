@@ -51,9 +51,10 @@ import type { Connection } from '@/features/connection/types'
  * `existing` is the viewer's own ACCEPTED connection row for this profile
  * owner, if any (looked up in `PublicProfile.tsx` out of the rail's full
  * list). `profileUserId` is the numeric id needed to send a NEW request —
- * `PublicProfile.tsx` passes `existingConnection?.peer?.id ?? profile.id`,
- * so it's available from the profile payload itself once an accepted
- * connection doesn't already cover it (`PublicProfileResource` originally
+ * `PublicProfile.tsx` passes the profile's canonical `id` only after
+ * confirming a resolved, signed-in viewer is a different user. It keys
+ * this component by viewer and target so an open request cannot follow
+ * an account/profile switch (`PublicProfileResource` originally
  * shipped with no `id` field at all — a real gap the STEP-13
  * reconciliation audit caught, fixed by adding `'id' => $this->id` there).
  * Kept optional/defensive here rather than required, since a caller
