@@ -210,9 +210,9 @@ describe('PublicProfile', () => {
     const links = within(nav).getAllByRole('link')
     expect(links).toHaveLength(3)
     expect(links.map((l) => l.getAttribute('href'))).toEqual([
+      '/u/marscheung',
       '/u/marscheung/reviews-left',
       '/u/marscheung/reviews-received',
-      '/u/marscheung',
     ])
   })
 
@@ -538,6 +538,9 @@ describe('Friends integration with public profile routing', () => {
     expect(friends).toHaveAttribute('href', '/u/owner/friends')
     const nav = screen.getByRole('navigation', { name: 'Profile sections' })
     expect(within(nav).getAllByRole('link')).toHaveLength(4)
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'About', 'Friends', 'Reviews you left', 'Reviews they left you',
+    ])
     expect(within(nav).queryByRole('tablist')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
   })

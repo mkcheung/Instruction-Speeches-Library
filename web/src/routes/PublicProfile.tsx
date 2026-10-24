@@ -91,16 +91,16 @@ export default function PublicProfile() {
         </div>
 
         <nav aria-label="Profile sections" className="flex flex-wrap border-t border-border px-2">
+          <NavLink to={`/u/${username}`} end className={SECTION_LINK_CLASS}>
+            About
+          </NavLink>
+          {owner && <NavLink to={`/u/${encodeURIComponent(username)}/friends`} className={SECTION_LINK_CLASS}>Friends</NavLink>}
           <NavLink to={`/u/${username}/reviews-left`} className={SECTION_LINK_CLASS}>
             Reviews you left
           </NavLink>
           <NavLink to={`/u/${username}/reviews-received`} className={SECTION_LINK_CLASS}>
             Reviews they left you
           </NavLink>
-          <NavLink to={`/u/${username}`} end className={SECTION_LINK_CLASS}>
-            About
-          </NavLink>
-          {owner && <NavLink to={`/u/${encodeURIComponent(username)}/friends`} className={SECTION_LINK_CLASS}>Friends</NavLink>}
         </nav>
       </div>
 

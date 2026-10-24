@@ -14,7 +14,7 @@ import { useGetPublicProfileQuery } from '@/features/profile/profileApi'
 import { colorFromId, hueFromId, COLOR_SATURATION, COLOR_LIGHTNESS } from '@/lib/colorFromId'
 import { foregroundFor } from '@/lib/initialsContrast'
 import { displayNameFor, initialsFor } from '@/lib/displayName'
-import { navItemsFor } from '@/lib/roles'
+import { accountNavItemsFor } from '@/lib/roles'
 
 function AccountAvatar({ url, initials, background, foreground }: {
   url: string | null
@@ -41,9 +41,7 @@ function AccountAvatar({ url, initials, background, foreground }: {
  * would be undermined by a header that could receive a cached user for a
  * different session).
  *
- * S1: duplicates the sidebar's nav links here too, because below `lg` the
- * sidebar is hidden and this menu is the only nav left — losing
- * navigation entirely on a phone would be a regression.
+ * Account destinations only; primary navigation has its own sidebar/mobile menu.
  */
 export function UserMenu() {
   const { data } = useGetMeQuery()
@@ -72,7 +70,7 @@ export function UserMenu() {
     l: COLOR_LIGHTNESS,
   })
 
-  const navItems = navItemsFor(user)
+  const navItems = accountNavItemsFor(user)
 
   return (
     <DropdownMenuRoot modal={false}>
@@ -109,15 +107,8 @@ export function UserMenu() {
       <DropdownMenuPortal>
         <DropdownMenuPositioner align="end">
           <DropdownMenuPopup>
-            {/* PLAN-ADMIN-DASHBOARD.md §7 — this menu is the ONLY
-                navigation below `md`, where `AppSidebar`'s rail is
-                hidden, so an external item has to be handled here too or
-                the admin panel is unreachable on a phone. `<Link>` is a
-                React Router link and would resolve `/control-panel`
-                against this SPA's router; an external destination needs a
-                real anchor with an absolute href. See `NavItem.external`. */}
             {navItems.map((item) => (
-              <DropdownMenuItem key={item.to} render={item.external ? <a href={item.to} rel="noreferrer" /> : <Link to={item.to} />}>
+              <DropdownMenuItem key={item.to} render={<Link to={item.to} />}>
                 {item.label}
               </DropdownMenuItem>
             ))}

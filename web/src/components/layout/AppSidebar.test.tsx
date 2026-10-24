@@ -1,11 +1,9 @@
-import { act, render, screen, within } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppSidebar } from './AppSidebar'
-import { createTestStore, renderWithProviders } from '@/test/renderWithProviders'
-import { navItemsFor } from '@/lib/roles'
+import { renderWithProviders } from '@/test/renderWithProviders'
+import { primaryNavItemsFor } from '@/lib/roles'
 
 function mockIdentity(roles: string[] = [], username: string | null = 'e2e-member') {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
@@ -33,7 +31,7 @@ describe('AppSidebar workspace navigation', () => {
     await vi.waitFor(() => expect(Object.values(store.getState().authApi.queries)[0]?.status).toBe('fulfilled'))
     const nav = screen.getByRole('navigation', { name: 'Main' })
     const links = within(nav).getAllByRole('link')
-    const items = navItemsFor(identity)
+    const items = primaryNavItemsFor(identity)
     expect(links.map((link) => link.textContent)).toEqual(items.map((item) => item.label))
     expect(links.map((link) => link.getAttribute('href'))).toEqual(items.map((item) => item.to))
     expect(nav).toHaveClass('workspace-sidebar', 'hidden', 'w-56', 'md:flex', 'xl:w-64')
@@ -68,8 +66,8 @@ describe('AppSidebar workspace navigation', () => {
     ['/search?q=voice#results', 'Search', 'search'],
     ['/SEARCH/', 'Search', 'search'],
     ['/searching', null, null],
-    ['/account/privacy', 'Account & privacy', 'account'],
-    ['/profile/settings', 'Edit profile', 'edit'],
+    ['/account/privacy', null, 'account'],
+    ['/profile/settings', null, 'edit'],
     ['/unknown', null, null],
   ])('keeps the actual selected link and scene aligned at %s', async (route, label, scene) => {
     mockIdentity()
@@ -99,17 +97,13 @@ describe('AppSidebar workspace navigation', () => {
     expect(container.querySelector('[data-workspace-scene]')).toHaveAttribute('data-workspace-scene', 'search')
   })
 
-  it('leaves the shell on the existing public-profile destination', async () => {
+  it('leaves account destinations exclusively in the account menu', async () => {
     mockIdentity()
-    const router = createMemoryRouter([
-      { path: '/dashboard', element: <AppSidebar /> },
-      { path: '/u/:username', element: <h1>Public profile</h1> },
-    ], { initialEntries: ['/dashboard'] })
-    const user = userEvent.setup()
-    const { container } = render(<Provider store={createTestStore()}><RouterProvider router={router} /></Provider>)
-    await user.click(await screen.findByRole('link', { name: 'Your profile' }))
-    expect(screen.getByRole('heading', { name: 'Public profile' })).toBeInTheDocument()
-    expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull()
-    expect(container.querySelector('[data-workspace-scene]')).toBeNull()
+    const { store } = renderWithProviders(<AppSidebar />, { route: '/dashboard' })
+    await vi.waitFor(() => expect(Object.values(store.getState().authApi.queries)[0]?.status).toBe('fulfilled'))
+    for (const name of ['Your profile', 'Edit profile', 'Account & privacy']) {
+      expect(screen.queryByRole('link', { name })).toBeNull()
+    }
+    expect(screen.getByRole('link', { name: 'My speeches' })).toHaveAttribute('href', '/speeches')
   })
 })
