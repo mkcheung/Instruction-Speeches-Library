@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   DropdownMenuRoot,
@@ -9,10 +10,29 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { LogoutMenuItem } from '@/components/layout/LogoutButton'
 import { useGetMeQuery } from '@/features/auth/authApi'
+import { useGetPublicProfileQuery } from '@/features/profile/profileApi'
 import { colorFromId, hueFromId, COLOR_SATURATION, COLOR_LIGHTNESS } from '@/lib/colorFromId'
 import { foregroundFor } from '@/lib/initialsContrast'
 import { displayNameFor, initialsFor } from '@/lib/displayName'
 import { navItemsFor } from '@/lib/roles'
+
+function AccountAvatar({ url, initials, background, foreground }: {
+  url: string | null
+  initials: string
+  background: string
+  foreground: string
+}) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  return <span
+    className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-semibold"
+    style={{ backgroundColor: background, color: foreground }}
+    aria-hidden="true"
+  >
+    {url && url !== failedUrl
+      ? <img src={url} alt="" className="size-full object-cover" onError={() => setFailedUrl(url)} />
+      : initials}
+  </span>
+}
 
 /**
  * The identity chip and its menu (D2/D3/D4/D7). Reads `useGetMeQuery()`
@@ -27,6 +47,10 @@ import { navItemsFor } from '@/lib/roles'
  */
 export function UserMenu() {
   const { data } = useGetMeQuery()
+  // /api/me deliberately omits photos. Share the same cached profile query
+  // as ProfileEdit so a successful avatar upload refreshes the header too.
+  const username = data?.user.username
+  const { currentData: profile } = useGetPublicProfileQuery(username ?? '', { skip: !username })
 
   if (!data) return null
 
@@ -39,6 +63,8 @@ export function UserMenu() {
   // `String(user.id)` explicitly keeps this call site safe even if that
   // ever regresses.
   const idString = String(user.id)
+  const avatarUrl = profile && String(profile.id) === idString && profile.username === username
+    ? profile.avatar_url : null
   const background = colorFromId(idString)
   const foreground = foregroundFor({
     h: hueFromId(idString),
@@ -77,13 +103,7 @@ export function UserMenu() {
           get "Cora Coach"), it is only visually clipped below `sm` for
           layout, same pattern already used by AppLayout's skip link. */}
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg border border-transparent px-1.5 py-1 text-sm font-medium outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
-        <span
-          className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
-          style={{ backgroundColor: background, color: foreground }}
-          aria-hidden="true"
-        >
-          {initials}
-        </span>
+        <AccountAvatar key={idString} url={avatarUrl} initials={initials} background={background} foreground={foreground} />
         <span className="sr-only max-w-32 truncate sm:not-sr-only sm:inline">{name}</span>
       </DropdownMenuTrigger>
       <DropdownMenuPortal>

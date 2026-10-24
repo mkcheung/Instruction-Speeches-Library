@@ -337,6 +337,12 @@ async function interceptPresentationApi(context: BrowserContext, initiallyAuthen
         data: { type: 'review.invited', actor_name: 'Avery Speaker', speech_title: presentationTitle, url: `${APP_URL}/dashboard` },
       })), unread_count: 2 })
       case '/api/connections': return json({ connections: [{ id: 1, state: 'pending', peer: { name: 'Avery Speaker', username: 'avery' } }] })
+      // The header's account chip reads its own public profile for the saved photo (UserMenu.tsx); no photo, so it
+      // keeps the initials fallback these presentation checks were written against.
+      case '/api/u/presentation-member': return json({ profile: {
+        id: presentationUser.id, username: presentationUser.username, display_name: presentationUser.display_name,
+        bio: null, pronouns: null, location: null, avatar_url: null, credential: 'member',
+      } })
       case '/api/speeches': return json({ speeches: [], meta: { current_page: 1, last_page: 1, total: 0 } })
       case '/api/reviewers': return json({ reviewers: [], meta: { current_page: 1, last_page: 1, total: 0 } })
       case '/api/speeches/search': return json({ results: [{

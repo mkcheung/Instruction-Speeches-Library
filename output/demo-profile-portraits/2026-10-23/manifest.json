@@ -1,0 +1,112 @@
+{
+  "purpose": "Fictional AI-generated profile portraits for the seven existing local development accounts.",
+  "tool": "built-in image_gen (imagegen skill); one generation per person",
+  "created": "2026-10-23",
+  "portraits": [
+    {
+      "user_id": 33,
+      "username": "test2",
+      "file": "33-test2.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-8f7e9625-f8c3-4852-b2cc-ebb2b16bf746.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: a friendly adult man in his early thirties, short dark curly hair, medium brown skin, navy knit shirt. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/33/01M5N6GDA3M0EVZF4ZDM12G78R.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "ab0ecd361cb5d90ac06d141ab9dc353bae11b80825a8a948662a3b3deca6b468",
+      "profile_url": "https://app.speechcoach.test/u/test2"
+    },
+    {
+      "user_id": 9001,
+      "username": "e2e-super-admin",
+      "file": "9001-sadie.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-98c47477-7785-40db-b01f-962828448905.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: a confident adult woman in her fifties, short softly curled silver hair, thin round dark glasses, burgundy blouse. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/9001/01M5N6GDGJN1Z6AZPR98RY6A5P.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "74b9a0c4cc79f3b474898b2d099c196f47c2d324bbc9bb4da66b27ba38a74cd8",
+      "profile_url": "https://app.speechcoach.test/u/e2e-super-admin"
+    },
+    {
+      "user_id": 9002,
+      "username": "e2e-admin",
+      "file": "9002-adam.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-b9431031-5adb-4261-8751-791c57802698.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: an approachable adult man in his forties, short brown hair, neatly trimmed beard, light olive skin, muted teal collared shirt. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/9002/01M5N6GDJQZC3B5C8BYZFF3MSF.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "bc89d13a7bdb0fca25d93a4aac7362a5db190c1963f646194fe4b175d8a60ded",
+      "profile_url": "https://app.speechcoach.test/u/e2e-admin"
+    },
+    {
+      "user_id": 9003,
+      "username": "e2e-coach",
+      "file": "9003-cora.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-074165e7-6170-44aa-8017-b01087774e28.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: a warm, encouraging adult woman in her early forties, shoulder-length dark brown wavy hair, cream blouse, natural smile. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/9003/01M5N6GDMJK839ZG2YGF2CDPNN.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "931e400dd7318ed40c21cf75d667630691440aea1f159ae6c42804338231509b",
+      "profile_url": "https://app.speechcoach.test/u/e2e-coach"
+    },
+    {
+      "user_id": 9004,
+      "username": "e2e-member",
+      "file": "9004-milo.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-febe84ba-7b59-414a-8f01-571899f48353.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: a relaxed adult man in his early thirties, East Asian appearance, short black hair, navy blue casual collared shirt. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/9004/01M5N6GDPD1VGKTD4Q23368GM8.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "f3251a972d99021f80d312d52585e68e6f0a16662afa6a1b40c59c4e7ae4ae76",
+      "profile_url": "https://app.speechcoach.test/u/e2e-member"
+    },
+    {
+      "user_id": 9005,
+      "username": "e2e-coach-b",
+      "file": "9005-bram.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-db27ae22-5dea-403f-8ef8-7a6736d76586.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: a thoughtful adult Black man in his late forties, closely shaved hair, short salt-and-pepper beard, olive green shirt. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/9005/01M5N6GDR9TX2ZE8MWBKCVCYE3.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "8fb4df1a01f6ecfd8260a258f6b40e2285a07acefcdaeb7f269a5e5afbeed27a",
+      "profile_url": "https://app.speechcoach.test/u/e2e-coach-b"
+    },
+    {
+      "user_id": 9006,
+      "username": "e2e-coach-c",
+      "file": "9006-cyrus.png",
+      "previous_avatar_path": null,
+      "generated_source": "/Users/marscheung/.codex/generated_images/01a155d3-77b5-7622-818e-88ffdf05ea57/exec-74aa813f-c84d-4642-8345-743602e4d7a9.png",
+      "prompt": "Use case: photorealistic-natural. Asset type: square profile avatar for a local speech-coaching demo app. Create one natural photographic head-and-shoulders portrait of a completely fictional person: a friendly adult man in his sixties, short white hair, neatly trimmed white beard, soft blue collared shirt. Centered face, looking toward the camera, shoulders visible, generous space around the entire hair and face so a circular avatar crop works. Soft daylight, subtle warm neutral blurred background, realistic skin texture, understated everyday clothing, welcoming expression. A single distinct person only. No text, logos, watermark, collage, comic style, or recognizable celebrity. Square composition.",
+      "installed_avatar_path": "avatars/9006/01M5N6GDTH5BYGFYW9KGFX9D33.jpg",
+      "installed_size": [
+        512,
+        512
+      ],
+      "installed_sha256": "c391a39e700026c48c5d458f101574768494ff0d5cd3c37c9ffea511d18ea647",
+      "profile_url": "https://app.speechcoach.test/u/e2e-coach-c"
+    }
+  ]
+}
