@@ -52,7 +52,7 @@ export default function PublicProfile() {
   // viewers only. Safe to probe the session from a public page only
   // because `UnauthenticatedRedirect`'s `PUBLIC_PATHS` exempts `/u/`;
   // without that, this 401 would eject the very visitors D5 protects.
-  const { data: me } = useGetMeQuery()
+  const { data: me, isFetching: isFetchingMe, error: meError } = useGetMeQuery()
 
   if (isLoading) {
     return (
@@ -68,6 +68,8 @@ export default function PublicProfile() {
 
   const existingConnection: Connection | null =
     railData?.connections.find((c) => c.peer?.username === profile.username) ?? null
+  const canConnect = Boolean(me?.user && !isFetchingMe && !meError && profile.id &&
+    profile.username === username && String(me.user.id) !== String(profile.id))
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
@@ -103,7 +105,11 @@ export default function PublicProfile() {
             </div>
           </div>
 
-          <ProfileConnectionAction profileUserId={existingConnection?.peer?.id ?? profile.id} existing={existingConnection} />
+          {canConnect && <ProfileConnectionAction
+            key={`${me!.user.id}:${profile.id}`}
+            profileUserId={profile.id}
+            existing={existingConnection}
+          />}
         </div>
 
         <nav aria-label="Profile sections" className="flex border-t border-border px-2">
