@@ -1,5 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
+import { connectionApi } from '@/features/connection/connectionApi'
 import { authApi } from '@/features/auth/authApi'
 import type { MeResponse } from '@/features/auth/types'
 import type {
@@ -32,6 +33,7 @@ async function refreshMe(dispatch: (action: unknown) => unknown, queryFulfilled:
   } catch {
     return // the mutation failed; nothing changed server-side to re-read
   }
+  dispatch(connectionApi.util.invalidateTags(['Friends', 'FriendRelationship', 'ConnectionsRail', 'PendingConnections']))
   dispatch(authApi.util.invalidateTags(['Me']))
 }
 
@@ -87,7 +89,7 @@ export const profileApi = createApi({
      * — a too-soon change surfaces as a 422 through the normal contract. */
     updateOwnUsername: builder.mutation<MeResponse, { username: string }>({
       query: (body) => ({ url: '/api/profile/username', method: 'PATCH', body }),
-      invalidatesTags: ['OnboardingStatus'],
+      invalidatesTags: ['OnboardingStatus', 'PublicProfile'],
       // The username IS the profile link's href; a stale one points at the
       // old `/u/:username`, which 404s.
       onQueryStarted: (_arg, { dispatch, queryFulfilled }) => refreshMe(dispatch, queryFulfilled),

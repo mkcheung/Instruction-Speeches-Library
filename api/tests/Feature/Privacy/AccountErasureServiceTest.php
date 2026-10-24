@@ -179,8 +179,11 @@ it('purges both mirrored rows of a connection when either party is erased, and p
     $this->seed(RoleSeeder::class);
 
     $speaker = erasureSpeaker();
+    $speaker->update(['first_name' => 'Erased', 'last_name' => 'Speaker']);
     $other = erasureSpeaker();
+    $other->update(['first_name' => 'Remaining', 'last_name' => 'Speaker']);
     $thirdParty = erasureSpeaker();
+    $thirdParty->update(['first_name' => 'Unrelated', 'last_name' => 'Speaker']);
 
     // Build a real accepted connection through the service, not the raw
     // factory, so both mirrored rows (owner_id/peer_id swapped) exist

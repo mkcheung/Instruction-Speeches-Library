@@ -91,3 +91,59 @@ export interface ProfileTimelineResponse {
   timeline: ProfileTimelineItem[]
   meta: { next_cursor: string | null; tab: ProfileTimelineTab; profile_username: string }
 }
+
+/** Cache partition only: the server always derives the viewer from the session. */
+export interface FriendsQueryArgs {
+  viewerId: string
+  view: 'accepted' | 'incoming'
+  search?: string
+  cursor?: string | null
+}
+
+export interface FindFriendsQueryArgs {
+  viewerId: string
+  search: string
+  cursor?: string | null
+}
+
+export interface FriendPerson {
+  id: number
+  name: string
+  username: string
+  avatar_url: string | null
+}
+
+export interface Friend {
+  connection_id: number
+  person: FriendPerson
+  mutual_friends_count: number
+  requested_at: string | null
+  connected_at: string | null
+  note: string | null
+}
+
+export interface FriendsResponse {
+  friends: Friend[]
+  meta: { total: number; next_cursor: string | null }
+}
+
+export interface FriendCandidate {
+  person: Omit<FriendPerson, 'username'>
+  mutual_friends_count: number
+}
+
+export interface FindFriendsResponse {
+  people: FriendCandidate[]
+  meta: { next_cursor: string | null }
+}
+
+export interface FriendRelationship {
+  state: 'none' | 'pending' | 'accepted' | 'unavailable'
+  direction: 'incoming' | 'outgoing' | null
+  connection_id: number | null
+  connected_at: string | null
+}
+
+export interface FriendRelationshipResponse {
+  relationship: FriendRelationship
+}

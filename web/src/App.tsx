@@ -13,6 +13,7 @@ import Onboarding from '@/routes/Onboarding'
 import ProfileEdit from '@/routes/ProfileEdit'
 import Account from '@/routes/Account'
 import PublicProfile from '@/routes/PublicProfile'
+import ProfileFriends from '@/routes/ProfileFriends'
 import ProfileAbout from '@/routes/ProfileAbout'
 import ProfileReviewsLeft from '@/routes/ProfileReviewsLeft'
 import ProfileReviewsReceived from '@/routes/ProfileReviewsReceived'
@@ -94,17 +95,14 @@ const router = createBrowserRouter(
           </RequireAuth>
         }
       />
-      {/* STEP-13-FROZEN-CONTRACT.md §9: the first nested-tab-route pattern
-          in this app — three sibling routes under `PublicProfile`'s own
-          `<Outlet>`, same `<Route>`/`<Outlet>` nesting mechanics as
-          `AppLayout`/`RootLayout` below, just not previously used for
-          same-page tabs. Real routes, not a `role="tablist"` widget — the
-          plan's explicit instruction, since these are URLs people share
-          and go back to. */}
+      {/* Public profile sections share identity/navigation; Friends children
+          apply their own current-session and canonical-owner guard. */}
       <Route path="/u/:username" element={<PublicProfile />}>
         <Route index element={<ProfileAbout />} />
         <Route path="reviews-left" element={<ProfileReviewsLeft />} />
         <Route path="reviews-received" element={<ProfileReviewsReceived />} />
+        <Route path="friends" element={<ProfileFriends />} />
+        <Route path="friends/:view" element={<ProfileFriends />} />
       </Route>
 
       {/* D1 — one layout route renders the header/sidebar once for

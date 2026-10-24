@@ -1,14 +1,14 @@
-import { Link, NavLink, Outlet, useParams } from 'react-router-dom'
+import { Link, NavLink, Outlet, useMatch, useParams } from 'react-router-dom'
+import { skipToken } from '@reduxjs/toolkit/query'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { ConnectionsRail } from '@/components/profile/ConnectionsRail'
 import { ProfileConnectionAction } from '@/components/profile/ProfileConnectionAction'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { useGetPublicProfileQuery } from '@/features/profile/profileApi'
-import { useGetConnectionsRailQuery } from '@/features/connection/connectionApi'
+import { useGetFriendRelationshipQuery } from '@/features/connection/connectionApi'
+import { useConnectionRefresh, useConnectionSession, useEligibleConnectionViewer } from '@/features/connection/connectionSession'
 import type { PublicProfile as PublicProfileType } from '@/features/profile/types'
-import type { Connection } from '@/features/connection/types'
-import { cn } from '@/lib/utils'
 import NotFound from '@/routes/NotFound'
 
 export interface PublicProfileOutletContext {
@@ -18,43 +18,26 @@ export interface PublicProfileOutletContext {
 const SECTION_LINK_CLASS =
   'rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground aria-[current=page]:border-b-2 aria-[current=page]:border-primary'
 
-/**
- * §6.7.4's two-column Facebook-style profile: cover + identity block
- * spanning both columns, a routed section `<nav>` (real links, NOT a
- * `role="tablist"` widget — §6.7.4's/STEP-13-social-layer.md's explicit
- * instruction, since these are URLs people share and go back to), a
- * sticky-at-`lg` connections rail, and an `<Outlet>` for whichever
- * section is active (About/reviews-left/reviews-received —
- * STEP-13-FROZEN-CONTRACT.md §9's three sibling routes).
- *
- * This is the first nested-tab-route pattern in the app — same
- * `<Route>`/`<Outlet>` nesting mechanics `App.tsx` already uses for
- * `AppLayout`/`RootLayout`, applied to a profile sub-route instead of the
- * whole-app shell.
- */
+/** Public identity and sections remain public; Friends owns its private child guard. */
 export default function PublicProfile() {
   const { username } = useParams<{ username: string }>()
-  const { data: profile, isLoading, isError } = useGetPublicProfileQuery(username ?? '', {
+  const { currentData: profile, isLoading, isFetching: isFetchingProfile, isError } = useGetPublicProfileQuery(username ?? '', {
     skip: !username,
   })
-  // Fetched here (not just inside `ConnectionsRail`) so the identity
-  // block's connection action can look up the viewer's ACCEPTED
-  // connection with THIS profile's owner, if any (the only state `GET
-  // /api/connections` ever returns — see `ProfileConnectionAction.tsx`'s
-  // header comment for why pending/blocked are undetectable here). See
-  // `ConnectionsRail.tsx`'s header comment for why `getConnectionsRail`
-  // returns the viewer's own list rather than something scoped to
-  // `username`.
-  const { data: railData } = useGetConnectionsRailQuery(undefined, { skip: !profile })
-  // This route is outside `AppLayout` (it must render for anonymous
-  // visitors, D5), so there is no header or sidebar here and therefore no
-  // way back into the app — hence the explicit link below, for signed-in
-  // viewers only. Safe to probe the session from a public page only
-  // because `UnauthenticatedRedirect`'s `PUBLIC_PATHS` exempts `/u/`;
-  // without that, this 401 would eject the very visitors D5 protects.
+  // Public profiles sit outside AppLayout. Anonymous probes must leave the
+  // public sections readable; the private Friends child handles sign-in.
   const { data: me, isFetching: isFetchingMe, error: meError } = useGetMeQuery()
+  const viewer = useEligibleConnectionViewer()
+  const session = useConnectionSession()
+  const friendsBranch = Boolean(useMatch('/u/:username/friends/*'))
+  const canonicalProfile = Boolean(profile?.id && profile.username && profile.username === username)
+  const freshIdentity = Boolean(viewer && !isFetchingMe && !meError && !isFetchingProfile && canonicalProfile)
+  const owner = Boolean(freshIdentity && String(profile!.id) === viewer!.id && viewer!.username === profile!.username)
+  const canConnect = Boolean(!friendsBranch && freshIdentity && String(profile!.id) !== viewer!.id)
+  const relationship = useGetFriendRelationshipQuery(canConnect ? { viewerId: viewer!.id, targetId: profile!.id! } : skipToken, { refetchOnMountOrArgChange: true })
+  useConnectionRefresh(relationship.refetch, canConnect)
 
-  if (isLoading) {
+  if (isLoading || (!profile && isFetchingProfile)) {
     return (
       <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
         Loading…
@@ -62,21 +45,13 @@ export default function PublicProfile() {
     )
   }
 
-  if (isError || !profile || !username) {
+  if (isError || !profile || !username || profile.username !== username) {
     return <NotFound />
   }
 
-  const existingConnection: Connection | null =
-    railData?.connections.find((c) => c.peer?.username === profile.username) ?? null
-  const canConnect = Boolean(me?.user && !isFetchingMe && !meError && profile.id &&
-    profile.username === username && String(me.user.id) !== String(profile.id))
-
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8">
-      {/* Deliberately NOT inside the "Profile sections" <nav> below — that
-          landmark is the three tab routes and nothing else, which
-          `PublicProfile.test.tsx` pins by exact count and order. */}
-      {me && (
+      {me && !isFetchingMe && !meError && session.status === 'ready' && (
         <Link
           to="/dashboard"
           className="self-start rounded-md text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -106,13 +81,16 @@ export default function PublicProfile() {
           </div>
 
           {canConnect && <ProfileConnectionAction
-            key={`${me!.user.id}:${profile.id}`}
+            key={`${viewer!.id}:${profile.id}:${session.generation}`}
             profileUserId={profile.id}
-            existing={existingConnection}
+            relationship={relationship.currentData?.relationship}
+            refreshing={relationship.isFetching}
+            error={relationship.error}
+            onRetry={relationship.refetch}
           />}
         </div>
 
-        <nav aria-label="Profile sections" className="flex border-t border-border px-2">
+        <nav aria-label="Profile sections" className="flex flex-wrap border-t border-border px-2">
           <NavLink to={`/u/${username}/reviews-left`} className={SECTION_LINK_CLASS}>
             Reviews you left
           </NavLink>
@@ -122,13 +100,14 @@ export default function PublicProfile() {
           <NavLink to={`/u/${username}`} end className={SECTION_LINK_CLASS}>
             About
           </NavLink>
+          {owner && <NavLink to={`/u/${encodeURIComponent(username)}/friends`} className={SECTION_LINK_CLASS}>Friends</NavLink>}
         </nav>
       </div>
 
-      <div className={cn('grid gap-4', 'lg:grid-cols-[17rem_minmax(0,36.25rem)]')}>
-        <ConnectionsRail />
+      <div className={friendsBranch ? 'min-w-0' : 'grid gap-4 lg:grid-cols-[17rem_minmax(0,36.25rem)]'}>
+        {!friendsBranch && <ConnectionsRail />}
         <div className="min-w-0">
-          <Outlet context={{ profile } satisfies PublicProfileOutletContext} />
+          {friendsBranch && isFetchingProfile ? <p role="status">Loading profile…</p> : <Outlet context={{ profile } satisfies PublicProfileOutletContext} />}
         </div>
       </div>
     </div>

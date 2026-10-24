@@ -16,15 +16,15 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
  * as this codebase's idiom for "concurrency test" on a sqlite-driven suite).
  */
 it('throws SelfConnectionNotPermittedException when a user requests themselves', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     expect(fn () => app(ConnectionService::class)->request($user, $user, null))
         ->toThrow(SelfConnectionNotPermittedException::class);
 });
 
 it('creates a mirrored pending pair on request', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     $mine = app(ConnectionService::class)->request($a, $b, 'hello');
 
@@ -39,8 +39,8 @@ it('creates a mirrored pending pair on request', function () {
 });
 
 it('resolves a crossed request to accepted on both mirrored rows', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->request($a, $b, null);
@@ -54,8 +54,8 @@ it('resolves a crossed request to accepted on both mirrored rows', function () {
 });
 
 it('is idempotent when the same requester re-requests a pending pair', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->request($a, $b, null);
@@ -66,8 +66,8 @@ it('is idempotent when the same requester re-requests a pending pair', function 
 });
 
 it('reuses the row on declined -> pending re-request', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $first = $service->request($a, $b, null);
@@ -83,8 +83,8 @@ it('reuses the row on declined -> pending re-request', function () {
 });
 
 it('accepts a pending inbound request on both mirrored rows', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->request($a, $b, null);
@@ -97,8 +97,8 @@ it('accepts a pending inbound request on both mirrored rows', function () {
 });
 
 it('declines an accepted connection back to declined on both rows (disconnect)', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->request($a, $b, null);
@@ -112,8 +112,8 @@ it('declines an accepted connection back to declined on both rows (disconnect)',
 });
 
 it('blocks without touching an existing review row', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $speech = Speech::factory()->for($b)->create();
     $review = Review::factory()->for($speech)->create([
         'reviewer_id' => $a->id,
@@ -130,8 +130,8 @@ it('blocks without touching an existing review row', function () {
 });
 
 it('a blocked request cannot be re-requested around the block', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->block($a, $b);
@@ -140,8 +140,8 @@ it('a blocked request cannot be re-requested around the block', function () {
 });
 
 it('unblock always lands on declined, never accepted', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->block($a, $b);
@@ -152,8 +152,8 @@ it('unblock always lands on declined, never accepted', function () {
 });
 
 it('only the blocker may unblock', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $service = app(ConnectionService::class);
 
     $service->block($a, $b);

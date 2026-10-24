@@ -18,9 +18,13 @@ function mockHeaderData({ unread = 2, pending = 1 } = {}) {
       id: 42, username: 'e2e-member', display_name: 'Milo Member', avatar_url: null,
     } }
     else if (url.endsWith('/api/notifications')) body = { notifications: [], unread_count: unread }
-    else if (url.includes('/api/connections?state=pending')) body = {
-      connections: Array.from({ length: pending }, (_, index) => ({ id: index + 7, peer: { name: 'Cora Coach' } })),
-      meta: { next_cursor: null },
+    else if (url.includes('/api/friends?view=incoming')) body = {
+      friends: Array.from({ length: pending }, (_, index) => ({
+        connection_id: index + 7,
+        person: { id: index + 100, name: 'Cora Coach', username: `coach-${index}`, avatar_url: null },
+        mutual_friends_count: 0, requested_at: '2026-10-23T12:00:00Z', connected_at: null, note: null,
+      })),
+      meta: { total: pending, next_cursor: null },
     }
     else throw new Error(`unexpected fetch: ${url}`)
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { AppDispatch } from '@/app/store'
@@ -6,6 +6,7 @@ import { authApi } from '@/features/auth/authApi'
 import { profileApi } from '@/features/profile/profileApi'
 import { UNAUTHENTICATED_EVENT } from '@/lib/baseQuery'
 import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
+import { revalidateConnectionSession, useConnectionSession } from '@/features/connection/connectionSession'
 
 const GUEST_PATHS = ['/login', '/register', '/forgot-password']
 
@@ -80,9 +81,24 @@ export function UnauthenticatedRedirect() {
   const navigate = useNavigate()
   const location = useLocation()
   const dispatch = useDispatch<AppDispatch>()
+  const session = useConnectionSession()
+  const verifyingFriends = useRef(false)
+  // React Router matches these route segments case insensitively. A boundary
+  // after "friends" keeps public names such as "friendsomething" exempt.
+  const privateFriends = /^\/u\/[^/]+\/friends(?:\/|$)/i.test(location.pathname)
 
   useEffect(() => {
     function handleUnauthenticated() {
+      if (privateFriends) {
+        // The DOM event precedes middleware's request-generation checks. A late
+        // account A response must never reset account B's auth cache or session.
+        // Quarantine connection data, then let a current /me decide the outcome.
+        if (!verifyingFriends.current) {
+          verifyingFriends.current = true
+          dispatch(revalidateConnectionSession())
+        }
+        return
+      }
       playbackPreferences.setIdentity(null)
       if (GUEST_PATHS.some((path) => location.pathname.startsWith(path))) return
       if (PUBLIC_PATHS.some((path) => location.pathname.startsWith(path))) return
@@ -94,7 +110,26 @@ export function UnauthenticatedRedirect() {
 
     window.addEventListener(UNAUTHENTICATED_EVENT, handleUnauthenticated)
     return () => window.removeEventListener(UNAUTHENTICATED_EVENT, handleUnauthenticated)
-  }, [navigate, location, dispatch])
+  }, [navigate, location, dispatch, privateFriends])
+
+  useEffect(() => {
+    if (!privateFriends) {
+      verifyingFriends.current = false
+      return
+    }
+    if (!verifyingFriends.current) return
+    if (session.status === 'anonymous') {
+      verifyingFriends.current = false
+      playbackPreferences.setIdentity(null)
+      dispatch(authApi.util.resetApiState())
+      dispatch(profileApi.util.resetApiState())
+      navigate('/login', { state: { from: location }, replace: true })
+    } else if (session.status === 'ready' || session.status === 'error') {
+      // ProfileFriends renders its retryable session error with private content
+      // hidden. Never infer anonymous from a network/5xx failure.
+      verifyingFriends.current = false
+    }
+  }, [session.status, session.generation, privateFriends, navigate, location, dispatch])
 
   return null
 }
