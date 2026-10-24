@@ -2,6 +2,11 @@ import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
 import type {
   Connection,
+  FriendsQueryArgs,
+  FriendsResponse,
+  FindFriendsQueryArgs,
+  FindFriendsResponse,
+  FriendRelationshipResponse,
   ConnectionsRailResponse,
   ProfileTimelineResponse,
   ProfileTimelineTab,
@@ -37,8 +42,35 @@ import type {
 export const connectionApi = createApi({
   reducerPath: 'connectionApi',
   baseQuery: baseQueryWithCsrfRetry,
-  tagTypes: ['ConnectionsRail', 'ProfileTimeline', 'PendingConnections'],
+  tagTypes: ['ConnectionsRail', 'ProfileTimeline', 'PendingConnections', 'Friends', 'FriendRelationship'],
   endpoints: (builder) => ({
+    getFriends: builder.query<FriendsResponse, FriendsQueryArgs>({
+      query: ({ view, search, cursor }) => {
+        const params = new URLSearchParams({ view })
+        if (search?.trim()) params.set('search', search.trim())
+        if (cursor) params.set('cursor', cursor)
+        return `/api/friends?${params}`
+      },
+      serializeQueryArgs: ({ endpointName, queryArgs }) => ({
+        endpointName, ...queryArgs, search: queryArgs.search?.trim() ?? '', cursor: queryArgs.cursor ?? null,
+      }),
+      providesTags: ['Friends'],
+    }),
+    findFriends: builder.query<FindFriendsResponse, FindFriendsQueryArgs>({
+      query: ({ search, cursor }) => {
+        const params = new URLSearchParams({ search: search.trim() })
+        if (cursor) params.set('cursor', cursor)
+        return `/api/friends/find?${params}`
+      },
+      serializeQueryArgs: ({ endpointName, queryArgs }) => ({
+        endpointName, ...queryArgs, search: queryArgs.search.trim(), cursor: queryArgs.cursor ?? null,
+      }),
+      providesTags: ['Friends'],
+    }),
+    getFriendRelationship: builder.query<FriendRelationshipResponse, { viewerId: string; targetId: string | number }>({
+      query: ({ targetId }) => `/api/friends/relationship/${encodeURIComponent(targetId)}`,
+      providesTags: ['FriendRelationship'],
+    }),
     getConnectionsRail: builder.query<ConnectionsRailResponse, void>({
       query: () => '/api/connections',
       providesTags: (result) =>
@@ -77,25 +109,25 @@ export const connectionApi = createApi({
     sendConnectionRequest: builder.mutation<Connection, SendConnectionRequestPayload>({
       query: (body) => ({ url: '/api/connections', method: 'POST', body }),
       transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail'],
+      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
     }),
 
     acceptConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/accept`, method: 'POST' }),
       transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections'],
+      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
     }),
 
     declineConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/decline`, method: 'POST' }),
       transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections'],
+      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
     }),
 
     blockConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/block`, method: 'POST' }),
       transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail'],
+      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
     }),
 
     /** §7 acceptance: unblocking must land on `declined`, never `accepted`
@@ -108,12 +140,15 @@ export const connectionApi = createApi({
     unblockConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/unblock`, method: 'POST' }),
       transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail'],
+      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
     }),
   }),
 })
 
 export const {
+  useGetFriendsQuery,
+  useFindFriendsQuery,
+  useGetFriendRelationshipQuery,
   useGetConnectionsRailQuery,
   useGetPendingConnectionRequestsQuery,
   useGetProfileTimelineQuery,

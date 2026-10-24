@@ -315,6 +315,10 @@ async function isolateWorkspaceAxeApi(context: BrowserContext, notebook?: Notebo
           requested_at: '2026-10-01T12:00:00Z', responded_at: null, connected_at: null,
           peer: { id: 2, name: 'Avery Speaker', username: 'avery-speaker', avatar_url: null },
         }], meta: { next_cursor: null } })
+        case '/api/friends': return json(url.searchParams.get('view') === 'incoming'
+          ? { friends: [{ connection_id: 1, person: { id: 2, name: 'Avery Speaker', username: 'avery-speaker', avatar_url: null },
+            mutual_friends_count: 0, requested_at: '2026-10-01T12:00:00Z', connected_at: null, note: null }], meta: { total: 1, next_cursor: null } }
+          : { friends: [], meta: { total: 0, next_cursor: null } })
         // The header's account chip reads its own public profile for the saved photo (UserMenu.tsx); no photo, so
         // it keeps the initials fallback these scans were written against.
         case '/api/u/workspace-axe-member': return json({ profile: {

@@ -12,6 +12,7 @@ import { reportApi } from '@/features/report/reportApi'
 import { privacyApi } from '@/features/privacy/privacyApi'
 import { coachApplicationApi } from '@/features/coachApplication/coachApplicationApi'
 import { connectionApi } from '@/features/connection/connectionApi'
+import { connectionSessionMiddleware, connectionSessionReducer } from '@/features/connection/connectionSession'
 import { commentaryPreferenceSession } from '@/features/annotation/commentaryPreferenceSession'
 
 export const store = configureStore({
@@ -29,9 +30,11 @@ export const store = configureStore({
     [privacyApi.reducerPath]: privacyApi.reducer,
     [coachApplicationApi.reducerPath]: coachApplicationApi.reducer,
     [connectionApi.reducerPath]: connectionApi.reducer,
+    connectionSession: connectionSessionReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(
+      connectionSessionMiddleware,
       commentaryPreferenceSession,
       authApi.middleware,
       profileApi.middleware,

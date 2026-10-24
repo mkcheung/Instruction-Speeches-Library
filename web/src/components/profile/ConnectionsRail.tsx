@@ -1,77 +1,37 @@
-import { Avatar } from '@/components/ui/avatar'
-import { useGetConnectionsRailQuery } from '@/features/connection/connectionApi'
-import { connectionMetricLine } from '@/lib/connectionMetricLine'
-import { cn } from '@/lib/utils'
+import { Link } from 'react-router-dom'
+import { skipToken } from '@reduxjs/toolkit/query'
+import { FriendPersonAvatar } from '@/components/profile/FriendPersonAvatar'
+import { useGetFriendsQuery } from '@/features/connection/connectionApi'
+import { connectionErrorMessage, useConnectionRefresh, useEligibleConnectionViewer } from '@/features/connection/connectionSession'
+import '@/components/profile/friends.css'
 
-/**
- * §6.7.4: the ~270px left rail — bold "Connections" header, count, a 3-up
- * grid of square 1:1 tiles (bold 13px name, grey 12px metric line), sticky
- * at `lg` (1024px), a horizontally snap-scrolling strip below `lg`.
- *
- * ⚠️ Scope note (unresolved by the frozen contract, confirmed against the
- * real backend once it landed): `getConnectionsRail`
- * (`ConnectionController::index`) is `GET /api/connections` with no
- * `{username}` — always the CALLER's own accepted connections, not the
- * profile-being-viewed's. This renders the viewer's own rail
- * unconditionally on every profile page, matching the real endpoint
- * literally. Whether the intended product behavior is "always show my own
- * connections here" or "show the profile owner's connections" (gated by
- * §6.7.4's own "connection lists are private" rule) is a genuine product
- * question the backend build didn't resolve either — flagged in this
- * build's summary.
- *
- * No `meta.total` on the real response (only `next_cursor`) and no rail
- * pagination UI was in scope for this build, so the displayed count is
- * the number of rows on this one page, not a true total — understates the
- * count past 20 connections. "See all" has no destination: no
- * connections-index route exists anywhere in the frozen contract's route
- * list, so it renders as inert text rather than a broken link.
- */
+/** A compact preview of the current viewer's accepted friends; totals come from the server. */
 export function ConnectionsRail() {
-  const { data, isLoading } = useGetConnectionsRailQuery()
-  const connections = data?.connections ?? []
-
+  const viewer = useEligibleConnectionViewer()
+  const query = useGetFriendsQuery(viewer ? { viewerId: viewer.id, view: 'accepted' } : skipToken, { refetchOnMountOrArgChange: true })
+  useConnectionRefresh(query.refetch, Boolean(viewer))
+  if (!viewer) return null
+  const data = query.currentData
   return (
-    <aside
-      aria-label="Connections"
-      className={cn(
-        'flex flex-col gap-3 rounded-lg border border-border bg-card p-3',
-        'lg:sticky lg:top-20 lg:w-[17rem]',
-        'overflow-x-auto',
-      )}
-    >
-      <div className="flex items-baseline justify-between">
-        <h2 className="text-[15px] font-semibold">Connections</h2>
-        <span className="text-xs text-muted-foreground">See all</span>
+    <aside aria-label="Your connections" className="flex flex-col gap-3 overflow-x-auto rounded-lg border border-border bg-card p-3 lg:sticky lg:top-20 lg:w-[17rem]">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="text-[15px] font-semibold">Your connections</h2>
+        <Link className="text-xs underline focus-visible:ring-3" to={`/u/${encodeURIComponent(viewer.username)}/friends/all`}>See all</Link>
       </div>
-      <p className="text-xs text-muted-foreground">
-        {connections.length} {connections.length === 1 ? 'connection' : 'connections'}
-      </p>
-
-      {isLoading && <p className="text-xs text-muted-foreground">Loading…</p>}
-
-      {!isLoading && connections.length === 0 && (
-        <p className="text-xs text-muted-foreground">No connections yet.</p>
-      )}
-
-      <ul className="grid grid-cols-3 gap-2">
-        {connections
-          .filter((connection) => !!connection.peer)
-          .map((connection) => (
-            <li key={connection.id} className="flex flex-col items-center gap-1 text-center">
-              <Avatar
-                src={connection.peer?.avatar_url}
-                alt={connection.peer?.name}
-                shape="square"
-                className="aspect-square h-auto w-full"
-              />
-              <span className="w-full truncate text-[13px] font-semibold">{connection.peer?.name}</span>
-              <span className="w-full truncate text-xs text-muted-foreground">
-                {connectionMetricLine(connection)}
-              </span>
-            </li>
-          ))}
-      </ul>
+      {query.isFetching && <p role="status" className="text-xs text-muted-foreground">{data ? 'Refreshing…' : 'Loading…'}</p>}
+      {query.isError ? <div role="alert"><p>{connectionErrorMessage(query.error)}</p><button type="button" onClick={() => query.refetch()} disabled={query.isFetching}>Retry connections</button></div> : data && <>
+        <p className="text-xs text-muted-foreground">{data.meta.total} {data.meta.total === 1 ? 'connection' : 'connections'}</p>
+        {data.friends.length === 0 && <p className="text-xs text-muted-foreground">No connections yet.</p>}
+        <ul className="grid grid-cols-3 gap-2">
+          {data.friends.map((friend) => <li key={friend.connection_id} className="min-w-0 text-center">
+            <Link to={`/u/${encodeURIComponent(friend.person.username)}`} className="flex flex-col items-center gap-1 rounded-md focus-visible:ring-3">
+              <FriendPersonAvatar src={friend.person.avatar_url} />
+              <span className="w-full break-words text-[13px] font-semibold">{friend.person.name}</span>
+            </Link>
+            <span className="text-xs text-muted-foreground">{friend.mutual_friends_count} mutual {friend.mutual_friends_count === 1 ? 'friend' : 'friends'}</span>
+          </li>)}
+        </ul>
+      </>}
     </aside>
   )
 }

@@ -111,6 +111,10 @@ class ConnectionController extends Controller
     public function index(Request $request): JsonResponse
     {
         $viewerId = $this->currentUser($request)->id;
+        abort_unless(
+            User::query()->whereKey($viewerId)->nonAdministrative()->exists(),
+            Response::HTTP_FORBIDDEN,
+        );
         $limit = 20;
         $state = $request->query('state', 'accepted');
         abort_unless(in_array($state, ['accepted', 'pending'], true), Response::HTTP_UNPROCESSABLE_ENTITY);
@@ -118,6 +122,7 @@ class ConnectionController extends Controller
         $query = Connection::query()
             ->where('owner_id', $viewerId)
             ->where('state', $state)
+            ->whereIn('peer_id', User::query()->nonAdministrative()->select('id'))
             ->with('peer.profile');
 
         if ($state === 'pending') {

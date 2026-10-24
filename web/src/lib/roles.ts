@@ -163,6 +163,20 @@ export function navItemsFor(
   return items
 }
 
+function isAccountItem(item: NavItem): boolean {
+  return item.to === '/profile' || item.to === '/account' || item.to.startsWith('/u/')
+}
+
+/** Account destinations live in the identity dropdown at every viewport. */
+export function accountNavItemsFor(user: Pick<CurrentUser, 'roles' | 'username'> | undefined | null): NavItem[] {
+  return navItemsFor(user).filter(isAccountItem)
+}
+
+/** Shared by the desktop sidebar and the separate mobile navigation menu. */
+export function primaryNavItemsFor(user: Pick<CurrentUser, 'roles' | 'username'> | undefined | null): NavItem[] {
+  return navItemsFor(user).filter((item) => !isAccountItem(item))
+}
+
 /** What `getPostLoginDestination` returns — `external` is what tells a
  * call site whether it can hand `to` to `navigate()` or must perform a
  * real cross-origin navigation instead (see `NavItem.external`'s own

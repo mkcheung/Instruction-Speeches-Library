@@ -417,6 +417,10 @@ class AppServiceProvider extends ServiceProvider
         // per 24h, not 5 requests total. Deliberately does NOT gate
         // ReviewService::invite — see that class and §8 of the frozen
         // contract, a deliberate scope decision, not an oversight.
+        RateLimiter::for('friends-read', function (Request $request) {
+            return Limit::perMinute(120)->by('friends|'.$request->user()?->id);
+        });
+
         RateLimiter::for('connection-request', function (Request $request) {
             $targetId = $request->input('user_id');
 

@@ -72,6 +72,21 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     }
 
     /**
+     * Exclude either administrative role, including mixed-role accounts.
+     * Keep this separate from identity requirements for newer social reads:
+     * legacy connection lists also support unnamed non-admin accounts.
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeNonAdministrative(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('roles', function (Builder $roles): void {
+            $roles->whereIn('name', Role::ADMIN_TIER);
+        });
+    }
+
+    /**
      * MODERNIZATION_PLAN §6.3/§7.1: the reviewer directory query — the only
      * discovery mechanism for picking a reviewer, deliberately restricted
      * to `member`/`coach` roles. An Admin/`super_admin` must NEVER appear
@@ -83,7 +98,7 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
      */
     public function scopeReviewerCandidates(Builder $query, ?string $search = null, ?string $credential = null): Builder
     {
-        $query->role(['member', 'coach']);
+        $query->nonAdministrative()->role(['member', 'coach']);
 
         // `first_name`/`last_name`/`username` are all nullable and are only
         // populated at onboarding step 1 (2026_08_07_004005_add_identity_

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { MoreHorizontal } from 'lucide-react'
@@ -26,52 +27,20 @@ import { applyServerErrors } from '@/lib/applyServerErrors'
 import { sendConnectionRequestSchema, type SendConnectionRequestFormValues } from '@/lib/validation'
 import { formatMonthYear } from '@/lib/connectionMetricLine'
 import { useSendConnectionRequestMutation, useBlockConnectionMutation } from '@/features/connection/connectionApi'
-import type { Connection } from '@/features/connection/types'
+import type { FriendRelationship } from '@/features/connection/types'
+import { connectionErrorMessage, useEligibleConnectionViewer } from '@/features/connection/connectionSession'
 
-/**
- * §6.7.4's identity-block action slot (`[ Request a review ]  [ ⋯ ]`),
- * repurposed here as the CONNECTION action + block menu — wiring an
- * actual "request a review from this profile" flow (choosing which of the
- * viewer's own speeches to send) is a separate, unspecced surface not
- * listed in this build's scope, so this slot renders whichever connection
- * action applies instead.
- *
- * ⚠️ Only TWO states are actually distinguishable against the real
- * backend: "accepted" (found in `GET /api/connections`, which returns
- * `state = 'accepted'` rows only) and "no accepted connection." Pending
- * (either direction) and blocked are both invisible to the frontend — no
- * endpoint returns them — so this component cannot render "Accept /
- * Decline an incoming request" or "Request sent" the way an earlier,
- * pre-backend version of this file guessed it could. Sending a request
- * when one is already pending, declined, or blocked is left to the
- * backend's own idempotent-upsert/`ConnectionBlockedException` handling
- * (`ConnectionService::request`'s docblock) — the error, if any, surfaces
- * through the normal `applyServerErrors` banner.
- *
- * `existing` is the viewer's own ACCEPTED connection row for this profile
- * owner, if any (looked up in `PublicProfile.tsx` out of the rail's full
- * list). `profileUserId` is the numeric id needed to send a NEW request —
- * `PublicProfile.tsx` passes the profile's canonical `id` only after
- * confirming a resolved, signed-in viewer is a different user. It keys
- * this component by viewer and target so an open request cannot follow
- * an account/profile switch (`PublicProfileResource` originally
- * shipped with no `id` field at all — a real gap the STEP-13
- * reconciliation audit caught, fixed by adding `'id' => $this->id` there).
- * Kept optional/defensive here rather than required, since a caller
- * without either source still shouldn't crash — the disabled-button
- * fallback stays as a defense-in-depth, not the expected path.
- *
- * Block confirmation copies `ClearAnnotationsDialog.tsx`'s plain
- * `AlertDialogRoot` shape (no typed-word confirmation — reversible via
- * unblock, so a single confirm step is proportional, §8.4).
- */
+/** The viewer-owned projection covers pending and accepted relationships beyond page one. */
 export function ProfileConnectionAction({
-  profileUserId,
-  existing,
+  profileUserId, relationship, refreshing, error, onRetry,
 }: {
   profileUserId?: number
-  existing: Connection | null
+  relationship?: FriendRelationship
+  refreshing: boolean
+  error?: unknown
+  onRetry: () => unknown
 }) {
+  const viewer = useEligibleConnectionViewer()
   const [requestOpen, setRequestOpen] = useState(false)
   const [blockOpen, setBlockOpen] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -90,7 +59,7 @@ export function ProfileConnectionAction({
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    if (!profileUserId) return
+    if (!viewer || !profileUserId || refreshing || error || relationship?.state !== 'none') return
     setFormError(null)
     try {
       await sendRequest({ user_id: profileUserId, note: values.message || null }).unwrap()
@@ -101,26 +70,36 @@ export function ProfileConnectionAction({
   })
 
   const handleBlock = async () => {
-    if (!existing) return
+    if (!viewer || refreshing || error || relationship?.state !== 'accepted' || !relationship.connection_id) return
+    setFormError(null)
     try {
-      await blockConnection(existing.id).unwrap()
-    } finally {
+      await blockConnection(relationship.connection_id).unwrap()
       setBlockOpen(false)
+    } catch (failure) {
+      setFormError(connectionErrorMessage(failure))
     }
   }
 
-  if (existing?.state === 'accepted') {
+  if (!viewer || !profileUserId || viewer.id === String(profileUserId)) return null
+  if (error && !(blockOpen && relationship?.state === 'accepted')) return <div role="alert"><p>{connectionErrorMessage(error)}</p><Button type="button" variant="outline" size="sm" onClick={() => onRetry()} disabled={refreshing}>Retry relationship</Button></div>
+  if (!relationship) return <p role="status">Checking connection…</p>
+  if (relationship.state === 'unavailable') return <p>Connection unavailable.</p>
+  if (relationship.state === 'pending') return relationship.direction === 'incoming'
+    ? <Link to={`/u/${encodeURIComponent(viewer.username)}/friends/requests`}>View friend request</Link>
+    : <p role="status">Request sent</p>
+
+  if (relationship.state === 'accepted') {
     return (
       <div className="flex items-center gap-2">
-        {existing.connected_at && (
+        {relationship.connected_at ? (
           <span className="text-[13px] text-muted-foreground">
-            Connected since {formatMonthYear(existing.connected_at)}
+            Connected since {formatMonthYear(relationship.connected_at)}
           </span>
-        )}
+        ) : <span>Connected</span>}
         <DropdownMenuRoot modal={false}>
           <DropdownMenuTrigger
             render={
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="More actions">
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="More actions" disabled={refreshing || isBlocking || Boolean(error)}>
                 <MoreHorizontal />
               </Button>
             }
@@ -148,11 +127,13 @@ export function ProfileConnectionAction({
                 They'll disappear from your connections rail. Their existing review of your speeches
                 still exists — blocking doesn't revoke access already granted.
               </AlertDialogDescription>
+              <FormBanner message={formError} />
+              {Boolean(error) && <div role="alert"><p>{connectionErrorMessage(error)}</p><Button type="button" variant="outline" onClick={() => onRetry()} disabled={refreshing}>Retry relationship</Button></div>}
               <div className="mt-4 flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setBlockOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="button" variant="destructive" disabled={isBlocking} onClick={() => void handleBlock()}>
+                <Button type="button" variant="destructive" disabled={isBlocking || refreshing || Boolean(error)} onClick={() => void handleBlock()}>
                   {isBlocking ? 'Blocking…' : 'Block'}
                 </Button>
               </div>
@@ -163,14 +144,12 @@ export function ProfileConnectionAction({
     )
   }
 
-  // No accepted connection found (covers: never connected, pending either
-  // direction, declined, or blocked — all indistinguishable here).
   return (
     <>
       <Button
         type="button"
         size="sm"
-        disabled={!profileUserId}
+        disabled={refreshing || isSending}
         title={!profileUserId ? "Connecting isn't available for this profile yet." : undefined}
         onClick={() => setRequestOpen(true)}
       >
@@ -192,7 +171,7 @@ export function ProfileConnectionAction({
                 {...register('message')}
               />
               <div className="flex items-center gap-2">
-                <Button type="submit" disabled={isSending}>
+                <Button type="submit" disabled={isSending || refreshing}>
                   {isSending ? 'Sending…' : 'Send request'}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setRequestOpen(false)}>
