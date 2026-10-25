@@ -17,6 +17,7 @@ use App\Notifications\ReviewDeclined;
 use App\Notifications\ReviewInvited;
 use App\Notifications\ReviewPublished;
 use App\Support\AuditAction;
+use App\Support\Role;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -74,6 +75,13 @@ class ReviewService
         $review = DB::transaction(function () use ($speech, $reviewer, $speaker, $message, $allowPreview, $priorCommentaryShared, $invitedBy, &$freshlyInvited) {
             $lockedReviewer = User::query()->whereKey($reviewer->id)->lockForUpdate()->firstOrFail();
             abort_if($lockedReviewer->erasure_started_at !== null, 409, 'This reviewer is erasing their account.');
+            // §7.1: an administrator is never a reviewer. The directory
+            // already hides them, but the invite endpoint takes a raw
+            // `reviewer_id`, so the rule has to hold at the write boundary
+            // too — otherwise a speaker who knows an admin's id (the public
+            // profile exposes it) can create a review row under one,
+            // including for mixed-role accounts such as member + admin.
+            abort_if($lockedReviewer->hasAnyRole(Role::ADMIN_TIER), 422, 'This person cannot be invited as a reviewer.');
             /** @var Review|null $existing */
             $existing = Review::query()
                 ->where('speech_id', $speech->id)

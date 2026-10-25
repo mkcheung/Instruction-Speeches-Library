@@ -137,6 +137,15 @@ class ConnectionService
             [$low, $high] = $this->lockOrCreatePair($actor->id, $target->id);
             $this->eligibility->assertActor($actor);
 
+            // A block belongs to whoever placed it. If the other party already
+            // blocked this pair, rewriting `blocked_by_id` would hand the
+            // blocked person ownership of that block: they could then
+            // `unblock()` it and re-request around the original blocker's
+            // decision. Leave the standing block untouched.
+            if ($low->state === 'blocked' && $low->blocked_by_id !== $actor->id) {
+                return $actor->id === $low->owner_id ? $low : $high;
+            }
+
             $now = now();
             foreach ([$low, $high] as $row) {
                 $row->state = 'blocked';

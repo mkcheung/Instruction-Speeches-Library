@@ -242,6 +242,25 @@ describe('ProfileFriends routed views with the real store', () => {
     expect(input).toHaveValue('Alice new text')
   })
 
+  it('keeps the reader on a deeper page when the window regains focus', async () => {
+    const reads = fixtures((url) => list(url.searchParams.get('cursor') === 'page-2' ? [bob] : [alice], 25, 'page-2'))
+    const user = userEvent.setup()
+    mount()
+    await screen.findByText('Alice Example')
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await screen.findByText('Bob Example')
+    expect(screen.getByText('Page 2')).toBeInTheDocument()
+    const before = reads.mock.calls.length
+
+    fireEvent(window, new Event('focus'))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // A passive focus change neither refetches the keyset page nor throws away the reader's place.
+    expect(reads.mock.calls.length).toBe(before)
+    expect(screen.getByText('Page 2')).toBeInTheDocument()
+    expect(screen.getByText('Bob Example')).toBeInTheDocument()
+  })
+
   it('keeps loading, empty and failed states distinct and makes retry useful', async () => {
     let finish!: (response: Response) => void
     fixtures(() => new Promise<Response>((resolve) => { finish = resolve }))

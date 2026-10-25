@@ -96,11 +96,14 @@ test('test', async ({ page, context }) => {
     await page2.getByRole('link', { name: 'Back to dashboard' }).click();
     await expect(page2).toHaveURL('https://app.speechcoach.test/dashboard');
 
-    // The sidebar item is the other half of change #2 — it keeps the
+    // The account-menu item is the other half of change #2 — it keeps the
     // social page reachable from every authenticated route, not just here.
     // It is keyed off `/api/me`'s username, which is exactly what went
     // stale before `profileApi` learned to invalidate `authApi`'s `Me`.
+    // "Your profile" is an account destination: it lives in the account
+    // dropdown, not the Main navigation rail (see `accountNavItemsFor`).
+    await page2.getByRole('button', { name: 'Mars Cheung', exact: true }).click();
     await expect(
-        page2.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Your profile' }),
+        page2.getByRole('menuitem', { name: 'Your profile', exact: true }),
     ).toHaveAttribute('href', `/u/${username}`);
 });

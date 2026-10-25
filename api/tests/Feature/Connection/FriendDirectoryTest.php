@@ -321,3 +321,11 @@ it('shares the bounded read limiter across friends discovery and relationship', 
     $this->getJson('/api/friends/find')->assertTooManyRequests();
     $this->actingAs($target)->getJson('/api/friends')->assertOk();
 });
+
+it('rejects a search that is not valid UTF-8 with 422 instead of reaching the query', function () {
+    $viewer = directoryPerson();
+
+    foreach (['/api/friends/find?search=%FF', '/api/friends?search=%FF', '/api/friends?view=incoming&search=ab%C3'] as $url) {
+        $this->actingAs($viewer)->getJson($url)->assertUnprocessable()->assertJsonValidationErrors('search');
+    }
+});

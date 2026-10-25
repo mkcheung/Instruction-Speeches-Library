@@ -15,10 +15,16 @@ use Illuminate\Support\Facades\DB;
  * service) is a one-sided friendship users report as "the site is broken"
  * with nothing in the logs. This sweep finds and fixes exactly that.
  *
- * Two asymmetry shapes are detected and repaired:
+ * Three asymmetry shapes are detected and repaired:
  *  - **State mismatch**: both mirrored rows exist but disagree on `state`.
  *    Repaired by taking the more "resolved" state as authoritative — see
  *    `precedence()` below.
+ *  - **Attribute mismatch**: both rows exist and agree on `state`, but their
+ *    `initiated_by_id` / `blocked_by_id` differ — e.g. an older `block()` that
+ *    filled a missing mirror with a NULL initiator. `ConnectionService`
+ *    refuses to act on such a pair (it would otherwise be a permanent 409
+ *    for both people), so it is repaired by taking the non-null value, and
+ *    where both are set the lower-owner-id row's value, for both rows.
  *  - **Missing mirror**: one row exists with no counterpart at all.
  *    Repaired by creating the missing row from the existing one's fields
  *    (owner/peer swapped, `initiated_by_id`/`blocked_by_id` copied as-is
@@ -50,8 +56,9 @@ class ReconcileConnectionAsymmetryCommand extends Command
     {
         $mismatched = 0;
         $created = 0;
+        $aligned = 0;
 
-        DB::transaction(function () use (&$mismatched, &$created) {
+        DB::transaction(function () use (&$mismatched, &$created, &$aligned) {
             // Every row, paired against its mirror (if any), locked for the
             // duration of this sweep so a concurrent ConnectionService write
             // can't race the repair.
@@ -105,11 +112,24 @@ class ReconcileConnectionAsymmetryCommand extends Command
                         $mismatched++;
                         $this->warn("Resolved state mismatch on connections #{$row->id}/#{$mirror->id}: both set to '{$winner->state}'.");
                     }
+                } elseif ($mirror->initiated_by_id !== $row->initiated_by_id || $mirror->blocked_by_id !== $row->blocked_by_id) {
+                    $low = $row->owner_id < $mirror->owner_id ? $row : $mirror;
+                    $high = $low === $row ? $mirror : $row;
+                    $initiator = $low->initiated_by_id ?? $high->initiated_by_id;
+                    $blocker = $low->blocked_by_id ?? $high->blocked_by_id;
+
+                    foreach ([$low, $high] as $side) {
+                        $side->initiated_by_id = $initiator;
+                        $side->blocked_by_id = $blocker;
+                        $side->save();
+                    }
+                    $aligned++;
+                    $this->warn("Aligned initiator/blocker on connections #{$low->id}/#{$high->id}.");
                 }
             }
         });
 
-        $this->info("Reconciled {$mismatched} mismatched pair(s) and created {$created} missing mirror row(s).");
+        $this->info("Reconciled {$mismatched} mismatched pair(s), aligned {$aligned} attribute-mismatched pair(s) and created {$created} missing mirror row(s).");
 
         return self::SUCCESS;
     }

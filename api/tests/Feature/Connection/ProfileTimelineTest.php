@@ -3,6 +3,7 @@
 use App\Models\Review;
 use App\Models\Speech;
 use App\Models\User;
+use App\Support\KeysetCursor;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -40,6 +41,13 @@ it('shows only speeches the viewer personally reviewed, with only their own comm
     expect($titles)->toContain('Reviewed by viewer');
     expect($titles)->not->toContain('Reviewed by someone else');
     expect($response->json('timeline.0.commentary.notes_count'))->toBe(12);
+});
+
+it('treats a non-string cursor like any other malformed cursor instead of a server error', function () {
+    $viewer = User::factory()->create();
+    User::factory()->create(['username' => 'cursorprofile']);
+
+    $this->actingAs($viewer)->getJson('/api/u/cursorprofile/timeline?cursor[]=x')->assertOk();
 });
 
 it('renders an empty timeline for a profile never reviewed, by design', function () {
@@ -113,4 +121,18 @@ it('embeds the arc chain per timeline item and redacts non-visible ancestors', f
     $v2Entry = collect($arc)->firstWhere('id', $v2->id);
     expect($v2Entry['visible'])->toBeTrue();
     expect($v2Entry['title'])->toBe('Attempt 2');
+});
+
+it('restarts from page one for a string cursor whose timestamp half is not a stored timestamp', function () {
+    $viewer = User::factory()->create();
+    User::factory()->create(['username' => 'cursortimestamp']);
+
+    // PostgreSQL rejects `... < 'abc'` with a QueryException (500); SQLite hides it, so assert the decoder's contract.
+    foreach (['abc|1', '|1', '2026-13-45 99:99:99|1', '2026-10-01 12:00:00|x', '2026-10-01 12:00:00|'] as $raw) {
+        expect(KeysetCursor::decode(base64_encode($raw)))->toBeNull();
+        $this->actingAs($viewer)->getJson('/api/u/cursortimestamp/timeline?cursor='.urlencode(base64_encode($raw)))->assertOk();
+    }
+
+    expect(KeysetCursor::decode(base64_encode('2026-10-01 12:00:00|7')))->toBe(['2026-10-01 12:00:00', 7]);
+    expect(KeysetCursor::decode(base64_encode('2026-10-01 12:00:00.123456|7')))->toBe(['2026-10-01 12:00:00.123456', 7]);
 });

@@ -69,6 +69,33 @@ it('enforces the per-pair rate limit on connection requests (R17)', function () 
     $sixth->assertStatus(429);
 });
 
+it('counts every spelling of the same target id against one rate-limit bucket', function () {
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+
+    // "+N" passes the `integer` rule exactly like N; it must not open a second bucket.
+    foreach ([$b->id, '+'.$b->id, (string) $b->id, '+'.$b->id, $b->id] as $spelling) {
+        $this->actingAs($a)->postJson('/api/connections', ['user_id' => $spelling])->assertSuccessful();
+    }
+
+    $this->actingAs($a)->postJson('/api/connections', ['user_id' => '+'.$b->id])->assertStatus(429);
+    $this->actingAs($a)->postJson('/api/connections', ['user_id' => $b->id])->assertStatus(429);
+});
+
+it('rejects a non-scalar user_id with a validation error instead of a server error', function () {
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+
+    $this->actingAs($a)->postJson('/api/connections', ['user_id' => [$b->id]])->assertUnprocessable();
+    expect(Connection::query()->count())->toBe(0);
+});
+
+it('treats a non-string cursor on the connections list like a malformed cursor, not a server error', function () {
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+
+    $this->actingAs($a)->getJson('/api/connections?cursor[]=x')->assertOk();
+});
+
 it('lists an incoming pending request via ?state=pending, giving the recipient an id to accept', function () {
     // Found missing by the STEP-13 reconciliation audit: without this,
     // nothing surfaces the id `POST /connections/{id}/accept` needs, so
@@ -163,3 +190,11 @@ it('denies fresh administrative actors from every legacy list despite cached rol
     'member and admin' => [['member', 'admin']],
     'coach and super admin' => [['coach', 'super_admin']],
 ]);
+
+it('restarts the connections list from page one for a cursor with a non-timestamp half', function () {
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+
+    foreach (['abc|1', '|1', '2026-13-45 99:99:99|1'] as $raw) {
+        $this->actingAs($a)->getJson('/api/connections?cursor='.urlencode(base64_encode($raw)))->assertOk();
+    }
+});

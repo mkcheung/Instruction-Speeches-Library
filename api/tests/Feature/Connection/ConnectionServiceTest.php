@@ -160,3 +160,31 @@ it('only the blocker may unblock', function () {
 
     expect(fn () => $service->unblock($b, $a))->toThrow(HttpException::class);
 });
+
+it('a blocked person cannot take over the block and then lift it', function () {
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $service = app(ConnectionService::class);
+
+    $service->block($a, $b);
+    // B is the blocked party; blocking back must not transfer A's block to B.
+    $service->block($b, $a);
+
+    Connection::query()->get()->each(function (Connection $row) use ($a) {
+        expect($row->state)->toBe('blocked');
+        expect($row->blocked_by_id)->toBe($a->id);
+    });
+    expect(fn () => $service->unblock($b, $a))->toThrow(HttpException::class);
+    expect(Connection::query()->where('state', 'blocked')->count())->toBe(2);
+});
+
+it('lets the original blocker re-block idempotently and still unblock', function () {
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $service = app(ConnectionService::class);
+
+    $service->block($a, $b);
+    $service->block($a, $b);
+
+    expect($service->unblock($a, $b)->state)->toBe('declined');
+});

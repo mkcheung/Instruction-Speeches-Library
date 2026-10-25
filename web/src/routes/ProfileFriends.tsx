@@ -71,7 +71,10 @@ function FriendsView({ viewerId, username, view }: { viewerId: string; username:
     if (active && !cursor) void query.refetch()
   }
   useEffect(() => { currentRefresh.current = refresh })
-  useConnectionRefresh(refresh, active)
+  // Tab/window focus only refreshes page one. Deeper pages are keyset snapshots that restart at page one when
+  // refetched, which would throw away the reader's place every time they glance at another window; explicit
+  // actions (accept, decline, retry) still refresh from the top.
+  useConnectionRefresh(() => { if (!cursor) refresh() }, active)
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); applySearch(draft) }
   function complete(personId: number, message: string) {
     if (!mounted.current) return
