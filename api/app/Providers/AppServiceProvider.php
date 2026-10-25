@@ -409,6 +409,12 @@ class AppServiceProvider extends ServiceProvider
             return in_array($ability, $mustFallThrough, true) ? null : true;
         });
 
+        // Read-only Friends endpoints (list, discovery, relationship lookup):
+        // a generous per-user ceiling, separate from the write limiter below.
+        RateLimiter::for('friends-read', function (Request $request) {
+            return Limit::perMinute(120)->by('friends|'.$request->user()?->id);
+        });
+
         // STEP-13-FROZEN-CONTRACT.md §8 (R17): per-pair invite rate limit,
         // matching FortifyServiceProvider's RateLimiter::for('login', ...)
         // convention — the only existing precedent for a named limiter in
@@ -417,14 +423,17 @@ class AppServiceProvider extends ServiceProvider
         // per 24h, not 5 requests total. Deliberately does NOT gate
         // ReviewService::invite — see that class and §8 of the frozen
         // contract, a deliberate scope decision, not an oversight.
-        RateLimiter::for('friends-read', function (Request $request) {
-            return Limit::perMinute(120)->by('friends|'.$request->user()?->id);
-        });
-
         RateLimiter::for('connection-request', function (Request $request) {
+            // Runs before validation, so the raw input can be anything. Key on
+            // the canonical integer id: `5`, `"5"` and `"+5"` all pass the
+            // `integer` rule and name the same target, so keying on the raw
+            // string let `"+5"` open a second 5-per-day bucket. A non-scalar
+            // (`user_id[]=5`) must reach validation as a 422, not die here
+            // with an "Array to string conversion" 500.
             $targetId = $request->input('user_id');
+            $target = is_scalar($targetId) ? (int) $targetId : 0;
 
-            return Limit::perDay(5)->by($request->user()?->id.'|'.$targetId);
+            return Limit::perDay(5)->by($request->user()?->id.'|'.$target);
         });
 
         // STEP-14-deploy-hardening.md ("Upload rate limiting"), R10: on a

@@ -176,6 +176,63 @@ describe('PublicProfile', () => {
     expect(await screen.findByText(/not found/i)).toBeInTheDocument()
   })
 
+  it('sends a case-only difference in the URL to the canonical profile instead of a 404', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input).toLowerCase()
+      if (url.includes('/api/u/marscheung/timeline')) return jsonResponse(emptyTimeline)
+      if (url.includes('/api/u/marscheung')) {
+        return jsonResponse({
+          profile: {
+            id: 7,
+            username: 'marscheung',
+            display_name: 'Mars Cheung',
+            pronouns: null,
+            bio: null,
+            location: null,
+            avatar_url: null,
+          },
+        })
+      }
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { router } = renderProfileApp('/u/MarsCheung/reviews-left?tab=1')
+
+    expect(await screen.findByRole('heading', { name: 'Mars Cheung' })).toBeInTheDocument()
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/u/marscheung/reviews-left')
+    expect(router.state.location.search).toBe('?tab=1')
+  })
+
+  it.each([
+    ['an accented spelling', '/u/%C3%A9lodie/reviews-left?tab=1', 'elodie'],
+    ['a trailing space', '/u/elodie%20', 'elodie'],
+  ])('sends %s of the username to the canonical profile instead of a 404', async (_label, entry, canonical) => {
+    // The API trims, ASCII-folds and lowercases before looking a username up, so these links resolve there.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes(`/api/u/${canonical}/timeline`)) return jsonResponse(emptyTimeline)
+      if (url.includes(`/api/u/${canonical}`)) {
+        return jsonResponse({ profile: { id: 8, username: canonical, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+      }
+      if (url.includes('/api/u/')) {
+        // The server resolves any spelling to the same profile.
+        return jsonResponse({ profile: { id: 8, username: canonical, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+      }
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
+      throw new Error(`unexpected fetch: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { router } = renderProfileApp(entry)
+
+    expect(await screen.findByRole('heading', { name: 'Elodie Example' })).toBeInTheDocument()
+    expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
+    expect(router.state.location.pathname.startsWith(`/u/${canonical}`)).toBe(true)
+  })
+
   it('renders a real routed <nav> with links, not a tablist widget', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)

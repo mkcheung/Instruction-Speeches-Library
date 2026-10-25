@@ -14,13 +14,14 @@ const GUEST_PATHS = ['/login', '/register', '/forgot-password']
  * Routes that render for anonymous visitors but still fire authenticated
  * queries whose 401 means "no session", not "session expired". D5
  * (PLAN-APP-HEADER.md) requires `/u/:username` to stay reachable logged
- * out, but `PublicProfile` mounts `useGetConnectionsRailQuery` for the
- * identity block's connection action — and `/api/connections` is
- * `auth:sanctum`, so every anonymous visit 401s and (before this list
- * existed) ejected the visitor to `/login`. Exempting the route rather
- * than skipping that one query keeps the fix at the layer that actually
- * owns the decision: any future session probe on a public page is covered
- * too, instead of re-opening the same hole from a different call site.
+ * out, but `PublicProfile` mounts `useGetMeQuery` (and, for a signed-in
+ * viewer, the Friends queries behind the identity block's connection
+ * action) — and `/api/me` and `/api/friends*` are `auth:sanctum`, so every
+ * anonymous visit 401s and (before this list existed) ejected the visitor
+ * to `/login`. Exempting the route rather than skipping those queries
+ * keeps the fix at the layer that actually owns the decision: any future
+ * session probe on a public page is covered too, instead of re-opening the
+ * same hole from a different call site.
  */
 const PUBLIC_PATHS = ['/u/']
 

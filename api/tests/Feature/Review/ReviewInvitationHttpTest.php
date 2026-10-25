@@ -82,6 +82,29 @@ it('refuses an admin accepting an invitation by direct API call', function () {
     $this->actingAs($admin)->postJson("/api/reviews/{$review->id}/accept")->assertForbidden();
 });
 
+it('refuses to invite any administrative account as a reviewer by direct API call', function (array $roles) {
+    Notification::fake();
+    $this->seed(RoleSeeder::class);
+
+    $speaker = User::factory()->create();
+    $speaker->assignRole('member');
+    $speech = Speech::factory()->for($speaker)->create();
+    $administrative = User::factory()->create();
+    $administrative->assignRole($roles);
+
+    $this->actingAs($speaker)->postJson("/api/speeches/{$speech->id}/reviews", [
+        'reviewer_id' => $administrative->id,
+    ])->assertUnprocessable();
+
+    expect(Review::query()->count())->toBe(0);
+    Notification::assertNothingSent();
+})->with([
+    'admin' => [['admin']],
+    'super admin' => [['super_admin']],
+    'member and admin' => [['member', 'admin']],
+    'coach and super admin' => [['coach', 'super_admin']],
+]);
+
 it('surfaces self-invitation refusal as a 422 over HTTP (the service throw is the real enforcement, this just confirms it renders correctly)', function () {
     $this->seed(RoleSeeder::class);
 

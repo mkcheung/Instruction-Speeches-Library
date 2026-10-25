@@ -5,6 +5,7 @@ import { authApi } from '@/features/auth/authApi'
 import type { CurrentUser } from '@/features/auth/types'
 import { connectionApi } from './connectionApi'
 import { getErrorStatus } from '@/lib/errorStatus'
+import { hasRole } from '@/lib/roles'
 
 export interface ConnectionViewer { id: string; username: string }
 export interface ConnectionSessionState {
@@ -56,8 +57,7 @@ export const useConnectionSession = () => useSelector(selectConnectionSession)
 export const useEligibleConnectionViewer = () => useSelector(selectEligibleConnectionViewer)
 
 function eligible(user: CurrentUser): ConnectionViewer | null {
-  if (!user?.id || !user.username?.trim() || !Array.isArray(user.roles)
-    || user.roles.some((role) => role === 'admin' || role === 'super_admin')) return null
+  if (!user?.id || !user.username?.trim() || !Array.isArray(user.roles) || hasRole(user, 'admin')) return null
   return { id: String(user.id), username: user.username.trim() }
 }
 
@@ -97,7 +97,12 @@ export const connectionSessionMiddleware: Middleware = (store) => {
         const generation = connectionRequests.get(meta.requestId)
         connectionRequests.delete(meta.requestId)
         if (generation === current().generation && action.type.endsWith('/rejected')
-          && 'payload' in action && getErrorStatus(action.payload) === 401) clear('anonymous')
+          && 'payload' in action && getErrorStatus(action.payload) === 401 && current().status !== 'anonymous') {
+          // Already anonymous: a 401 here is the expected answer to an auth-only query that a public page keeps
+          // mounted (e.g. a profile timeline). Clearing again would reset the cache, resubscribe that query and
+          // loop 401 -> reset -> refetch.
+          clear('anonymous')
+        }
       }
     }
     if (authApi.endpoints.login.matchPending(action)) {

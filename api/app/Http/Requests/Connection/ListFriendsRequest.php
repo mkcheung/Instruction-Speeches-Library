@@ -17,7 +17,12 @@ class ListFriendsRequest extends FormRequest
     {
         return [
             'view' => ['sometimes', 'string', Rule::in(['accepted', 'incoming'])],
-            'search' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'search' => ['sometimes', 'nullable', 'string', 'max:100', function (string $attribute, mixed $value, \Closure $fail): void {
+                // Invalid UTF-8 would reach the LIKE query and make PostgreSQL throw (500) instead of failing validation.
+                if (is_string($value) && ! mb_check_encoding($value, 'UTF-8')) {
+                    $fail("The {$attribute} field must be valid UTF-8 text.");
+                }
+            }],
             'cursor' => ['sometimes', 'nullable', 'string', 'max:2048'],
         ];
     }

@@ -57,6 +57,25 @@ describe('connection session authority in the real test store', () => {
     expect(selectEligibleConnectionViewer(store.getState())?.id).toBe(event === 'identity change' ? 'b' : undefined)
   })
 
+  it('does not reset the connection cache again for a 401 that arrives while already anonymous', async () => {
+    // A public page keeps an auth-only query mounted (the profile timeline). Its 401 is the expected answer for an
+    // anonymous visitor; resetting the cache on each one would resubscribe the query and loop 401 -> reset -> refetch.
+    const store = makeStore()
+    const fetchMock = vi.fn(async () => json({ message: 'Unauthenticated.' }, 401))
+    vi.stubGlobal('fetch', fetchMock)
+    await store.dispatch(authApi.util.upsertQueryData('getMe', undefined, me('a')))
+    const args = { username: 'alice', tab: 'left' as const }
+    await store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate(args, { forceRefetch: true, subscribe: false }))
+    expect(selectConnectionSession(store.getState()).status).toBe('anonymous')
+    const generation = selectConnectionSession(store.getState()).generation
+
+    await store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate(args, { forceRefetch: true, subscribe: false }))
+    await store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate(args, { forceRefetch: true, subscribe: false }))
+
+    expect(selectConnectionSession(store.getState()).generation).toBe(generation)
+    expect(selectConnectionSession(store.getState()).status).toBe('anonymous')
+  })
+
   it('hides probes returning the old cookie identity while a new login is in progress', async () => {
     const store = makeStore()
     await store.dispatch(authApi.util.upsertQueryData('getMe', undefined, me('a')))

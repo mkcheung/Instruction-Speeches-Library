@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useMatch, useParams } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useLocation, useMatch, useParams } from 'react-router-dom'
 import { skipToken } from '@reduxjs/toolkit/query'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -15,12 +15,18 @@ export interface PublicProfileOutletContext {
   profile: PublicProfileType
 }
 
+/** Client mirror of the API's `Username::normalize` (trim, ASCII-fold, lowercase). */
+function normalizedUsername(raw: string): string {
+  return raw.trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
 const SECTION_LINK_CLASS =
   'rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground aria-[current=page]:border-b-2 aria-[current=page]:border-primary'
 
 /** Public identity and sections remain public; Friends owns its private child guard. */
 export default function PublicProfile() {
   const { username } = useParams<{ username: string }>()
+  const location = useLocation()
   const { currentData: profile, isLoading, isFetching: isFetchingProfile, isError } = useGetPublicProfileQuery(username ?? '', {
     skip: !username,
   })
@@ -42,6 +48,26 @@ export default function PublicProfile() {
       <div className="flex min-h-svh items-center justify-center text-sm text-muted-foreground">
         Loading…
       </div>
+    )
+  }
+
+  // The API normalizes the username before the lookup (trim, ASCII-fold, lowercase), so `/u/MarsCheung`,
+  // `/u/%C3%A9lodie` or a link pasted with a trailing space has always reached this page. Every private
+  // affordance below compares the canonical username strictly, so whenever the server has resolved a profile
+  // under a different spelling, send the visitor to the canonical URL instead of treating an existing profile
+  // as missing. Only a spelling that normalizes to the resolved username redirects: any other mismatch is not
+  // this person's URL and must never display their (possibly cached) profile. Only trust a settled response:
+  // while a refetch is in flight `profile` may still be the previous username's data.
+  if (profile && username && !isFetchingProfile && profile.username !== username && normalizedUsername(username) === profile.username) {
+    return (
+      <Navigate
+        replace
+        to={{
+          pathname: location.pathname.replace(/^\/u\/[^/]+/i, `/u/${encodeURIComponent(profile.username)}`),
+          search: location.search,
+          hash: location.hash,
+        }}
+      />
     )
   }
 

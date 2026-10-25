@@ -7,6 +7,7 @@ use App\Models\Review;
 use App\Models\User;
 use App\Services\MediaUrlSigner;
 use App\Services\SpeechArcService;
+use App\Support\KeysetCursor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -147,20 +148,9 @@ class ProfileTimelineController extends Controller
     /**
      * @return array{0: string, 1: int}|null
      */
-    private static function decodeCursor(?string $cursor): ?array
+    private static function decodeCursor(mixed $cursor): ?array
     {
-        if ($cursor === null || $cursor === '') {
-            return null;
-        }
-
-        $decoded = base64_decode($cursor, true);
-        if ($decoded === false || ! str_contains($decoded, '|')) {
-            return null;
-        }
-
-        [$ts, $id] = explode('|', $decoded, 2);
-
-        return [$ts, (int) $id];
+        return KeysetCursor::decode($cursor);
     }
 
     private static function encodeCursor(string $timestamp, int $id): string
