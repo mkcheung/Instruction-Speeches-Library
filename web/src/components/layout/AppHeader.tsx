@@ -2,21 +2,24 @@ import { Link } from 'react-router-dom'
 import { ConnectionRequestsBell } from '@/components/layout/ConnectionRequestsBell'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { UserMenu } from '@/components/layout/UserMenu'
+import { MobileNavigation } from '@/components/layout/MobileNavigation'
 
 /**
  * D1/D7/D8/R2 (PLAN-APP-HEADER.md). `<header>` landmark, app name, bell,
  * user menu — no `<nav>` and no header links (S1: the sidebar is the nav
  * landmark). Static, not sticky (R2 — a sticky header would fight
- * fullscreen and the timeline strip on `SpeechWatch`). Narrow enough not
- * to need a hamburger at 375px: the display name truncates and hides
- * below `sm:` (D8), leaving the initials circle as the trigger.
+ * fullscreen and the timeline strip on `SpeechWatch`). A separate mobile
+ * menu keeps primary navigation accessible while the account menu stays focused.
  */
 export function AppHeader() {
   return (
     <header className="workspace-header flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 sm:px-6 lg:px-8">
-      <Link to="/dashboard" className="workspace-header-brand min-w-0 truncate text-sm font-semibold">
-        Instruction Speeches Library
-      </Link>
+      <div className="flex min-w-0 items-center gap-2">
+        <MobileNavigation />
+        <Link to="/dashboard" className="workspace-header-brand min-w-0 truncate text-sm font-semibold">
+          Instruction Speeches Library
+        </Link>
+      </div>
       <div className="workspace-header-actions flex shrink-0 items-center gap-2">
         <ConnectionRequestsBell />
         <NotificationBell />

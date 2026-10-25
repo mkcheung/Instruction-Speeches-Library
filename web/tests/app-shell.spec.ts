@@ -43,16 +43,17 @@ test.describe('authenticated shell', () => {
     // (iPhone 13, 390px) for a layout that is behaving correctly — a
     // failure CI never saw, because ci.yml runs this file with
     // `--project=chromium` only. Assert the actual responsive contract
-    // instead: the rail above `md`, and `UserMenu` carrying the same
-    // destinations below it (S1's reason for duplicating the list).
+    // instead: the rail above `md`, and the separate main navigation menu
+    // carrying primary destinations below it.
     const sidebar = page.getByRole('navigation', { name: 'Main' })
     const width = page.viewportSize()?.width ?? 0
 
     if (width >= 768) {
       await expect(sidebar).toBeVisible()
-      await expect(sidebar.getByRole('link', { name: 'Edit profile' })).toBeVisible()
+      await expect(sidebar.getByRole('link', { name: 'My speeches', exact: true })).toBeVisible()
+      await expect(sidebar.getByRole('link', { name: 'Edit profile' })).toHaveCount(0)
     } else {
-      // Below `md` the rail collapses and `UserMenu` carries these
+      // Below `md` the rail collapses and the main navigation menu carries these
       // destinations instead — asserted in its own test below rather than
       // here, because opening that menu leaves focus on its trigger and
       // would break the Tab-from-the-top assertion that follows.
@@ -85,18 +86,13 @@ test.describe('authenticated shell', () => {
     await context.close()
   })
 
-  test('/profile is reachable by clicking the sidebar — previously reachable from nowhere', async ({ browser }) => {
-    // The rail is `hidden md:flex`; below `md` there is no sidebar to
-    // exercise and `UserMenu` carries these destinations instead (asserted
-    // in the first test above). Skipping is the honest outcome here —
-    // the previous unconditional assertion simply failed on `mobile-webkit`.
-    test.skip((test.info().project.use.viewport?.width ?? 1280) < 768, 'sidebar is hidden below md')
-
+  test('/profile is reachable through the account dropdown at every viewport', async ({ browser }) => {
     const context = await browser.newContext({ storageState: USERS.speaker.storageState })
     const page = await context.newPage()
 
     await page.goto(`${APP_URL}/dashboard`)
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Edit profile' }).click()
+    await page.getByRole('button', { name: USERS.speaker.name, exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Edit profile', exact: true }).click()
     await expect(page).toHaveURL(`${APP_URL}/profile`)
 
     await context.close()
@@ -106,7 +102,7 @@ test.describe('authenticated shell', () => {
     browser,
   }) => {
     // The rail is `hidden md:flex`; below `md` there is no sidebar to
-    // exercise and `UserMenu` carries these destinations instead (asserted
+    // exercise and the main navigation menu carries these destinations instead (asserted
     // in the first test above). Skipping is the honest outcome here —
     // the previous unconditional assertion simply failed on `mobile-webkit`.
     test.skip((test.info().project.use.viewport?.width ?? 1280) < 768, 'sidebar is hidden below md')
@@ -123,14 +119,9 @@ test.describe('authenticated shell', () => {
   })
 })
 
-/**
- * The collapsed-rail half of the responsive nav contract. S1 duplicates
- * the sidebar's destinations into `UserMenu` precisely so that navigation
- * survives below `md`; nothing asserted that until the rail's breakpoint
- * moved, so this pins it.
- */
+/** The collapsed sidebar uses its own menu, separate from account settings. */
 test.describe('collapsed navigation below md', () => {
-  test('the user menu carries the sidebar destinations when the rail is hidden', async ({
+  test('separate main and account menus preserve navigation when the rail is hidden', async ({
     browser,
   }) => {
     test.skip(
@@ -144,10 +135,16 @@ test.describe('collapsed navigation below md', () => {
     await page.goto(`${APP_URL}/dashboard`)
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
 
-    await page.getByRole('button', { name: USERS.speaker.name }).click()
-    for (const label of ['My reviews', 'My speeches', 'Edit profile', 'Account & privacy']) {
-      await expect(page.getByRole('menuitem', { name: label })).toBeVisible()
+    await page.getByRole('button', { name: 'Main navigation', exact: true }).click()
+    for (const label of ['My reviews', 'My speeches', 'Search']) {
+      await expect(page.getByRole('menuitem', { name: label, exact: true })).toBeVisible()
     }
+    await expect(page.getByRole('menuitem', { name: 'Edit profile' })).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await page.getByRole('button', { name: USERS.speaker.name, exact: true }).click()
+    await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
+      'Your profile', 'Edit profile', 'Account & privacy', 'Log out',
+    ])
 
     await page.getByRole('menuitem', { name: 'Edit profile' }).click()
     await expect(page).toHaveURL(`${APP_URL}/profile`)
@@ -337,6 +334,12 @@ async function interceptPresentationApi(context: BrowserContext, initiallyAuthen
         data: { type: 'review.invited', actor_name: 'Avery Speaker', speech_title: presentationTitle, url: `${APP_URL}/dashboard` },
       })), unread_count: 2 })
       case '/api/connections': return json({ connections: [{ id: 1, state: 'pending', peer: { name: 'Avery Speaker', username: 'avery' } }] })
+      // The header's requests bell reads the incoming Friends list; keep the single pending request the old
+      // /api/connections?state=pending mock above stood for.
+      case '/api/friends': return json(url.searchParams.get('view') === 'incoming'
+        ? { friends: [{ connection_id: 1, person: { id: 2, name: 'Avery Speaker', username: 'avery', avatar_url: null },
+          mutual_friends_count: 0, requested_at: presentationDate, connected_at: null, note: null }], meta: { total: 1, next_cursor: null } }
+        : { friends: [], meta: { total: 0, next_cursor: null } })
       // The header's account chip reads its own public profile for the saved photo (UserMenu.tsx); no photo, so it
       // keeps the initials fallback these presentation checks were written against.
       case '/api/u/presentation-member': return json({ profile: {
@@ -465,7 +468,7 @@ test.describe('option C presentation (isolated frontend)', () => {
       await presentationExpect(page.getByText(/Published .*2026/)).toBeVisible()
       await presentationExpect(page.getByText(/Revoked .*2026/)).toBeVisible()
       const rail = page.getByRole('navigation', { name: 'Main' })
-      await presentationExpect(rail.getByRole('link')).toHaveCount(9)
+      await presentationExpect(rail.getByRole('link')).toHaveCount(6)
       await presentationExpect(rail.getByRole('link', { name: 'My reviews', exact: true })).toHaveAttribute('aria-current', 'page')
       await presentationExpect(rail.getByRole('link', { name: 'My reviews', exact: true })).toHaveCSS('background-color', 'rgb(138, 23, 32)')
       await presentationExpect(page.locator('.workspace-scene--sidebar[data-workspace-scene="reviews"] [data-workspace-pose="seated-reading"]')).toBeVisible({ timeout: 30_000 })
@@ -527,20 +530,35 @@ test.describe('option C presentation (isolated frontend)', () => {
           await account.click()
           await presentationExpect(account).toHaveAttribute('aria-expanded', 'true')
           await presentationExpect(account).toHaveCSS('background-color', 'rgb(248, 236, 218)')
-          for (const name of ['My reviews', 'My speeches', 'Find reviewers', 'Upload a speech', 'Search', 'Your profile', 'Edit profile', 'Account & privacy', 'Become a Coach', 'Log out']) {
+          for (const name of ['Your profile', 'Edit profile', 'Account & privacy', 'Log out']) {
             await presentationExpect(page.getByRole('menuitem', { name, exact: true })).toBeVisible()
           }
           const popup = page.getByRole('menu')
+          await presentationExpect(popup.getByRole('menuitem')).toHaveText(['Your profile', 'Edit profile', 'Account & privacy', 'Log out'])
           presentationExpect(await popup.evaluate((element) => Boolean(element.closest('.workspace-header, .workspace-sidebar, .workspace-dashboard, .workspace-login')))).toBe(false)
           presentationExpect(await popup.evaluate((element) => getComputedStyle(element).getPropertyValue('--workspace-paper'))).toBe('')
           presentationExpect(await avatar.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, foreground: getComputedStyle(element).color }))).toEqual(avatarPair)
           await page.keyboard.press('Escape')
         }
       }
-      await account.click()
+      await page.getByRole('button', { name: 'Main navigation', exact: true }).click()
+      await presentationExpect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
+        'My reviews', 'My speeches', 'Find reviewers', 'Upload a speech', 'Search', 'Become a Coach',
+      ])
+      await expectNoPageOverflow(page)
       await page.getByRole('menuitem', { name: 'Search', exact: true }).click()
       await presentationExpect(page).toHaveURL(`${APP_URL}/search`)
       await presentationExpect(page.getByRole('heading', { name: 'Search your speeches', exact: true })).toBeVisible()
+      await page.getByRole('button', { name: 'Main navigation', exact: true }).click()
+      await presentationExpect(page.getByRole('menu', { name: 'Main navigation' })).toBeVisible()
+      await page.setViewportSize({ width: 1024, height: 900 })
+      await presentationExpect(page.getByRole('menu')).toHaveCount(0)
+      await presentationExpect(page.getByRole('button', { name: 'Main navigation', exact: true })).toBeHidden()
+      const sidebar = page.getByRole('navigation', { name: 'Main' })
+      await presentationExpect(sidebar).toBeVisible()
+      for (const name of ['Your profile', 'Edit profile', 'Account & privacy']) {
+        await presentationExpect(sidebar.getByRole('link', { name, exact: true })).toHaveCount(0)
+      }
       presentationExpect(mocked.unexpected).toEqual([])
     } finally { await context.close() }
   })
@@ -944,7 +962,7 @@ test.describe('notebook presentation (isolated frontend)', () => {
       await page.goto(`${APP_URL}/dashboard`)
       await presentationExpect(page.getByRole('heading', { name: 'My reviews', exact: true })).toBeVisible()
       const rail = page.getByRole('navigation', { name: 'Main' })
-      await presentationExpect(rail.getByRole('link')).toHaveCount(9)
+      await presentationExpect(rail.getByRole('link')).toHaveCount(6)
       for (const width of [320, 375, 767, 768, 1024, 1279, 1280, 1440]) {
         await page.setViewportSize({ width, height: 900 })
         await page.evaluate(() => window.scrollTo(0, 0))

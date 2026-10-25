@@ -6,45 +6,24 @@ use App\Exceptions\ConnectionBlockedException;
 use App\Exceptions\SelfConnectionNotPermittedException;
 use App\Models\Connection;
 use App\Models\User;
+use App\Support\ConnectionEligibility;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * MODERNIZATION_PLAN §6.7.2 / STEP-13-FROZEN-CONTRACT.md §5 — the
- * `connections` state machine, always written as two mirrored rows.
+ * Two reciprocal rows form one connection. Every mutation serializes the pair
+ * before reading its pre-state, then locks/writes lower-owner-id first.
+ * PostgreSQL transaction advisory locks also cover wholly absent pairs, which
+ * row locks cannot protect. SQLite serializes writers at the database level.
  *
- * Every public method here takes the two parties as ordinary parameters and
- * internally computes `[$lowId, $highId] = $a->id < $b->id ? [$a, $b] :
- * [$b, $a]` before touching either row — row locks (and the mirrored-pair
- * writes) are always acquired in that fixed order, regardless of which user
- * initiated the action. This mirrors ReviewService's `lockForUpdate()`
- * idiom (see that class), applied to two rows instead of one, and is the
- * whole defence against the AB-BA deadlock: A requests B while B requests A
- * concurrently, and without a fixed lock order the two transactions could
- * take the two rows in opposite orders.
- *
- * `request()` is the one write path that goes further than a lock: two
- * concurrent calls can both be writing the SAME two rows (a genuine crossed
- * request, not just contention on existing rows), which a SELECT-then-write
- * check-and-branch cannot resolve atomically no matter what order the locks
- * are taken in — the two "does a row already exist" reads can both return
- * "no" before either write lands. So `request()` uses a raw
- * `INSERT ... ON CONFLICT (owner_id, peer_id) DO UPDATE` upsert instead
- * (the first use of this pattern in this codebase's application code —
- * every existing upsert uses Eloquent's `updateOrCreate()`, exactly the
- * race this must avoid). The `CASE` expressions inside the `DO UPDATE`
- * encode the whole state machine atomically: a fresh pair inserts pending;
- * a `declined` row is reused (`declined -> pending`, per the unique key);
- * a `pending` row whose `initiated_by_id` differs from this call's caller
- * is a crossed request and resolves straight to `accepted`; a `blocked` or
- * already-`accepted` row is left untouched. Because a `blocked` row can
- * never be moved out of `blocked` by this upsert, the caller doesn't need
- * to pre-check for a block (which would itself just be a stale read) — it
- * writes unconditionally, then reads the row back, and throws
- * ConnectionBlockedException if the result is (still) `blocked`.
+ * Request keeps the atomic mirrored upserts for fresh, repeated, declined and
+ * crossed requests. Both pre-state and resulting state are checked inside the
+ * transaction: corrupt historical pairs are rejected, never silently repaired.
  */
 class ConnectionService
 {
+    public function __construct(private readonly ConnectionEligibility $eligibility) {}
+
     /**
      * `POST /api/connections` — idempotent-upsert shaped, mirroring
      * `ReviewService::invite`'s own docblock pattern exactly: this one
@@ -56,23 +35,26 @@ class ConnectionService
         throw_if($requester->id === $target->id, SelfConnectionNotPermittedException::class, 'You cannot connect with yourself.');
 
         [$lowId, $highId] = $this->orderedIds($requester, $target);
-        $now = now();
 
-        DB::transaction(function () use ($lowId, $highId, $requester, $note, $now) {
-            // Lower-owner-id row first, then higher — the fixed lock/write
-            // order every method in this class uses.
+        return DB::transaction(function () use ($lowId, $highId, $requester, $target, $note) {
+            [$low, $high] = $this->lockOptionalPair($lowId, $highId);
+            $this->eligibility->assertActor($requester);
+            $this->eligibility->assertTarget($target);
+
+            if ($low !== null || $high !== null) {
+                [$low, $high] = $this->validatePair($low, $high);
+                if ($low->state === 'blocked') {
+                    throw new ConnectionBlockedException('This connection cannot be requested.');
+                }
+            }
+
+            $now = now();
             $this->upsertRequestRow($lowId, $highId, $requester->id, $note, $now);
             $this->upsertRequestRow($highId, $lowId, $requester->id, $note, $now);
+            [$low, $high] = $this->lockPair($lowId, $highId);
+
+            return $requester->id === $low->owner_id ? $low : $high;
         });
-
-        /** @var Connection $mine */
-        $mine = Connection::query()->where('owner_id', $requester->id)->where('peer_id', $target->id)->firstOrFail();
-
-        if ($mine->state === 'blocked') {
-            throw new ConnectionBlockedException('This connection cannot be requested.');
-        }
-
-        return $mine;
     }
 
     /**
@@ -85,10 +67,11 @@ class ConnectionService
     public function accept(User $actor, int $connectionId): Connection
     {
         return DB::transaction(function () use ($actor, $connectionId) {
-            /** @var Connection $mine */
-            $mine = Connection::query()->where('owner_id', $actor->id)->whereKey($connectionId)->lockForUpdate()->firstOrFail();
+            [$low, $high] = $this->lockOwnedPair($actor, $connectionId);
+            $this->eligibility->assertActor($actor);
 
-            [$low, $high] = $this->lockPair($actor->id, $mine->peer_id);
+            $peerId = $actor->id === $low->owner_id ? $high->owner_id : $low->owner_id;
+            $this->eligibility->assertTarget(User::query()->findOrFail($peerId));
 
             if ($low->state === 'accepted') {
                 return $actor->id === $low->owner_id ? $low : $high;
@@ -123,10 +106,8 @@ class ConnectionService
     public function decline(User $actor, int $connectionId): Connection
     {
         return DB::transaction(function () use ($actor, $connectionId) {
-            /** @var Connection $mine */
-            $mine = Connection::query()->where('owner_id', $actor->id)->whereKey($connectionId)->lockForUpdate()->firstOrFail();
-
-            [$low, $high] = $this->lockPair($actor->id, $mine->peer_id);
+            [$low, $high] = $this->lockOwnedPair($actor, $connectionId);
+            $this->eligibility->assertActor($actor);
 
             if ($low->state === 'declined') {
                 return $actor->id === $low->owner_id ? $low : $high;
@@ -147,21 +128,14 @@ class ConnectionService
         });
     }
 
-    /**
-     * Block never touches an existing `reviews` row — blocking is not
-     * revoking (STEP-13.md's own acceptance criterion). Unlike
-     * `request()`, block/unblock don't need the upsert-race treatment:
-     * moving TO `blocked` is idempotent/commutative regardless of the
-     * prior state, so a plain lock-then-write is sufficient — there is no
-     * "which of two concurrent callers wins" ambiguity to resolve, both
-     * outcomes are the same row.
-     */
+    /** Block severs only the connection; it never revokes existing reviews. */
     public function block(User $actor, User $target): Connection
     {
         throw_if($actor->id === $target->id, SelfConnectionNotPermittedException::class, 'You cannot block yourself.');
 
         return DB::transaction(function () use ($actor, $target) {
             [$low, $high] = $this->lockOrCreatePair($actor->id, $target->id);
+            $this->eligibility->assertActor($actor);
 
             $now = now();
             foreach ([$low, $high] as $row) {
@@ -184,6 +158,7 @@ class ConnectionService
     {
         return DB::transaction(function () use ($actor, $target) {
             [$low, $high] = $this->lockPair($actor->id, $target->id);
+            $this->eligibility->assertActor($actor);
 
             if ($low->state !== 'blocked') {
                 abort(409, 'This connection is not blocked.');
@@ -214,44 +189,95 @@ class ConnectionService
     }
 
     /**
-     * Lock the mirrored pair for two user ids, lower-owner-id row first.
-     * Both rows must already exist — callers that may be acting on a
-     * not-yet-existing pair use `lockOrCreatePair()` instead.
+     * Resolve ownership without locking the actor's potentially higher row.
+     * Recheck that exact row after taking the pair lock, including erasure races.
      *
      * @return array{0: Connection, 1: Connection}
      */
+    private function lockOwnedPair(User $actor, int $connectionId): array
+    {
+        $selected = Connection::query()->where('owner_id', $actor->id)->whereKey($connectionId)->firstOrFail();
+        [$low, $high] = $this->lockOptionalPair($actor->id, $selected->peer_id);
+        $mine = $actor->id < $selected->peer_id ? $low : $high;
+        abort_unless($mine !== null && $mine->id === $connectionId, 404);
+
+        return $this->validatePair($low, $high);
+    }
+
+    /** @return array{0: Connection, 1: Connection} */
     private function lockPair(int $userAId, int $userBId): array
+    {
+        [$low, $high] = $this->lockOptionalPair($userAId, $userBId);
+
+        return $this->validatePair($low, $high);
+    }
+
+    /**
+     * The PostgreSQL pair lock is acquired before either SELECT, including when
+     * neither row exists. Hash collisions only serialize unrelated pairs; the
+     * same ordered pair always uses the same lock on every mutation path.
+     *
+     * @return array{0: ?Connection, 1: ?Connection}
+     */
+    private function lockOptionalPair(int $userAId, int $userBId): array
     {
         $lowId = min($userAId, $userBId);
         $highId = max($userAId, $userBId);
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            DB::select('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', ['connections:'.$lowId.':'.$highId]);
+        }
 
-        /** @var Connection $low */
-        $low = Connection::query()->where('owner_id', $lowId)->where('peer_id', $highId)->lockForUpdate()->firstOrFail();
-        /** @var Connection $high */
-        $high = Connection::query()->where('owner_id', $highId)->where('peer_id', $lowId)->lockForUpdate()->firstOrFail();
+        $low = Connection::query()->where('owner_id', $lowId)->where('peer_id', $highId)->lockForUpdate()->first();
+        $high = Connection::query()->where('owner_id', $highId)->where('peer_id', $lowId)->lockForUpdate()->first();
 
         return [$low, $high];
     }
 
     /**
-     * Same lock order as `lockPair()`, but creates a fresh `blocked` pair
-     * when neither row exists yet — blocking someone you've never
-     * connected to is legal and doesn't require a prior `request()`.
+     * Validate the entire pre-state before any transition can hide corruption.
+     * Block/unblock of a fresh pair may legitimately leave a null initiator.
+     *
+     * @return array{0: Connection, 1: Connection}
+     */
+    private function validatePair(?Connection $low, ?Connection $high): array
+    {
+        abort_if($low === null || $high === null, 409, 'This connection is unavailable.');
+        $parties = [$low->owner_id, $low->peer_id];
+        $valid = $low->owner_id !== $low->peer_id
+            && $high->owner_id === $low->peer_id && $high->peer_id === $low->owner_id
+            && $low->state === $high->state
+            && in_array($low->state, ['pending', 'accepted', 'declined', 'blocked'], true)
+            && $low->initiated_by_id === $high->initiated_by_id
+            && ($low->initiated_by_id === null
+                ? in_array($low->state, ['declined', 'blocked'], true)
+                : in_array($low->initiated_by_id, $parties, true))
+            && $low->blocked_by_id === $high->blocked_by_id
+            && ($low->state === 'blocked'
+                ? in_array($low->blocked_by_id, $parties, true)
+                : $low->blocked_by_id === null);
+        abort_unless($valid, 409, 'This connection is unavailable.');
+
+        return [$low, $high];
+    }
+
+    /**
+     * Only a wholly absent pair may be created. Existing partial pairs are left
+     * untouched for reconciliation. Both new rows remain inside this transaction.
      *
      * @return array{0: Connection, 1: Connection}
      */
     private function lockOrCreatePair(int $userAId, int $userBId): array
     {
+        [$low, $high] = $this->lockOptionalPair($userAId, $userBId);
+        if ($low !== null || $high !== null) {
+            return $this->validatePair($low, $high);
+        }
+
         $lowId = min($userAId, $userBId);
         $highId = max($userAId, $userBId);
         $now = now();
-
-        /** @var Connection $low */
-        $low = Connection::query()->where('owner_id', $lowId)->where('peer_id', $highId)->lockForUpdate()->first()
-            ?? Connection::query()->create(['owner_id' => $lowId, 'peer_id' => $highId, 'state' => 'pending', 'requested_at' => $now]);
-        /** @var Connection $high */
-        $high = Connection::query()->where('owner_id', $highId)->where('peer_id', $lowId)->lockForUpdate()->first()
-            ?? Connection::query()->create(['owner_id' => $highId, 'peer_id' => $lowId, 'state' => 'pending', 'requested_at' => $now]);
+        $low = Connection::query()->create(['owner_id' => $lowId, 'peer_id' => $highId, 'state' => 'blocked', 'blocked_by_id' => $userAId, 'requested_at' => $now]);
+        $high = Connection::query()->create(['owner_id' => $highId, 'peer_id' => $lowId, 'state' => 'blocked', 'blocked_by_id' => $userAId, 'requested_at' => $now]);
 
         return [$low, $high];
     }

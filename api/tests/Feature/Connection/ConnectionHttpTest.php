@@ -5,7 +5,7 @@ use App\Models\User;
 use Database\Seeders\RoleSeeder;
 
 it('rejects a self-connection over HTTP without creating a connection', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     $this->actingAs($user)->postJson('/api/connections', ['user_id' => $user->id])
         ->assertUnprocessable()
@@ -15,8 +15,8 @@ it('rejects a self-connection over HTTP without creating a connection', function
 });
 
 it('walks a connection through request -> accept over HTTP', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     $request = $this->actingAs($a)->postJson('/api/connections', ['user_id' => $b->id, 'note' => 'hi']);
     $request->assertCreated();
@@ -30,9 +30,9 @@ it('walks a connection through request -> accept over HTTP', function () {
 });
 
 it('rejects accepting a row that belongs to someone else', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
-    $stranger = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $stranger = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     $this->actingAs($a)->postJson('/api/connections', ['user_id' => $b->id])->assertCreated();
     $aRow = Connection::query()->where('owner_id', $a->id)->where('peer_id', $b->id)->firstOrFail();
@@ -42,11 +42,11 @@ it('rejects accepting a row that belongs to someone else', function () {
 
 it('blocks and denies an admin from blocking on behalf of others', function () {
     $this->seed(RoleSeeder::class);
-    $a = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $a->assignRole('member');
-    $b = User::factory()->create();
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $b->assignRole('member');
-    $admin = User::factory()->create();
+    $admin = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
     $admin->assignRole('admin');
 
     $this->actingAs($a)->postJson('/api/connections', ['user_id' => $b->id])->assertCreated();
@@ -58,8 +58,8 @@ it('blocks and denies an admin from blocking on behalf of others', function () {
 });
 
 it('enforces the per-pair rate limit on connection requests (R17)', function () {
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     for ($i = 0; $i < 5; $i++) {
         $this->actingAs($a)->postJson('/api/connections', ['user_id' => $b->id]);
@@ -74,8 +74,8 @@ it('lists an incoming pending request via ?state=pending, giving the recipient a
     // nothing surfaces the id `POST /connections/{id}/accept` needs, so
     // the demo script's "Send someone a connection request. They
     // accept." had no reachable path for the recipient's half at all.
-    $a = User::factory()->create();
-    $b = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
+    $b = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     $this->actingAs($a)->postJson('/api/connections', ['user_id' => $b->id, 'note' => 'hi'])->assertCreated();
 
@@ -102,7 +102,64 @@ it('lists an incoming pending request via ?state=pending, giving the recipient a
 });
 
 it('rejects an unrecognized state query param', function () {
-    $a = User::factory()->create();
+    $a = User::factory()->create(['first_name' => 'Connection', 'last_name' => 'Participant', 'username' => 'connection-'.uniqid()]);
 
     $this->actingAs($a)->getJson('/api/connections?state=blocked')->assertStatus(422);
 });
+
+it('excludes promoted administrative peers before legacy list pagination', function (string $state) {
+    $this->seed(RoleSeeder::class);
+    // Legacy readers must still return unnamed, roleless non-admin peers.
+    $viewer = User::factory()->create();
+    $visiblePeers = User::factory()->count(21)->create();
+    $promotedPeers = User::factory()->count(4)->create();
+
+    foreach ($visiblePeers->concat($promotedPeers) as $peer) {
+        $attributes = [
+            'state' => $state,
+            'initiated_by_id' => $peer->id,
+            'requested_at' => now(),
+            'connected_at' => $state === 'accepted' ? now() : null,
+        ];
+        Connection::factory()->create($attributes + ['owner_id' => $viewer->id, 'peer_id' => $peer->id]);
+        Connection::factory()->create($attributes + ['owner_id' => $peer->id, 'peer_id' => $viewer->id]);
+    }
+
+    foreach ([['admin'], ['super_admin'], ['member', 'admin'], ['coach', 'super_admin']] as $index => $roles) {
+        $promotedPeers[$index]->assignRole($roles);
+    }
+
+    $url = $state === 'accepted' ? '/api/connections' : '/api/connections?state=pending';
+    $first = $this->actingAs($viewer)->getJson($url)->assertOk()
+        ->assertJsonCount(20, 'connections')
+        ->assertJsonStructure(['connections' => [['id', 'peer' => ['id', 'name', 'username', 'avatar_url'], 'metric']], 'meta' => ['next_cursor']]);
+    expect(array_keys($first->json()))->toBe(['connections', 'meta']);
+    expect(array_keys($first->json('meta')))->toBe(['next_cursor']);
+    expect($first->json('meta.next_cursor'))->toBeString();
+    expect($first->json('connections.0.metric'))->toBe($state === 'pending' ? 'Wants to connect' : 'Connected '.now()->format('M Y'));
+
+    $separator = str_contains($url, '?') ? '&' : '?';
+    $second = $this->getJson($url.$separator.'cursor='.urlencode($first->json('meta.next_cursor')))
+        ->assertOk()->assertJsonCount(1, 'connections')->assertJsonPath('meta.next_cursor', null);
+
+    $listedIds = collect($first->json('connections'))->concat($second->json('connections'))->pluck('peer.id')->sort()->values()->all();
+    expect($listedIds)->toBe($visiblePeers->pluck('id')->sort()->values()->all());
+})->with(['accepted', 'pending']);
+
+it('denies fresh administrative actors from every legacy list despite cached roles', function (array $roles) {
+    $this->seed(RoleSeeder::class);
+    $viewer = User::factory()->create();
+    $viewer->load('roles');
+    // Promote through another model so the authenticated object's loaded
+    // roles remain stale. Authorization must consult current persisted roles.
+    User::query()->findOrFail($viewer->id)->assignRole($roles);
+
+    $this->actingAs($viewer)->getJson('/api/connections')->assertForbidden();
+    $this->getJson('/api/connections?state=accepted')->assertForbidden();
+    $this->getJson('/api/connections?state=pending')->assertForbidden();
+})->with([
+    'admin' => [['admin']],
+    'super admin' => [['super_admin']],
+    'member and admin' => [['member', 'admin']],
+    'coach and super admin' => [['coach', 'super_admin']],
+]);

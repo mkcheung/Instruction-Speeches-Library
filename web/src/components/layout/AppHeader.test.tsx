@@ -18,9 +18,13 @@ function mockHeaderData({ unread = 2, pending = 1 } = {}) {
       id: 42, username: 'e2e-member', display_name: 'Milo Member', avatar_url: null,
     } }
     else if (url.endsWith('/api/notifications')) body = { notifications: [], unread_count: unread }
-    else if (url.includes('/api/connections?state=pending')) body = {
-      connections: Array.from({ length: pending }, (_, index) => ({ id: index + 7, peer: { name: 'Cora Coach' } })),
-      meta: { next_cursor: null },
+    else if (url.includes('/api/friends?view=incoming')) body = {
+      friends: Array.from({ length: pending }, (_, index) => ({
+        connection_id: index + 7,
+        person: { id: index + 100, name: 'Cora Coach', username: `coach-${index}`, avatar_url: null },
+        mutual_friends_count: 0, requested_at: '2026-10-23T12:00:00Z', connected_at: null, note: null,
+      })),
+      meta: { total: pending, next_cursor: null },
     }
     else throw new Error(`unexpected fetch: ${url}`)
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } })
@@ -74,7 +78,7 @@ describe('AppHeader workspace chrome', () => {
     expect(within(header).queryByRole('navigation')).toBeNull()
   })
 
-  it('preserves opened controls and the complete account navigation in neutral body portals', async () => {
+  it('preserves opened controls and account-only navigation in neutral body portals', async () => {
     mockHeaderData()
     const user = userEvent.setup()
     renderWithProviders(<AppHeader />, { route: '/dashboard' })
@@ -99,10 +103,24 @@ describe('AppHeader workspace chrome', () => {
     const menu = await screen.findByRole('menu')
     expect(header).not.toContainElement(menu)
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      'My reviews', 'My speeches', 'Find reviewers', 'Upload a speech', 'Search',
-      'Your profile', 'Edit profile', 'Account & privacy', 'Become a Coach', 'Log out',
+      'Your profile', 'Edit profile', 'Account & privacy', 'Log out',
     ])
     expect(within(menu).getByRole('menuitem', { name: 'Your profile' })).toHaveAttribute('href', '/u/e2e-member')
     expect(account.querySelector('span:not([aria-hidden])')).toHaveClass('sr-only', 'sm:not-sr-only')
+  })
+
+  it('keeps primary destinations in a separate mobile menu with working navigation', async () => {
+    mockHeaderData()
+    const user = userEvent.setup()
+    const { router } = renderWithProviders(<AppHeader />, { route: '/dashboard' })
+    await user.click(await screen.findByRole('button', { name: 'Main navigation' }))
+    const menu = await screen.findByRole('menu', { name: 'Main navigation' })
+    expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'My reviews', 'My speeches', 'Find reviewers', 'Upload a speech', 'Search', 'Become a Coach',
+    ])
+    expect(within(menu).queryByRole('menuitem', { name: 'Log out' })).toBeNull()
+    await user.click(within(menu).getByRole('menuitem', { name: 'Search' }))
+    expect(router.state.location.pathname).toBe('/search')
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
   })
 })

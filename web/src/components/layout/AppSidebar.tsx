@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { useGetMeQuery } from '@/features/auth/authApi'
-import { navItemsFor, type NavItem } from '@/lib/roles'
+import { primaryNavItemsFor, type NavItem } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { ActivityScene } from '@/components/workspace/ActivityScene'
 import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
@@ -17,10 +17,8 @@ import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceC
  *
  * Shown from `md` (48rem) rather than S5's original `lg`: between 768px
  * and 1024px — a small laptop or a landscape tablet — there is ample room
- * for a 14rem rail, and hiding it there pushed navigation into the avatar
- * dropdown for no reason. Below `md` it still collapses and `UserMenu`
- * remains the only nav, which is S1's documented behaviour and the reason
- * that menu duplicates this list.
+ * for a 14rem rail. Below `md`, MobileNavigation carries these same primary
+ * destinations. Account destinations stay in UserMenu at every viewport.
  *
  * The rail widens one step at `xl` so the nav keeps its proportion beside
  * content that now grows to fill a large window, instead of leaving a thin
@@ -28,7 +26,7 @@ import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceC
  */
 export function AppSidebar() {
   const { data } = useGetMeQuery()
-  const items = navItemsFor(data?.user)
+  const items = primaryNavItemsFor(data?.user)
   const scene = useWorkspaceCompanionScene()
 
   return (

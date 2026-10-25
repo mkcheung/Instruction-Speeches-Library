@@ -51,8 +51,8 @@ describe('Workspace companion publication and route lifecycle', () => {
 
   it('dedupes the existing identity request across sidebar and page readers', async () => {
     const fetchMock = mockIdentity()
-    renderWithProviders(<WorkspaceCompanionProvider><AppSidebar /><Reader /><Reader label="second scene" /></WorkspaceCompanionProvider>, { route: '/dashboard' })
-    await screen.findByRole('link', { name: 'Your profile' })
+    const { store } = renderWithProviders(<WorkspaceCompanionProvider><AppSidebar /><Reader /><Reader label="second scene" /></WorkspaceCompanionProvider>, { route: '/dashboard' })
+    await waitFor(() => expect(Object.values(store.getState().authApi.queries)[0]?.status).toBe('fulfilled'))
     expect(screen.getByLabelText('scene')).toHaveTextContent('reviews')
     expect(screen.getByLabelText('second scene')).toHaveTextContent('reviews')
     expect(fetchMock).toHaveBeenCalledTimes(1)

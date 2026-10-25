@@ -389,14 +389,16 @@ test.describe.serial('§7 — the SPA’s "Admin panel" nav item', () => {
     await expect(link).toHaveAttribute('rel', 'noreferrer')
   })
 
-  test('the user menu carries it too, which is the only nav below md', async () => {
-    // `AppSidebar` is `hidden md:flex`, so on a phone this menu is the
-    // ONLY navigation — without the same `external` branch in `UserMenu`,
-    // an admin on a phone has no route to their own panel at all.
+  test('the main navigation menu carries it too, which is the only nav below md', async () => {
+    // `AppSidebar` is `hidden md:flex`, so on a phone the header's "Main
+    // navigation" menu is the ONLY primary navigation — without the same
+    // `external` branch in `MobileNavigation`, an admin on a phone has no
+    // route to their own panel at all. (The account menu no longer carries
+    // primary destinations.)
     await page.setViewportSize({ width: 390, height: 844 })
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeHidden()
 
-    await page.getByRole('button', { name: USERS.admin.name }).click()
+    await page.getByRole('button', { name: 'Main navigation', exact: true }).click()
 
     const item = page.getByRole('menuitem', { name: 'Admin panel' })
     await expect(item).toBeVisible()
@@ -451,9 +453,15 @@ test.describe('§7 — and it is additive, not a rename', () => {
     await expect(nav).toBeVisible()
     await expect(nav.getByRole('link', { name: 'Admin panel' })).toHaveCount(0)
 
-    for (const label of ['My reviews', 'My speeches', 'Edit profile', 'Account & privacy']) {
+    // Primary destinations stay in the sidebar; profile and account destinations now live in the account menu.
+    for (const label of ['My reviews', 'My speeches']) {
       await expect(nav.getByRole('link', { name: label })).toBeVisible()
     }
+    await page.getByRole('button', { name: USERS.speaker.name, exact: true }).click()
+    for (const label of ['Edit profile', 'Account & privacy']) {
+      await expect(page.getByRole('menuitem', { name: label, exact: true })).toBeVisible()
+    }
+    await expect(page.getByRole('menuitem', { name: 'Admin panel' })).toHaveCount(0)
 
     await context.close()
   })
