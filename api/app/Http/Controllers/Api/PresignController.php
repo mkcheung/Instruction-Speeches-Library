@@ -81,8 +81,7 @@ class PresignController extends Controller
             return Review::query()
                 ->where('speech_id', $speech->id)
                 ->where('reviewer_id', $user->id)
-                ->whereIn('status', Review::ACCESS_GRANTING)
-                ->whereNull('revoked_at')
+                ->granting()
                 ->exists();
         }
 

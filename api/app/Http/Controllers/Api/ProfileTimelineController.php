@@ -3,11 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Review;
 use App\Models\User;
 use App\Services\MediaUrlSigner;
 use App\Services\SpeechArcService;
 use App\Support\KeysetCursor;
+use App\Support\ReviewGrant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,8 +61,6 @@ class ProfileTimelineController extends Controller
                     ->where('poster.is_primary', '=', true)
                     ->where('poster.status', '=', 'ready');
             })
-            ->whereIn('reviews.status', Review::ACCESS_GRANTING)
-            ->whereNull('reviews.revoked_at')
             ->select([
                 'reviews.id as review_id', 'reviews.status', 'reviews.published_annotations_count',
                 'reviews.essay_published_at', 'reviews.last_transition_at',
@@ -72,6 +70,8 @@ class ProfileTimelineController extends Controller
             ])
             ->orderByDesc('reviews.last_transition_at')
             ->orderByDesc('reviews.id');
+
+        ReviewGrant::constrain($query, 'reviews.');
 
         if ($tab === 'left') {
             $query->where('reviews.reviewer_id', $viewer->id)->where('reviews.speech_owner_id', $profileUser->id);

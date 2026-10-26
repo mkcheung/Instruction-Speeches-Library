@@ -103,6 +103,7 @@ it('transcribes a real spoken-audio fixture end-to-end through whisper.cpp', fun
         'format' => 'mp4',
         'disk' => 'media',
         'path' => $sourcePath,
+        'byte_size' => filesize($fixturePath),
         'mime_type' => 'audio/mp4',
         'status' => 'ready',
     ]);

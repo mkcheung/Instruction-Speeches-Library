@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Jobs\PurgeSpeechMedia;
 use App\Models\AuditLog;
-use App\Models\Review;
 use App\Models\Speech;
 use App\Notifications\SpeechDeleted;
 use App\Support\AuditAction;
@@ -99,8 +98,7 @@ class SpeechDeletionService
             // just vanished deserves a signal, not silent 410s on their
             // next request.
             $reviewers = $locked->reviews()
-                ->whereIn('status', Review::ACCESS_GRANTING)
-                ->whereNull('revoked_at')
+                ->granting()
                 ->with('reviewer')
                 ->get();
 

@@ -58,8 +58,7 @@ class SpeechPolicy
 
         return $speech->reviews()
             ->where('reviewer_id', $user->id)
-            ->whereIn('status', Review::ACCESS_GRANTING)
-            ->whereNull('revoked_at')
+            ->granting()
             ->exists();
     }
 

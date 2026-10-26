@@ -37,6 +37,22 @@ describe('scoped annotation recovery', () => {
     const wrong = record({ instanceId: 'wrong' }); localStorage.setItem(annotationRecoveryKey(wrong), JSON.stringify({ ...wrong, scope: { ...scope, userId: 'other' } }))
     expect(discoverAnnotationRecovery(scope)).toHaveLength(1)
   })
+  it('keeps row and whole-review discovery scoped while sorting valid drafts around corrupt entries', () => {
+    const latest = record({ instanceId: 'latest', updatedAt: 8 })
+    const rowDraft = record({ instanceId: 'saved-row', scope: { ...scope, rowId: '9' }, updatedAt: 5 })
+    for (const item of [record(), latest, rowDraft]) writeAnnotationRecovery(item)
+    const badKey = annotationRecoveryKey(record({ instanceId: 'bad' }))
+    localStorage.setItem(badKey, 'null')
+    localStorage.setItem(badKey + '-json', '{broken')
+    localStorage.setItem(badKey + '-foreign', JSON.stringify(record({ scope: { ...scope, reviewId: 99 } })))
+    localStorage.setItem(badKey + '-noncanonical', JSON.stringify(record({ instanceId: 'different' })))
+    const invalidRow = { ...record(), scope: { ...scope, rowId: 9 } }
+    localStorage.setItem(badKey + '-row', JSON.stringify(invalidRow))
+    expect(discoverAnnotationRecovery(scope).map((item) => item.instanceId)).toEqual(['latest', 'tab-a'])
+    expect(discoverAnnotationReviewRecovery(scope).map((item) => item.instanceId)).toEqual(['latest', 'saved-row', 'tab-a'])
+    expect(discoverAnnotationReviewRecovery({ ...scope, userId: 'another-account' })).toEqual([])
+    expect(localStorage.getItem(badKey)).toBe('null')
+  })
   it('keeps original uncertain submission identity and does not touch legacy mirrors', () => {
     const fields = record().fields
     const uncertain = record({ uncertain: { fields, clientUuid: 'draft-a', annotationId: null, lockVersion: 0, startMs: 12500, endMs: 18000, timingChanged: true } })
@@ -48,5 +64,11 @@ describe('scoped annotation recovery', () => {
   it('reports unavailable storage without throwing or promising recovery', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
     expect(writeAnnotationRecovery(record())).toBe(false)
+  })
+  it('keeps both discovery paths available when storage cannot be enumerated', () => {
+    vi.spyOn(Storage.prototype, 'key').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError') })
+    writeAnnotationRecovery(record())
+    expect(discoverAnnotationRecovery(scope)).toEqual([])
+    expect(discoverAnnotationReviewRecovery(scope)).toEqual([])
   })
 })

@@ -13,10 +13,10 @@ use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Models\UsernameHistory;
 use App\Services\RoleAssignmentService;
+use App\Services\StorageObjectRemover;
 use App\Services\Voice\EraseReviewerVoiceNotes;
 use App\Support\AuditAction;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 /**
@@ -320,11 +320,7 @@ class AccountErasureService
             return null;
         }
 
-        foreach ($claim['paths'] as $path) {
-            if (Storage::disk($claim['disk'])->exists($path) && ! Storage::disk($claim['disk'])->delete($path)) {
-                throw new \RuntimeException("Account-erasure media purge failed for asset {$claim['asset_id']}.");
-            }
-        }
+        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], "Account-erasure media purge failed for asset {$claim['asset_id']}.");
 
         return DB::transaction(function () use ($claim): int {
             $fresh = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();

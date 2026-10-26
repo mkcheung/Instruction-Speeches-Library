@@ -260,7 +260,7 @@ it('table row 6 race: a disable that lands while a worker is "in flight" prevent
     Storage::fake('media');
 
     $speech = Speech::factory()->create(['captions_enabled' => true]);
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create([

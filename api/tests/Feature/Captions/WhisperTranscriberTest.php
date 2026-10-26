@@ -4,6 +4,7 @@ use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
 use App\Services\Captions\WhisperTranscriber;
+use App\Support\ScratchFiles;
 use Illuminate\Process\PendingProcess;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -54,11 +55,77 @@ function fakeWhisper(string $vttOutput, bool $extractSucceeds = true, bool $whis
     });
 }
 
+it('rejects an incomplete or oversized source before running caption processes', function (int $expectedBytes) {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => $expectedBytes]);
+    Storage::disk('media')->put($source->path, 'source-bytes');
+    $attemptId = (string) Str::uuid();
+    $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
+    fakeWhisper("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nIncomplete speech.");
+
+    (new WhisperTranscriber)->transcribe($source, $captions, $attemptId);
+
+    expect($captions->fresh()->status)->toBe('failed');
+    expect($captions->fresh()->failure_code)->toBe('audio_extraction_failed');
+    expect(SpeechTranscript::query()->where('speech_id', $speech->id)->exists())->toBeFalse();
+    Process::assertNothingRan();
+})->with([strlen('source-bytes') + 100, strlen('source-bytes') - 1]);
+
+it('continues captioning a legacy source whose byte size is unknown', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => 0]);
+    Storage::disk('media')->put($source->path, 'source-bytes');
+    $attemptId = (string) Str::uuid();
+    $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
+    fakeWhisper("WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nLegacy speech.");
+
+    (new WhisperTranscriber)->transcribe($source, $captions, $attemptId);
+
+    expect($captions->fresh()->status)->toBe('ready');
+    expect(SpeechTranscript::query()->where('speech_id', $speech->id)->sole()->body)->toBe('Legacy speech.');
+    Process::assertRan(fn (PendingProcess $process): bool => is_array($process->command) && $process->command[0] === 'ffmpeg');
+});
+
+it('cleans partially allocated caption scratch files and reports allocation failure before processing', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
+    Storage::disk('media')->put($source->path, 'source-bytes');
+    $attemptId = (string) Str::uuid();
+    $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
+    $scratch = new class extends ScratchFiles
+    {
+        public array $allocated = [];
+
+        protected function allocate(string $prefix): string|false
+        {
+            if ($this->allocated !== []) {
+                return false;
+            }
+
+            return $this->allocated[] = parent::allocate($prefix);
+        }
+    };
+    $this->app->instance(ScratchFiles::class, $scratch);
+    Process::fake();
+
+    (new WhisperTranscriber)->transcribe($source, $captions, $attemptId);
+
+    expect($captions->fresh()->failure_code)->toBe('audio_extraction_failed');
+    expect($scratch->allocated)->toHaveCount(1);
+    foreach ($scratch->allocated as $path) {
+        expect(file_exists($path))->toBeFalse();
+    }
+    Process::assertNothingRan();
+});
+
 it('extracts audio, runs whisper-cli, and derives a transcript on success', function () {
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -80,7 +147,7 @@ it('fails the captions asset without throwing when audio extraction fails', func
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -98,7 +165,7 @@ it('fails the captions asset without throwing when whisper-cli fails', function 
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -115,7 +182,7 @@ it('fails cleanly when whisper-cli produces output this product cannot parse as 
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -139,7 +206,7 @@ it('leaves no leaked whisper_* scratch files behind after a successful run', fun
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -159,7 +226,7 @@ it('leaves no leaked whisper_* scratch files behind after a failed run', functio
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -179,7 +246,7 @@ it('fails the captions asset (not silently swallowed) when the storage write of 
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -219,7 +286,7 @@ it('does not clobber a speaker edit that landed while whisper was still running'
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
     $attemptId = (string) Str::uuid();
     $captions = SpeechAsset::factory()->for($speech)->captions()->create(['disk' => 'media', 'status' => 'processing', 'caption_attempt_id' => $attemptId]);
@@ -260,7 +327,7 @@ it('does not clobber a newer attempt (B) with a stale attempt (A) that succeeds 
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
 
     $attemptA = (string) Str::uuid();
@@ -294,7 +361,7 @@ it('does not clobber a newer attempt (B) with a stale attempt (A) failure', func
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
 
     $attemptA = (string) Str::uuid();
@@ -324,7 +391,7 @@ it('advances the heartbeat during a run', function () {
     Storage::fake('media');
 
     $speech = Speech::factory()->create();
-    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready']);
+    $source = SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'status' => 'ready', 'byte_size' => strlen('source-bytes')]);
     Storage::disk('media')->put($source->path, 'source-bytes');
 
     $attemptId = (string) Str::uuid();

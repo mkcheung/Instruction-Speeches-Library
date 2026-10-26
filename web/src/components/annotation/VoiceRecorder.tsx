@@ -6,6 +6,7 @@ import { startMediaRecorderWithFallback, stopMediaStream } from '@/lib/mediaReco
 import { captureAnnotationTime, formatAnnotationTime, validateAnnotationPoint } from '@/lib/annotationTiming'
 import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
 import { newClientUuid } from '@/lib/uuid'
+import { isDefinitiveAnnotationFailure } from '@/lib/annotationSaveOutcome'
 
 const MAX_RECORDING_MS = 90_000
 type RecorderState = 'idle' | 'requesting' | 'recording' | 'preview' | 'denied' | 'no-device' | 'unsupported' | 'error'
@@ -202,9 +203,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     } catch (error) {
       if (!mountedRef.current) return
       const failure = error as { status?: number | string; data?: { code?: string; message?: string } }
-      const definitive = (!wasUncertain && ((typeof failure.status === 'number' && failure.status >= 400 && failure.status < 500) || failure.data?.code === 'annotation_busy'))
-        || (failure.status === 422 && failure.data?.code === 'annotation_overlap')
-      if (definitive) {
+      if (isDefinitiveAnnotationFailure(error, wasUncertain)) {
         uncertainRef.current = null; setUncertain(null)
         setMessage(failure.data?.code === 'annotation_overlap' ? 'This position is occupied. Change Voice note position and save the same recording again.'
           : failure.data?.message ?? 'Could not save this recording. Check the position and retry; your recording is retained.')

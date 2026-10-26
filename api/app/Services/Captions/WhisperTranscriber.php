@@ -4,6 +4,9 @@ namespace App\Services\Captions;
 
 use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
+use App\Services\MediaInputCopier;
+use App\Support\ScratchFileAllocationException;
+use App\Support\ScratchFiles;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -37,49 +40,13 @@ class WhisperTranscriber implements CaptionTranscriberContract
 
     public function transcribe(SpeechAsset $sourceAsset, SpeechAsset $captionsAsset, string $attemptId): void
     {
-        // ffmpeg needs a `.wav`-suffixed output path to infer the WAV
-        // muxer, so the audio scratch file can't use tempnam()'s raw
-        // returned path directly — same "unlink the placeholder, use a
-        // suffixed sibling path" pattern `$outputBase`/`$outputVtt` below
-        // already use, applied consistently here too. The bug this fixes:
-        // the old code called `tempnam(...).'.wav'` WITHOUT unlinking the
-        // original tempnam'd placeholder first, so that zero-byte file was
-        // silently leaked on local disk on every single run (only the
-        // `.wav` sibling ever got cleaned up in `finally`).
-        $localSource = tempnam(sys_get_temp_dir(), 'whisper_src_');
-        $audioBase = tempnam(sys_get_temp_dir(), 'whisper_audio_');
-        @unlink($audioBase);
-        $localAudio = $audioBase.'.wav';
-        $outputBase = tempnam(sys_get_temp_dir(), 'whisper_out_');
-        @unlink($outputBase); // whisper.cpp writes {$outputBase}.vtt itself
-        $outputVtt = $outputBase.'.vtt';
-
+        $scratch = app(ScratchFiles::class);
         try {
-            $sourceStream = Storage::disk($sourceAsset->disk)->readStream($sourceAsset->path);
-
-            if ($sourceStream === null) {
-                $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
-
-                return;
-            }
-
-            $localHandle = fopen($localSource, 'wb');
-
-            if ($localHandle === false) {
-                fclose($sourceStream);
-                $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
-
-                return;
-            }
-
-            // Streamed copy, not `Storage::get()` buffered whole into
-            // memory first: a multi-hundred-MB source video must not be
-            // held in PHP memory just to land it on local disk for ffmpeg.
-            $copied = stream_copy_to_stream($sourceStream, $localHandle);
-            fclose($localHandle);
-            fclose($sourceStream);
-
-            if ($copied === false) {
+            $localSource = $scratch->create('whisper_src_');
+            $localAudio = $scratch->create('whisper_audio_', '.wav');
+            $outputVtt = $scratch->create('whisper_out_', '.vtt');
+            $outputBase = substr($outputVtt, 0, -4);
+            if (! app(MediaInputCopier::class)->copy($sourceAsset->disk, $sourceAsset->path, $localSource, (int) ($sourceAsset->byte_size ?? 0))) {
                 $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
 
                 return;
@@ -215,6 +182,8 @@ class WhisperTranscriber implements CaptionTranscriberContract
                     ],
                 );
             });
+        } catch (ScratchFileAllocationException $e) {
+            $this->fail($captionsAsset, $attemptId, 'audio_extraction_failed', 'We had trouble reading the audio from this speech.');
         } catch (InvalidVttException $e) {
             // whisper.cpp produced output this product's own VTT reader
             // can't parse — treat identically to any other transcription
@@ -232,14 +201,7 @@ class WhisperTranscriber implements CaptionTranscriberContract
             ]);
             $this->fail($captionsAsset, $attemptId, 'transcription_failed', 'We had trouble captioning this speech. Please try again.');
         } finally {
-            // Every local scratch path this method creates, cleaned up on
-            // both the success and failure paths — including the
-            // whisper.cpp output `.vtt`, which lives outside the disk
-            // Storage abstraction entirely and would otherwise leak on
-            // every single run.
-            @unlink($localSource);
-            @unlink($localAudio);
-            @unlink($outputVtt);
+            $scratch->cleanup();
         }
     }
 

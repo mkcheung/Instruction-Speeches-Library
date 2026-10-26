@@ -5,13 +5,13 @@ namespace App\Jobs;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
+use App\Services\StorageObjectRemover;
 use App\Support\AnnotationTransactions;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class PurgeVoiceAsset implements ShouldQueue
@@ -56,11 +56,7 @@ class PurgeVoiceAsset implements ShouldQueue
         if ($claim === null) {
             return;
         }
-        foreach ($claim['paths'] as $path) {
-            if (Storage::disk($claim['disk'])->exists($path) && ! Storage::disk($claim['disk'])->delete($path)) {
-                throw new \RuntimeException('Voice asset purge failed.');
-            }
-        }
+        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], 'Voice asset purge failed.');
         AnnotationTransactions::run(function () use ($claim, $quota): void {
             $fresh = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();
             if ($fresh === null) {

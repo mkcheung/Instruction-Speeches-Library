@@ -3,6 +3,7 @@ import { useAnnotationChannel } from '@/hooks/useAnnotationChannel'
 import { useCreateAnnotationMutation, useUpdateAnnotationMutation } from '@/features/annotation/annotationApi'
 import { isAnnotationConflict, isPointAnnotation, type Annotation } from '@/features/annotation/types'
 import { newClientUuid, tmpAnnotationId } from '@/lib/uuid'
+import { isDefinitiveAnnotationFailure } from '@/lib/annotationSaveOutcome'
 import { captureAnnotationTime, formatAnnotationTime, parseAnnotationTime, validateAnnotationSelection } from '@/lib/annotationTiming'
 import {
   clearAnnotationRecovery, discoverAnnotationRecovery, writeAnnotationRecovery,
@@ -227,9 +228,7 @@ export function useAnnotationEditor(options: UseAnnotationEditorOptions) {
       if (failure.status === 409 && isAnnotationConflict(failure.data)) {
         uncertainRef.current = null; setUncertain(null)
         setConflict(failure.data.current); setSaveState('conflict'); persist(submission.fields)
-      } else if ((!wasUncertain && ((typeof failure.status === 'number' && failure.status >= 400 && failure.status < 500)
-        || (failure.data as { code?: string } | undefined)?.code === 'annotation_busy'))
-        || (failure.status === 422 && (failure.data as { code?: string } | undefined)?.code === 'annotation_overlap')) {
+      } else if (isDefinitiveAnnotationFailure(error, wasUncertain)) {
         uncertainRef.current = null; setUncertain(null)
         setSaveState('error'); setMessage(errorMessage(error)); persist(submission.fields)
       } else {

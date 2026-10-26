@@ -64,13 +64,7 @@ class ReviewResource extends JsonResource
             // stamp and that UPDATE, `reviewer_id` could still point at an
             // anonymized-but-not-null user row. Render it the same as a
             // genuinely null one rather than leaking blank/empty fields.
-            'reviewer' => $this->when($this->relationLoaded('reviewer'), fn () => ($this->reviewer === null || $this->reviewer->anonymized_at !== null)
-                ? ['display_name' => 'Former reviewer']
-                : [
-                    'id' => $this->reviewer->id,
-                    'username' => $this->reviewer->username,
-                    'name' => trim("{$this->reviewer->first_name} {$this->reviewer->last_name}"),
-                ]),
+            'reviewer' => $this->when($this->relationLoaded('reviewer'), fn () => ReviewerIdentityFields::fromUser($this->reviewer)),
         ];
     }
 }

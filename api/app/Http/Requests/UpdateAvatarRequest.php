@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\ProfileRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateAvatarRequest extends FormRequest
@@ -17,7 +18,7 @@ class UpdateAvatarRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'avatar' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+            'avatar' => ['required', ...ProfileRules::AVATAR],
         ];
     }
 }

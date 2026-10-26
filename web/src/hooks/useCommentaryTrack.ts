@@ -10,11 +10,11 @@ import { useIosFullscreenSubtitles } from '@/hooks/useIosFullscreenSubtitles'
 import { useCommentaryPlaybackPreference } from '@/hooks/useCommentaryPlaybackPreference'
 import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
 import { projectCommentary } from '@/lib/commentaryPlayback'
-import { getErrorStatus } from '@/lib/errorStatus'
+import { isTerminalAccessError } from '@/lib/errorStatus'
+import { isAccessGrantingReviewStatus } from '@/features/review/reviewAccess'
 import { reviewerLabel } from '@/lib/reviewerLabel'
 import { hasUnseenCommentary, markCommentarySeen } from '@/lib/lastSeenCommentary'
 
-const ACCESS_GRANTING = new Set(['accepted', 'in_progress', 'published'])
 export const NO_COMMENTARY = 'none' as const
 export type CommentarySelection = number | typeof NO_COMMENTARY
 const CROSSFADE_OUT_MS = 650
@@ -48,7 +48,7 @@ export function useCommentaryTrack(
     pollingInterval: 3000,
     skipPollingIfUnfocused: true,
   })
-  const reviews = useMemo(() => roster?.filter((r) => r.revoked_at === null && ACCESS_GRANTING.has(r.status)), [roster])
+  const reviews = useMemo(() => roster?.filter((r) => r.revoked_at === null && isAccessGrantingReviewStatus(r.status)), [roster])
   const [choice, setChoice] = useState<{ context: string; selected: CommentarySelection; initialized: boolean }>({
     context, selected: NO_COMMENTARY, initialized: false,
   })
@@ -98,8 +98,8 @@ export function useCommentaryTrack(
 
   const dataReady = selected !== NO_COMMENTARY && fetched?.review_id === selected
   const crossfading = selected !== NO_COMMENTARY && fadeKey !== selectionKey
-  const accessDenied = [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0)
-    || [401, 403, 404, 410].includes(getErrorStatus(rosterError) ?? 0)
+  const accessDenied = isTerminalAccessError(error)
+    || isTerminalAccessError(rosterError)
   const source = ownerEnabled && preference.ready && !preference.accessDenied && !accessDenied && dataReady && !crossfading
     ? fetched.annotations : EMPTY_ANNOTATIONS
   const projection = useMemo(() => projectCommentary(source, mode), [source, mode])

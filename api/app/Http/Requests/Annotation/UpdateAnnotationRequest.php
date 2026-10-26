@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Annotation;
 
+use App\Support\AnnotationRules;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * `PATCH /speeches/{speech}/annotations/{annotation}`. `lock_version` is
@@ -30,10 +30,8 @@ class UpdateAnnotationRequest extends FormRequest
             // See CreateAnnotationRequest: the column is NUMERIC(10,3) and
             // `ck_annotations_timing` bounds start_seconds only from below,
             // so an out-of-domain value was a Postgres-only 500.
-            'start_seconds' => ['sometimes', 'numeric', 'min:0', 'max:9999999.999'],
-            'duration_seconds' => ['sometimes', 'numeric', 'gt:0', 'max:120'],
-            'kind' => ['sometimes', Rule::in(['praise', 'correction', 'observation'])],
-            'topic' => ['sometimes', 'nullable', 'string', 'max:32'],
-        ];
+            'start_seconds' => ['sometimes', ...AnnotationRules::START_SECONDS],
+            'duration_seconds' => ['sometimes', ...AnnotationRules::DURATION_SECONDS],
+        ] + AnnotationRules::metadata();
     }
 }

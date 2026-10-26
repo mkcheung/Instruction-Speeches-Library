@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Onboarding;
 
+use App\Support\ProfileRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StepThreeRequest extends FormRequest
@@ -20,7 +21,7 @@ class StepThreeRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'avatar' => ['sometimes', 'nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+            'avatar' => ['sometimes', 'nullable', ...ProfileRules::AVATAR],
         ];
     }
 }

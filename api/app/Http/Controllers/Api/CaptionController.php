@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\SpeechDeletedException;
+use App\Http\Controllers\Concerns\ResolvesLiveSpeech;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Caption\UpdateCaptionSettingsRequest;
 use App\Http\Requests\Caption\UpdateCaptionsRequest;
 use App\Http\Resources\CaptionResource;
 use App\Http\Resources\SpeechResource;
-use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Captions\CaptionService;
 use App\Services\Captions\EnsureCaptionJob;
@@ -26,6 +25,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class CaptionController extends Controller
 {
+    use ResolvesLiveSpeech;
+
     /**
      * `GET /speeches/{speech}/captions`. `readCaptions` (owner OR an
      * access-granting reviewer, per SpeechPolicy::readCaptions) — a
@@ -132,22 +133,5 @@ class CaptionController extends Controller
             'asset_id' => $captionsAsset->id,
             'revision' => $captionsAsset->content_revision,
         ];
-    }
-
-    /**
-     * Identical to EssayController::resolveSpeech() — 410 Gone (not 404)
-     * for a speech id that WAS found but is soft-deleted, same status-code
-     * surface as every other speech-scoped route family.
-     */
-    private function resolveSpeech(string $speechId): Speech
-    {
-        /** @var Speech $speech */
-        $speech = Speech::withTrashed()->findOrFail($speechId);
-
-        if ($speech->trashed()) {
-            throw new SpeechDeletedException;
-        }
-
-        return $speech;
     }
 }

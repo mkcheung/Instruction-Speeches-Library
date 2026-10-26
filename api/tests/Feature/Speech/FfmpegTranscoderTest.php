@@ -455,3 +455,31 @@ it('leaves no scratch files behind when ffmpeg times out mid-transcode', functio
     // hasEnoughFreeSpace() wedges every later transcode on the host.
     expect(scratchFiles())->toBe($before);
 });
+
+it('keeps a successful video ready and cleans partial poster output when poster processing throws', function () {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+    Process::fake(function (PendingProcess $process) {
+        $command = $process->command;
+        $target = is_array($command) ? (string) end($command) : '';
+        if (is_array($command) && $command[0] === 'ffprobe') {
+            return Process::result(output: json_encode(compliantProbe()));
+        }
+        file_put_contents($target, 'partial output');
+        if (str_contains($target, 'poster_master_')) {
+            throw new RuntimeException('poster process timed out');
+        }
+
+        return Process::result();
+    });
+    $before = scratchFiles();
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    expect($video->fresh()->status)->toBe('ready');
+    expect($speech->assets()->where('kind', 'poster')->exists())->toBeFalse();
+    expect(scratchFiles())->toBe($before);
+});

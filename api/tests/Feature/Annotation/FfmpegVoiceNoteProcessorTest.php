@@ -8,6 +8,7 @@ use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
 use App\Services\Voice\FfmpegVoiceNoteProcessor;
+use App\Support\ScratchFiles;
 use Database\Seeders\RoleSeeder;
 use Illuminate\Process\Exceptions\ProcessTimedOutException;
 use Illuminate\Process\PendingProcess;
@@ -59,6 +60,30 @@ function loudnormMeasurement(): string
         'target_offset' => '0.10',
     ], JSON_THROW_ON_ERROR);
 }
+
+it('settles a scratch allocation failure once without invoking the voice processors', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [$coach, $asset, $annotation, $temporary] = ffmpegVoiceFixture();
+    $scratch = new class extends ScratchFiles
+    {
+        protected function allocate(string $prefix): string|false
+        {
+            return false;
+        }
+    };
+    $this->app->bind(ScratchFiles::class, fn () => $scratch);
+    Process::fake();
+    $processor = new FfmpegVoiceNoteProcessor(app(QuotaService::class));
+
+    expect($processor->process($asset, $temporary))->toBeFalse();
+    expect($asset->fresh()->failure_code)->toBe('voice_storage_failed');
+    expect($annotation->fresh()->transcript_status)->toBe('failed');
+    expect($coach->fresh()->storage_bytes_used)->toBe(0);
+    expect($processor->process($asset->fresh(), $temporary))->toBeFalse();
+    expect($coach->fresh()->storage_bytes_used)->toBe(0);
+    Process::assertNothingRan();
+});
 
 it('runs bounded two-pass loudnorm and writes mono AAC-LC at 64 kbps', function () {
     $this->seed(RoleSeeder::class);

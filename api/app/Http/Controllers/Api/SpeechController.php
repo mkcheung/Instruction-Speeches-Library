@@ -13,6 +13,7 @@ use App\Models\Speech;
 use App\Models\User;
 use App\Services\SpeechDeletionService;
 use App\Services\SpeechService;
+use App\Support\ReviewGrant;
 use Closure;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
@@ -102,7 +103,7 @@ class SpeechController extends Controller
             ->first();
 
         $isLive = $review !== null && $review->revoked_at === null;
-        $isGranting = $isLive && in_array($review->status, Review::ACCESS_GRANTING, true);
+        $isGranting = $review !== null && ReviewGrant::allows($review);
 
         // Never held a review here at all — or held one that was
         // revoke-and-purged, which hard-deletes the row and so correctly

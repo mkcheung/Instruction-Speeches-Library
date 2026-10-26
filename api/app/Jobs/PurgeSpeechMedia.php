@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
+use App\Services\StorageObjectRemover;
 use App\Support\AuditAction;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -328,11 +329,7 @@ class PurgeSpeechMedia implements ShouldQueue
             return null;
         }
 
-        foreach ($claim['paths'] as $path) {
-            if (Storage::disk($claim['disk'])->exists($path) && ! Storage::disk($claim['disk'])->delete($path)) {
-                throw new \RuntimeException("Takedown media purge failed for speech asset {$claim['asset_id']}.");
-            }
-        }
+        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], "Takedown media purge failed for speech asset {$claim['asset_id']}.");
 
         return DB::transaction(function () use ($claim, $ownerId, $quota): ?array {
             $fresh = SpeechAsset::query()

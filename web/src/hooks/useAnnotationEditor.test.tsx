@@ -154,6 +154,25 @@ describe('explicit annotation authoring', () => {
     expect(result.current.fields.start).toBe('12.500')
   })
 
+  it('a later explicit overlap releases the frozen submission without losing its draft identity', async () => {
+    const requests: Record<string, unknown>[] = []
+    network(async (request) => {
+      requests.push(await request.json())
+      return requests.length === 1 ? response({}, 500) : response({ code: 'annotation_overlap' }, 422)
+    })
+    const { result } = setup(); input(result)
+    const uuid = result.current.clientUuid
+    await act(async () => { await result.current.submit() })
+    expect(result.current.frozen).toBe(true)
+    await act(async () => { await result.current.submit() })
+    expect(requests[1]).toEqual(requests[0])
+    expect(result.current.frozen).toBe(false)
+    expect(result.current.clientUuid).toBe(uuid)
+    expect(discoverAnnotationRecovery(scope)[0].uncertain).toBeNull()
+    act(() => result.current.setStart('30'))
+    expect(result.current.fields.start).toBe('30')
+  })
+
   it('a mismatched idempotent acknowledgement cannot clear the draft', async () => {
     network(() => response({ annotation: row({ body: 'Earlier body' }) }))
     const { result } = setup(); input(result)

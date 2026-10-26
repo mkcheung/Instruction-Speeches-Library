@@ -2,6 +2,8 @@
 
 use App\Models\Speech;
 use App\Models\User;
+use App\Services\UserPreferenceWriter;
+use Illuminate\Support\Facades\DB;
 
 function playbackPreferenceUrl(Speech $speech): string
 {
@@ -54,6 +56,23 @@ it('keeps canonical settings authoritative after an old browser updates legacy s
         ->assertOk()->assertJsonPath('voice_commentary.mode', 'play');
     $this->getJson(playbackPreferenceUrl($speech))->assertOk()->assertJsonPath('commentary_playback.mode', 'off');
 });
+
+it('repairs only the addressed malformed namespace when explicitly saving a preference', function (string $namespace, string $endpoint, array $entry) {
+    $preferences = ['unrelated' => ['kept' => true], 'voice_commentary' => 'invalid legacy', 'commentary_playback' => 'invalid canonical'];
+    $user = User::factory()->create(['preferences' => $preferences]);
+    $speech = Speech::factory()->for($user)->create();
+
+    $this->actingAs($user)->patchJson("/api/me/preferences/{$endpoint}/{$speech->id}", $entry)->assertOk();
+
+    $preferences[$namespace] = [$speech->id => $entry];
+    expect($user->fresh()->preferences)->toBe($preferences);
+    // Updating the legacy entry must never revive audio through a malformed canonical namespace.
+    $this->getJson(playbackPreferenceUrl($speech))->assertOk()
+        ->assertJsonPath('commentary_playback.source', $namespace === 'voice_commentary' ? 'invalid' : 'saved');
+})->with([
+    ['voice_commentary', 'voice-commentary', ['mode' => 'text', 'experienced' => true]],
+    ['commentary_playback', 'commentary-playback', ['mode' => 'off']],
+]);
 
 it('fails closed for malformed saved or legacy entries', function (array $settings) {
     $user = User::factory()->create();
@@ -112,4 +131,20 @@ it('requires authentication and a verified account', function () {
     $this->patchJson(playbackPreferenceUrl($speech), ['mode' => 'off'])->assertUnauthorized();
     $this->actingAs($user)->getJson(playbackPreferenceUrl($speech))->assertForbidden();
     $this->patchJson(playbackPreferenceUrl($speech), ['mode' => 'off'])->assertForbidden();
+});
+
+it('uses fresh stored preferences and participates in an outer rollback', function () {
+    $user = User::factory()->create(['preferences' => ['old_snapshot' => true]]);
+    $speech = Speech::factory()->for($user)->create();
+    $stored = ['other_writer' => ['kept' => true]];
+    DB::table('users')->where('id', $user->id)->update(['preferences' => json_encode($stored)]);
+
+    expect(function () use ($user, $speech) {
+        DB::transaction(function () use ($user, $speech) {
+            $saved = app(UserPreferenceWriter::class)->updatePlayback($user, $speech->id, ['mode' => 'off']);
+            expect($saved->preferences)->toHaveKey('other_writer')->not->toHaveKey('old_snapshot');
+            throw new RuntimeException('Outer owner rolled back.');
+        });
+    })->toThrow(RuntimeException::class, 'Outer owner rolled back.');
+    expect($user->fresh()->preferences)->toBe($stored);
 });

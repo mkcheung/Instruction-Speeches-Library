@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Annotation;
 
+use App\Support\AnnotationRules;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 /**
  * `POST /speeches/{speech}/annotations`. Deliberately has NO `review_id`
@@ -35,10 +35,8 @@ class CreateAnnotationRequest extends FormRequest
             // AND the CHECK, then raised `22003 numeric field overflow` on
             // the Postgres INSERT — a 500 instead of a 422. Invisible to the
             // suite, which runs on SQLite: its NUMERIC affinity accepts it.
-            'start_seconds' => ['required', 'numeric', 'min:0', 'max:9999999.999'],
-            'duration_seconds' => ['sometimes', 'numeric', 'gt:0', 'max:120'],
-            'kind' => ['sometimes', Rule::in(['praise', 'correction', 'observation'])],
-            'topic' => ['sometimes', 'nullable', 'string', 'max:32'],
-        ];
+            'start_seconds' => ['required', ...AnnotationRules::START_SECONDS],
+            'duration_seconds' => ['sometimes', ...AnnotationRules::DURATION_SECONDS],
+        ] + AnnotationRules::metadata();
     }
 }

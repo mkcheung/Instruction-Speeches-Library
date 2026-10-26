@@ -6,3 +6,8 @@ export function getErrorStatus(error: unknown): number | undefined {
   const { status } = error as { status?: unknown }
   return typeof status === 'number' ? status : undefined
 }
+
+/** Access failures used by speech/commentary callers; transient failures cannot revive denied data. */
+export function isTerminalAccessError(error: unknown): boolean {
+  return [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0)
+}

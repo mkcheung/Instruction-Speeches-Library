@@ -6,8 +6,8 @@ use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
+use App\Services\StorageObjectRemover;
 use App\Support\AnnotationTransactions;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class EraseReviewerVoiceNotes
@@ -43,11 +43,7 @@ class EraseReviewerVoiceNotes
             if ($claimed === null) {
                 continue;
             }
-            foreach ($claimed['paths'] as $path) {
-                if (Storage::disk($claimed['disk'])->exists($path) && ! Storage::disk($claimed['disk'])->delete($path)) {
-                    throw new \RuntimeException('Voice-note erasure failed; reviewer identity was retained.');
-                }
-            }
+            app(StorageObjectRemover::class)->deleteExisting($claimed['disk'], $claimed['paths'], 'Voice-note erasure failed; reviewer identity was retained.');
             $released = AnnotationTransactions::run(function () use ($id, $claimed, $reviewer): ?int {
                 $asset = SpeechAsset::query()->whereKey($claimed['asset_id'])->where('purge_claim_id', $claimed['claim_id'])->lockForUpdate()->first();
                 $annotation = Annotation::withTrashed()->whereKey($id)->lockForUpdate()->first();

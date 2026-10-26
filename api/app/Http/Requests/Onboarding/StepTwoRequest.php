@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Onboarding;
 
+use App\Support\ProfileRules;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StepTwoRequest extends FormRequest
@@ -19,10 +20,6 @@ class StepTwoRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
-            'bio' => ['sometimes', 'nullable', 'string', 'max:1000'],
-            'pronouns' => ['sometimes', 'nullable', 'string', 'max:32'],
-            'location' => ['sometimes', 'nullable', 'string', 'max:80'],
-        ];
+        return ProfileRules::text();
     }
 }

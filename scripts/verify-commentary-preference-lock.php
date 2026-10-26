@@ -57,7 +57,7 @@ function writePreference(string $namespace, int $userId, int $speechId): void
     $request = Request::create('/', 'PATCH', $body);
     $request->setUserResolver(fn () => Auth::user());
     $request->headers->set('Accept', 'application/json');
-    $controller = $namespace === 'canonical' ? new CommentaryPlaybackPreferenceController : new VoicePreferenceController;
+    $controller = app($namespace === 'canonical' ? CommentaryPlaybackPreferenceController::class : VoicePreferenceController::class);
     $response = $controller->update($request, Speech::query()->findOrFail($speechId));
     if ($response->getStatusCode() !== 200) {
         throw new RuntimeException('Controller did not acknowledge the preference.');

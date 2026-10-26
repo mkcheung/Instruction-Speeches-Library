@@ -1,6 +1,6 @@
 import type { CommentaryPlaybackMode, CommentaryPlaybackPreference } from '@/features/annotation/types'
 import { isCommentaryPlaybackMode } from '@/lib/commentaryPlayback'
-import { getErrorStatus } from '@/lib/errorStatus'
+import { isTerminalAccessError } from '@/lib/errorStatus'
 
 export interface PlaybackPreferenceTransport {
   read: () => Promise<CommentaryPlaybackPreference>
@@ -23,10 +23,6 @@ export interface PlaybackPreferenceState {
 export const SUPPRESSED_PLAYBACK_PREFERENCE: PlaybackPreferenceState = {
   mode: 'off', ready: false, loading: true, saving: false,
   loadError: false, saveError: false, accessDenied: false, preference: null,
-}
-
-function isAccessFailure(error: unknown): boolean {
-  return [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0)
 }
 
 /** One coordinator per identity/speech, independent of component mount lifetime.
@@ -91,7 +87,7 @@ export class PlaybackPreferenceCoordinator {
       this.publish({ preference, mode: preference.mode, ready: true, loading: false, accessDenied: false })
     } catch (error) {
       if (!this.active || readGeneration !== this.readGeneration || intentGeneration !== this.intentGeneration) return
-      if (isAccessFailure(error)) this.denyAccess()
+      if (isTerminalAccessError(error)) this.denyAccess()
       else this.publish({ loading: false, loadError: true })
     } finally {
       this.reading = false
@@ -137,7 +133,7 @@ export class PlaybackPreferenceCoordinator {
           }
         } catch (error) {
           if (!this.active) return
-          if (isAccessFailure(error)) {
+          if (isTerminalAccessError(error)) {
             this.denyAccess()
             return
           }
