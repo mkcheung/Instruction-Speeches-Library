@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import type { BrowserContext, Page } from '@playwright/test'
 import { expect } from '@playwright/test'
+import { xsrfHeaders } from './xsrf-headers.js'
 
 export const FRIENDS_APP_URL = process.env.FRIENDS_APP_URL ?? 'http://127.0.0.1:5174'
 export const FRIENDS_API_URL = process.env.FRIENDS_API_URL ?? 'http://127.0.0.1:18080'
@@ -33,12 +34,16 @@ if (config('database.default') !== 'pgsql' || config('database.connections.pgsql
     || ! app()->environment(['testing', 'e2e'])) throw new RuntimeException('Refusing non-isolated fixture database.');
 foreach (['member', 'coach', 'admin', 'super_admin'] as $role) Spatie\Permission\Models\Role::firstOrCreate(['name'=>$role, 'guard_name'=>'web']);
 $prefix = 'fb'.bin2hex(random_bytes(4));
+$make = function (string $key, string $first, string $last, string $displayName) use ($prefix): App\Models\User {
+    $user = new App\Models\User;
+    $user->forceFill(['first_name'=>$first, 'last_name'=>$last, 'username'=>$prefix.'-'.$key,
+        'email'=>$prefix.'-'.$key.'@example.invalid', 'password'=>Illuminate\Support\Facades\Hash::make('password'), 'email_verified_at'=>now()])->save();
+    $user->profile()->update(['display_name'=>$displayName, 'onboarding_completed_at'=>now()]);
+    return $user;
+};
 $people = [];
 foreach (['alex'=>'Alex', 'casey'=>'Casey', 'morgan'=>'Morgan', 'drew'=>'Drew', 'owen'=>'Owen', 'admin'=>'Admin', 'super'=>'Superadmin'] as $key=>$first) {
-    $user = new App\Models\User;
-    $user->forceFill(['first_name'=>$first, 'last_name'=>'Browser '.$prefix, 'username'=>$prefix.'-'.$key,
-        'email'=>$prefix.'-'.$key.'@example.invalid', 'password'=>Illuminate\Support\Facades\Hash::make('password'), 'email_verified_at'=>now()])->save();
-    $user->profile()->update(['display_name'=>$first.' Browser '.$prefix, 'onboarding_completed_at'=>now()]);
+    $user = $make($key, $first, 'Browser '.$prefix, $first.' Browser '.$prefix);
     if ($key === 'admin' || $key === 'super') $user->assignRole(['member', $key === 'admin' ? 'admin' : 'super_admin']);
     elseif ($key === 'casey') $user->assignRole('coach');
     $people[$key]=$user;
@@ -56,11 +61,8 @@ $service->request($people['casey'],$people['owen'],null);
 $extra=[];
 if (getenv('FRIENDS_BROWSER_PAGINATION') === '1') {
     for ($i=0;$i<24;$i++) {
-        $user=new App\Models\User;
         $name='Pagination Friend '.str_pad((string)$i,2,'0',STR_PAD_LEFT).' '.$prefix;
-        $user->forceFill(['first_name'=>$name,'last_name'=>'','username'=>$prefix.'-p'.$i,
-            'email'=>$prefix.'-p'.$i.'@example.invalid','password'=>Illuminate\Support\Facades\Hash::make('password'),'email_verified_at'=>now()])->save();
-        $user->profile()->update(['display_name'=>$name,'onboarding_completed_at'=>now()]);
+        $user = $make('p'.$i, $name, '', $name);
         $connect($people['alex'],$user);$extra[]=$user;
     }
 }
@@ -82,9 +84,8 @@ export async function loginFriend(page: Page, person: FriendTestPerson) {
 }
 
 export async function friendPost(context: BrowserContext, endpoint: string, data?: unknown) {
-  const cookie = (await context.cookies()).find((entry) => entry.name === 'XSRF-TOKEN')
   return context.request.post(`${FRIENDS_API_URL}${endpoint}`, {
     headers: { Accept: 'application/json', Origin: FRIENDS_APP_URL,
-      ...(cookie ? { 'X-XSRF-TOKEN': decodeURIComponent(cookie.value) } : {}) }, data,
+      ...(await xsrfHeaders(context, FRIENDS_API_URL, { required: false })) }, data,
   })
 }

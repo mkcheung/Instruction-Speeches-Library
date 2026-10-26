@@ -20,6 +20,20 @@ it('normalizes case and accent variants to the same value', function () {
     expect(Username::normalize('MÄRSCHEUNG'))->toBe('marscheung');
 });
 
+it('attributes a resolved public profile to the original decoded username', function (string $requested, string $canonical) {
+    User::factory()->create(['username' => $canonical]);
+
+    $this->getJson('/api/u/'.rawurlencode($requested))
+        ->assertOk()
+        ->assertJsonPath('profile.username', $canonical)
+        ->assertJsonPath('profile.requested_username', $requested);
+})->with([
+    ['Bjørn', 'bjorn'],
+    ['straße', 'strasse'],
+    ['Москва', 'moskva'],
+    [' ÉLODIE ', 'elodie'],
+]);
+
 it('refuses a second registration of a case/accent variant of an existing username, with a usable message, not a 500', function () {
     $existing = User::factory()->create();
     $existing->username = 'marscheung';

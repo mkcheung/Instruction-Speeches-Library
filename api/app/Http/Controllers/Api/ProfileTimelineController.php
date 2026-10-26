@@ -79,7 +79,7 @@ class ProfileTimelineController extends Controller
             $query->where('reviews.speech_owner_id', $viewer->id)->where('reviews.reviewer_id', $profileUser->id);
         }
 
-        if ($cursor = self::decodeCursor($request->query('cursor'))) {
+        if ($cursor = KeysetCursor::decode($request->query('cursor'))) {
             [$cursorTs, $cursorId] = $cursor;
             $query->where(function ($q) use ($cursorTs, $cursorId) {
                 $q->where('reviews.last_transition_at', '<', $cursorTs)
@@ -100,7 +100,7 @@ class ProfileTimelineController extends Controller
             // return type is unconditionally nullable, so this guard makes
             // that real rather than assumed.
             if ($last !== null) {
-                $nextCursor = self::encodeCursor((string) $last->last_transition_at, (int) $last->review_id);
+                $nextCursor = KeysetCursor::encode((string) $last->last_transition_at, (int) $last->review_id);
             }
         }
 
@@ -143,18 +143,5 @@ class ProfileTimelineController extends Controller
                 'profile_username' => $profileUser->username,
             ],
         ]);
-    }
-
-    /**
-     * @return array{0: string, 1: int}|null
-     */
-    private static function decodeCursor(mixed $cursor): ?array
-    {
-        return KeysetCursor::decode($cursor);
-    }
-
-    private static function encodeCursor(string $timestamp, int $id): string
-    {
-        return base64_encode("{$timestamp}|{$id}");
     }
 }

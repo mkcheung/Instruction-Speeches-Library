@@ -9,6 +9,7 @@ import ProfileReviewsLeft from '@/routes/ProfileReviewsLeft'
 import ProfileReviewsReceived from '@/routes/ProfileReviewsReceived'
 import NotFound from '@/routes/NotFound'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { friendsResponse, relationship } from '@/test/friendsFixtures'
 import { authApi } from '@/features/auth/authApi'
 import type { MeResponse } from '@/features/auth/types'
 import type { PublicProfile as Profile } from '@/features/profile/types'
@@ -45,7 +46,7 @@ function renderProfileApp(route: string) {
   )
 }
 
-const emptyFriends = { friends: [], meta: { total: 0, next_cursor: null } }
+const emptyFriends = friendsResponse()
 const emptyTimeline = { timeline: [], meta: { next_cursor: null, tab: 'left', profile_username: 'jordan' } }
 
 describe('PublicProfile', () => {
@@ -73,7 +74,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       // Anonymous by default: `PublicProfile` probes the session to decide
       // whether to render the "Back to dashboard" link, and D5 requires the
@@ -109,7 +110,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       // Anonymous by default: `PublicProfile` probes the session to decide
       // whether to render the "Back to dashboard" link, and D5 requires the
@@ -141,7 +142,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       // Anonymous by default: `PublicProfile` probes the session to decide
       // whether to render the "Back to dashboard" link, and D5 requires the
@@ -178,6 +179,7 @@ describe('PublicProfile', () => {
 
   it('sends a case-only difference in the URL to the canonical profile instead of a 404', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const requestedUsername = decodeURIComponent(new URL(urlOf(input)).pathname.slice('/api/u/'.length))
       const url = urlOf(input).toLowerCase()
       if (url.includes('/api/u/marscheung/timeline')) return jsonResponse(emptyTimeline)
       if (url.includes('/api/u/marscheung')) {
@@ -185,6 +187,7 @@ describe('PublicProfile', () => {
           profile: {
             id: 7,
             username: 'marscheung',
+            requested_username: requestedUsername,
             display_name: 'Mars Cheung',
             pronouns: null,
             bio: null,
@@ -207,19 +210,23 @@ describe('PublicProfile', () => {
   })
 
   it.each([
-    ['an accented spelling', '/u/%C3%A9lodie/reviews-left?tab=1', 'elodie'],
+    ['an accented spelling', '/u/%C3%A9lodie/reviews-left?tab=1#notes', 'elodie'],
     ['a trailing space', '/u/elodie%20', 'elodie'],
+    ['a Scandinavian letter', '/u/bj%C3%B8rn/reviews-left?tab=1#notes', 'bjorn'],
+    ['a German ligature', '/u/stra%C3%9Fe/reviews-left?tab=1#notes', 'strasse'],
+    ['a Cyrillic spelling', '/u/%D0%9C%D0%BE%D1%81%D0%BA%D0%B2%D0%B0/reviews-left?tab=1#notes', 'moskva'],
   ])('sends %s of the username to the canonical profile instead of a 404', async (_label, entry, canonical) => {
     // The API trims, ASCII-folds and lowercases before looking a username up, so these links resolve there.
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
+      const requestedUsername = decodeURIComponent(new URL(url).pathname.slice('/api/u/'.length))
       if (url.includes(`/api/u/${canonical}/timeline`)) return jsonResponse(emptyTimeline)
       if (url.includes(`/api/u/${canonical}`)) {
-        return jsonResponse({ profile: { id: 8, username: canonical, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+        return jsonResponse({ profile: { id: 8, username: canonical, requested_username: requestedUsername, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
       }
       if (url.includes('/api/u/')) {
         // The server resolves any spelling to the same profile.
-        return jsonResponse({ profile: { id: 8, username: canonical, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+        return jsonResponse({ profile: { id: 8, username: canonical, requested_username: requestedUsername, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
       }
       if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
@@ -230,7 +237,48 @@ describe('PublicProfile', () => {
 
     expect(await screen.findByRole('heading', { name: 'Elodie Example' })).toBeInTheDocument()
     expect(screen.queryByText(/not found/i)).not.toBeInTheDocument()
-    expect(router.state.location.pathname.startsWith(`/u/${canonical}`)).toBe(true)
+    const original = new URL(entry, 'http://test.local')
+    expect(router.state.location.pathname).toBe(original.pathname.replace(/^\/u\/[^/]+/, `/u/${canonical}`))
+    expect(router.state.location.search).toBe(original.search)
+    expect(router.state.location.hash).toBe(original.hash)
+    expect(router.state.historyAction).toBe('REPLACE')
+  })
+
+  it.each([undefined, 'another-slug'])('rejects a canonical mismatch without matching server attribution (%s)', async (requestedUsername) => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (urlOf(input).includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
+      return jsonResponse({ profile: { id: 8, username: 'elodie', requested_username: requestedUsername, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+    }))
+
+    const { router } = renderProfileApp('/u/%C3%A9lodie')
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Elodie Example' })).not.toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/u/%C3%A9lodie')
+  })
+
+  it('ignores an attributed response for a slug left while its request was pending', async () => {
+    let resolveOld!: (response: Response) => void
+    const oldProfile = new Promise<Response>((resolve) => { resolveOld = resolve })
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(urlOf(input)).pathname
+      if (path === '/api/me') return jsonResponse({ message: 'Unauthenticated.' }, 401)
+      if (decodeURIComponent(path) === '/api/u/bjørn') return oldProfile
+      if (path === '/api/u/marscheung') return jsonResponse({ profile: { id: 7, username: 'marscheung', requested_username: 'marscheung', display_name: 'Mars Cheung', avatar_url: null } })
+      throw new Error(`unexpected fetch: ${path}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { router } = renderProfileApp('/u/bj%C3%B8rn')
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => decodeURIComponent(new URL(urlOf(input)).pathname) === '/api/u/bjørn')).toBe(true))
+    await act(async () => { await router.navigate('/u/marscheung') })
+    await screen.findByRole('heading', { name: 'Mars Cheung' })
+
+    await act(async () => {
+      resolveOld(jsonResponse({ profile: { id: 8, username: 'bjorn', requested_username: 'bjørn', display_name: 'Bjorn Example', avatar_url: null } }))
+      await oldProfile
+    })
+    expect(router.state.location.pathname).toBe('/u/marscheung')
+    expect(screen.getByRole('heading', { name: 'Mars Cheung' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Bjorn Example' })).not.toBeInTheDocument()
   })
 
   it('renders a real routed <nav> with links, not a tablist widget', async () => {
@@ -249,7 +297,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       // Anonymous by default: `PublicProfile` probes the session to decide
       // whether to render the "Back to dashboard" link, and D5 requires the
@@ -289,7 +337,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       // Anonymous by default: `PublicProfile` probes the session to decide
       // whether to render the "Back to dashboard" link, and D5 requires the
@@ -343,7 +391,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       // Anonymous by default: `PublicProfile` probes the session to decide
       // whether to render the "Back to dashboard" link, and D5 requires the
@@ -403,7 +451,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       throw new Error(`unexpected fetch: ${url}`)
     })
@@ -440,7 +488,7 @@ describe('PublicProfile', () => {
           },
         })
       }
-      if (url.includes('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.includes('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.includes('/api/friends')) return jsonResponse(emptyFriends)
       throw new Error(`unexpected fetch: ${url}`)
     })
@@ -479,7 +527,7 @@ describe('profile connection eligibility', () => {
         writes.push({ url: url.pathname, body: await request.clone().json() })
         return jsonResponse({ connection: { id: 1, state: 'pending' } }, 201)
       }
-      if (url.pathname.startsWith('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.pathname.startsWith('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.pathname === '/api/friends') return jsonResponse(emptyFriends)
       const target = [cora, milo].find((p) => url.pathname === '/api/u/'+p.username)
       if (target) return jsonResponse({ profile: target })
@@ -581,7 +629,7 @@ describe('Friends integration with public profile routing', () => {
       const url = new URL(input instanceof Request ? input.url : input.toString())
       if (url.pathname === '/api/me') return jsonResponse({ user }, status)
       if (url.pathname.startsWith('/api/u/')) return jsonResponse({ profile })
-      if (url.pathname.startsWith('/api/friends/relationship/')) return jsonResponse({ relationship: { state: 'none', direction: null, connection_id: null, connected_at: null } })
+      if (url.pathname.startsWith('/api/friends/relationship/')) return jsonResponse(relationship())
       if (url.pathname === '/api/friends') return jsonResponse(emptyFriends)
       throw new Error('Unexpected integration request: '+url)
     })

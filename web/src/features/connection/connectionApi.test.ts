@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { waitFor } from '@testing-library/react'
 import { createTestStore } from '@/test/renderWithProviders'
+import { friendsResponse, makeFriend, relationship as relationshipResponse } from '@/test/friendsFixtures'
 import { connectionApi } from './connectionApi'
 import { connectionErrorMessage, selectConnectionSession } from './connectionSession'
-import type { Friend, FriendsResponse } from './types'
 
-const friend: Friend = { connection_id: 12, person: { id: 8, name: 'Alice Example', username: 'alice', avatar_url: '/avatar.jpg' }, mutual_friends_count: 3, requested_at: null, connected_at: '2026-01-01T00:00:00Z', note: null }
-const friends: FriendsResponse = { friends: [friend], meta: { total: 24, next_cursor: 'opaque+/=' } }
-const relationship = { relationship: { state: 'pending', direction: 'incoming', connection_id: 12, connected_at: null } }
+const friend = makeFriend({ connection_id: 12, person: { id: 8, name: 'Alice Example', username: 'alice', avatar_url: '/avatar.jpg' }, mutual_friends_count: 3, requested_at: null, connected_at: '2026-01-01T00:00:00Z' })
+const friends = friendsResponse([friend], { total: 24, next_cursor: 'opaque+/=' })
+const relationship = relationshipResponse({ state: 'pending', direction: 'incoming', connection_id: 12 })
 const connection = { id: 12, state: 'pending', initiated_by_id: 8, note: null, requested_at: null, responded_at: null, connected_at: null }
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 let store: ReturnType<typeof createTestStore>
@@ -62,6 +62,18 @@ describe('Friends wire contracts and cache partitioning', () => {
     expect(calls[2].search).toBe('')
   })
 
+  it('shares trimmed discovery cache entries only within the same viewer partition', async () => {
+    const fetch = vi.fn(async () => json({ people: [], meta: { next_cursor: null } }))
+    vi.stubGlobal('fetch', fetch)
+    const args = { viewerId: '1', search: ' Alice ' }
+    await store.dispatch(connectionApi.endpoints.findFriends.initiate(args, { subscribe: false })).unwrap()
+    await store.dispatch(connectionApi.endpoints.findFriends.initiate({ ...args, search: 'Alice', cursor: null }, { subscribe: false })).unwrap()
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(connectionApi.endpoints.findFriends.select({ ...args, viewerId: '2' })(store.getState()).data).toBeUndefined()
+    await store.dispatch(connectionApi.endpoints.findFriends.initiate({ ...args, viewerId: '2' }, { subscribe: false })).unwrap()
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it.each(['sendConnectionRequest', 'acceptConnection', 'declineConnection', 'blockConnection', 'unblockConnection'] as const)('%s sends its existing contract and refreshes every Friends/legacy projection', async (endpoint) => {
     const reads = new Map<string, number>(); let mutation: Request | undefined
     vi.stubGlobal('fetch', vi.fn(async (request: Request) => {
@@ -69,6 +81,7 @@ describe('Friends wire contracts and cache partitioning', () => {
       if (request.method === 'POST') { mutation = request.clone(); return json({ connection }) }
       reads.set(url.pathname + url.search, (reads.get(url.pathname + url.search) ?? 0) + 1)
       if (url.pathname === '/api/connections') return json({ connections: [], meta: { next_cursor: null } })
+      if (url.pathname.endsWith('/timeline')) return json({ timeline: [], meta: { next_cursor: null, tab: 'left', profile_username: 'alice' } })
       return json(url.pathname.includes('/relationship/') ? relationship : url.pathname.endsWith('/find') ? { people: [], meta: { next_cursor: null } } : friends)
     }))
     const subscriptions = [
@@ -79,6 +92,7 @@ describe('Friends wire contracts and cache partitioning', () => {
       store.dispatch(connectionApi.endpoints.getFriendRelationship.initiate({ viewerId: '1', targetId: 8 })),
       store.dispatch(connectionApi.endpoints.getConnectionsRail.initiate()),
       store.dispatch(connectionApi.endpoints.getPendingConnectionRequests.initiate()),
+      store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate({ username: 'alice', tab: 'left' })),
     ]
     await Promise.all(subscriptions)
     const result = endpoint === 'sendConnectionRequest'
@@ -89,7 +103,7 @@ describe('Friends wire contracts and cache partitioning', () => {
     expect(new URL(mutation!.url).pathname).toBe(endpoint === 'sendConnectionRequest' ? '/api/connections' : `/api/connections/12/${endpoint.replace('Connection', '')}`)
     if (endpoint === 'sendConnectionRequest') expect(await mutation!.json()).toEqual({ user_id: 8, note: 'Hello' })
     else expect(await mutation!.text()).toBe('')
-    await waitFor(() => expect([...reads.values()]).toEqual(Array(7).fill(2)))
+    await waitFor(() => expect([...reads.values()]).toEqual(Array(8).fill(2)))
     subscriptions.forEach((subscription) => subscription.unsubscribe())
   })
 

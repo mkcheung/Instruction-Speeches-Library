@@ -17,6 +17,11 @@ use Illuminate\Http\Resources\Json\JsonResource;
  */
 class PublicProfileResource extends JsonResource
 {
+    public function __construct(User $resource, private readonly string $requestedUsername)
+    {
+        parent::__construct($resource);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -36,6 +41,8 @@ class PublicProfileResource extends JsonResource
             // "public by definition" per this class's own docblock.
             'id' => $this->id,
             'username' => $this->username,
+            // Attribute server-side normalization to this exact request, not a model field.
+            'requested_username' => $this->requestedUsername,
             'display_name' => $profile?->display_name ?: trim("{$this->first_name} {$this->last_name}"),
             'pronouns' => $profile?->pronouns,
             'bio' => $profile?->bio,
@@ -50,9 +57,7 @@ class PublicProfileResource extends JsonResource
             // removed-behavior-auditor angle against this exact line.
             // Only the one role this badge is actually for is ever sent.
             'credential' => $this->hasRole('coach') ? 'coach' : null,
-            'avatar_url' => $profile?->avatar_path
-                ? app(MediaUrlSigner::class)->presign($profile->avatar_path)
-                : null,
+            'avatar_url' => app(MediaUrlSigner::class)->presignOptional($profile?->avatar_path ?: null),
         ];
     }
 }

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { API_URL, APP_URL, VOICE } from './fixtures.js'
+import { xsrfHeaders } from './xsrf-headers.js'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -180,9 +181,7 @@ export async function recorderAttempts(page: Page): Promise<Array<{ phase: strin
 }
 
 export async function xsrfHeader(context: BrowserContext): Promise<Record<string, string>> {
-  const cookie = (await context.cookies(API_URL)).find((candidate) => candidate.name === 'XSRF-TOKEN')
-  expect(cookie, 'no XSRF-TOKEN cookie — has the seeded session gone stale?').toBeTruthy()
-  return { 'X-XSRF-TOKEN': decodeURIComponent(cookie!.value) }
+  return xsrfHeaders(context, API_URL, { message: 'no XSRF-TOKEN cookie — has the seeded session gone stale?' })
 }
 
 export async function openSpeech(page: Page, speechId: number): Promise<void> {

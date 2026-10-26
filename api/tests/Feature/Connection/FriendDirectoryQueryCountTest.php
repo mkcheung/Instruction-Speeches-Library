@@ -65,7 +65,7 @@ it('keeps queries bounded from one to twenty candidates with one grouped mutual 
     $page = $fetch();
     expect($page['rows'])->toHaveCount(20);
     expect(array_values($page['mutual']))->toBe(array_fill(0, 20, 1));
-    expect(count($twenty))->toBe(count($one))->toBeLessThanOrEqual(5);
+    expect(count($twenty))->toBe(count($one))->toBe($view === 'accepted' ? 4 : 3);
     foreach ([$one, $twenty] as $queries) {
         $aggregates = array_filter($queries, fn (array $query) => str_contains(strtolower($query['query']), 'count(distinct'));
         expect($aggregates)->toHaveCount(1);

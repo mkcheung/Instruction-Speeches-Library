@@ -46,4 +46,10 @@ class MediaUrlSigner
             now()->addSeconds($ttlSeconds),
         );
     }
+
+    /** Empty optional media fields do not require a storage request. */
+    public function presignOptional(?string $path): ?string
+    {
+        return $path === null || $path === '' ? null : $this->presign($path);
+    }
 }

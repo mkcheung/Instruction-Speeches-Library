@@ -1,5 +1,6 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
+import { CONNECTION_TAGS } from './tags'
 import type {
   Connection,
   FriendsQueryArgs,
@@ -12,6 +13,15 @@ import type {
   ProfileTimelineTab,
   SendConnectionRequestPayload,
 } from '@/features/connection/types'
+
+function unwrapConnection(response: { connection: Connection }): Connection {
+  return response.connection
+}
+
+/** Keep the viewer cache partition while sharing normalization with the HTTP query. */
+function normalizedFriendsArgs<T extends { search?: string; cursor?: string | null }>(args: T) {
+  return { ...args, search: args.search?.trim() ?? '', cursor: args.cursor ?? null }
+}
 
 /**
  * STEP-13-social-layer.md, following `essayApi.ts`/`reviewApi.ts`'s
@@ -42,28 +52,30 @@ import type {
 export const connectionApi = createApi({
   reducerPath: 'connectionApi',
   baseQuery: baseQueryWithCsrfRetry,
-  tagTypes: ['ConnectionsRail', 'ProfileTimeline', 'PendingConnections', 'Friends', 'FriendRelationship'],
+  tagTypes: CONNECTION_TAGS,
   endpoints: (builder) => ({
     getFriends: builder.query<FriendsResponse, FriendsQueryArgs>({
-      query: ({ view, search, cursor }) => {
+      query: (args) => {
+        const { view, search, cursor } = normalizedFriendsArgs(args)
         const params = new URLSearchParams({ view })
-        if (search?.trim()) params.set('search', search.trim())
+        if (search) params.set('search', search)
         if (cursor) params.set('cursor', cursor)
         return `/api/friends?${params}`
       },
       serializeQueryArgs: ({ endpointName, queryArgs }) => ({
-        endpointName, ...queryArgs, search: queryArgs.search?.trim() ?? '', cursor: queryArgs.cursor ?? null,
+        endpointName, ...normalizedFriendsArgs(queryArgs),
       }),
       providesTags: ['Friends'],
     }),
     findFriends: builder.query<FindFriendsResponse, FindFriendsQueryArgs>({
-      query: ({ search, cursor }) => {
-        const params = new URLSearchParams({ search: search.trim() })
+      query: (args) => {
+        const { search, cursor } = normalizedFriendsArgs(args)
+        const params = new URLSearchParams({ search })
         if (cursor) params.set('cursor', cursor)
         return `/api/friends/find?${params}`
       },
       serializeQueryArgs: ({ endpointName, queryArgs }) => ({
-        endpointName, ...queryArgs, search: queryArgs.search.trim(), cursor: queryArgs.cursor ?? null,
+        endpointName, ...normalizedFriendsArgs(queryArgs),
       }),
       providesTags: ['Friends'],
     }),
@@ -108,26 +120,26 @@ export const connectionApi = createApi({
 
     sendConnectionRequest: builder.mutation<Connection, SendConnectionRequestPayload>({
       query: (body) => ({ url: '/api/connections', method: 'POST', body }),
-      transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
+      transformResponse: unwrapConnection,
+      invalidatesTags: CONNECTION_TAGS,
     }),
 
     acceptConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/accept`, method: 'POST' }),
-      transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
+      transformResponse: unwrapConnection,
+      invalidatesTags: CONNECTION_TAGS,
     }),
 
     declineConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/decline`, method: 'POST' }),
-      transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
+      transformResponse: unwrapConnection,
+      invalidatesTags: CONNECTION_TAGS,
     }),
 
     blockConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/block`, method: 'POST' }),
-      transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
+      transformResponse: unwrapConnection,
+      invalidatesTags: CONNECTION_TAGS,
     }),
 
     /** §7 acceptance: unblocking must land on `declined`, never `accepted`
@@ -139,8 +151,8 @@ export const connectionApi = createApi({
      * blocked connections" surface once the backend exposes one. */
     unblockConnection: builder.mutation<Connection, number>({
       query: (id) => ({ url: `/api/connections/${id}/unblock`, method: 'POST' }),
-      transformResponse: (response: { connection: Connection }) => response.connection,
-      invalidatesTags: ['ConnectionsRail', 'PendingConnections', 'ProfileTimeline', 'Friends', 'FriendRelationship'],
+      transformResponse: unwrapConnection,
+      invalidatesTags: CONNECTION_TAGS,
     }),
   }),
 })

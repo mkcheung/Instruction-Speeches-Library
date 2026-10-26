@@ -1,5 +1,6 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { execSync } from 'node:child_process'
+import { xsrfHeaders } from './xsrf-headers.js'
 import {
   API_URL,
   APP_URL,
@@ -209,17 +210,6 @@ async function openEssayEditor(page: Page, opts: { freezeTimers?: boolean } = {}
 
 function autosaveBadge(page: Page) {
   return page.getByTestId('essay-autosave-state')
-}
-
-/**
- * `page.request` carries the context's cookies but does NOT set the CSRF
- * header the way the app's own client does (`lib/baseQuery.ts`), so a bare
- * PUT is rejected. Laravel's cookie is URL-encoded; the header must not be.
- */
-async function xsrfHeader(context: BrowserContext): Promise<Record<string, string>> {
-  const cookie = (await context.cookies(API_URL)).find((c) => c.name === 'XSRF-TOKEN')
-  expect(cookie, 'no XSRF-TOKEN cookie — has the session gone stale?').toBeTruthy()
-  return { 'X-XSRF-TOKEN': decodeURIComponent(cookie!.value) }
 }
 
 /**
@@ -521,7 +511,7 @@ test.describe('the real TipTap editor — write path', () => {
     // to do with conflicts.
     const current = await serverEssay(page, REVIEW_COACH_B_ID)
     const bump = await page.request.put(`${API_URL}/api/speeches/${SHARED_SPEECH_ID}/essay`, {
-      headers: { ...JSON_HEADERS, ...(await xsrfHeader(context)) },
+      headers: { ...JSON_HEADERS, ...(await xsrfHeaders(context, API_URL)) },
       data: { html: theirs, lock_version: current.essay_lock_version },
     })
     expect(bump.status(), 'the out-of-band write must land, or there is no conflict to find').toBe(200)

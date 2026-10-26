@@ -10,14 +10,10 @@ import { useGetFriendRelationshipQuery } from '@/features/connection/connectionA
 import { useConnectionRefresh, useConnectionSession, useEligibleConnectionViewer } from '@/features/connection/connectionSession'
 import type { PublicProfile as PublicProfileType } from '@/features/profile/types'
 import NotFound from '@/routes/NotFound'
+import { profilePath } from '@/lib/profilePath'
 
 export interface PublicProfileOutletContext {
   profile: PublicProfileType
-}
-
-/** Client mirror of the API's `Username::normalize` (trim, ASCII-fold, lowercase). */
-function normalizedUsername(raw: string): string {
-  return raw.trim().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
 const SECTION_LINK_CLASS =
@@ -51,19 +47,14 @@ export default function PublicProfile() {
     )
   }
 
-  // The API normalizes the username before the lookup (trim, ASCII-fold, lowercase), so `/u/MarsCheung`,
-  // `/u/%C3%A9lodie` or a link pasted with a trailing space has always reached this page. Every private
-  // affordance below compares the canonical username strictly, so whenever the server has resolved a profile
-  // under a different spelling, send the visitor to the canonical URL instead of treating an existing profile
-  // as missing. Only a spelling that normalizes to the resolved username redirects: any other mismatch is not
-  // this person's URL and must never display their (possibly cached) profile. Only trust a settled response:
-  // while a refetch is in flight `profile` may still be the previous username's data.
-  if (profile && username && !isFetchingProfile && profile.username !== username && normalizedUsername(username) === profile.username) {
+  // Normalization belongs to the API. Only a settled, successful response explicitly
+  // attributed to this slug may redirect; unrelated/missing attribution fails closed.
+  if (profile && username && !isError && !isFetchingProfile && profile.username !== username && profile.requested_username === username) {
     return (
       <Navigate
         replace
         to={{
-          pathname: location.pathname.replace(/^\/u\/[^/]+/i, `/u/${encodeURIComponent(profile.username)}`),
+          pathname: location.pathname.replace(/^\/u\/[^/]+/i, profilePath(profile.username)),
           search: location.search,
           hash: location.hash,
         }}
@@ -117,14 +108,14 @@ export default function PublicProfile() {
         </div>
 
         <nav aria-label="Profile sections" className="flex flex-wrap border-t border-border px-2">
-          <NavLink to={`/u/${username}`} end className={SECTION_LINK_CLASS}>
+          <NavLink to={profilePath(username)} end className={SECTION_LINK_CLASS}>
             About
           </NavLink>
-          {owner && <NavLink to={`/u/${encodeURIComponent(username)}/friends`} className={SECTION_LINK_CLASS}>Friends</NavLink>}
-          <NavLink to={`/u/${username}/reviews-left`} className={SECTION_LINK_CLASS}>
+          {owner && <NavLink to={profilePath(username, 'friends')} className={SECTION_LINK_CLASS}>Friends</NavLink>}
+          <NavLink to={profilePath(username, 'reviews-left')} className={SECTION_LINK_CLASS}>
             Reviews you left
           </NavLink>
-          <NavLink to={`/u/${username}/reviews-received`} className={SECTION_LINK_CLASS}>
+          <NavLink to={profilePath(username, 'reviews-received')} className={SECTION_LINK_CLASS}>
             Reviews they left you
           </NavLink>
         </nav>

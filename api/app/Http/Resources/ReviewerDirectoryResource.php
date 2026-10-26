@@ -30,9 +30,7 @@ class ReviewerDirectoryResource extends JsonResource
             'username' => $this->username,
             'name' => trim("{$this->first_name} {$this->last_name}"),
             'credential' => $this->getRoleNames()->first(),
-            'avatar_url' => $profile?->avatar_path
-                ? app(MediaUrlSigner::class)->presign($profile->avatar_path)
-                : null,
+            'avatar_url' => app(MediaUrlSigner::class)->presignOptional($profile?->avatar_path ?: null),
         ];
     }
 }

@@ -7,6 +7,9 @@ import { useAcceptConnectionMutation, useDeclineConnectionMutation, useGetFriend
 import { connectionErrorMessage, useConnectionRefresh, useConnectionSession, useEligibleConnectionViewer } from '@/features/connection/connectionSession'
 import type { ConnectionViewer } from '@/features/connection/connectionSession'
 import type { Friend } from '@/features/connection/types'
+import { useDismissedUntilRefetch } from '@/features/connection/useDismissedUntilRefetch'
+import { useMountedRef } from '@/hooks/useMountedRef'
+import { profilePath } from '@/lib/profilePath'
 
 /** The header and Friends page share the same authoritative viewer gate. */
 export function ConnectionRequestsBell() {
@@ -17,23 +20,15 @@ export function ConnectionRequestsBell() {
 
 function EligibleRequestsBell({ viewer }: { viewer: ConnectionViewer }) {
   const query = useGetFriendsQuery({ viewerId: viewer.id, view: 'incoming' }, { refetchOnMountOrArgChange: true })
-  const refetch = query.refetch
-  useConnectionRefresh(refetch, true)
-  useEffect(() => {
-    // A scoped timer needs no global RTK focus-listener installation.
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void refetch()
-    }, 60_000)
-    return () => window.clearInterval(interval)
-  }, [refetch])
-  const [completed, setCompleted] = useState<{ ids: number[]; snapshot?: number }>({ ids: [] })
+  useConnectionRefresh(query.refetch, true, 60_000)
+  const { dismiss, isDismissed } = useDismissedUntilRefetch<number>(query.fulfilledTimeStamp, viewer.id)
   const [status, setStatus] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
   const data = query.currentData
   const count = query.isError ? undefined : data?.meta.total
-  const requests = data?.friends.filter((request) => completed.snapshot !== query.fulfilledTimeStamp || !completed.ids.includes(request.connection_id)) ?? []
+  const requests = data?.friends.filter((request) => !isDismissed(request.connection_id)) ?? []
   function finish(request: Friend, action: 'accept' | 'decline') {
-    setCompleted((previous) => ({ ids: [...(previous.snapshot === query.fulfilledTimeStamp ? previous.ids : []), request.connection_id], snapshot: query.fulfilledTimeStamp }))
+    dismiss(request.connection_id)
     setStatus(action === 'accept' ? `You are now connected with ${request.person.name}.` : `Request from ${request.person.name} declined.`)
     heading.current?.focus()
   }
@@ -55,7 +50,7 @@ function EligibleRequestsBell({ viewer }: { viewer: ConnectionViewer }) {
               {requests.map((request) => <RequestRow key={request.connection_id} request={request} refreshing={query.isFetching} onComplete={finish} />)}
             </ul>
           </>}
-        <Link className="mt-2 block rounded px-2 py-2 text-sm underline focus-visible:ring-3" to={`/u/${encodeURIComponent(viewer.username)}/friends/requests`}>View all requests</Link>
+        <Link className="mt-2 block rounded px-2 py-2 text-sm underline focus-visible:ring-3" to={profilePath(viewer.username, 'friends', 'requests')}>View all requests</Link>
       </PopoverPopup></PopoverPositioner></PopoverPortal>
     </PopoverRoot>
   )
@@ -65,10 +60,9 @@ function RequestRow({ request, refreshing, onComplete }: { request: Friend; refr
   const [accept, accepting] = useAcceptConnectionMutation()
   const [decline, declining] = useDeclineConnectionMutation()
   const [error, setError] = useState('')
-  const mounted = useRef(true)
+  const mounted = useMountedRef()
   const complete = useRef(onComplete)
   useEffect(() => { complete.current = onComplete }, [onComplete])
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const busy = accepting.isLoading || declining.isLoading
   async function act(action: 'accept' | 'decline') {
     if (busy || refreshing) return

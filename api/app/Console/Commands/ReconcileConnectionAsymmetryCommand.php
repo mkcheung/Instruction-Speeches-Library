@@ -3,51 +3,19 @@
 namespace App\Console\Commands;
 
 use App\Models\Connection;
+use App\Support\ConnectionPair;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
-/**
- * MODERNIZATION_PLAN §6.7.2 / STEP-13-FROZEN-CONTRACT.md §7: the nightly
- * asymmetry reconciler. `connections` is stored as two mirrored rows per
- * pair; `App\Services\ConnectionService` keeps them in sync by always
- * locking/writing lower-user-id-first, but a half-written pair (a crashed
- * request mid-transaction, a bug, a direct DB write that skipped the
- * service) is a one-sided friendship users report as "the site is broken"
- * with nothing in the logs. This sweep finds and fixes exactly that.
- *
- * Three asymmetry shapes are detected and repaired:
- *  - **State mismatch**: both mirrored rows exist but disagree on `state`.
- *    Repaired by taking the more "resolved" state as authoritative — see
- *    `precedence()` below.
- *  - **Attribute mismatch**: both rows exist and agree on `state`, but their
- *    `initiated_by_id` / `blocked_by_id` differ — e.g. an older `block()` that
- *    filled a missing mirror with a NULL initiator. `ConnectionService`
- *    refuses to act on such a pair (it would otherwise be a permanent 409
- *    for both people), so it is repaired by taking the non-null value, and
- *    where both are set the lower-owner-id row's value, for both rows.
- *  - **Missing mirror**: one row exists with no counterpart at all.
- *    Repaired by creating the missing row from the existing one's fields
- *    (owner/peer swapped, `initiated_by_id`/`blocked_by_id` copied as-is
- *    since those carry the same value on both mirrored rows by design).
- *
- * Scheduled nightly (e2e: every minute) — see routes/console.php.
- */
+/** Repairs historical mirrored pairs only when their resulting state and authority are unambiguous. */
 class ReconcileConnectionAsymmetryCommand extends Command
 {
     protected $signature = 'connections:reconcile-asymmetry';
 
-    protected $description = 'Detect and repair connections pairs whose two mirrored rows disagree, or where one row exists without its mirror (§6.7.2).';
+    protected $description = 'Repair unambiguous connection asymmetries and report invalid pairs or missing timestamps.';
 
-    /**
-     * Precedence when two mirrored rows disagree on `state` — the more
-     * "resolved" state wins, since a mismatch means one write landed and
-     * its mirror did not, never that both writes landed with genuinely
-     * different intents. `blocked` always wins (a safety-relevant state
-     * must never be silently lost); otherwise `accepted` beats `pending`/
-     * `declined` (an acceptance is a completed handshake, more resolved
-     * than either the outstanding invite or after-the-fact severance it
-     * would otherwise appear to conflict with).
-     *
+    /** Existing state policy; tied, differing states carry no authoritative winner.
      * @var array<string, int>
      */
     private const PRECEDENCE = ['blocked' => 3, 'accepted' => 2, 'pending' => 1, 'declined' => 1];
@@ -57,80 +25,116 @@ class ReconcileConnectionAsymmetryCommand extends Command
         $mismatched = 0;
         $created = 0;
         $aligned = 0;
+        $attention = ['unresolved_pairs' => 0, 'accepted_missing_connected_at_rows' => 0, 'pending_missing_requested_at_rows' => 0];
 
-        DB::transaction(function () use (&$mismatched, &$created, &$aligned) {
-            // Every row, paired against its mirror (if any), locked for the
-            // duration of this sweep so a concurrent ConnectionService write
-            // can't race the repair.
-            $rows = Connection::query()->lockForUpdate()->get(['id', 'owner_id', 'peer_id', 'state', 'initiated_by_id', 'blocked_by_id', 'note', 'requested_at', 'responded_at', 'connected_at']);
-            $byPair = $rows->keyBy(fn (Connection $row) => $row->owner_id.':'.$row->peer_id);
+        DB::transaction(function () use (&$mismatched, &$created, &$aligned, &$attention): void {
+            // Retain the existing atomic full sweep. It locks existing rows only;
+            // it does not participate in the service's advisory lock for absent rows.
+            // A bounded per-pair/advisory-lock redesign needs separate contention evidence.
+            $rows = Connection::query()->orderBy('owner_id')->orderBy('peer_id')->lockForUpdate()
+                ->get(['id', 'owner_id', 'peer_id', 'state', 'initiated_by_id', 'blocked_by_id', 'note', 'requested_at', 'responded_at', 'connected_at']);
+            $byPair = $rows->keyBy(fn (Connection $row): string => $row->owner_id.':'.$row->peer_id);
+            $visited = [];
 
             foreach ($rows as $row) {
-                $mirrorKey = $row->peer_id.':'.$row->owner_id;
+                $pairKey = min($row->owner_id, $row->peer_id).':'.max($row->owner_id, $row->peer_id);
+                if (isset($visited[$pairKey])) {
+                    continue;
+                }
+                $visited[$pairKey] = true;
                 /** @var Connection|null $mirror */
-                $mirror = $byPair->get($mirrorKey);
-
-                if ($mirror === null) {
-                    // Create the missing mirror regardless of which side
-                    // (lower- or higher-owner-id) is the one that survived —
-                    // an asymmetry can leave either side as the sole
-                    // remaining row (e.g. a direct DB write that skipped
-                    // ConnectionService, or a crash between the two upsert
-                    // statements). Safe to do unconditionally here: this
-                    // loop iterates over the ORIGINAL `$rows` snapshot taken
-                    // before any repair in this sweep, so a pair is visited
-                    // at most once regardless of which of its two possible
-                    // owner_id values shows up first — no double-create risk.
-                    $new = Connection::query()->create([
-                        'owner_id' => $row->peer_id,
-                        'peer_id' => $row->owner_id,
-                        'state' => $row->state,
-                        'initiated_by_id' => $row->initiated_by_id,
-                        'blocked_by_id' => $row->blocked_by_id,
-                        'note' => $row->note,
-                        'requested_at' => $row->requested_at,
-                        'responded_at' => $row->responded_at,
-                        'connected_at' => $row->connected_at,
-                    ]);
-                    $byPair->put($mirrorKey, $new);
-                    $created++;
-                    $this->warn("Created missing mirror for connection #{$row->id} ({$row->owner_id} <-> {$row->peer_id}).");
+                $mirror = $byPair->get($row->peer_id.':'.$row->owner_id);
+                $candidate = $this->candidate($row, $mirror);
+                if ($candidate === null) {
+                    $attention['unresolved_pairs']++;
 
                     continue;
                 }
-
-                if ($mirror->state !== $row->state) {
-                    $winner = self::PRECEDENCE[$row->state] >= self::PRECEDENCE[$mirror->state] ? $row : $mirror;
-                    $loser = $winner === $row ? $mirror : $row;
-
-                    if ($loser->state !== $winner->state) {
-                        $loser->state = $winner->state;
-                        $loser->initiated_by_id = $winner->initiated_by_id;
-                        $loser->blocked_by_id = $winner->blocked_by_id;
-                        $loser->connected_at = $winner->connected_at;
-                        $loser->save();
-                        $mismatched++;
-                        $this->warn("Resolved state mismatch on connections #{$row->id}/#{$mirror->id}: both set to '{$winner->state}'.");
-                    }
-                } elseif ($mirror->initiated_by_id !== $row->initiated_by_id || $mirror->blocked_by_id !== $row->blocked_by_id) {
-                    $low = $row->owner_id < $mirror->owner_id ? $row : $mirror;
-                    $high = $low === $row ? $mirror : $row;
-                    $initiator = $low->initiated_by_id ?? $high->initiated_by_id;
-                    $blocker = $low->blocked_by_id ?? $high->blocked_by_id;
-
-                    foreach ([$low, $high] as $side) {
-                        $side->initiated_by_id = $initiator;
-                        $side->blocked_by_id = $blocker;
-                        $side->save();
-                    }
+                [$first, $second] = $candidate;
+                if ($mirror === null) {
+                    $this->saveInOrder($first, $second);
+                    $created++;
+                } elseif ($row->state !== $mirror->state) {
+                    $this->saveInOrder($first, $second);
+                    $mismatched++;
+                } elseif ($first->isDirty() || $second->isDirty()) {
+                    $this->saveInOrder($first, $second);
                     $aligned++;
-                    $this->warn("Aligned initiator/blocker on connections #{$low->id}/#{$high->id}.");
                 }
             }
+
+            // Counts refer to stored rows after repairs, not distinct people or pairs.
+            $attention['accepted_missing_connected_at_rows'] = Connection::query()->where('state', 'accepted')->whereNull('connected_at')->count();
+            $attention['pending_missing_requested_at_rows'] = Connection::query()->where('state', 'pending')->whereNull('requested_at')->count();
         });
 
+        if (array_sum($attention) > 0) {
+            Log::warning('Connection reconciliation requires attention.', $attention);
+            $this->warn("Reported {$attention['unresolved_pairs']} unresolved pair(s), {$attention['accepted_missing_connected_at_rows']} accepted row(s) without connected_at and {$attention['pending_missing_requested_at_rows']} pending row(s) without requested_at.");
+        }
         $this->info("Reconciled {$mismatched} mismatched pair(s), aligned {$aligned} attribute-mismatched pair(s) and created {$created} missing mirror row(s).");
 
         return self::SUCCESS;
+    }
+
+    /** Build and validate both proposed rows without modifying either persisted model.
+     * @return array{Connection, Connection}|null
+     */
+    private function candidate(Connection $row, ?Connection $mirror): ?array
+    {
+        $first = clone $row;
+        $second = $mirror === null ? new Connection([
+            'owner_id' => $row->peer_id,
+            'peer_id' => $row->owner_id,
+            'state' => $row->state,
+            'initiated_by_id' => $row->initiated_by_id,
+            'blocked_by_id' => $row->blocked_by_id,
+            'note' => $row->note,
+            'requested_at' => $row->requested_at,
+            'responded_at' => $row->responded_at,
+            'connected_at' => $row->connected_at,
+        ]) : clone $mirror;
+        $winner = $row;
+        if ($mirror !== null && $row->state !== $mirror->state) {
+            $rank = self::PRECEDENCE[$row->state] ?? null;
+            $otherRank = self::PRECEDENCE[$mirror->state] ?? null;
+            if ($rank === null || $otherRank === null || $rank === $otherRank) {
+                return null;
+            }
+            $winner = $rank > $otherRank ? $row : $mirror;
+        }
+
+        // A non-null value can repair its missing copy, but differing values do
+        // not establish who initiated or who owns the right to lift a block.
+        if ($mirror !== null && $row->initiated_by_id !== null && $mirror->initiated_by_id !== null
+            && $row->initiated_by_id !== $mirror->initiated_by_id) {
+            return null;
+        }
+        if ($winner->state === 'blocked' && $mirror !== null && $row->blocked_by_id !== null && $mirror->blocked_by_id !== null
+            && $row->blocked_by_id !== $mirror->blocked_by_id) {
+            return null;
+        }
+        $attributes = [
+            'state' => $winner->state,
+            'initiated_by_id' => $row->initiated_by_id ?? $mirror?->initiated_by_id,
+            'blocked_by_id' => $winner->state === 'blocked' ? ($row->blocked_by_id ?? $mirror?->blocked_by_id) : null,
+        ];
+        if ($mirror !== null && $row->state !== $mirror->state) {
+            $attributes['connected_at'] = $winner->connected_at;
+        }
+        $first->forceFill($attributes);
+        $second->forceFill($attributes);
+
+        return ConnectionPair::isValid($first, $second) ? [$first, $second] : null;
+    }
+
+    private function saveInOrder(Connection $first, Connection $second): void
+    {
+        $ordered = $first->owner_id < $second->owner_id ? [$first, $second] : [$second, $first];
+        foreach ($ordered as $side) {
+            if (! $side->exists || $side->isDirty()) {
+                $side->save();
+            }
+        }
     }
 }

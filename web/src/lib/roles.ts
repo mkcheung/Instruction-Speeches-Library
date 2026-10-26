@@ -1,6 +1,7 @@
 import { FileText, GraduationCap, Home, Search, Shield, Upload, User, UserRound, type LucideIcon } from 'lucide-react'
 import type { CurrentUser } from '@/features/auth/types'
 import { API_URL } from '@/lib/api'
+import { profilePath } from '@/lib/profilePath'
 
 /**
  * S3 (PLAN-APP-HEADER.md) — role logic is additive only. Registration
@@ -121,7 +122,7 @@ export const ADMIN_LOGIN_CONTINUATION = `${API_URL}/control-panel/login`
  * not the page other people see.
  */
 function profileItemFor(username: string): NavItem {
-  return { label: 'Your profile', to: `/u/${username}`, icon: UserRound }
+  return { label: 'Your profile', to: profilePath(username), icon: UserRound }
 }
 
 /** The nav-item list for a given user — baseline items always present,

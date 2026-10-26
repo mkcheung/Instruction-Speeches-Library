@@ -42,7 +42,7 @@ class ProfileController extends Controller
             ], Response::HTTP_NOT_FOUND);
         }
 
-        return new JsonResponse(['profile' => new PublicProfileResource($user)]);
+        return new JsonResponse(['profile' => new PublicProfileResource($user, $username)]);
     }
 
     public function updateSelf(UpdateProfileRequest $request): JsonResponse
