@@ -14,6 +14,7 @@ import { ClearAnnotationsDialog } from '@/components/annotation/ClearAnnotations
 import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
 import { useGetAnnotationsQuery, useClearAnnotationsMutation } from '@/features/annotation/annotationApi'
 import { useAbandonReviewMutation, usePublishReviewMutation } from '@/features/review/reviewApi'
+import { isAccessGrantingReviewStatus } from '@/features/review/reviewAccess'
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
 import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
@@ -123,6 +124,7 @@ function AnnotationComposerPanelInner({
     { speechId, reviewId },
     { pollingInterval: 3000, skipPollingIfUnfocused: true },
   )
+  // This preview guard also accepts numeric strings; retain its existing parsing.
   const previewAccessDenied = isError && error && 'status' in error
     && [401, 403, 404, 410].includes(Number(error.status))
   const [previewAccessBlocked, setPreviewAccessBlocked] = useState(false)
@@ -136,7 +138,7 @@ function AnnotationComposerPanelInner({
   }
   const serverRows = useMemo(() => data?.annotations ?? [], [data])
   const durationMs = Number.isFinite(durationSeconds) && durationSeconds > 0 ? Math.round(durationSeconds * 1000) : null
-  const writable = ['accepted', 'in_progress', 'published'].includes(review.status) && !review.revoked_at
+  const writable = isAccessGrantingReviewStatus(review.status) && !review.revoked_at
   const [pendingWork, setPendingWork] = useState<Record<string, boolean>>({})
   const pendingWorkRef = useRef<Record<string, boolean>>({})
   const handlePendingChange = useCallback((id: string, pending: boolean) => {
@@ -572,7 +574,7 @@ function AnnotationComposerPanelInner({
                 rather than next to Publish.
 
                 code-review finding: this used to render unconditionally.
-                `useMyReviewForSpeech`'s ACCESS_GRANTING set (and so this
+                `isAccessGrantingReviewStatus` (and so this
                 whole panel) includes `published`, but
                 `ReviewPolicy::abandon`/`ReviewService::abandon` only ever
                 act on `accepted`/`in_progress` — a published review's

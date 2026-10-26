@@ -28,7 +28,8 @@ import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { CaptionsToggle } from '@/components/caption/CaptionsToggle'
 import { CaptionSettingsToggle } from '@/components/caption/CaptionSettingsToggle'
 import { ReportDialog } from '@/components/report/ReportDialog'
-import { getErrorStatus } from '@/lib/errorStatus'
+import { getErrorStatus, isTerminalAccessError } from '@/lib/errorStatus'
+import { isAccessGrantingReviewStatus } from '@/features/review/reviewAccess'
 import { getVideoElement, getCaptionsTrack, setCaptionsTrack } from '@/shared/media/videojs-adapter'
 import { useCommentaryTrack } from '@/hooks/useCommentaryTrack'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
@@ -108,11 +109,9 @@ type PreviewRegistration = { identity: string; node: HTMLDivElement; token: symb
 /** Recording lock report, keyed to the `${user}:${speech}:${review}` session that sent it. */
 type RecordingLock = { scopeKey: string; locked: boolean }
 
-const isTerminal = (error: unknown) => [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0)
-
 function accessReview(sections: ReviewSections | undefined, speechId: number): Review | undefined {
   return Object.values(sections ?? {}).flat().find((review) => review.speech?.id === speechId &&
-    review.revoked_at === null && ['accepted', 'in_progress', 'published'].includes(review.status))
+    review.revoked_at === null && isAccessGrantingReviewStatus(review.status))
 }
 
 type TimelineValidation = {
@@ -148,7 +147,7 @@ function useReviewerTimelineValidation({
   // A void-key request already present on entry can belong to another
   // account. Neither its success nor its denial authorizes this epoch. Its
   // denial must still allow our one fresh, independently proven request.
-  const terminalToken = denied ?? (query.status === 'rejected' && isTerminal(query.error) && query.requestId !== validation.baselineReviewRequestId
+  const terminalToken = denied ?? (query.status === 'rejected' && isTerminalAccessError(query.error) && query.requestId !== validation.baselineReviewRequestId
     ? `review:${query.requestId}:${getErrorStatus(query.error)}` : null)
   // Render adjustment prevents old proof appearing for one commit when auth,
   // route/review identity or a terminal denial changes. A later 500 cannot
@@ -395,8 +394,8 @@ export default function SpeechWatch() {
   const ownerCandidate = Number.isSafeInteger(speechId) && speechId > 0 &&
     Number(speech?.id) === speechId && isOwner && asset
     ? `${me!.user.id}:${speechId}:${asset.id}` : null
-  const ownerDenied = [401, 403, 404, 410].includes(getErrorStatus(error) ?? 0) ||
-    [401, 403, 404, 410].includes(getErrorStatus(meError) ?? 0)
+  const ownerDenied = isTerminalAccessError(error) ||
+    isTerminalAccessError(meError)
   const ownerResolved = !isLoading && !error && !meLoading && !meError
   const ownerScope = !ownerDenied && ownerCandidate !== null &&
     (ownerResolved || validatedOwnerKey === ownerCandidate) ? ownerCandidate : null
@@ -419,7 +418,7 @@ export default function SpeechWatch() {
   // same-identity preparation retains utility/picker state without binding A to B.
   const commentary = useCommentaryTrack(speechId, ownerVideo, ownerScope !== null, me?.user.id,
     htmlFullscreen ? fullscreenControlsOpen : ownerTab === 'notes')
-  const commentaryDenied = [401, 403, 404, 410].includes(getErrorStatus(commentary.error) ?? 0) ||
+  const commentaryDenied = isTerminalAccessError(commentary.error) ||
     commentary.preference.accessDenied
   let ownerTimelineStatus: OwnerTimelineStatus
   if (commentaryDenied) ownerTimelineStatus = 'unavailable'
@@ -486,7 +485,7 @@ export default function SpeechWatch() {
   const sourceReady = sourceMatches && concreteReady
   const previewIdentity = sourceReady && me?.user && !isOwner && myReview &&
     myReview.speech?.id === speechId && myReview.revoked_at === null &&
-    ['accepted', 'in_progress', 'published'].includes(myReview.status)
+    isAccessGrantingReviewStatus(myReview.status)
     ? `${me.user.id}:${speechId}:${asset!.id}:${myReview.id}` : null
   const registerPreviewTarget = useCallback((node: HTMLDivElement | null) => {
     if (!node || !previewIdentity) return
@@ -507,20 +506,20 @@ export default function SpeechWatch() {
     recordingLock?.scopeKey === reviewerScopeKey && recordingLock.locked
   const reviewerValidationScope = me?.user && !meLoading && !isLoading && !isOwner &&
     Number(speech?.id) === speechId && myReview?.speech?.id === speechId &&
-    myReview.revoked_at === null && ['accepted', 'in_progress', 'published'].includes(myReview.status)
+    myReview.revoked_at === null && isAccessGrantingReviewStatus(myReview.status)
     ? `${me.user.id}:${speechId}` : null
   const reviewerNavigation = useReviewerTimelineValidation({
     scope: reviewerValidationScope, reviewId: myReview?.id ?? null, speechId,
     authSpeechReady: !meLoading && !meFetching && !meError && !isLoading && !error,
-    denied: isTerminal(meError) ? `auth:${authRequestId}:${getErrorStatus(meError)}`
-      : isTerminal(error) ? `speech:${speechRequestId}:${getErrorStatus(error)}` : null,
+    denied: isTerminalAccessError(meError) ? `auth:${authRequestId}:${getErrorStatus(meError)}`
+      : isTerminalAccessError(error) ? `speech:${speechRequestId}:${getErrorStatus(error)}` : null,
   })
   // A background auth request retains data while its current account is
   // unresolved. Keep same-account proof, but lend it no navigation authority
   // until that request settles and the committed identity still matches.
   const ownerScrubReady = ownerPlaybackReady && !meFetching
   const reviewerScrubReady = reviewerNavigation.validated && !meLoading && !meFetching && !isLoading &&
-    !isTerminal(meError) && !isTerminal(error) && Number(speech?.id) === speechId &&
+    !isTerminalAccessError(meError) && !isTerminalAccessError(error) && Number(speech?.id) === speechId &&
     asset?.status === 'ready' && playbackSource?.speechId === speechId &&
     playbackSource.assetId === asset.id && concreteReady
   const ownerScrubKey = `${ownerScope}:${playbackSource?.generation}:${sourceRefreshToken}`

@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\ReviewGrant;
 use Database\Factories\ReviewFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -96,6 +98,17 @@ class Review extends Model
      * @var list<string>
      */
     const ACCESS_GRANTING = ['accepted', 'in_progress', 'published'];
+
+    /**
+     * @param  Builder<Review>  $query
+     * @return Builder<Review>
+     */
+    public function scopeGranting(Builder $query): Builder
+    {
+        ReviewGrant::constrain($query);
+
+        return $query;
+    }
 
     /**
      * @return BelongsTo<Speech, $this>

@@ -4,13 +4,13 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Support\ConnectionEligibility;
-use DateTimeImmutable;
+use App\Support\ConnectionPair;
+use App\Support\KeysetCursor;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use stdClass;
 
@@ -40,11 +40,7 @@ final class FriendDirectoryService
             $this->search($query, $search);
         }
 
-        // Bad historical timestamps have no truthful seek position. Exclude them
-        // and flag the affected owner/view for reconciliation without returning IDs.
-        if ((clone $query)->whereNull('mine.'.$column)->exists()) {
-            Log::warning('Friends rows require timestamp reconciliation.', ['owner_id' => $viewer->id, 'view' => $view]);
-        }
+        // Missing historical times have no truthful seek position; the reconciler reports them.
         $query->whereNotNull('mine.'.$column);
         $total = (clone $query)->count();
         if ($position !== null) {
@@ -129,22 +125,15 @@ final class FriendDirectoryService
         }
         $mine = $rows->first(fn (stdClass $row): bool => (int) $row->owner_id === $viewer->id);
         $theirs = $rows->first(fn (stdClass $row): bool => (int) $row->owner_id === $target->id);
-        if ($mine === null || $theirs === null || $mine->state !== $theirs->state
-            || $mine->blocked_by_id !== null || $theirs->blocked_by_id !== null
-            || $mine->initiated_by_id !== $theirs->initiated_by_id
-            || ! in_array($mine->state, ['accepted', 'pending', 'declined'], true)) {
+        if ($mine === null || $theirs === null || ! ConnectionPair::isValid($mine, $theirs) || $mine->state === 'blocked') {
             return $empty;
         }
         $initiator = $mine->initiated_by_id === null ? null : (int) $mine->initiated_by_id;
-        if (($initiator === null && $mine->state !== 'declined')
-            || ($initiator !== null && ! in_array($initiator, [$viewer->id, $target->id], true))) {
-            return $empty;
-        }
         if ($mine->state === 'declined') {
             return array_replace($empty, ['state' => 'none']);
         }
         $at = $mine->state === 'accepted' ? $mine->connected_at : $mine->requested_at;
-        if (! is_string($at) || ! $this->validTimestamp($at)) {
+        if (! is_string($at) || ! KeysetCursor::validTimestamp($at)) {
             return $empty;
         }
 
@@ -255,21 +244,10 @@ final class FriendDirectoryService
             || ($data['view'] ?? null) !== $view || ($data['search'] ?? null) !== $search
             || ! isset($data['id']) || ! is_int($data['id']) || $data['id'] < 1
             || ! array_key_exists('at', $data)
-            || ($view === 'find' ? $data['at'] !== null : (! is_string($data['at']) || ! $this->validTimestamp($data['at'])))) {
+            || ($view === 'find' ? $data['at'] !== null : (! is_string($data['at']) || ! KeysetCursor::validTimestamp($data['at'])))) {
             throw ValidationException::withMessages(['cursor' => 'This page cursor is invalid. Restart from the first page.']);
         }
 
         return ['id' => $data['id'], 'at' => $data['at']];
-    }
-
-    private function validTimestamp(string $value): bool
-    {
-        if (! preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$/D', $value)) {
-            return false;
-        }
-        $parsed = DateTimeImmutable::createFromFormat(str_contains($value, '.') ? '!Y-m-d H:i:s.u' : '!Y-m-d H:i:s', $value);
-        $errors = DateTimeImmutable::getLastErrors();
-
-        return $parsed !== false && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0));
     }
 }

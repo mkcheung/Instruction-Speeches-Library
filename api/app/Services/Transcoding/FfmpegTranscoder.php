@@ -4,6 +4,9 @@ namespace App\Services\Transcoding;
 
 use App\Models\Speech;
 use App\Models\SpeechAsset;
+use App\Services\MediaInputCopier;
+use App\Support\ScratchFileAllocationException;
+use App\Support\ScratchFiles;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Process;
@@ -126,26 +129,19 @@ class FfmpegTranscoder implements TranscoderContract
             return;
         }
 
-        $localSource = $this->downloadToLocalTemp($source);
-
-        if ($localSource === null) {
-            $this->fail($videoAsset, 'storage_read_failed', 'We had trouble reading your uploaded file. Please try again.');
-
-            return;
-        }
-
-        // Everything below owns scratch files, and `Process::timeout()->run()`
-        // THROWS `ProcessTimedOutException` rather than returning an
-        // unsuccessful result. Without this `finally`, an ffmpeg timeout
-        // leaked the full-size source copy and the partial rendition
-        // permanently — two of those and `hasEnoughFreeSpace()` below wedges
-        // every subsequent transcode on the host with `insufficient_disk_space`,
-        // since nothing ever reclaims them. `generatePoster()` already had
-        // this shape; `transcode()` did not.
+        $scratch = app(ScratchFiles::class);
         try {
+            $localSource = $scratch->create('source_');
+            if (! app(MediaInputCopier::class)->copy($source->disk, $source->path, $localSource, (int) ($source->byte_size ?? 0))) {
+                $this->fail($videoAsset, 'storage_read_failed', 'We had trouble reading your uploaded file. Please try again.');
+
+                return;
+            }
             $this->transcodeFromLocalSource($videoAsset, $speech, $source, $localSource);
+        } catch (ScratchFileAllocationException $e) {
+            $this->fail($videoAsset, 'storage_read_failed', 'We had trouble reading your uploaded file. Please try again.');
         } finally {
-            @unlink($localSource);
+            $scratch->cleanup();
         }
     }
 
@@ -170,19 +166,14 @@ class FfmpegTranscoder implements TranscoderContract
         // Deterministic output path (§9.2): never a timestamp suffix, so
         // duplicate output is structurally impossible on retry.
         $outputPath = "speeches/{$speech->ulid}/{$speech->ulid}/720p.mp4";
-        // ffmpeg infers the muxer from the `.mp4` suffix, so the raw
-        // tempnam() path can't be used directly — but the placeholder it
-        // created must be unlinked, or every run leaks a zero-byte file.
-        // Same trap WhisperTranscriber documents having already hit.
-        $tmpOutputBase = tempnam(sys_get_temp_dir(), 'transcode_');
-        @unlink($tmpOutputBase);
-        $tmpOutput = $tmpOutputBase.'.mp4';
-
+        $scratch = app(ScratchFiles::class);
         try {
+            $tmpOutput = $scratch->create('transcode_', '.mp4');
             $this->runTranscodePipeline($videoAsset, $source, $localSource, $tmpOutput, $outputPath, $probe);
+        } catch (ScratchFileAllocationException $e) {
+            $this->fail($videoAsset, 'storage_write_failed', 'We had trouble saving this video. Please try again.');
         } finally {
-            @unlink($tmpOutputBase);
-            @unlink($tmpOutput);
+            $scratch->cleanup();
         }
     }
 
@@ -288,12 +279,10 @@ class FfmpegTranscoder implements TranscoderContract
             return;
         }
 
-        $localRenditionBase = tempnam(sys_get_temp_dir(), 'poster_src_');
-        @unlink($localRenditionBase);
-        $localRendition = $localRenditionBase.'.mp4';
-
+        $scratch = app(ScratchFiles::class);
         try {
-            if (! $this->copyToLocalFile($videoAsset->disk, $videoAsset->path, $localRendition)) {
+            $localRendition = $scratch->create('poster_src_', '.mp4');
+            if (! app(MediaInputCopier::class)->copy($videoAsset->disk, $videoAsset->path, $localRendition)) {
                 Log::warning('Poster regeneration skipped: could not read the rendition from storage.', [
                     'video_asset_id' => $videoAsset->id,
                 ]);
@@ -308,8 +297,7 @@ class FfmpegTranscoder implements TranscoderContract
                 'exception' => $e->getMessage(),
             ]);
         } finally {
-            @unlink($localRenditionBase);
-            @unlink($localRendition);
+            $scratch->cleanup();
         }
     }
 
@@ -323,6 +311,16 @@ class FfmpegTranscoder implements TranscoderContract
      * the `uq_assets_primary` partial unique index.
      */
     private function runPosterPipeline(SpeechAsset $videoAsset, string $localRenditionPath, ?float $explicitTimeSeconds, bool $includeSprite): void
+    {
+        $scratch = app(ScratchFiles::class);
+        try {
+            $this->runPosterPipelineWithScratch($videoAsset, $localRenditionPath, $explicitTimeSeconds, $includeSprite, $scratch);
+        } finally {
+            $scratch->cleanup();
+        }
+    }
+
+    private function runPosterPipelineWithScratch(SpeechAsset $videoAsset, string $localRenditionPath, ?float $explicitTimeSeconds, bool $includeSprite, ScratchFiles $scratch): void
     {
         $probe = $this->probe($localRenditionPath);
 
@@ -341,19 +339,7 @@ class FfmpegTranscoder implements TranscoderContract
             : max(2.0, min(0.10 * $duration, 30.0));
         $seekSeconds = max(0.0, min($seekSeconds, $duration));
 
-        $localTemps = [];
-
-        // Every `tempnam(...).'.ext'` below unlinks its placeholder and
-        // tracks BOTH paths: ffmpeg needs the suffix to infer the muxer,
-        // but the extensionless file tempnam() actually created is real and
-        // was previously never cleaned up — nine leaked inodes per
-        // transcode+poster run, which a byte-based free-space watermark
-        // never notices.
-        $masterBase = tempnam(sys_get_temp_dir(), 'poster_master_');
-        @unlink($masterBase);
-        $masterPath = $masterBase.'.jpg';
-        $localTemps[] = $masterBase;
-        $localTemps[] = $masterPath;
+        $masterPath = $scratch->create('poster_master_', '.jpg');
 
         // §9.5: `-ss` MUST be before `-i` — an input seek that jumps to the
         // nearest keyframe, not an output seek that decodes every frame up
@@ -369,7 +355,6 @@ class FfmpegTranscoder implements TranscoderContract
         ]);
 
         if (! $masterResult->successful() || ! file_exists($masterPath) || filesize($masterPath) === 0) {
-            $this->cleanupTemps($localTemps);
             Log::warning('Poster pipeline: master frame extraction failed.', ['video_asset_id' => $videoAsset->id]);
 
             return;
@@ -378,7 +363,6 @@ class FfmpegTranscoder implements TranscoderContract
         $speech = $videoAsset->speech;
 
         if ($speech === null) {
-            $this->cleanupTemps($localTemps);
             Log::warning('Poster pipeline skipped: speech no longer exists.', ['video_asset_id' => $videoAsset->id]);
 
             return;
@@ -391,11 +375,7 @@ class FfmpegTranscoder implements TranscoderContract
 
         foreach (self::POSTER_WIDTHS as $width) {
             foreach (['webp' => 'webp', 'jpeg' => 'jpg'] as $format => $extension) {
-                $localVariantBase = tempnam(sys_get_temp_dir(), 'poster_v_');
-                @unlink($localVariantBase);
-                $localVariant = $localVariantBase.'.'.$extension;
-                $localTemps[] = $localVariantBase;
-                $localTemps[] = $localVariant;
+                $localVariant = $scratch->create('poster_v_', '.'.$extension);
 
                 $qualityArgs = $format === 'webp' ? ['-q:v', '82'] : ['-q:v', '4'];
 
@@ -437,7 +417,6 @@ class FfmpegTranscoder implements TranscoderContract
         }
 
         if ($variants === []) {
-            $this->cleanupTemps($localTemps);
             Log::warning('Poster pipeline: every width/format derivation failed.', ['video_asset_id' => $videoAsset->id]);
 
             return;
@@ -446,11 +425,7 @@ class FfmpegTranscoder implements TranscoderContract
         $spriteVariant = null;
 
         if ($includeSprite) {
-            $spriteBase = tempnam(sys_get_temp_dir(), 'sprite_');
-            @unlink($spriteBase);
-            $spriteLocal = $spriteBase.'.jpg';
-            $localTemps[] = $spriteBase;
-            $localTemps[] = $spriteLocal;
+            $spriteLocal = $scratch->create('sprite_', '.jpg');
 
             $spriteResult = Process::timeout(60)->run([
                 'ffmpeg', '-nostdin', '-y',
@@ -509,7 +484,6 @@ class FfmpegTranscoder implements TranscoderContract
         $allVariants = array_values(array_filter($allVariants));
 
         if ($allVariants === []) {
-            $this->cleanupTemps($localTemps);
             Log::warning('Poster pipeline: every derived variant failed to store.', ['video_asset_id' => $videoAsset->id]);
 
             return;
@@ -561,18 +535,6 @@ class FfmpegTranscoder implements TranscoderContract
                 ]);
             }
         });
-
-        $this->cleanupTemps($localTemps);
-    }
-
-    /**
-     * @param  array<int, string>  $paths
-     */
-    private function cleanupTemps(array $paths): void
-    {
-        foreach ($paths as $path) {
-            @unlink($path);
-        }
     }
 
     /**
@@ -605,8 +567,7 @@ class FfmpegTranscoder implements TranscoderContract
     /**
      * R10, a global watermark checked before ANY ffmpeg work starts in
      * either entry point — not a per-file check. Compares against the same
-     * local filesystem downloadToLocalTemp() and the poster pipeline write
-     * scratch files to.
+     * local filesystem the input-copy and poster scratch scopes use.
      */
     private function hasEnoughFreeSpace(): bool
     {
@@ -671,67 +632,6 @@ class FfmpegTranscoder implements TranscoderContract
 
             $current->update($attributes);
         });
-    }
-
-    /**
-     * Streamed copy, not `Storage::get()` buffered whole into memory first
-     * — the same fix WhisperTranscriber::transcribe() already documents,
-     * applied here too. The worker image sets no `memory_limit` override
-     * (Dockerfile only adds opcache.ini/uploads.ini), so PHP's 128M
-     * default applies while `quota_bytes` defaults to 5 GiB with no
-     * per-file cap: buffering a 300 MB source fataled the process before
-     * ffmpeg was ever invoked, leaving the asset stuck `processing`.
-     *
-     * Returns null when the object could not be read in full. The old code
-     * passed `get()`'s null straight into `file_put_contents`, which writes
-     * a zero-byte file without complaint — so a transient storage outage
-     * became a permanent `probe_failed`, blaming the speaker's upload for
-     * a storage fault.
-     */
-    private function downloadToLocalTemp(SpeechAsset $source): ?string
-    {
-        $local = tempnam(sys_get_temp_dir(), 'source_');
-
-        if (! $this->copyToLocalFile($source->disk, $source->path, $local, (int) ($source->byte_size ?? 0))) {
-            @unlink($local);
-
-            return null;
-        }
-
-        return $local;
-    }
-
-    /**
-     * Streams a remote object onto local disk. Returns false when it could
-     * not be read in full.
-     *
-     * `$expectedBytes > 0` additionally rejects a positive-but-short copy:
-     * the faststart-muxed MP4s this pipeline produces often still decode
-     * from a truncated prefix, so an unchecked short read would transcode
-     * only the opening minutes of a speech and publish that as `ready`,
-     * indistinguishable from a complete rendition.
-     */
-    private function copyToLocalFile(string $disk, string $remotePath, string $localPath, int $expectedBytes = 0): bool
-    {
-        $sourceStream = Storage::disk($disk)->readStream($remotePath);
-
-        if ($sourceStream === null) {
-            return false;
-        }
-
-        $localHandle = fopen($localPath, 'wb');
-
-        if ($localHandle === false) {
-            fclose($sourceStream);
-
-            return false;
-        }
-
-        $copied = stream_copy_to_stream($sourceStream, $localHandle);
-        fclose($localHandle);
-        fclose($sourceStream);
-
-        return $copied !== false && ($expectedBytes <= 0 || $copied === $expectedBytes);
     }
 
     /**

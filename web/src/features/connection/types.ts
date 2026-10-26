@@ -106,12 +106,7 @@ export interface FindFriendsQueryArgs {
   cursor?: string | null
 }
 
-export interface FriendPerson {
-  id: number
-  name: string
-  username: string
-  avatar_url: string | null
-}
+export type FriendPerson = ConnectionPeer
 
 export interface Friend {
   connection_id: number

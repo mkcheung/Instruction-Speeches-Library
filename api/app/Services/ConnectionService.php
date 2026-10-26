@@ -7,6 +7,7 @@ use App\Exceptions\SelfConnectionNotPermittedException;
 use App\Models\Connection;
 use App\Models\User;
 use App\Support\ConnectionEligibility;
+use App\Support\ConnectionPair;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -34,7 +35,7 @@ class ConnectionService
     {
         throw_if($requester->id === $target->id, SelfConnectionNotPermittedException::class, 'You cannot connect with yourself.');
 
-        [$lowId, $highId] = $this->orderedIds($requester, $target);
+        [$lowId, $highId] = $this->orderedIds($requester->id, $target->id);
 
         return DB::transaction(function () use ($lowId, $highId, $requester, $target, $note) {
             [$low, $high] = $this->lockOptionalPair($lowId, $highId);
@@ -53,7 +54,7 @@ class ConnectionService
             $this->upsertRequestRow($highId, $lowId, $requester->id, $note, $now);
             [$low, $high] = $this->lockPair($lowId, $highId);
 
-            return $requester->id === $low->owner_id ? $low : $high;
+            return $this->sideOf($requester->id, $low, $high);
         });
     }
 
@@ -74,7 +75,7 @@ class ConnectionService
             $this->eligibility->assertTarget(User::query()->findOrFail($peerId));
 
             if ($low->state === 'accepted') {
-                return $actor->id === $low->owner_id ? $low : $high;
+                return $this->sideOf($actor->id, $low, $high);
             }
 
             if ($low->state !== 'pending' || $low->initiated_by_id === $actor->id) {
@@ -85,14 +86,9 @@ class ConnectionService
             }
 
             $now = now();
-            foreach ([$low, $high] as $row) {
-                $row->state = 'accepted';
-                $row->responded_at = $now;
-                $row->connected_at = $now;
-                $row->save();
-            }
+            $this->writePair($low, $high, ['state' => 'accepted', 'responded_at' => $now, 'connected_at' => $now]);
 
-            return $actor->id === $low->owner_id ? $low : $high;
+            return $this->sideOf($actor->id, $low, $high);
         });
     }
 
@@ -110,7 +106,7 @@ class ConnectionService
             $this->eligibility->assertActor($actor);
 
             if ($low->state === 'declined') {
-                return $actor->id === $low->owner_id ? $low : $high;
+                return $this->sideOf($actor->id, $low, $high);
             }
 
             if ($low->state === 'blocked') {
@@ -118,13 +114,9 @@ class ConnectionService
             }
 
             $now = now();
-            foreach ([$low, $high] as $row) {
-                $row->state = 'declined';
-                $row->responded_at = $now;
-                $row->save();
-            }
+            $this->writePair($low, $high, ['state' => 'declined', 'responded_at' => $now]);
 
-            return $actor->id === $low->owner_id ? $low : $high;
+            return $this->sideOf($actor->id, $low, $high);
         });
     }
 
@@ -143,18 +135,13 @@ class ConnectionService
             // `unblock()` it and re-request around the original blocker's
             // decision. Leave the standing block untouched.
             if ($low->state === 'blocked' && $low->blocked_by_id !== $actor->id) {
-                return $actor->id === $low->owner_id ? $low : $high;
+                return $this->sideOf($actor->id, $low, $high);
             }
 
             $now = now();
-            foreach ([$low, $high] as $row) {
-                $row->state = 'blocked';
-                $row->blocked_by_id = $actor->id;
-                $row->responded_at = $now;
-                $row->save();
-            }
+            $this->writePair($low, $high, ['state' => 'blocked', 'blocked_by_id' => $actor->id, 'responded_at' => $now]);
 
-            return $actor->id === $low->owner_id ? $low : $high;
+            return $this->sideOf($actor->id, $low, $high);
         });
     }
 
@@ -178,23 +165,31 @@ class ConnectionService
             }
 
             $now = now();
-            foreach ([$low, $high] as $row) {
-                $row->state = 'declined';
-                $row->blocked_by_id = null;
-                $row->responded_at = $now;
-                $row->save();
-            }
+            $this->writePair($low, $high, ['state' => 'declined', 'blocked_by_id' => null, 'responded_at' => $now]);
 
-            return $actor->id === $low->owner_id ? $low : $high;
+            return $this->sideOf($actor->id, $low, $high);
         });
     }
 
     /**
      * @return array{0: int, 1: int}
      */
-    private function orderedIds(User $a, User $b): array
+    private function orderedIds(int $a, int $b): array
     {
-        return $a->id < $b->id ? [$a->id, $b->id] : [$b->id, $a->id];
+        return $a < $b ? [$a, $b] : [$b, $a];
+    }
+
+    private function sideOf(int $actorId, Connection $low, Connection $high): Connection
+    {
+        return $actorId === $low->owner_id ? $low : $high;
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function writePair(Connection $low, Connection $high, array $attributes): void
+    {
+        foreach ([$low, $high] as $row) {
+            $row->forceFill($attributes)->save();
+        }
     }
 
     /**
@@ -230,8 +225,7 @@ class ConnectionService
      */
     private function lockOptionalPair(int $userAId, int $userBId): array
     {
-        $lowId = min($userAId, $userBId);
-        $highId = max($userAId, $userBId);
+        [$lowId, $highId] = $this->orderedIds($userAId, $userBId);
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::select('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', ['connections:'.$lowId.':'.$highId]);
         }
@@ -251,20 +245,7 @@ class ConnectionService
     private function validatePair(?Connection $low, ?Connection $high): array
     {
         abort_if($low === null || $high === null, 409, 'This connection is unavailable.');
-        $parties = [$low->owner_id, $low->peer_id];
-        $valid = $low->owner_id !== $low->peer_id
-            && $high->owner_id === $low->peer_id && $high->peer_id === $low->owner_id
-            && $low->state === $high->state
-            && in_array($low->state, ['pending', 'accepted', 'declined', 'blocked'], true)
-            && $low->initiated_by_id === $high->initiated_by_id
-            && ($low->initiated_by_id === null
-                ? in_array($low->state, ['declined', 'blocked'], true)
-                : in_array($low->initiated_by_id, $parties, true))
-            && $low->blocked_by_id === $high->blocked_by_id
-            && ($low->state === 'blocked'
-                ? in_array($low->blocked_by_id, $parties, true)
-                : $low->blocked_by_id === null);
-        abort_unless($valid, 409, 'This connection is unavailable.');
+        abort_unless(ConnectionPair::isValid($low, $high), 409, 'This connection is unavailable.');
 
         return [$low, $high];
     }
@@ -282,8 +263,7 @@ class ConnectionService
             return $this->validatePair($low, $high);
         }
 
-        $lowId = min($userAId, $userBId);
-        $highId = max($userAId, $userBId);
+        [$lowId, $highId] = $this->orderedIds($userAId, $userBId);
         $now = now();
         $low = Connection::query()->create(['owner_id' => $lowId, 'peer_id' => $highId, 'state' => 'blocked', 'blocked_by_id' => $userAId, 'requested_at' => $now]);
         $high = Connection::query()->create(['owner_id' => $highId, 'peer_id' => $lowId, 'state' => 'blocked', 'blocked_by_id' => $userAId, 'requested_at' => $now]);

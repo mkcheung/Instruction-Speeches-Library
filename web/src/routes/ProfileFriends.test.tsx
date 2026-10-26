@@ -7,12 +7,13 @@ import { useGetMeQuery, authApi } from '@/features/auth/authApi'
 import { useGetPublicProfileQuery } from '@/features/profile/profileApi'
 import { connectionApi } from '@/features/connection/connectionApi'
 import { clearCookies, renderWithProviders } from '@/test/renderWithProviders'
+import { friendsResponse, makeFriend } from '@/test/friendsFixtures'
 import type { Friend } from '@/features/connection/types'
 
-const alice: Friend = { connection_id: 15, person: { id: 8, name: 'Alice Example', username: 'alice', avatar_url: '/alice.jpg' }, mutual_friends_count: 2, requested_at: '2026-01-01', connected_at: '2026-01-02', note: 'Hello from rehearsal' }
-const bob: Friend = { ...alice, connection_id: 16, person: { id: 9, name: 'Bob Example', username: 'bob', avatar_url: null }, mutual_friends_count: 0 }
+const alice = makeFriend({ connection_id: 15, person: { id: 8, name: 'Alice Example', username: 'alice', avatar_url: '/alice.jpg' }, requested_at: '2026-01-01', connected_at: '2026-01-02', note: 'Hello from rehearsal' })
+const bob = makeFriend({ ...alice, connection_id: 16, person: { id: 9, name: 'Bob Example', username: 'bob', avatar_url: null }, mutual_friends_count: 0 })
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-const list = (friends: Friend[] = [alice], total = friends.length, cursor: string | null = null) => json({ friends, meta: { total, next_cursor: cursor } })
+const list = (friends: Friend[] = [alice], total = friends.length, cursor: string | null = null) => json(friendsResponse(friends, { total, next_cursor: cursor }))
 const people = (friends: Friend[] = [alice], cursor: string | null = null) => json({ people: friends.map(({ person: { id, name, avatar_url }, mutual_friends_count }) => ({ person: { id, name, avatar_url }, mutual_friends_count })), meta: { next_cursor: cursor } })
 
 /** A routed parent using real public-profile and authoritative session queries. */

@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useDispatch } from 'react-redux'
 import { Navigate, NavLink, useLocation, useOutletContext, useParams } from 'react-router-dom'
 import { skipToken } from '@reduxjs/toolkit/query'
 import { FriendPersonCard } from '@/components/profile/FriendPersonCard'
 import { useFindFriendsQuery, useGetFriendsQuery } from '@/features/connection/connectionApi'
 import { connectionErrorMessage, revalidateConnectionSession, useConnectionRefresh, useConnectionSession, useEligibleConnectionViewer } from '@/features/connection/connectionSession'
+import { useDismissedUntilRefetch } from '@/features/connection/useDismissedUntilRefetch'
+import { useMountedRef } from '@/hooks/useMountedRef'
+import { profilePath } from '@/lib/profilePath'
 import type { PublicProfileOutletContext } from './PublicProfile'
 import '@/components/workspace/notebook.css'
 import '@/components/profile/friends.css'
@@ -34,15 +37,14 @@ function FriendsView({ viewerId, username, view }: { viewerId: string; username:
   const [search, setSearch] = useState('')
   const [cursors, setCursors] = useState<(string | null)[]>([null])
   const [status, setStatus] = useState('')
-  const [dismissed, setDismissed] = useState<{ ids: number[]; snapshot?: number }>({ ids: [] })
   const heading = useRef<HTMLHeadingElement>(null)
-  const mounted = useRef(false)
+  const mounted = useMountedRef()
   const currentRefresh = useRef<() => void>(() => {})
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const cursor = cursors.at(-1) ?? null
   const friends = useGetFriendsQuery(view === 'find' ? skipToken : { viewerId, view: view === 'requests' ? 'incoming' : 'accepted', search, cursor }, { refetchOnMountOrArgChange: true })
   const found = useFindFriendsQuery(view !== 'find' || !search ? skipToken : { viewerId, search, cursor }, { refetchOnMountOrArgChange: true })
   const query = view === 'find' ? found : friends
+  const { dismiss, isDismissed, reset: resetDismissed } = useDismissedUntilRefetch<number>(query.fulfilledTimeStamp, JSON.stringify([viewerId, view, search, cursor]))
   const active = view !== 'find' || Boolean(search)
   const refreshing = query.isFetching
   const data = query.currentData
@@ -55,17 +57,17 @@ function FriendsView({ viewerId, username, view }: { viewerId: string; username:
     if (navigating.current.active && query.isFetching) navigating.current.sawFetch = true
     if (navigating.current.sawFetch && !query.isFetching) navigating.current = { active: false, sawFetch: false }
   }, [cursor, query.isFetching, query.requestId, query.currentData])
-  function applySearch(value: string) {
+  const applySearch = useCallback((value: string) => {
     setSearch(value.trim())
     setCursors([null])
-    setDismissed({ ids: [] })
+    resetDismissed()
     setStatus('')
-  }
+  }, [resetDismissed])
   useEffect(() => {
     if (view !== 'all') return
     const timeout = window.setTimeout(() => applySearch(draft), 300)
     return () => window.clearTimeout(timeout)
-  }, [draft, view])
+  }, [draft, view, applySearch])
   function refresh() {
     setCursors([null])
     if (active && !cursor) void query.refetch()
@@ -78,7 +80,7 @@ function FriendsView({ viewerId, username, view }: { viewerId: string; username:
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); applySearch(draft) }
   function complete(personId: number, message: string) {
     if (!mounted.current) return
-    setDismissed((previous) => ({ ids: [...(previous.snapshot === query.fulfilledTimeStamp ? previous.ids : []), personId], snapshot: query.fulfilledTimeStamp }))
+    dismiss(personId)
     setStatus(message)
     currentRefresh.current()
     heading.current?.focus()
@@ -89,13 +91,13 @@ function FriendsView({ viewerId, username, view }: { viewerId: string; username:
     currentRefresh.current()
   }
   const entries = view === 'find' ? found.currentData?.people : friends.currentData?.friends
-  const visibleEntries = entries?.filter((entry, index) => !(dismissed.snapshot === query.fulfilledTimeStamp && dismissed.ids.includes(entry.person.id)) && entries.findIndex((candidate) => candidate.person.id === entry.person.id) === index)
+  const visibleEntries = entries?.filter((entry, index) => !isDismissed(entry.person.id) && entries.findIndex((candidate) => candidate.person.id === entry.person.id) === index)
   const next = data?.meta.next_cursor
   return (
     <section className="workspace-notebook-page workspace-notebook-surface friends-region" aria-labelledby="friends-title">
       <header className="friends-heading"><h2 id="friends-title">Friends</h2><p>A place for the people in your rehearsal circle.</p></header>
       <nav className="friends-navigation" aria-label="Friends sections">
-        {(Object.keys(titles) as View[]).map((destination) => <NavLink key={destination} to={`/u/${encodeURIComponent(username)}/friends/${destination}`}>{titles[destination]}</NavLink>)}
+        {(Object.keys(titles) as View[]).map((destination) => <NavLink key={destination} to={profilePath(username, 'friends', destination)}>{titles[destination]}</NavLink>)}
       </nav>
       <div className="friends-results">
         <h3 tabIndex={-1} ref={heading}>{titles[view]}</h3>

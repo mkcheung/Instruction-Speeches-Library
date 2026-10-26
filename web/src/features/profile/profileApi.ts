@@ -1,6 +1,7 @@
 import { createApi } from '@reduxjs/toolkit/query/react'
 import { baseQueryWithCsrfRetry } from '@/lib/baseQuery'
 import { connectionApi } from '@/features/connection/connectionApi'
+import { PROFILE_CHANGE_CONNECTION_TAGS } from '@/features/connection/tags'
 import { authApi } from '@/features/auth/authApi'
 import type { MeResponse } from '@/features/auth/types'
 import type {
@@ -33,7 +34,7 @@ async function refreshMe(dispatch: (action: unknown) => unknown, queryFulfilled:
   } catch {
     return // the mutation failed; nothing changed server-side to re-read
   }
-  dispatch(connectionApi.util.invalidateTags(['Friends', 'FriendRelationship', 'ConnectionsRail', 'PendingConnections']))
+  dispatch(connectionApi.util.invalidateTags([...PROFILE_CHANGE_CONNECTION_TAGS]))
   dispatch(authApi.util.invalidateTags(['Me']))
 }
 

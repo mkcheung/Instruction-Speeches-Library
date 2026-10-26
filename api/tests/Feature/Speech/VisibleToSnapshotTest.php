@@ -19,7 +19,9 @@ use App\Models\User;
  * touched by this step — see git history / the method's own docblock.
  */
 it('does not widen speech visibility — scopeVisibleTo SQL is byte-identical to the frozen snapshot', function () {
-    $user = User::factory()->create();
+    // This is SQL generation only. PostgreSQL sequences survive rolled-back
+    // tests, so a persisted factory user would make the frozen literal drift.
+    $user = (new User)->forceFill(['id' => 1]);
 
     $sql = Speech::query()->visibleTo($user)->toRawSql();
 

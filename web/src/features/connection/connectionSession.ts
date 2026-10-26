@@ -168,18 +168,20 @@ export const connectionSessionMiddleware: Middleware = (store) => {
 }
 
 /** Scoped listeners only exist while the caller is mounted and eligible. */
-export function useConnectionRefresh(refetch: () => unknown, enabled: boolean) {
+export function useConnectionRefresh(refetch: () => unknown, enabled: boolean, intervalMs?: number) {
   const refresh = useEffectEvent(() => { if (document.visibilityState === 'visible') refetch() })
   useEffect(() => {
     if (!enabled) return
     const onVisible = () => refresh()
     window.addEventListener('focus', onVisible)
     document.addEventListener('visibilitychange', onVisible)
+    const interval = intervalMs !== undefined && intervalMs > 0 ? window.setInterval(onVisible, intervalMs) : undefined
     return () => {
       window.removeEventListener('focus', onVisible)
       document.removeEventListener('visibilitychange', onVisible)
+      if (interval !== undefined) window.clearInterval(interval)
     }
-  }, [enabled])
+  }, [enabled, intervalMs])
 }
 
 export function connectionErrorMessage(error: unknown): string {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Badge } from '@/components/ui/badge'
@@ -10,7 +10,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { inviteReviewerSchema, type InviteReviewerFormValues } from '@/lib/validation'
-import { useInviteReviewerMutation, useSearchReviewersQuery } from '@/features/review/reviewApi'
+import { useInviteReviewerMutation } from '@/features/review/reviewApi'
+import { useReviewerDirectory } from '@/features/review/useReviewerDirectory'
 import type { ReviewerDirectoryEntry } from '@/features/review/types'
 import { cn } from '@/lib/utils'
 
@@ -49,41 +50,11 @@ export function InviteReviewerPanel({
    * when the header goes. */
   hideHeading?: boolean
 }) {
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [credential, setCredential] = useState<'' | 'member' | 'coach'>('')
+  const { search, credential, page, changeSearch, changeCredential, setPage, query } = useReviewerDirectory()
+  const { data, isLoading: isSearching } = query
   const [selectedReviewer, setSelectedReviewer] = useState<ReviewerDirectoryEntry | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
-
-  const [page, setPage] = useState(1)
-
-  // Both filter controls reset paging in their own handler rather than in an
-  // effect on `[debouncedSearch, credential]`: setting state from an effect
-  // renders the stale page once before correcting it (and trips
-  // `react-hooks/set-state-in-effect`). Without the reset, a search typed
-  // while on page 3 asks for page 3 of a result set that may only have one,
-  // and the directory renders empty.
-  const changeSearch = (next: string) => {
-    setSearch(next)
-    setPage(1)
-  }
-
-  const changeCredential = (next: '' | 'member' | 'coach') => {
-    setCredential(next)
-    setPage(1)
-  }
-
-  useEffect(() => {
-    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
-    return () => clearTimeout(handle)
-  }, [search])
-
-  const { data, isLoading: isSearching } = useSearchReviewersQuery({
-    search: debouncedSearch || undefined,
-    credential: credential || undefined,
-    page,
-  })
 
   const [inviteReviewer, { isLoading: isInviting }] = useInviteReviewerMutation()
 

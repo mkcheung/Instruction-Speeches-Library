@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { profilePath } from '@/lib/profilePath'
 import { FriendPersonAvatar } from './FriendPersonAvatar'
 import { useAcceptConnectionMutation, useDeclineConnectionMutation, useSendConnectionRequestMutation } from '@/features/connection/connectionApi'
 import { connectionErrorMessage } from '@/features/connection/connectionSession'
@@ -43,7 +44,7 @@ export function FriendPersonCard(props: Props) {
   const identity = <><FriendPersonAvatar src={person.avatar_url} /><span className="friend-person-name">{person.name}</span></>
   return (
     <li className="friend-person-card" aria-busy={busy}>
-      {mode === 'accepted' ? <Link className="friend-person-identity" to={`/u/${encodeURIComponent((entry as Friend).person.username)}`}>{identity}</Link>
+      {mode === 'accepted' ? <Link className="friend-person-identity" to={profilePath((entry as Friend).person.username)}>{identity}</Link>
         : <div className="friend-person-identity">{identity}</div>}
       <p>{mutualCount} mutual {mutualCount === 1 ? 'friend' : 'friends'}</p>
       {mode === 'incoming' && (entry as Friend).note && <p className="friend-person-note">{(entry as Friend).note}</p>}

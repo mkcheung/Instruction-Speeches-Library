@@ -176,7 +176,7 @@ it('paginates incoming requests by viewer-owned id and excludes outgoing and tim
     $first = $this->actingAs($viewer)->getJson('/api/friends?view=incoming')->assertOk()->assertJsonPath('meta.total', 22)->assertJsonCount(20, 'friends');
     $second = $this->getJson('/api/friends?'.http_build_query(['view' => 'incoming', 'cursor' => $first->json('meta.next_cursor')]))->assertOk()->assertJsonCount(2, 'friends')->assertJsonPath('meta.total', 22);
     expect(array_merge(array_column($first->json('friends'), 'connection_id'), array_column($second->json('friends'), 'connection_id')))->toBe(array_reverse($ids));
-    Log::shouldHaveReceived('warning')->with('Friends rows require timestamp reconciliation.', ['owner_id' => $viewer->id, 'view' => 'incoming']);
+    Log::shouldNotHaveReceived('warning');
 });
 
 it('binds opaque cursors to viewer view normalized search and valid scalar positions', function () {
@@ -218,7 +218,7 @@ it('uses trimmed display names and blank or null display-name fallback without l
     Profile::updateOrCreate(['user_id' => $fallback->id], ['display_name' => '   ']);
     $null = directoryPerson(['first_name' => 'Fallback', 'last_name' => 'Null']);
     Profile::updateOrCreate(['user_id' => $null->id], ['display_name' => null]);
-    $this->mock(MediaUrlSigner::class)->shouldReceive('presign')->with('avatars/test.jpg')->andReturn('https://signed.example/avatar');
+    $this->partialMock(MediaUrlSigner::class)->shouldReceive('presign')->with('avatars/test.jpg')->andReturn('https://signed.example/avatar');
     $this->actingAs($viewer)->getJson('/api/friends/find?search=legalname')->assertJsonCount(0, 'people');
     $find = $this->getJson('/api/friends/find?search=stage')->assertJsonPath('people.0.person.name', 'Stage Person')->assertJsonPath('people.0.person.avatar_url', 'https://signed.example/avatar');
     expect(array_keys($find->json('people.0.person')))->toBe(['id', 'name', 'avatar_url']);

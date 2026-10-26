@@ -69,13 +69,7 @@ class ReviewRosterResource extends JsonResource
             // the latter short-circuits to null on ITS OWN whenever the
             // loaded relation's value is null, which is exactly the
             // "Former reviewer" case this field exists to render.
-            'reviewer' => $this->when($this->relationLoaded('reviewer'), fn () => ($this->reviewer === null || $this->reviewer->anonymized_at !== null)
-                ? ['display_name' => 'Former reviewer']
-                : [
-                    'id' => $this->reviewer->id,
-                    'username' => $this->reviewer->username,
-                    'name' => trim("{$this->reviewer->first_name} {$this->reviewer->last_name}"),
-                ]),
+            'reviewer' => $this->when($this->relationLoaded('reviewer'), fn () => ReviewerIdentityFields::fromUser($this->reviewer)),
         ];
     }
 }

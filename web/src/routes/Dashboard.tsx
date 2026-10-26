@@ -15,6 +15,7 @@ import {
 import type { Review } from '@/features/review/types'
 import { hasRole } from '@/lib/roles'
 import { formatTimestamp } from '@/lib/time'
+import { profilePath } from '@/lib/profilePath'
 import { NotebookPage } from '@/components/workspace/NotebookPage'
 import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 
@@ -55,7 +56,7 @@ export default function Dashboard() {
   // at all), so they get no profile link — same `!hasRole(user, 'admin')`
   // treatment `Find reviewers` and `Become a Coach` already get in
   // `lib/roles.ts`. `username` is null until onboarding step 1 is done.
-  const showProfileLink = Boolean(username) && !hasRole(me?.user, 'admin')
+  const profileUrl = username && !hasRole(me?.user, 'admin') ? profilePath(username) : null
 
   return (
     <NotebookPage
@@ -80,12 +81,12 @@ export default function Dashboard() {
         </>
       }
       actions={
-        showProfileLink && (
+        profileUrl && (
           <Button
             className="workspace-notebook-control workspace-notebook-control--secondary"
             variant="outline"
             size="sm"
-            render={<Link to={`/u/${username}`} />}
+            render={<Link to={profileUrl} />}
           >
             Your profile &amp; connections
           </Button>

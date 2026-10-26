@@ -188,6 +188,35 @@ describe('VoiceRecorder', () => {
     expect(uuids[0]).toBe(uuids[1])
   })
 
+  it('keeps an uncertain recording frozen through a busy retry, then permits correction after explicit overlap', async () => {
+    const submissions: { uuid: string; position: number; bytes: number }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input)
+      if (request.url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      const form = await request.formData()
+      submissions.push({ uuid: String(form.get('client_uuid')), position: Number(form.get('start_seconds')), bytes: (form.get('audio') as File).size })
+      const attempt = submissions.length
+      return new Response(JSON.stringify(attempt === 2 ? { code: 'annotation_busy' } : attempt === 3 ? { code: 'annotation_overlap' } : {}),
+        { status: attempt === 3 ? 422 : 503, headers: { 'Content-Type': 'application/json' } })
+    }))
+    const user = userEvent.setup()
+    renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={pausedVideo()} />)
+    await user.click(screen.getByRole('button', { name: /^Record/ }))
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
+    await user.click(screen.getByRole('button', { name: 'Save voice note' }))
+    await screen.findByText(/upload outcome is uncertain/i)
+    const position = screen.getByRole('textbox', { name: 'Voice note position' })
+    expect(position).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Retry original upload' }))
+    await waitFor(() => expect(submissions).toHaveLength(2))
+    expect(position).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Retry original upload' }))
+    await screen.findByText(/position is occupied/i)
+    expect(position).toBeEnabled()
+    expect(submissions).toEqual([submissions[0], submissions[0], submissions[0]])
+    expect(screen.getByTestId('waveform-preview')).toBeVisible()
+  })
+
   it('explains denied permission and a missing microphone separately', async () => {
     const video = pausedVideo()
     const user = userEvent.setup()

@@ -5,6 +5,8 @@ namespace App\Services\Voice;
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
 use App\Support\AnnotationTransactions;
+use App\Support\ScratchFileAllocationException;
+use App\Support\ScratchFiles;
 use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
@@ -20,12 +22,12 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
         if ($asset->kind !== 'voice_note' || $asset->status !== 'processing') {
             return false;
         }
-        $input = tempnam(sys_get_temp_dir(), 'voice_in_');
-        $outputBase = tempnam(sys_get_temp_dir(), 'voice_out_');
-        $output = $outputBase.'.m4a';
+        $scratch = app(ScratchFiles::class);
         $reserved = (int) ($asset->temporary_byte_size ?? $asset->byte_size);
 
         try {
+            $input = $scratch->create('voice_in_');
+            $output = $scratch->create('voice_out_', '.m4a');
             $bytes = Storage::disk($asset->disk)->get($temporaryPath);
             if ($bytes === null || file_put_contents($input, $bytes) === false) {
                 return $this->fail($asset, $temporaryPath, $reserved, 'voice_storage_failed');
@@ -134,10 +136,10 @@ class FfmpegVoiceNoteProcessor implements VoiceNoteProcessorContract
             });
 
             return true;
+        } catch (ScratchFileAllocationException $e) {
+            return $this->fail($asset, $temporaryPath, $reserved, 'voice_storage_failed');
         } finally {
-            @unlink($input);
-            @unlink($output);
-            @unlink($outputBase);
+            $scratch->cleanup();
         }
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ReviewGrant;
 use Database\Factories\SpeechFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -150,11 +151,12 @@ class Speech extends Model
     {
         return $q->where(fn ($q) => $q
             ->where('speeches.user_id', $user->id)
-            ->orWhereExists(fn ($s) => $s->selectRaw('1')->from('reviews')
-                ->whereColumn('reviews.speech_id', 'speeches.id')
-                ->where('reviews.reviewer_id', $user->id)
-                ->whereIn('reviews.status', Review::ACCESS_GRANTING)
-                ->whereNull('reviews.revoked_at')));
+            ->orWhereExists(function ($reviews) use ($user): void {
+                $reviews->selectRaw('1')->from('reviews')
+                    ->whereColumn('reviews.speech_id', 'speeches.id')
+                    ->where('reviews.reviewer_id', $user->id);
+                ReviewGrant::constrain($reviews, 'reviews.');
+            }));
     }
 
     protected static function booted(): void

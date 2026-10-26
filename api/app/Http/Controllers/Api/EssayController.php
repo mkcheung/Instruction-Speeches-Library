@@ -2,13 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\SpeechDeletedException;
+use App\Http\Controllers\Concerns\ResolvesLiveSpeech;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Essay\ShowEssayRequest;
 use App\Http\Requests\Essay\UpdateEssayRequest;
 use App\Http\Resources\EssayResource;
 use App\Models\Review;
-use App\Models\Speech;
 use App\Services\EssayService;
 use App\Services\ReviewService;
 use App\Support\Role;
@@ -25,6 +24,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EssayController extends Controller
 {
+    use ResolvesLiveSpeech;
+
     /**
      * `GET /speeches/{speech}/essay?review_id=`. `review_id` is validated
      * to belong to `$speech` (404 if not, same as
@@ -119,22 +120,5 @@ class EssayController extends Controller
         return new JsonResponse([
             'essay' => new EssayResource($published),
         ]);
-    }
-
-    /**
-     * Identical to `AnnotationController::resolveSpeech()` — 410 Gone (not
-     * 404) for a speech id that WAS found but is soft-deleted, same status-
-     * code surface across every essay route.
-     */
-    private function resolveSpeech(string $speechId): Speech
-    {
-        /** @var Speech $speech */
-        $speech = Speech::withTrashed()->findOrFail($speechId);
-
-        if ($speech->trashed()) {
-            throw new SpeechDeletedException;
-        }
-
-        return $speech;
     }
 }

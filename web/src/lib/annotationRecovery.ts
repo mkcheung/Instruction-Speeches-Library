@@ -57,39 +57,35 @@ export function writeAnnotationRecovery(record: AnnotationRecoveryRecord): boole
   } catch { return false }
 }
 
-/** Prefix discovery is the context index: concurrent tabs cannot overwrite it. */
-export function discoverAnnotationRecovery(scope: AnnotationDraftScope): AnnotationRecoveryRecord[] {
+function scanRecovery(keyPrefix: string, accepts: (value: unknown) => value is AnnotationRecoveryRecord): AnnotationRecoveryRecord[] {
   const records: AnnotationRecoveryRecord[] = []
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (!key?.startsWith(prefix(scope))) continue
+      if (!key?.startsWith(keyPrefix)) continue
       try {
         const record: unknown = JSON.parse(localStorage.getItem(key) ?? 'null')
-        if (validRecord(record, scope) && annotationRecoveryKey(record) === key) records.push(record)
+        if (accepts(record) && annotationRecoveryKey(record) === key) records.push(record)
       } catch { /* A malformed entry must not hide the remaining drafts. */ }
     }
   } catch { /* Unavailable storage leaves the in-memory editor intact. */ }
   return records.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
+/** Prefix discovery is the context index: concurrent tabs cannot overwrite it. */
+export function discoverAnnotationRecovery(scope: AnnotationDraftScope): AnnotationRecoveryRecord[] {
+  return scanRecovery(prefix(scope), (value): value is AnnotationRecoveryRecord => validRecord(value, scope))
+}
+
 /** Also makes drafts discoverable after another tab removes their saved row. */
 export function discoverAnnotationReviewRecovery(scope: Omit<AnnotationDraftScope, 'rowId'>): AnnotationRecoveryRecord[] {
-  const records: AnnotationRecoveryRecord[] = []
   const reviewPrefix = prefix({ ...scope, rowId: null }).slice(0, -'new:'.length)
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (!key?.startsWith(reviewPrefix)) continue
-      try {
-        const record = JSON.parse(localStorage.getItem(key) ?? 'null') as AnnotationRecoveryRecord | null
-        if (!record?.scope || record.scope.userId !== scope.userId || record.scope.speechId !== scope.speechId
-          || record.scope.reviewId !== scope.reviewId || (record.scope.rowId !== null && typeof record.scope.rowId !== 'string')) continue
-        if (validRecord(record, record.scope) && annotationRecoveryKey(record) === key) records.push(record)
-      } catch { /* A corrupt record must not hide valid drafts. */ }
-    }
-  } catch { /* Keep in-memory editing available. */ }
-  return records.sort((a, b) => b.updatedAt - a.updatedAt)
+  return scanRecovery(reviewPrefix, (value): value is AnnotationRecoveryRecord => {
+    const record = value as AnnotationRecoveryRecord | null
+    if (!record?.scope || record.scope.userId !== scope.userId || record.scope.speechId !== scope.speechId
+      || record.scope.reviewId !== scope.reviewId || (record.scope.rowId !== null && typeof record.scope.rowId !== 'string')) return false
+    return validRecord(record, record.scope)
+  })
 }
 
 /** Clear only the exact revision the caller acknowledged or explicitly discarded. */

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { profilePath } from '@/lib/profilePath'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { MoreHorizontal } from 'lucide-react'
@@ -85,7 +86,7 @@ export function ProfileConnectionAction({
   if (!relationship) return <p role="status">Checking connection…</p>
   if (relationship.state === 'unavailable') return <p>Connection unavailable.</p>
   if (relationship.state === 'pending') return relationship.direction === 'incoming'
-    ? <Link to={`/u/${encodeURIComponent(viewer.username)}/friends/requests`}>View friend request</Link>
+    ? <Link to={profilePath(viewer.username, 'friends', 'requests')}>View friend request</Link>
     : <p role="status">Request sent</p>
 
   if (relationship.state === 'accepted') {

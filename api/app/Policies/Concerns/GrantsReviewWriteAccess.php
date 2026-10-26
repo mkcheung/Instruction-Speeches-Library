@@ -4,6 +4,7 @@ namespace App\Policies\Concerns;
 
 use App\Models\Review;
 use App\Models\User;
+use App\Support\ReviewGrant;
 use App\Support\Role;
 
 /**
@@ -34,7 +35,6 @@ trait GrantsReviewWriteAccess
         }
 
         return $review->reviewer_id === $user->id
-            && $review->revoked_at === null
-            && in_array($review->status, Review::ACCESS_GRANTING, true);
+            && ReviewGrant::allows($review);
     }
 }

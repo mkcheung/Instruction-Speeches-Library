@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { NotebookPage } from '@/components/workspace/NotebookPage'
 import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
@@ -6,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { useSearchReviewersQuery } from '@/features/review/reviewApi'
+import { useReviewerDirectory } from '@/features/review/useReviewerDirectory'
 import { getErrorStatus } from '@/lib/errorStatus'
 
 /**
@@ -22,31 +21,8 @@ import { getErrorStatus } from '@/lib/errorStatus'
  */
 export default function ReviewerDirectory() {
   const scene = useWorkspaceCompanionScene()
-  const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [credential, setCredential] = useState<'' | 'member' | 'coach'>('')
-  const [page, setPage] = useState(1)
-
-  useEffect(() => {
-    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300)
-    return () => clearTimeout(handle)
-  }, [search])
-
-  const changeSearch = (next: string) => {
-    setSearch(next)
-    setPage(1)
-  }
-
-  const changeCredential = (next: '' | 'member' | 'coach') => {
-    setCredential(next)
-    setPage(1)
-  }
-
-  const { data, isLoading, isError, error } = useSearchReviewersQuery({
-    search: debouncedSearch || undefined,
-    credential: credential || undefined,
-    page,
-  })
+  const { search, credential, page, changeSearch, changeCredential, setPage, query } = useReviewerDirectory()
+  const { data, isLoading, isError, error } = query
 
   const reviewers = data?.reviewers ?? []
   const lastPage = data?.meta.last_page ?? 1

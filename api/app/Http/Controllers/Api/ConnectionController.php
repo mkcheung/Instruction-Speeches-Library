@@ -136,7 +136,7 @@ class ConnectionController extends Controller
 
         $sortColumn = $state === 'pending' ? 'requested_at' : 'connected_at';
 
-        if ($cursor = self::decodeCursor($request->query('cursor'))) {
+        if ($cursor = KeysetCursor::decode($request->query('cursor'))) {
             [$cursorTs, $cursorId] = $cursor;
             $query->where(function ($q) use ($cursorTs, $cursorId, $sortColumn) {
                 $q->where($sortColumn, '<', $cursorTs)
@@ -152,7 +152,7 @@ class ConnectionController extends Controller
             $rows = $rows->take($limit);
             /** @var Connection $last */
             $last = $rows->last();
-            $nextCursor = self::encodeCursor((string) $last->{$sortColumn}, $last->id);
+            $nextCursor = KeysetCursor::encode((string) $last->{$sortColumn}, $last->id);
         }
 
         if ($state === 'pending') {
@@ -265,18 +265,5 @@ class ConnectionController extends Controller
     private function assertOwnRow(Request $request, Connection $connection): void
     {
         abort_unless($connection->owner_id === $this->currentUser($request)->id, Response::HTTP_NOT_FOUND);
-    }
-
-    /**
-     * @return array{0: string, 1: int}|null
-     */
-    private static function decodeCursor(mixed $cursor): ?array
-    {
-        return KeysetCursor::decode($cursor);
-    }
-
-    private static function encodeCursor(string $timestamp, int $id): string
-    {
-        return base64_encode("{$timestamp}|{$id}");
     }
 }

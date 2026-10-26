@@ -58,6 +58,8 @@ export interface PublicProfile {
    * the STEP-13 reconciliation audit. */
   id: number
   username: string
+  /** Exact decoded slug the server resolved. Older responses may omit it; mismatches then fail closed. */
+  requested_username?: string
   display_name: string | null
   pronouns: string | null
   bio: string | null

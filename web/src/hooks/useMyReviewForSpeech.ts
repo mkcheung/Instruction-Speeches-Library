@@ -1,10 +1,6 @@
 import { useListMyReviewsQuery } from '@/features/review/reviewApi'
 import type { Review } from '@/features/review/types'
-
-/** `Review::ACCESS_GRANTING` (`api/app/Models/Review.php`) — mirrored here
- * rather than re-fetched, since the frontend has no endpoint that returns
- * the constant itself and it's stable across this codebase's steps. */
-const ACCESS_GRANTING = new Set(['accepted', 'in_progress', 'published'])
+import { isAccessGrantingReviewStatus } from '@/features/review/reviewAccess'
 
 /**
  * Finds the CALLER's own review for a given speech, across all four
@@ -30,7 +26,7 @@ export function useMyReviewForSpeech(
     ...(data.revoked ?? []),
   ]
   const mine =
-    all.find((r) => r.speech?.id === speechId && r.revoked_at === null && ACCESS_GRANTING.has(r.status)) ?? null
+    all.find((r) => r.speech?.id === speechId && r.revoked_at === null && isAccessGrantingReviewStatus(r.status)) ?? null
 
   return { review: mine, isLoading }
 }

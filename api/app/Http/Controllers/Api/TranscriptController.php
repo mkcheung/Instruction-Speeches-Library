@@ -2,12 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\SpeechDeletedException;
+use App\Http\Controllers\Concerns\ResolvesLiveSpeech;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Transcript\SearchTranscriptsRequest;
 use App\Http\Resources\SpeechSearchResource;
 use App\Http\Resources\TranscriptResource;
-use App\Models\Speech;
 use App\Models\SpeechTranscript;
 use App\Services\Search\SpeechSearch;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +18,8 @@ use Illuminate\Http\Request;
  */
 class TranscriptController extends Controller
 {
+    use ResolvesLiveSpeech;
+
     /**
      * `GET /speeches/{speech}/transcript`. Same read gate as
      * `CaptionController::show` (`caption.readCaptions` — owner OR an
@@ -71,22 +72,5 @@ class TranscriptController extends Controller
         return new JsonResponse([
             'results' => SpeechSearchResource::collection($speeches),
         ]);
-    }
-
-    /**
-     * Identical to EssayController::resolveSpeech() / CaptionController::
-     * resolveSpeech() — 410 Gone (not 404) for a speech id that WAS found
-     * but is soft-deleted.
-     */
-    private function resolveSpeech(string $speechId): Speech
-    {
-        /** @var Speech $speech */
-        $speech = Speech::withTrashed()->findOrFail($speechId);
-
-        if ($speech->trashed()) {
-            throw new SpeechDeletedException;
-        }
-
-        return $speech;
     }
 }

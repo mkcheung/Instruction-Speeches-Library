@@ -200,8 +200,7 @@ class ReviewController extends Controller
 
         $reviews = $speech->reviews()
             ->with('reviewer')
-            ->whereIn('status', Review::ACCESS_GRANTING)
-            ->whereNull('revoked_at')
+            ->granting()
             ->orderBy('last_transition_at', 'desc')
             ->get();
 

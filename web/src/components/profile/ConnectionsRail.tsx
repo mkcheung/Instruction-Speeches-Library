@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { profilePath } from '@/lib/profilePath'
 import { skipToken } from '@reduxjs/toolkit/query'
 import { FriendPersonAvatar } from '@/components/profile/FriendPersonAvatar'
 import { useGetFriendsQuery } from '@/features/connection/connectionApi'
@@ -16,7 +17,7 @@ export function ConnectionsRail() {
     <aside aria-label="Your connections" className="flex flex-col gap-3 overflow-x-auto rounded-lg border border-border bg-card p-3 lg:sticky lg:top-20 lg:w-[17rem]">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-[15px] font-semibold">Your connections</h2>
-        <Link className="text-xs underline focus-visible:ring-3" to={`/u/${encodeURIComponent(viewer.username)}/friends/all`}>See all</Link>
+        <Link className="text-xs underline focus-visible:ring-3" to={profilePath(viewer.username, 'friends', 'all')}>See all</Link>
       </div>
       {query.isFetching && <p role="status" className="text-xs text-muted-foreground">{data ? 'Refreshing…' : 'Loading…'}</p>}
       {query.isError ? <div role="alert"><p>{connectionErrorMessage(query.error)}</p><button type="button" onClick={() => query.refetch()} disabled={query.isFetching}>Retry connections</button></div> : data && <>
@@ -24,7 +25,7 @@ export function ConnectionsRail() {
         {data.friends.length === 0 && <p className="text-xs text-muted-foreground">No connections yet.</p>}
         <ul className="grid grid-cols-3 gap-2">
           {data.friends.map((friend) => <li key={friend.connection_id} className="min-w-0 text-center">
-            <Link to={`/u/${encodeURIComponent(friend.person.username)}`} className="flex flex-col items-center gap-1 rounded-md focus-visible:ring-3">
+            <Link to={profilePath(friend.person.username)} className="flex flex-col items-center gap-1 rounded-md focus-visible:ring-3">
               <FriendPersonAvatar src={friend.person.avatar_url} />
               <span className="w-full break-words text-[13px] font-semibold">{friend.person.name}</span>
             </Link>

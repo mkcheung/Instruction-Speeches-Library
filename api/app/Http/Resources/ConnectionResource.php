@@ -38,9 +38,7 @@ class ConnectionResource extends JsonResource
                 'id' => $peer->id,
                 'username' => $peer->username,
                 'name' => trim("{$peer->first_name} {$peer->last_name}"),
-                'avatar_url' => $profile?->avatar_path
-                    ? app(MediaUrlSigner::class)->presign($profile->avatar_path)
-                    : null,
+                'avatar_url' => app(MediaUrlSigner::class)->presignOptional($profile?->avatar_path ?: null),
             ]),
         ];
     }

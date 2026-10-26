@@ -46,7 +46,7 @@ final class KeysetCursor
         return base64_encode("{$timestamp}|{$id}");
     }
 
-    private static function validTimestamp(string $value): bool
+    public static function validTimestamp(string $value): bool
     {
         if (! preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,6})?$/D', $value)) {
             return false;

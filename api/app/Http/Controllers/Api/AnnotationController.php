@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Exceptions\SpeechDeletedException;
+use App\Http\Controllers\Concerns\ResolvesLiveSpeech;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Annotation\CreateAnnotationRequest;
 use App\Http\Requests\Annotation\ListAnnotationsRequest;
@@ -10,7 +10,6 @@ use App\Http\Requests\Annotation\UpdateAnnotationRequest;
 use App\Http\Resources\AnnotationResource;
 use App\Models\Annotation;
 use App\Models\Review;
-use App\Models\Speech;
 use App\Services\AnnotationService;
 use App\Services\ReviewService;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +26,8 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class AnnotationController extends Controller
 {
+    use ResolvesLiveSpeech;
+
     /**
      * `GET /speeches/{speech}/annotations?review_id=`. Track-selection
      * validation per §8.5: confirms `review_id` belongs to `$speech`
@@ -226,28 +227,5 @@ class AnnotationController extends Controller
         $reviews->clearAnnotations($review);
 
         return new JsonResponse(null, Response::HTTP_NO_CONTENT);
-    }
-
-    /**
-     * STEP-07: 410 Gone (not 404) when `$speechId` names a speech that WAS
-     * found but is soft-deleted — "deleting a speech mid-annotation" per
-     * the acceptance list. A truly nonexistent id still 404s via the
-     * normal `ModelNotFoundException` `findOrFail` already throws,
-     * unchanged. Every annotation route resolves `{speech}` through this
-     * method rather than relying on implicit route-model binding
-     * (`Speech $speech`), because implicit binding's default trashed
-     * exclusion makes "found but trashed" indistinguishable from "never
-     * existed" before the controller ever sees it.
-     */
-    private function resolveSpeech(string $speechId): Speech
-    {
-        /** @var Speech $speech */
-        $speech = Speech::withTrashed()->findOrFail($speechId);
-
-        if ($speech->trashed()) {
-            throw new SpeechDeletedException;
-        }
-
-        return $speech;
     }
 }

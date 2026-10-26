@@ -71,11 +71,13 @@ export const onboardingStep1Schema = z.object({
 
 export type OnboardingStep1FormValues = z.infer<typeof onboardingStep1Schema>
 
-export const onboardingStep2Schema = z.object({
+export const profileTextSchema = z.object({
   bio: z.string().max(1000, 'Bio must be at most 1000 characters.'),
   pronouns: z.string().max(32, 'Pronouns must be at most 32 characters.'),
   location: z.string().max(80, 'Location must be at most 80 characters.'),
 })
+
+export const onboardingStep2Schema = profileTextSchema
 
 export type OnboardingStep2FormValues = z.infer<typeof onboardingStep2Schema>
 

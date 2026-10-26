@@ -3,6 +3,8 @@
 namespace App\Services\Voice;
 
 use App\Models\SpeechAsset;
+use App\Support\ScratchFileAllocationException;
+use App\Support\ScratchFiles;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 
@@ -10,12 +12,12 @@ class WhisperVoiceNoteTranscriber implements VoiceNoteTranscriberContract
 {
     public function transcribe(SpeechAsset $asset): string
     {
-        $source = tempnam(sys_get_temp_dir(), 'voice_whisper_src_').'.m4a';
-        $wav = tempnam(sys_get_temp_dir(), 'voice_whisper_wav_').'.wav';
-        $base = tempnam(sys_get_temp_dir(), 'voice_whisper_out_');
-        @unlink($base);
-        $textPath = $base.'.txt';
+        $scratch = app(ScratchFiles::class);
         try {
+            $source = $scratch->create('voice_whisper_src_', '.m4a');
+            $wav = $scratch->create('voice_whisper_wav_', '.wav');
+            $textPath = $scratch->create('voice_whisper_out_', '.txt');
+            $base = substr($textPath, 0, -4);
             $bytes = Storage::disk($asset->disk)->get($asset->path);
             if ($bytes === null || file_put_contents($source, $bytes) === false) {
                 throw new VoiceTranscriptionException('voice_transcription_storage_failed');
@@ -34,12 +36,10 @@ class WhisperVoiceNoteTranscriber implements VoiceNoteTranscriberContract
             }
 
             return $body;
+        } catch (ScratchFileAllocationException $e) {
+            throw new VoiceTranscriptionException('voice_transcription_storage_failed');
         } finally {
-            @unlink($source);
-            @unlink($wav);
-            @unlink($textPath);
-            @unlink(substr($source, 0, -4));
-            @unlink(substr($wav, 0, -4));
+            $scratch->cleanup();
         }
     }
 }

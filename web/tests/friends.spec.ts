@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { createFriendsFixture, FRIENDS_APP_URL as APP, FRIENDS_API_URL as API, friendPost, loginFriend } from './friends-fixtures.js'
+import { xsrfHeaders } from './xsrf-headers.js'
 
 /** Real HTTP + real PostgreSQL. Opt in with an explicitly isolated database
  * wrapper; normal E2E setup/auth dependencies remain unchanged in the repository.
@@ -8,6 +9,23 @@ import { createFriendsFixture, FRIENDS_APP_URL as APP, FRIENDS_API_URL as API, f
  * avoiding the shared setup's hard-coded development origins/accounts. */
 test.skip(!process.env.FRIENDS_VERIFY_WRAPPER, 'Requires the isolated Friends validation stack.')
 test.setTimeout(90_000)
+
+for (const [alias, stored] of [['bjørn', 'bjorn'], ['straße', 'strasse']] as const) {
+  test(`server-canonical ${alias} profile redirects preserve private route, query and hash`, async ({ page }) => {
+    const fixture = createFriendsFixture()
+    await loginFriend(page, fixture.alex)
+    const username = `${stored}-${fixture.alex.username}`
+    const response = await page.context().request.patch(`${API}/api/profile/username`, {
+      headers: { Accept: 'application/json', Origin: APP, ...await xsrfHeaders(page.context(), API) },
+      data: { username },
+    })
+    expect(response.status()).toBe(200)
+    await page.goto(`${APP}/u/${encodeURIComponent(`${alias}-${fixture.alex.username}`)}/friends/all?from=canonical#friends`)
+    await expect(page).toHaveURL(`${APP}/u/${username}/friends/all?from=canonical#friends`)
+    await expect(page.getByRole('heading', { level: 1, name: fixture.alex.name })).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Your friends', exact: true })).toBeVisible()
+  })
+}
 
 test('friends default to accepted people, paginate cached pages and search beyond the first page', async ({ page }) => {
   const fixture = createFriendsFixture(true)

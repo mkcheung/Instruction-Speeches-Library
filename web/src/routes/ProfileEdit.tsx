@@ -12,7 +12,7 @@ import { AvatarCropper } from '@/components/onboarding/AvatarCropper'
 import { NotebookPage } from '@/components/workspace/NotebookPage'
 import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 import { applyServerErrors, extractServerErrorMessage } from '@/lib/applyServerErrors'
-import { usernameSchema } from '@/lib/validation'
+import { profileTextSchema, usernameSchema } from '@/lib/validation'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import {
   useGetPublicProfileQuery,
@@ -23,9 +23,7 @@ import {
 
 const profileEditSchema = z.object({
   display_name: z.string().max(60, 'Display name must be at most 60 characters.'),
-  bio: z.string().max(1000, 'Bio must be at most 1000 characters.'),
-  pronouns: z.string().max(32, 'Pronouns must be at most 32 characters.'),
-  location: z.string().max(80, 'Location must be at most 80 characters.'),
+  ...profileTextSchema.shape,
 })
 
 type ProfileEditFormValues = z.infer<typeof profileEditSchema>

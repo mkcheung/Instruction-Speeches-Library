@@ -17,6 +17,7 @@ use App\Services\Captions\EnsureCaptionJob;
 use App\Services\MediaUrlSigner;
 use App\Services\MultipartUploadService;
 use App\Services\QuotaService;
+use App\Support\ReviewGrant;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -78,8 +79,7 @@ class SpeechUploadController extends Controller
             abort(Response::HTTP_NOT_FOUND, 'No such speech.');
         }
 
-        $isGranting = $review->revoked_at === null
-            && in_array($review->status, Review::ACCESS_GRANTING, true);
+        $isGranting = ReviewGrant::allows($review);
 
         // Holds a row but it doesn't grant playback: invited-not-yet-accepted,
         // or revoked/declined/abandoned. One undifferentiated 403, matching
