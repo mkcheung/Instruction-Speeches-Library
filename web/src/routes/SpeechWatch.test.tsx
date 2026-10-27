@@ -1824,6 +1824,14 @@ describe('SpeechWatch reviewers tab', () => {
       authStatus = 500
       await refetchMe()
       expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+      // A confirmed 401 ends an authenticated document for good (R1: terminal `lost`; the app
+      // hard-navigates), so a later healthy /me must not revive A's tools in this document.
+      if (status === 401) {
+        mock.mockImplementation(original)
+        await refetchMe()
+        expect(screen.queryByRole('tablist', { name: 'Video tools' })).not.toBeInTheDocument()
+        return
+      }
       mock.mockImplementation(original)
       await refetchMe()
       await readyTools()

@@ -1,8 +1,12 @@
-import { type ReactNode, useEffect } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { getErrorStatus } from '@/lib/errorStatus'
 import { getPostLoginDestination } from '@/lib/roles'
+import { hardNavigation } from '@/lib/hardNavigation'
+import { authSessionSignals, isAcceptedViewer, isTerminalStatus, useAuthSession } from '@/features/auth/authSession'
+import { useDispatch } from 'react-redux'
+import { Button } from '@/components/ui/button'
 
 function FullPageSpinner() {
   return (
@@ -16,17 +20,32 @@ function isUnauthenticated(error: unknown): boolean {
   return getErrorStatus(error) === 401
 }
 
-/** Redirects to `/login` (preserving the attempted location) unless the
- * session probe (`GET /api/user`) succeeds. */
+/**
+ * Redirects to `/login` (preserving the attempted location) unless the
+ * session probe (`GET /api/me`) succeeds AND this document has accepted that
+ * user as its authoritative identity (R1).
+ *
+ * Private content is gated on the accepted viewer, not on RTK's cached `/me`
+ * alone: while proof is withdrawn (a 401 awaiting its probe, a cross-tab
+ * change, a BFCache restore, an uncertain probe) the children are hidden
+ * and media is paused, but NOT unmounted, so unsaved editor state survives
+ * a same-user resumption.
+ */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation()
+  const auth = useAuthSession()
   const { data, isLoading, isFetching, isError, error } = useGetMeQuery()
 
   if (isLoading || (isFetching && !data && !isError)) {
     return <FullPageSpinner />
   }
 
-  if (isError && isUnauthenticated(error)) {
+  if (isTerminalStatus(auth.status)) {
+    // A hard navigation is in flight; never render the old account's pages.
+    return <FullPageSpinner />
+  }
+
+  if (isError && isUnauthenticated(error) && auth.status === 'anonymous') {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
@@ -36,7 +55,37 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     return <FullPageSpinner />
   }
 
-  return <>{children}</>
+  return (
+    <PrivateBoundary visible={isAcceptedViewer(auth, data.user)} uncertain={auth.status === 'uncertain'}>
+      {children}
+    </PrivateBoundary>
+  )
+}
+
+/** Hides private UI without unmounting it, and stops playback while hidden. */
+function PrivateBoundary({ visible, uncertain, children }: { visible: boolean; uncertain: boolean; children: ReactNode }) {
+  const dispatch = useDispatch()
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (visible) return
+    ref.current?.querySelectorAll('video,audio').forEach((media) => {
+      try { (media as HTMLMediaElement).pause() } catch { /* jsdom: not implemented */ }
+    })
+  }, [visible])
+  return (
+    <>
+      {!visible && uncertain && (
+        <div role="alert" className="flex min-h-svh flex-col items-center justify-center gap-3 text-sm">
+          <p>Couldn't verify your session</p>
+          <Button type="button" onClick={() => dispatch(authSessionSignals.revalidate())}>Retry</Button>
+        </div>
+      )}
+      {!visible && !uncertain && <FullPageSpinner />}
+      <div ref={ref} style={{ display: visible ? 'contents' : 'none' }} aria-hidden={visible ? undefined : true} inert={!visible}>
+        {children}
+      </div>
+    </>
+  )
 }
 
 /**
@@ -76,7 +125,7 @@ export function RequireGuest({ children }: { children: ReactNode }) {
   // refetch of `useGetMeQuery`), not just once.
   useEffect(() => {
     if (destination?.external) {
-      window.location.replace(destination.to)
+      hardNavigation.replace(destination.to)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above: primitives are the real dependency
   }, [destination?.external, destination?.to])

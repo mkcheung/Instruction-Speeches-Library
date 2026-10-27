@@ -126,7 +126,9 @@ describe('account header profile photo', () => {
     const coachButton = await screen.findByRole('button', { name: 'Cora Coach' })
     expect(photo(coachButton)).toBeNull()
     expect(coachButton).toHaveTextContent('CC')
+    // R1: this document never adopts the coach in place (its session is `replaced`; the app hard-navigates
+    // and a fresh store loads the coach's own profile), so the member's photo must simply never reappear.
     await act(async () => { resolveCoach(json({ profile: profile(coach, replacement) })); await pending })
-    await waitFor(() => expect(photo(coachButton)).toHaveAttribute('src', replacement))
+    expect(photo(coachButton)?.getAttribute('src') ?? null).not.toBe(portrait)
   })
 })

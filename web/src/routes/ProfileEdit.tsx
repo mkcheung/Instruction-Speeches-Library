@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -14,6 +15,7 @@ import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceC
 import { applyServerErrors, extractServerErrorMessage } from '@/lib/applyServerErrors'
 import { profileTextSchema, usernameSchema } from '@/lib/validation'
 import { useGetMeQuery } from '@/features/auth/authApi'
+import { isAcceptedViewer, useAuthSession } from '@/features/auth/authSession'
 import {
   useGetPublicProfileQuery,
   useUpdateOwnAvatarMutation,
@@ -40,12 +42,21 @@ type UsernameFormValues = z.infer<typeof usernameFormSchema>
  */
 export default function ProfileEdit() {
   const scene = useWorkspaceCompanionScene()
-  const { data: me, isLoading: isLoadingMe } = useGetMeQuery()
-  const username = me?.user.username ?? null
+  const { data: me } = useGetMeQuery()
+  const session = useAuthSession()
+  // Identity is established only when cached /me names the proven viewer of
+  // this document; anything else is treated as not-yet-known, never rendered.
+  const identity = me && isAcceptedViewer(session, me.user) ? me.user : null
+  const username = identity?.username ?? null
 
-  const { data: profile, isLoading: isLoadingProfile } = useGetPublicProfileQuery(username ?? '', {
-    skip: !username,
-  })
+  // `currentData` (not `data`) so a previous username's profile is never shown
+  // while the new username's read is pending or after it fails.
+  const {
+    currentData: profile,
+    isError: profileFailed,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useGetPublicProfileQuery(username ?? '', { skip: !username })
 
   const [updateProfile, { isLoading: isSaving }] = useUpdateOwnProfileMutation()
   const [updateAvatar, { isLoading: isUploadingAvatar }] = useUpdateOwnAvatarMutation()
@@ -122,7 +133,32 @@ export default function ProfileEdit() {
     }
   }
 
-  if (isLoadingMe || isLoadingProfile || !profile || !username) {
+  if (identity && !username) {
+    return (
+      <NotebookPage width="form" scene={scene} title="Edit profile">
+        <p className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status" role="status">
+          Choose a username to edit your profile. <Link to="/onboarding" className="underline">Finish setting up your account</Link>.
+        </p>
+      </NotebookPage>
+    )
+  }
+
+  if (username && !profile && profileFailed) {
+    const notFound = typeof profileError === 'object' && profileError !== null
+      && 'status' in profileError && profileError.status === 404
+    return (
+      <NotebookPage width="form" scene={scene} title="Edit profile">
+        <div role="alert" className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status flex flex-col items-start gap-3">
+          <p>{notFound ? 'Your profile was not found.' : 'We could not load your profile.'}</p>
+          <Button type="button" className="workspace-notebook-control workspace-notebook-control--primary" onClick={() => void refetchProfile()}>
+            Retry
+          </Button>
+        </div>
+      </NotebookPage>
+    )
+  }
+
+  if (!identity || !profile || !username) {
     return (
       <NotebookPage width="form" scene={scene} title="Edit profile">
         <p className="workspace-notebook-surface workspace-notebook-panel workspace-notebook-status">Loading…</p>

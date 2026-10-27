@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useStore } from 'react-redux'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,8 @@ import { Label } from '@/components/ui/label'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useRegisterMutation } from '@/features/auth/authApi'
+import { hardNavigation } from '@/lib/hardNavigation'
+import { selectAuthSession, type AuthSessionState } from '@/features/auth/authSession'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { registerSchema, type RegisterFormValues } from '@/lib/validation'
 
@@ -16,7 +19,7 @@ import { registerSchema, type RegisterFormValues } from '@/lib/validation'
  * username to onboarding step 1 (§6.5).
  */
 export default function Register() {
-  const navigate = useNavigate()
+  const store = useStore()
   const [registerUser, { isLoading }] = useRegisterMutation()
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -32,11 +35,16 @@ export default function Register() {
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null)
     try {
-      await registerUser(values).unwrap()
+      const attempt = registerUser(values)
+      await attempt.unwrap()
+      // A newer auth attempt (or another tab) has superseded this one: it must not navigate.
+      const current = selectAuthSession(store.getState() as { authSession: AuthSessionState })
+      if (current.latestAttemptId !== attempt.requestId) return
       // §5.9: verified email gates writes others see; onboarding gates
       // findability. Registration succeeds unverified, so land on /verify
       // rather than assuming the mail arrived instantly.
-      navigate('/verify', { replace: true })
+      // Hard replace: the new account gets a fresh document (R1).
+      hardNavigation.replace('/verify')
     } catch (error) {
       setFormError(applyServerErrors(error, setError))
     }

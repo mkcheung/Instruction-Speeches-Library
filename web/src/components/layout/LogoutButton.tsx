@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useDispatch } from 'react-redux'
+import { useStore } from 'react-redux'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { useLogoutMutation, authApi } from '@/features/auth/authApi'
-import { profileApi } from '@/features/profile/profileApi'
+import { useLogoutMutation } from '@/features/auth/authApi'
+import { hardNavigation } from '@/lib/hardNavigation'
 import { getErrorStatus } from '@/lib/errorStatus'
-import type { AppDispatch } from '@/app/store'
+import { selectAuthSession, type AuthSessionState } from '@/features/auth/authSession'
 
 /**
  * D4 (PLAN-APP-HEADER.md) — now a menu item inside `UserMenu` rather than
@@ -35,29 +35,32 @@ import type { AppDispatch } from '@/app/store'
  * navigating to `/login` unconditionally would hand a still-logged-in
  * user straight into the onboarding wizard.
  *
- * The 401 branch used to race `UnauthenticatedRedirect`: `baseQuery.ts`
- * dispatches `auth:unauthenticated` synchronously inside the failing
- * request, strictly before this `catch` block ever runs, so resetting the
- * caches *here* was always a beat too late — `UnauthenticatedRedirect`'s
- * own listener now does the reset itself, before it navigates, which is
- * the only place that can actually win the race. The dispatches below are
- * now redundant-but-harmless defense in depth, not the fix.
+ * The identity middleware (`authSessionMiddleware`) owns the cache side of
+ * this: logout start quarantines private rendering and writes, and a
+ * successful (or already-ended) logout drops every private cache and tells
+ * other tabs. This component only performs the hard navigation.
  */
 export function LogoutMenuItem() {
+  const store = useStore()
   const [logout, { isLoading }] = useLogoutMutation()
-  const dispatch = useDispatch<AppDispatch>()
   const [error, setError] = useState<string | null>(null)
 
   const handleLogout = async () => {
     setError(null)
+    const attempt = logout()
+    // A newer auth attempt (or another tab) superseding this one must not navigate.
+    const isLatest = () =>
+      selectAuthSession(store.getState() as { authSession: AuthSessionState }).latestAttemptId === attempt.requestId
     try {
-      await logout().unwrap()
-      window.location.assign('/login')
+      await attempt.unwrap()
+      if (!isLatest()) return
+      hardNavigation.assign('/login')
     } catch (caught) {
+      // Already logged out: the identity middleware has quarantined and dropped the
+      // private caches for this attempt; only the hard navigation remains.
       if (getErrorStatus(caught) === 401) {
-        dispatch(authApi.util.resetApiState())
-        dispatch(profileApi.util.resetApiState())
-        window.location.assign('/login')
+        if (!isLatest()) return
+        hardNavigation.assign('/login')
         return
       }
 

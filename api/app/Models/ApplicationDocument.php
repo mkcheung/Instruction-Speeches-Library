@@ -21,12 +21,33 @@ use Illuminate\Support\Carbon;
  * @property int $byte_size
  * @property string|null $sha256
  * @property string $status
+ * @property string|null $work_claim_id
+ * @property Carbon|null $work_lease_until
+ * @property Carbon|null $work_next_attempt_at
+ * @property Carbon|null $work_dispatched_at
+ * @property int $work_attempts
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Fillable(['application_id', 'disk', 'path', 'original_filename', 'byte_size', 'sha256', 'status'])]
 class ApplicationDocument extends Model
 {
+    /**
+     * Document-work protocol columns (ApplicationDocumentWork). Not
+     * fillable: only the service mutates them.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'work_lease_until' => 'datetime',
+            'work_next_attempt_at' => 'datetime',
+            'work_dispatched_at' => 'datetime',
+            'work_attempts' => 'integer',
+        ];
+    }
+
     /**
      * @return BelongsTo<CoachApplication, $this>
      */

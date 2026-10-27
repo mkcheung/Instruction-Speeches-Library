@@ -457,34 +457,29 @@ class FfmpegTranscoder implements TranscoderContract
         }
 
         $disk = $videoAsset->disk;
-        $allVariants = $spriteVariant !== null ? [...$variants, $spriteVariant] : $variants;
 
-        foreach ($allVariants as &$variant) {
-            // Posters have no visible failed state (§9.5), so a storage
-            // write failure here drops that variant rather than writing a
-            // row pointing at an object that isn't there. Previously the
-            // ignored `put()` return let the next line's `size()` — which
-            // `throw => false` does not protect — throw
-            // `UnableToRetrieveMetadata` out of an otherwise-successful
-            // transcode. Sized from the local file for the same reason.
-            if (! $this->uploadFromLocalFile($disk, $variant['local'], $variant['path'])) {
-                Log::warning('Poster pipeline: could not store a derived variant.', [
-                    'video_asset_id' => $videoAsset->id,
-                    'path' => $variant['path'],
-                ]);
-                $variant = null;
+        // R7: a poster set is only publishable (and only allowed to replace
+        // the existing set) if the designated primary exists. Store the
+        // primary FIRST and, if it is missing or fails to store, abandon the
+        // poster variants before writing any of them: a secondary written at
+        // a same-frame path would overwrite an object the preserved old set
+        // still points at. Nothing is deleted from storage on this path;
+        // this is not a byte-atomic rollback for variants stored before a
+        // later failure. The sprite is independent and is handled below.
+        $posterVariants = $this->storablePosterVariants($videoAsset, $disk, $variants);
 
-                continue;
-            }
-
-            $variant['byte_size'] = (int) filesize($variant['local']);
+        // Posters have no visible failed state (§9.5), so a storage write
+        // failure drops that variant rather than writing a row pointing at
+        // an object that isn't there. A sprite that fails to store is
+        // dropped too, so the existing sprite row survives.
+        if ($spriteVariant !== null) {
+            $spriteVariant = $this->storeVariant($videoAsset, $disk, $spriteVariant);
         }
-        unset($variant);
 
-        $allVariants = array_values(array_filter($allVariants));
+        $allVariants = $spriteVariant !== null ? [...$posterVariants, $spriteVariant] : $posterVariants;
 
         if ($allVariants === []) {
-            Log::warning('Poster pipeline: every derived variant failed to store.', ['video_asset_id' => $videoAsset->id]);
+            Log::warning('Poster pipeline: nothing publishable (no stored primary poster, no sprite); existing assets kept.', ['video_asset_id' => $videoAsset->id]);
 
             return;
         }
@@ -535,6 +530,72 @@ class FfmpegTranscoder implements TranscoderContract
                 ]);
             }
         });
+    }
+
+    /**
+     * Stores the poster variants, primary first, and returns the stored ones —
+     * or [] when no designated primary was derived or it failed to store, in
+     * which case no secondary is written and the caller keeps the old set.
+     *
+     * @param  list<array<string, mixed>>  $variants
+     * @return list<array<string, mixed>>
+     */
+    private function storablePosterVariants(SpeechAsset $videoAsset, string $disk, array $variants): array
+    {
+        $primary = null;
+        $secondaries = [];
+
+        foreach ($variants as $variant) {
+            if ($variant['is_primary']) {
+                $primary = $variant;
+            } else {
+                $secondaries[] = $variant;
+            }
+        }
+
+        $primary = $primary === null ? null : $this->storeVariant($videoAsset, $disk, $primary);
+
+        if ($primary === null) {
+            Log::warning('Poster pipeline: designated primary poster unavailable; keeping the existing poster set.', ['video_asset_id' => $videoAsset->id]);
+
+            return [];
+        }
+
+        $stored = [$primary];
+
+        foreach ($secondaries as $secondary) {
+            $secondary = $this->storeVariant($videoAsset, $disk, $secondary);
+
+            if ($secondary !== null) {
+                $stored[] = $secondary;
+            }
+        }
+
+        return $stored;
+    }
+
+    /**
+     * Uploads one derived file and returns the variant with its stored size
+     * (measured from the local file: `size()` on a missing remote object
+     * throws despite `throw => false`), or null when the write failed.
+     *
+     * @param  array<string, mixed>  $variant
+     * @return array<string, mixed>|null
+     */
+    private function storeVariant(SpeechAsset $videoAsset, string $disk, array $variant): ?array
+    {
+        if (! $this->uploadFromLocalFile($disk, $variant['local'], $variant['path'])) {
+            Log::warning('Poster pipeline: could not store a derived variant.', [
+                'video_asset_id' => $videoAsset->id,
+                'path' => $variant['path'],
+            ]);
+
+            return null;
+        }
+
+        $variant['byte_size'] = (int) filesize($variant['local']);
+
+        return $variant;
     }
 
     /**

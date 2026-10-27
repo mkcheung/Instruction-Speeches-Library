@@ -1,7 +1,7 @@
 import { createAction, createSlice, type Middleware, type PayloadAction } from '@reduxjs/toolkit'
 import { useSelector } from 'react-redux'
 import { useEffect, useEffectEvent } from 'react'
-import { authApi } from '@/features/auth/authApi'
+import { authSessionSignals, selectAuthSession, type AuthSessionState } from '@/features/auth/authSession'
 import type { CurrentUser } from '@/features/auth/types'
 import { connectionApi } from './connectionApi'
 import { getErrorStatus } from '@/lib/errorStatus'
@@ -21,28 +21,8 @@ const initialState: ConnectionSessionState = {
 const session = createSlice({
   name: 'connectionSession', initialState,
   reducers: {
-    advance(state, action: PayloadAction<'unresolved' | 'anonymous'>) {
-      state.generation += 1
-      state.status = action.payload
-      state.viewer = null
-      state.requestId = null
-      state.error = null
-    },
-    loading(state, action: PayloadAction<string>) {
-      state.status = 'loading'
-      state.requestId = action.payload
-      state.error = null
-    },
-    resolved(state, action: PayloadAction<ConnectionViewer | null>) {
-      state.status = 'ready'
-      state.viewer = action.payload
-      state.error = null
-    },
-    failed(state, action: PayloadAction<unknown>) {
-      state.status = 'error'
-      state.viewer = null
-      state.error = action.payload
-    },
+    /** Mirror of the document's authoritative identity (`authSession`); never an authority itself. */
+    sync: (_state, action: PayloadAction<ConnectionSessionState>) => action.payload,
   },
 })
 export const connectionSessionReducer = session.reducer
@@ -56,114 +36,66 @@ export const selectEligibleConnectionViewer = (state: SessionRoot) =>
 export const useConnectionSession = () => useSelector(selectConnectionSession)
 export const useEligibleConnectionViewer = () => useSelector(selectEligibleConnectionViewer)
 
+/** Friends eligibility excludes administrative roles and users without usernames. It is derived from the
+ * accepted general identity; such users are still authenticated everywhere else. */
 function eligible(user: CurrentUser): ConnectionViewer | null {
   if (!user?.id || !user.username?.trim() || !Array.isArray(user.roles) || hasRole(user, 'admin')) return null
   return { id: String(user.id), username: user.username.trim() }
 }
 
-/** Request IDs belong to a session generation. Auth caches alone are never an
- * authority: old getMe fulfillments can arrive after logout and a new login. */
-export const connectionSessionMiddleware: Middleware = (store) => {
-  const requests = new Map<string, number>()
-  const connectionRequests = new Map<string, number>()
-  let logoutRequest: { id: string; generation: number } | null = null
-  let loginRequest: string | null = null
-  let loginGeneration: number | null = null
-  let identity: string | null = null
-  const current = () => selectConnectionSession(store.getState() as SessionRoot)
-  const clear = (status: 'unresolved' | 'anonymous') => {
-    identity = null
-    store.dispatch(session.actions.advance(status))
-    store.dispatch(connectionApi.util.resetApiState())
+function derive(auth: AuthSessionState): Omit<ConnectionSessionState, 'generation' | 'requestId'> {
+  const hiding = { viewer: null, error: null }
+  if (auth.hidden || auth.probing) return { ...hiding, status: 'loading' }
+  switch (auth.status) {
+    case 'accepted': return { status: 'ready', viewer: auth.viewer ? eligible(auth.viewer) : null, error: null }
+    case 'anonymous': case 'lost': return { ...hiding, status: 'anonymous' }
+    case 'uncertain': return { status: 'error', viewer: null, error: auth.error }
+    case 'unresolved': return auth.error ? { status: 'error', viewer: null, error: auth.error } : { ...hiding, status: 'unresolved' }
+    default: return { ...hiding, status: 'loading' }
   }
-  const resolveMe = () => {
-    // RTK deduplicates an already pending request. Its obsolete completion will
-    // re-enter this path once that request has finished, without a reset loop.
-    store.dispatch(authApi.endpoints.getMe.initiate(undefined, { subscribe: false, forceRefetch: true }) as never)
+}
+
+/**
+ * Adapter between the document-wide identity proof and the Friends domain.
+ * The Friends cache is dropped whenever the proof's generation or accepted
+ * user changes (not for same-user revalidation). Late Friends responses
+ * and 401s are fenced in `baseQuery` by the identity captured at request start.
+ */
+export const connectionSessionMiddleware: Middleware = (store) => {
+  let key: string | null = null
+  let lastAuth: AuthSessionState | undefined
+  const sync = () => {
+    const auth = selectAuthSession(store.getState() as { authSession: AuthSessionState })
+    // Everything below is a pure function of `auth` (plus the cache key it keeps), and this runs after EVERY
+    // action in the app (RTK Query alone dispatches several per request), so skip the derivation while the
+    // identity slice is untouched.
+    if (auth === lastAuth) return
+    lastAuth = auth
+    const derived = derive(auth)
+    const nextKey = auth.status === 'accepted' && !auth.hidden && auth.viewer
+      ? `${auth.generation}:${auth.viewer.id}` : auth.status === 'quarantined' || auth.status === 'uncertain' || auth.hidden
+        ? key : `${auth.generation}:`
+    if (nextKey !== key) {
+      const first = key === null
+      key = nextKey
+      if (!first) store.dispatch(connectionApi.util.resetApiState())
+    }
+    const current = (store.getState() as SessionRoot).connectionSession
+    if (current.generation !== auth.generation || current.status !== derived.status
+      || current.viewer?.id !== derived.viewer?.id || current.viewer?.username !== derived.viewer?.username
+      || current.error !== derived.error) {
+      store.dispatch(session.actions.sync({ ...derived, generation: auth.generation, requestId: null }))
+    }
   }
   return (next) => (action) => {
     if (revalidateConnectionSession.match(action)) {
-      clear('unresolved')
-      const result = next(action)
-      resolveMe()
-      return result
+      store.dispatch(connectionApi.util.resetApiState())
+      store.dispatch(authSessionSignals.revalidate())
+      return next(action)
     }
-    if (typeof action === 'object' && action !== null && 'type' in action
-      && typeof action.type === 'string' && action.type.startsWith(`${connectionApi.reducerPath}/execute`)
-      && 'meta' in action) {
-      const meta = action.meta as { requestId: string }
-      if (action.type.endsWith('/pending')) connectionRequests.set(meta.requestId, current().generation)
-      else if (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) {
-        const generation = connectionRequests.get(meta.requestId)
-        connectionRequests.delete(meta.requestId)
-        if (generation === current().generation && action.type.endsWith('/rejected')
-          && 'payload' in action && getErrorStatus(action.payload) === 401 && current().status !== 'anonymous') {
-          // Already anonymous: a 401 here is the expected answer to an auth-only query that a public page keeps
-          // mounted (e.g. a profile timeline). Clearing again would reset the cache, resubscribe that query and
-          // loop 401 -> reset -> refetch.
-          clear('anonymous')
-        }
-      }
-    }
-    if (authApi.endpoints.login.matchPending(action)) {
-      clear('unresolved')
-      loginRequest = action.meta.requestId
-      loginGeneration = current().generation
-    }
-    if (authApi.endpoints.logout.matchPending(action)) logoutRequest = { id: action.meta.requestId, generation: current().generation }
-    if (authApi.util.resetApiState.match(action) || (authApi.endpoints.logout.matchFulfilled(action)
-      && logoutRequest?.id === action.meta.requestId && logoutRequest.generation === current().generation)) clear('anonymous')
-    if (authApi.endpoints.getMe.matchPending(action)) {
-      requests.set(action.meta.requestId, current().generation)
-      store.dispatch(session.actions.loading(action.meta.requestId))
-    }
-    const isMeSuccess = authApi.endpoints.getMe.matchFulfilled(action)
-    const isMeFailure = authApi.endpoints.getMe.matchRejected(action)
-    if (isMeSuccess || isMeFailure) {
-      // Condition rejections are deduplicated calls, not actual auth failures.
-      if (isMeFailure && action.meta.condition) return next(action)
-      const generation = requests.get(action.meta.requestId)
-      requests.delete(action.meta.requestId)
-      const accepted = generation === current().generation && action.meta.requestId === current().requestId
-      if (!accepted) {
-        const result = next(action)
-        // A stale action may overwrite RTK's getMe cache, but never our viewer.
-        // Hide it until a new authoritative response resolves the session.
-        if (current().status !== 'anonymous') {
-          store.dispatch(session.actions.loading('revalidating'))
-          resolveMe()
-        }
-        return result
-      }
-      if (loginRequest !== null && loginGeneration === current().generation) {
-        // A probe made during the login POST can still see the previous cookie.
-        // The completed login will start a new authoritative probe.
-        const result = next(action)
-        store.dispatch(session.actions.loading('awaiting-login'))
-        return result
-      }
-      if (isMeSuccess) {
-        const viewer = eligible(action.payload.user)
-        if (identity !== String(action.payload.user.id)) {
-          if (identity !== null) store.dispatch(session.actions.advance('unresolved'))
-          store.dispatch(connectionApi.util.resetApiState())
-        }
-        identity = String(action.payload.user.id)
-        const result = next(action)
-        store.dispatch(session.actions.resolved(viewer))
-        return result
-      }
-      if (getErrorStatus(action.payload) === 401) clear('anonymous')
-      else store.dispatch(session.actions.failed(action.payload ?? action.error))
-    }
-    if (authApi.endpoints.login.matchFulfilled(action) || authApi.endpoints.login.matchRejected(action)) {
-      const accepted = loginRequest === action.meta.requestId && loginGeneration === current().generation
-      if (accepted) loginRequest = null
-      const result = next(action)
-      if (accepted) resolveMe()
-      return result
-    }
-    return next(action)
+    const result = next(action)
+    sync()
+    return result
   }
 }
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
+import type { CurrentUser } from '@/features/auth/types'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
 import { useExportJob, latestExportOfKind } from '@/hooks/useExportJob'
@@ -13,8 +14,14 @@ function urlOf(input: RequestInfo | URL): string {
   return input instanceof Request ? input.url : input.toString()
 }
 
+const viewer: CurrentUser = {
+  id: '5', email: 'v@example.test', first_name: 'V', last_name: 'W', username: 'v', display_name: 'V W',
+  email_verified: true, roles: [], onboarding_completed: true, onboarding_step: 4,
+  storage_bytes_used: 0, quota_bytes: 1, uploads_in_flight: 0,
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <Provider store={createTestStore()}>{children}</Provider>
+  return <Provider store={createTestStore({ viewer })}>{children}</Provider>
 }
 
 function exportRow(overrides: Partial<Record<string, unknown>> = {}) {
@@ -98,5 +105,19 @@ describe('latestExportOfKind', () => {
 
   it('returns undefined when no row of that kind exists', () => {
     expect(latestExportOfKind([], 'account')).toBeUndefined()
+  })
+})
+
+describe('useExportJob without an accepted viewer', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('does not request or expose the export list', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ exports: [exportRow({ status: 'ready' })] }))
+    vi.stubGlobal('fetch', fetchMock)
+    const guestWrapper = ({ children }: { children: ReactNode }) => <Provider store={createTestStore()}>{children}</Provider>
+    const { result } = renderHook(() => useExportJob(), { wrapper: guestWrapper })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.current.exports).toEqual([])
   })
 })

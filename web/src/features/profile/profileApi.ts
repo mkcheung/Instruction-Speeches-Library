@@ -104,6 +104,7 @@ export const profileApi = createApi({
     getPublicProfile: builder.query<PublicProfile, string>({
       query: (username) => `/api/u/${encodeURIComponent(username)}`,
       transformResponse: (response: { profile: PublicProfile }) => response.profile,
+      extraOptions: { session: 'public' },
       providesTags: (_result, _error, username) => [{ type: 'PublicProfile', id: username }],
     }),
     /**
@@ -115,6 +116,7 @@ export const profileApi = createApi({
      */
     checkUsernameAvailability: builder.query<UsernameAvailability, string>({
       query: (username) => `/api/username-availability?username=${encodeURIComponent(username)}`,
+      extraOptions: { session: 'public' },
     }),
   }),
 })

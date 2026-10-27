@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\User;
+use App\Models\UsernameHistory;
 use App\Services\UsernameService;
+use Illuminate\Database\QueryException;
 use Illuminate\Validation\ValidationException;
 
 it('records a released username in history and refuses it to a different user', function () {
@@ -71,4 +73,103 @@ it('still lets a user re-set their own current username', function () {
     $user = User::factory()->create(['username' => 'ada']);
 
     expect(app(UsernameService::class)->set($user, 'ada')->username)->toBe('ada');
+});
+
+/**
+ * R3: decisions are made on fresh locked state, and history + rename commit
+ * together.
+ */
+it('treats a stale snapshot of an already-renamed user as a no-op for the same name', function () {
+    $stale = User::factory()->create();
+    User::query()->whereKey($stale->id)->update(['username' => 'ada', 'username_changed_at' => now()]);
+
+    $result = app(UsernameService::class)->set($stale, 'ada');
+
+    expect($result->username)->toBe('ada');
+    expect(UsernameHistory::query()->where('user_id', $stale->id)->count())->toBe(0);
+});
+
+it('applies the cooldown and writes history when a stale first-claim snapshot meets a live username', function () {
+    $stale = User::factory()->create();
+    expect($stale->username)->toBeNull();
+    app(UsernameService::class)->set(User::findOrFail($stale->id), 'first-claim');
+
+    expect(fn () => app(UsernameService::class)->set($stale, 'second-claim'))
+        ->toThrow(ValidationException::class);
+
+    expect(User::findOrFail($stale->id)->username)->toBe('first-claim');
+    expect(UsernameHistory::query()->where('user_id', $stale->id)->count())->toBe(0);
+});
+
+it('writes history for the live username, not the stale snapshot, after the cooldown', function () {
+    $stale = User::factory()->create();
+    User::query()->whereKey($stale->id)->update(['username' => 'live-name', 'username_changed_at' => now()->subDays(40)]);
+
+    $returned = app(UsernameService::class)->set($stale, 'next-name');
+
+    expect($returned->username)->toBe('next-name');
+    expect(UsernameHistory::query()->where('user_id', $stale->id)->pluck('username')->all())->toBe(['live-name']);
+});
+
+it('leaves no history behind when the rename save fails', function () {
+    $user = User::factory()->create(['username' => 'keeper', 'username_changed_at' => now()->subDays(40)]);
+
+    User::saving(function () {
+        throw new RuntimeException('save blew up');
+    });
+
+    try {
+        expect(fn () => app(UsernameService::class)->set($user, 'new-name'))
+            ->toThrow(RuntimeException::class);
+    } finally {
+        User::flushEventListeners();
+        User::clearBootedModels();
+    }
+
+    expect(UsernameHistory::query()->count())->toBe(0);
+    expect(User::findOrFail($user->id)->username)->toBe('keeper');
+});
+
+it('maps a username unique-index race to the existing taken validation error', function () {
+    $user = User::factory()->create();
+    $raced = false;
+
+    User::saving(function () use (&$raced) {
+        if (! $raced) {
+            $raced = true;
+            User::withoutEvents(fn () => User::factory()->create(['username' => 'contested']));
+        }
+    });
+
+    try {
+        $thrown = null;
+        try {
+            app(UsernameService::class)->set($user, 'contested');
+        } catch (ValidationException $e) {
+            $thrown = $e;
+        }
+    } finally {
+        User::flushEventListeners();
+        User::clearBootedModels();
+    }
+
+    expect($thrown)->not->toBeNull();
+    expect($thrown->errors())->toBe(['username' => ['That username is already taken.']]);
+    expect(UsernameHistory::query()->count())->toBe(0);
+});
+
+it('propagates unrelated database errors instead of reporting a username conflict', function () {
+    $user = User::factory()->create();
+
+    User::saving(function () {
+        throw new QueryException('sqlite', 'insert into x', [], new PDOException('disk I/O error'));
+    });
+
+    try {
+        expect(fn () => app(UsernameService::class)->set($user, 'whatever'))
+            ->toThrow(QueryException::class);
+    } finally {
+        User::flushEventListeners();
+        User::clearBootedModels();
+    }
 });

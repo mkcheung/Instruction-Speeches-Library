@@ -110,7 +110,8 @@ describe('Friends wire contracts and cache partitioning', () => {
   it.each([401, 403, 404, 409, 422, 429, 503])('retains real HTTP %s failures for useful recovery text', async (status) => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ message: 'Request failed' }, status)))
     const result = await store.dispatch(connectionApi.endpoints.findFriends.initiate({ viewerId: '1', search: 'Alice' }, { subscribe: false }))
-    if (status === 401) expect(selectConnectionSession(store.getState()).status).toBe('anonymous')
+    // A 401 withdraws proof and asks /me (here also 401): anonymity is decided by that probe.
+    if (status === 401) await waitFor(() => expect(selectConnectionSession(store.getState()).status).toBe('anonymous'))
     else expect(result.error).toMatchObject({ status })
     expect(connectionErrorMessage(result.error ?? { status })).toMatch(status === 401 ? /Sign in/ : status === 429 ? /Wait a moment/ : status === 403 ? /unavailable for this account/ : status === 503 ? /Check your connection/ : /Refresh/)
   })

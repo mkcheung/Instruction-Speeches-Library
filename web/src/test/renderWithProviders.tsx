@@ -1,63 +1,28 @@
 import type { ReactElement } from 'react'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 import { RouterProvider, createMemoryRouter, type InitialEntry } from 'react-router-dom'
-import { authApi } from '@/features/auth/authApi'
-import { profileApi } from '@/features/profile/profileApi'
-import { speechApi } from '@/features/speech/speechApi'
-import { reviewApi } from '@/features/review/reviewApi'
-import { notificationApi } from '@/features/notification/notificationApi'
-import { annotationApi } from '@/features/annotation/annotationApi'
-import { essayApi } from '@/features/essay/essayApi'
-import { captionApi } from '@/features/caption/captionApi'
-import { transcriptApi } from '@/features/transcript/transcriptApi'
-import { reportApi } from '@/features/report/reportApi'
-import { privacyApi } from '@/features/privacy/privacyApi'
-import { coachApplicationApi } from '@/features/coachApplication/coachApplicationApi'
-import { connectionApi } from '@/features/connection/connectionApi'
-import { connectionSessionMiddleware, connectionSessionReducer } from '@/features/connection/connectionSession'
+import { createAppStore } from '@/app/createAppStore'
+import { acceptedAuthSessionState } from '@/features/auth/authSession'
+import type { CurrentUser } from '@/features/auth/types'
 
-export function createTestStore() {
-  return configureStore({
-    reducer: {
-      [authApi.reducerPath]: authApi.reducer,
-      [profileApi.reducerPath]: profileApi.reducer,
-      [speechApi.reducerPath]: speechApi.reducer,
-      [reviewApi.reducerPath]: reviewApi.reducer,
-      [notificationApi.reducerPath]: notificationApi.reducer,
-      [annotationApi.reducerPath]: annotationApi.reducer,
-      [essayApi.reducerPath]: essayApi.reducer,
-      [captionApi.reducerPath]: captionApi.reducer,
-      [transcriptApi.reducerPath]: transcriptApi.reducer,
-      [reportApi.reducerPath]: reportApi.reducer,
-      [privacyApi.reducerPath]: privacyApi.reducer,
-      [coachApplicationApi.reducerPath]: coachApplicationApi.reducer,
-      [connectionApi.reducerPath]: connectionApi.reducer,
-      connectionSession: connectionSessionReducer,
-    },
-    middleware: (getDefaultMiddleware) =>
-      getDefaultMiddleware().concat(
-        connectionSessionMiddleware,
-        authApi.middleware,
-        profileApi.middleware,
-        speechApi.middleware,
-        reviewApi.middleware,
-        notificationApi.middleware,
-        annotationApi.middleware,
-        essayApi.middleware,
-        captionApi.middleware,
-        transcriptApi.middleware,
-        reportApi.middleware,
-        privacyApi.middleware,
-        coachApplicationApi.middleware,
-        connectionApi.middleware,
-      ),
-    // Unit tests do not need frame-batched Redux notifications. Disabling
-    // the enhancer also prevents an RTK-owned animation-frame callback from
-    // surviving a fake-timer test and firing after jsdom has torn its window
-    // globals down (a false-red unhandled cancelAnimationFrame error).
-    enhancers: (getDefaultEnhancers) => getDefaultEnhancers({ autoBatch: false }),
+/**
+ * `viewer` is the proof fixture: the document starts bound to and accepting
+ * that user, exactly as after a successful `/me` probe, so private gates
+ * open without a production bypass. Omit it for a guest or unresolved
+ * document, or let a mocked `/me` response establish identity through the
+ * real probe path. The mocked `/me` must name the same user id.
+ *
+ * Unit tests do not need frame-batched Redux notifications. Disabling the
+ * enhancer also prevents an RTK-owned animation-frame callback from
+ * surviving a fake-timer test and firing after jsdom has torn its window
+ * globals down (a false-red unhandled cancelAnimationFrame error).
+ */
+export function createTestStore({ viewer }: { viewer?: CurrentUser } = {}) {
+  return createAppStore({
+    authSession: viewer ? acceptedAuthSessionState(viewer) : undefined,
+    autoBatch: false,
+    broadcast: () => {},
   })
 }
 
@@ -74,8 +39,9 @@ export function renderWithProviders(
   ui: ReactElement,
   {
     route = '/',
-    store = createTestStore(),
-  }: { route?: InitialEntry; store?: ReturnType<typeof createTestStore> } = {},
+    viewer,
+    store = createTestStore({ viewer }),
+  }: { route?: InitialEntry; store?: ReturnType<typeof createTestStore>; viewer?: CurrentUser } = {},
 ) {
   const router = createMemoryRouter([{ path: '*', element: ui }], { initialEntries: [route] })
   return {

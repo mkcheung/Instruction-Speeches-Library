@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import Login from '@/routes/Login'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import { ADMIN_LOGIN_CONTINUATION } from '@/lib/roles'
+import { RETURN_PATH_KEY } from '@/features/auth/returnPath'
 
 /**
  * PLAN-ADMIN-LOGIN-REDIRECT.md §7.4: "No vitest test anywhere currently
@@ -63,6 +64,7 @@ describe('Login', () => {
   const originalLocation = window.location
   beforeEach(() => {
     clearCookies()
+    window.sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -140,7 +142,8 @@ describe('Login', () => {
       return pendingLogin
     })
     vi.stubGlobal('fetch', fetchMock)
-    const { router } = renderWithProviders(<Login />, { route: '/login' })
+    const location = stubLocationReplace()
+    renderWithProviders(<Login />, { route: '/login' })
 
     await submitLoginForm()
 
@@ -151,29 +154,28 @@ describe('Login', () => {
     await act(async () => {
       finishLogin(jsonResponse({ user: { roles: ['member'], onboarding_completed: true } }, 200))
     })
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'))
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/dashboard'))
   })
 
   it('sends a member with no `from` to /dashboard', async () => {
     stubLoginResponse({ roles: ['member'], onboarding_completed: true })
-    const { router } = renderWithProviders(<Login />, { route: '/login' })
+    const location = stubLocationReplace()
+    renderWithProviders(<Login />, { route: '/login' })
 
     await submitLoginForm()
 
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/dashboard')
-    })
+    // Every destination is a hard replace: a new account gets a fresh document (R1).
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/dashboard'))
   })
 
   it('sends a roleless user with incomplete onboarding to /onboarding', async () => {
     stubLoginResponse({ roles: [], onboarding_completed: false })
-    const { router } = renderWithProviders(<Login />, { route: '/login' })
+    const location = stubLocationReplace()
+    renderWithProviders(<Login />, { route: '/login' })
 
     await submitLoginForm()
 
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/onboarding')
-    })
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/onboarding'))
   })
 
   it.each(['admin', 'super_admin'])('escorts %s with no `from` through the alias using a real cross-origin navigation', async (role) => {
@@ -196,14 +198,15 @@ describe('Login', () => {
 
   it.each([false, true])('submits the Remember me option as %s', async (remember) => {
     const fetchMock = stubLoginResponse({ roles: ['member'], onboarding_completed: true })
-    const { router } = renderWithProviders(<Login />, { route: '/login' })
+    const location = stubLocationReplace()
+    renderWithProviders(<Login />, { route: '/login' })
     const checkbox = screen.getByRole('checkbox', { name: 'Remember me' })
     expect(checkbox).not.toBeChecked()
     if (remember) await userEvent.click(checkbox)
 
     await submitLoginForm()
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'))
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/dashboard'))
     const loginCall = fetchMock.mock.calls.find(([input]) => new URL(urlOf(input)).pathname === '/login')
     expect(loginCall).toBeDefined()
     expect(await (loginCall![0] as Request).clone().json()).toEqual({
@@ -239,17 +242,46 @@ describe('Login', () => {
     stubLoginResponse({ roles: ['admin'], onboarding_completed: true })
     const location = stubLocationReplace()
 
-    const { router } = renderWithProviders(<Login />, {
+    renderWithProviders(<Login />, {
       route: { pathname: '/login', state: { from: { pathname: '/speeches/123' } } },
     })
 
     await submitLoginForm()
 
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe('/speeches/123')
-    })
-    expect(location.replace).not.toHaveBeenCalled()
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/speeches/123'))
+    expect(location.replace).not.toHaveBeenCalledWith(ADMIN_LOGIN_CONTINUATION)
 
+    location.restore()
+  })
+
+  it('consumes the stored expiry return path exactly once, and rejects an unsafe one', async () => {
+    stubLoginResponse({ roles: ['member'], onboarding_completed: true })
+    const location = stubLocationReplace()
+    window.sessionStorage.setItem(RETURN_PATH_KEY, '/speeches/9')
+    renderWithProviders(<Login />, { route: '/login' })
+    await submitLoginForm()
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/speeches/9'))
+    expect(window.sessionStorage.getItem(RETURN_PATH_KEY)).toBeNull()
+    location.restore()
+  })
+
+  it.each(['//evil.example/x', 'https://evil.example', '/\\evil', '/login', '/api/me'])('falls back to the normal landing for unsafe return path %s', async (unsafe) => {
+    stubLoginResponse({ roles: ['member'], onboarding_completed: true })
+    const location = stubLocationReplace()
+    window.sessionStorage.setItem(RETURN_PATH_KEY, unsafe)
+    renderWithProviders(<Login />, { route: '/login' })
+    await submitLoginForm()
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/dashboard'))
+    expect(window.sessionStorage.getItem(RETURN_PATH_KEY)).toBeNull()
+    location.restore()
+  })
+
+  it('treats router state `from` as untrusted too', async () => {
+    stubLoginResponse({ roles: ['member'], onboarding_completed: true })
+    const location = stubLocationReplace()
+    renderWithProviders(<Login />, { route: { pathname: '/login', state: { from: { pathname: '//evil.example' } } } })
+    await submitLoginForm()
+    await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/dashboard'))
     location.restore()
   })
 })

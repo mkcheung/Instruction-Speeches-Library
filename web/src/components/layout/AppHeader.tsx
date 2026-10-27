@@ -3,6 +3,7 @@ import { ConnectionRequestsBell } from '@/components/layout/ConnectionRequestsBe
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { UserMenu } from '@/components/layout/UserMenu'
 import { MobileNavigation } from '@/components/layout/MobileNavigation'
+import { useAcceptedViewer } from '@/features/auth/authSession'
 
 /**
  * D1/D7/D8/R2 (PLAN-APP-HEADER.md). `<header>` landmark, app name, bell,
@@ -12,6 +13,8 @@ import { MobileNavigation } from '@/components/layout/MobileNavigation'
  * menu keeps primary navigation accessible while the account menu stays focused.
  */
 export function AppHeader() {
+  // Private header content (bells, account chip) renders only for the proven current viewer.
+  const viewer = useAcceptedViewer()
   return (
     <header className="workspace-header flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-4 sm:px-6 lg:px-8">
       <div className="flex min-w-0 items-center gap-2">
@@ -21,9 +24,13 @@ export function AppHeader() {
         </Link>
       </div>
       <div className="workspace-header-actions flex shrink-0 items-center gap-2">
-        <ConnectionRequestsBell />
-        <NotificationBell />
-        <UserMenu />
+        {viewer && (
+          <>
+            <ConnectionRequestsBell />
+            <NotificationBell />
+            <UserMenu />
+          </>
+        )}
       </div>
     </header>
   )

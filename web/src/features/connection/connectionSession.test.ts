@@ -4,6 +4,7 @@ import { authApi } from '@/features/auth/authApi'
 import type { MeResponse } from '@/features/auth/types'
 import { createTestStore } from '@/test/renderWithProviders'
 import { connectionApi } from './connectionApi'
+import { selectAuthSession } from '@/features/auth/authSession'
 import { selectConnectionSession, selectEligibleConnectionViewer, revalidateConnectionSession } from './connectionSession'
 
 const me = (id: string, roles: string[] = [], username: string | null = `person-${id}`): MeResponse => ({
@@ -34,46 +35,48 @@ describe('connection session authority in the real test store', () => {
     expect(selectEligibleConnectionViewer(store.getState())).toEqual({ id: 'a', username: 'person-a' })
     const pending = deferred()
     vi.stubGlobal('fetch', vi.fn(() => pending.promise))
-    const query = store.dispatch(authApi.endpoints.getMe.initiate(undefined, { forceRefetch: true, subscribe: false }))
+    store.dispatch(revalidateConnectionSession())
     expect(selectEligibleConnectionViewer(store.getState())).toBeNull()
     pending.resolve(json({ message: 'Unavailable' }, 503))
-    await query
-    expect(selectConnectionSession(store.getState()).status).toBe('error')
+    await waitFor(() => expect(selectConnectionSession(store.getState()).status).toBe('error'))
     expect(selectEligibleConnectionViewer(store.getState())).toBeNull()
   })
 
-  it.each(['logout', 'auth reset', 'getMe 401', 'Friends 401', 'identity change'])('clears protected data on %s', async (event) => {
+  it.each(['logout', 'getMe 401', 'Friends 401', 'identity change'])('clears protected data on %s', async (event) => {
     const store = makeStore()
     await store.dispatch(authApi.util.upsertQueryData('getMe', undefined, me('a')))
     const args = { viewerId: 'a', view: 'accepted' as const }
     await store.dispatch(connectionApi.util.upsertQueryData('getFriends', args, { friends: [], meta: { total: 7, next_cursor: null } }))
     vi.stubGlobal('fetch', vi.fn(async () => json({}, event.includes('401') ? 401 : 200)))
     if (event === 'logout') await store.dispatch(authApi.endpoints.logout.initiate())
-    if (event === 'auth reset') store.dispatch(authApi.util.resetApiState())
     if (event === 'identity change') await store.dispatch(authApi.util.upsertQueryData('getMe', undefined, me('b')))
     if (event === 'getMe 401') await store.dispatch(authApi.endpoints.getMe.initiate(undefined, { forceRefetch: true, subscribe: false }))
     if (event === 'Friends 401') await store.dispatch(connectionApi.endpoints.getFriends.initiate(args, { forceRefetch: true, subscribe: false }))
-    expect(connectionApi.endpoints.getFriends.select(args)(store.getState()).data).toBeUndefined()
-    expect(selectEligibleConnectionViewer(store.getState())?.id).toBe(event === 'identity change' ? 'b' : undefined)
+    // A 401 only withdraws proof; the follow-up /me (also 401 here) settles it. A different account is never adopted in place.
+    await waitFor(() => expect(connectionApi.endpoints.getFriends.select(args)(store.getState()).data).toBeUndefined())
+    expect(selectEligibleConnectionViewer(store.getState())).toBeNull()
+    expect(selectConnectionSession(store.getState()).status).toBe(['identity change', 'logout'].includes(event) ? 'loading' : 'anonymous')
   })
 
   it('does not reset the connection cache again for a 401 that arrives while already anonymous', async () => {
     // A public page keeps an auth-only query mounted (the profile timeline). Its 401 is the expected answer for an
-    // anonymous visitor; resetting the cache on each one would resubscribe the query and loop 401 -> reset -> refetch.
+    // anonymous visitor; reacting to each one would resubscribe the query and loop 401 -> reset -> refetch.
     const store = makeStore()
     const fetchMock = vi.fn(async () => json({ message: 'Unauthenticated.' }, 401))
     vi.stubGlobal('fetch', fetchMock)
-    await store.dispatch(authApi.util.upsertQueryData('getMe', undefined, me('a')))
+    await store.dispatch(authApi.endpoints.getMe.initiate(undefined, { subscribe: false }))
     const args = { username: 'alice', tab: 'left' as const }
     await store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate(args, { forceRefetch: true, subscribe: false }))
     expect(selectConnectionSession(store.getState()).status).toBe('anonymous')
     const generation = selectConnectionSession(store.getState()).generation
+    const calls = fetchMock.mock.calls.length
 
     await store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate(args, { forceRefetch: true, subscribe: false }))
     await store.dispatch(connectionApi.endpoints.getProfileTimeline.initiate(args, { forceRefetch: true, subscribe: false }))
 
     expect(selectConnectionSession(store.getState()).generation).toBe(generation)
     expect(selectConnectionSession(store.getState()).status).toBe('anonymous')
+    expect(fetchMock.mock.calls.length).toBe(calls + 2) // no extra /me probes
   })
 
   it('hides probes returning the old cookie identity while a new login is in progress', async () => {
@@ -91,7 +94,9 @@ describe('connection session authority in the real test store', () => {
     loggedIn = true
     login.resolve(json(me('b')))
     await loginQuery
-    await waitFor(() => expect(selectEligibleConnectionViewer(store.getState())?.id).toBe('b'))
+    // The new account is never published in this document: it ends (hard navigation) and a fresh store adopts B.
+    expect(selectAuthSession(store.getState()).status).toBe('navigating')
+    expect(selectEligibleConnectionViewer(store.getState())).toBeNull()
   })
 
   it.each([200, 401])('never revives A when old getMe resolves (%s) after logout and B login', async (status) => {
@@ -112,9 +117,12 @@ describe('connection session authority in the real test store', () => {
     const unsubscribe = store.subscribe(() => { seen.push(selectEligibleConnectionViewer(store.getState())?.id) })
     old.resolve(json(me('a'), status))
     await oldQuery
-    await waitFor(() => expect(selectEligibleConnectionViewer(store.getState())?.id).toBe('b'))
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    // Logout and login each ended this document; the old probe can neither revive A nor adopt B.
     expect(seen).not.toContain('a')
-    expect(meCalls).toBeGreaterThan(1)
+    expect(selectEligibleConnectionViewer(store.getState())).toBeNull()
+    expect(selectAuthSession(store.getState()).status).toBe('navigating')
+    expect(meCalls).toBe(1)
     unsubscribe()
   })
 
@@ -133,7 +141,9 @@ describe('connection session authority in the real test store', () => {
     // Cache reset can settle the query handle before its transport completes.
     await waitFor(() => expect(response.bodyUsed).toBe(true))
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
-    expect(selectEligibleConnectionViewer(store.getState())?.id).toBe('b')
+    // B is not adopted in place (the app hard-navigates); A's late answer lands nowhere.
+    expect(selectAuthSession(store.getState()).status).toBe('replaced')
+    expect(selectEligibleConnectionViewer(store.getState())).toBeNull()
     expect(connectionApi.endpoints.getFriends.select(args)(store.getState()).data).toBeUndefined()
   })
 

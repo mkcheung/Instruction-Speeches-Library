@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLazyCheckUsernameAvailabilityQuery } from '@/features/profile/profileApi'
 import { usernameSchema } from '@/lib/validation'
 
@@ -30,13 +30,17 @@ interface AsyncResult {
 export function useUsernameAvailability(username: string): UsernameAvailabilityState {
   const [trigger] = useLazyCheckUsernameAvailabilityQuery()
   const [result, setResult] = useState<AsyncResult | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isWellFormed = usernameSchema.safeParse(username).success
 
   useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current)
     if (!isWellFormed) return
+
+    // Each effect run owns one request. Cleanup flips `current` so replies
+    // from a superseded run (input changed, A->B->A, unmount) are ignored on
+    // both promise branches; username text alone cannot tell two runs for
+    // the same name apart.
+    let current = true
 
     // The setState calls below run inside the setTimeout/promise
     // callbacks, i.e. asynchronously relative to the effect itself — only
@@ -44,19 +48,20 @@ export function useUsernameAvailability(username: string): UsernameAvailabilityS
     // react-hooks/set-state-in-effect. "Checking" is derived below from
     // `result` not yet matching `username`, so no synchronous call is
     // needed to enter that state.
-    timerRef.current = setTimeout(() => {
+    const timer = setTimeout(() => {
       trigger(username)
         .unwrap()
         .then((response) => {
-          setResult({ forUsername: username, status: response.available ? 'available' : 'taken' })
+          if (current) setResult({ forUsername: username, status: response.available ? 'available' : 'taken' })
         })
         .catch(() => {
-          setResult({ forUsername: username, status: 'unknown' })
+          if (current) setResult({ forUsername: username, status: 'unknown' })
         })
     }, DEBOUNCE_MS)
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      current = false
+      clearTimeout(timer)
     }
   }, [username, trigger, isWellFormed])
 

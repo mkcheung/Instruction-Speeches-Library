@@ -159,10 +159,10 @@ test.describe('D5 — public profile stays public', () => {
   }) => {
     // Deliberately no storageState override — `page` here is a fresh,
     // unauthenticated context. The bug this guards: any 401 (including
-    // one from an unguarded route's own `useGetMeQuery()`) broadcasts a
-    // global `auth:unauthenticated` event, and `UnauthenticatedRedirect`
-    // exempts only `/login`, `/register`, `/forgot-password` — a public
-    // profile page that called `useGetMeQuery()` would eject the visitor.
+    // one from an unguarded route's own `useGetMeQuery()`) is treated by
+    // `UnauthenticatedRedirect` as an expired session unless the route is
+    // classified guest/public (`classifyRoute`) — a public profile page that
+    // called `useGetMeQuery()` would otherwise eject the visitor.
     await page.goto(`${APP_URL}/u/${USERS.speaker.username}`)
 
     await expect(page).toHaveURL(`${APP_URL}/u/${USERS.speaker.username}`)

@@ -1,7 +1,10 @@
+import { profileApi } from '@/features/profile/profileApi'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureStore } from '@reduxjs/toolkit'
 import { authApi } from '@/features/auth/authApi'
-import { UNAUTHENTICATED_EVENT } from '@/lib/baseQuery'
+import { authSessionReducer, selectAuthSession, acceptedAuthSessionState } from '@/features/auth/authSession'
+import { createAuthSessionMiddleware } from '@/features/auth/authSessionMiddleware'
+import type { CurrentUser } from '@/features/auth/types'
 import { clearCookies } from '@/test/renderWithProviders'
 
 function makeStore() {
@@ -93,26 +96,53 @@ describe('baseQueryWithCsrfRetry', () => {
     expect(csrfFetches).toBe(1)
   })
 
-  it('401 broadcasts the unauthenticated event and is never retried', async () => {
+  it('a private 401 is never retried; it withdraws proof for the generation that sent it', async () => {
     document.cookie = 'XSRF-TOKEN=existing-token'
-    const handler = vi.fn()
-    window.addEventListener(UNAUTHENTICATED_EVENT, handler)
-
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input instanceof Request ? input.url : input.toString()
-      if (url.includes('/api/me')) {
-        return jsonResponse({ message: 'Unauthenticated.' }, 401)
-      }
+      if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const store = makeStore()
+    const viewer = { id: 'a' } as CurrentUser
+    const store = configureStore({
+      reducer: { [authApi.reducerPath]: authApi.reducer, authSession: authSessionReducer },
+      preloadedState: { authSession: acceptedAuthSessionState(viewer) },
+      middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(
+        createAuthSessionMiddleware({ authApi, privateApis: [] }), authApi.middleware),
+    })
+    // `getMe` is a probe, so the 401 is judged by the middleware (anonymous -> lost), not by baseQuery.
     await store.dispatch(authApi.endpoints.getMe.initiate())
-
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(handler).toHaveBeenCalledTimes(1)
+    expect(selectAuthSession(store.getState()).status).toBe('lost')
+  })
 
-    window.removeEventListener(UNAUTHENTICATED_EVENT, handler)
+  it('forgot-password is a public request: not fenced by an auth attempt', async () => {
+    document.cookie = 'XSRF-TOKEN=existing-token'
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, 200)))
+    const store = configureStore({
+      reducer: { [authApi.reducerPath]: authApi.reducer, authSession: authSessionReducer },
+      middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(
+        createAuthSessionMiddleware({ authApi, privateApis: [] }), authApi.middleware),
+    })
+    store.dispatch({ type: 'authSession/attemptStarted', payload: 'x' })
+    const result = await store.dispatch(authApi.endpoints.forgotPassword.initiate({ email: 'a@example.com' }))
+    expect('error' in result && result.error).toBeFalsy()
+  })
+
+  it('public profile and username-availability reads are not fenced by an auth attempt', async () => {
+    document.cookie = 'XSRF-TOKEN=existing-token'
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ profile: { id: 1 }, available: true }, 200)))
+    const store = configureStore({
+      reducer: { [authApi.reducerPath]: authApi.reducer, [profileApi.reducerPath]: profileApi.reducer, authSession: authSessionReducer },
+      middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(
+        createAuthSessionMiddleware({ authApi, privateApis: [] }), authApi.middleware, profileApi.middleware),
+    })
+    store.dispatch({ type: 'authSession/attemptStarted', payload: 'x' })
+    const a = await store.dispatch(profileApi.endpoints.getPublicProfile.initiate('alex'))
+    const b = await store.dispatch(profileApi.endpoints.checkUsernameAvailability.initiate('alex'))
+    expect('error' in a && a.error).toBeFalsy()
+    expect('error' in b && b.error).toBeFalsy()
   })
 })

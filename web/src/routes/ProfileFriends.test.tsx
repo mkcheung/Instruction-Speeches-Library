@@ -219,13 +219,18 @@ describe('ProfileFriends routed views with the real store', () => {
 
   it('clears a private page immediately when its API returns 401, even with cached me', async () => {
     let authorized = true
-    fixtures(() => authorized ? list() : json({ message: 'Unauthenticated' }, 401))
+    const base = fixtures(() => authorized ? list() : json({ message: 'Unauthenticated' }, 401))
+    const realFetch = globalThis.fetch
+    // An expired session 401s everywhere, /me included; the 401 alone only withdraws proof.
+    vi.stubGlobal('fetch', vi.fn((request: Request) => !authorized && new URL(request.url).pathname === '/api/me'
+      ? Promise.resolve(json({ message: 'Unauthenticated' }, 401)) : realFetch(request)))
+    void base
     const { store } = mount()
     await screen.findByText('Alice Example')
     authorized = false
     await act(async () => { store.dispatch(connectionApi.util.invalidateTags(['Friends'])) })
-    expect(await screen.findByText('Login destination')).toBeInTheDocument()
-    expect(screen.queryByText('Alice Example')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Alice Example')).not.toBeInTheDocument())
+    expect(store.getState().authSession.status).toBe('lost')
   })
 
   it('refreshes current queries on window focus without applying unfinished Find draft text', async () => {
@@ -288,7 +293,8 @@ describe('ProfileFriends routed views with the real store', () => {
     expect(screen.queryByText('Alice Example')).not.toBeInTheDocument()
     expect(screen.getByText('Checking your session…')).toBeInTheDocument()
     await act(async () => { finish(json({ user: { id: 3, username: 'other', roles: ['member'] } })); await resolveQuery })
-    expect(await screen.findByRole('alert')).toHaveTextContent('unavailable for this profile')
+    // Another account answered: this document is replaced (hard navigation), never re-rendered for it.
+    expect(store.getState().authSession.status).toBe('replaced')
     expect(screen.queryByText('Alice Example')).not.toBeInTheDocument()
     store.dispatch(connectionApi.util.resetApiState())
   })

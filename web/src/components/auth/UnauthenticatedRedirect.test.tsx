@@ -4,7 +4,11 @@ import { Provider } from 'react-redux'
 import { Outlet, RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { createTestStore } from '@/test/renderWithProviders'
 import { UnauthenticatedRedirect } from '@/components/auth/UnauthenticatedRedirect'
-import { UNAUTHENTICATED_EVENT } from '@/lib/baseQuery'
+import { hardNavigation } from '@/lib/hardNavigation'
+import { RETURN_PATH_KEY } from '@/features/auth/returnPath'
+import { selectAuthSession } from '@/features/auth/authSession'
+import { privacyApi } from '@/features/privacy/privacyApi'
+import type { CurrentUser } from '@/features/auth/types'
 import { authApi } from '@/features/auth/authApi'
 import { connectionApi } from '@/features/connection/connectionApi'
 import { revalidateConnectionSession, useConnectionSession } from '@/features/connection/connectionSession'
@@ -25,7 +29,7 @@ function RootLayout() {
 
 /**
  * `/` (§7.9's landing page) fires `useGetMeQuery()` unconditionally, which
- * 401s and dispatches `UNAUTHENTICATED_EVENT` for every anonymous visitor
+ * 401s for every anonymous visitor
  * — found in review: that 401 used to bounce every logged-out visitor on
  * `/` straight to `/login` before they ever saw the page, because `/`
  * matched neither `GUEST_PATHS` nor `PUBLIC_PATHS`. `Home.test.tsx` mounts
@@ -68,118 +72,144 @@ function renderAt(path: string, store = createTestStore()) {
   return router
 }
 
-describe('UnauthenticatedRedirect', () => {
-  it('does not redirect away from / on a 401 probe', async () => {
-    const router = renderAt('/')
-
-    act(() => window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT)))
-
-    expect(await screen.findByRole('heading', { name: 'Landing' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/')
-  })
-
-  /**
-   * code-review finding: `/verify` has the identical shape of bug `/`
-   * had — `VerifyEmail.tsx` fires `useGetMeQuery()` unconditionally and
-   * has a real, designed branch for an anonymous cross-device visitor
-   * ("you're not logged in on this device... it works cross-device"),
-   * which was unreachable because this listener bounced to `/login`
-   * before that branch ever rendered.
-   */
-  it('does not redirect away from /verify on a 401 probe', async () => {
-    const router = renderAt('/verify')
-
-    act(() => window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT)))
-
-    expect(await screen.findByRole('heading', { name: 'Verify your email' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/verify')
-  })
-
-  it('still redirects a genuinely protected route to /login on a 401', async () => {
-    const router = renderAt('/dashboard')
-
-    act(() => window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT)))
-
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/login')
-  })
-
-  /**
-   * Pins the exact-match implementation choice, not just its outcome:
-   * `EXACT_PUBLIC_PATHS` is checked with `.includes()`, never `.startsWith()`
-   * like the other two allowlists — `'/weird'.startsWith('/')` would be
-   * true for every route in the app, which would have silently disabled
-   * this component's entire redirect if `/` had been added as a prefix
-   * instead of an exact match.
-   */
-  it('still redirects an unrelated route that merely starts with "/" to /login', async () => {
-    const router = renderAt('/weird')
-
-    act(() => window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT)))
-
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    expect(router.state.location.pathname).toBe('/login')
-  })
-})
-
 const me = (id = '1', username = 'alex') => ({ user: { id, username, email: `${username}@example.test`, roles: ['member'], first_name: username, last_name: 'Smith', display_name: username, email_verified: true, onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 0, quota_bytes: 1000, uploads_in_flight: 0 } })
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const urlOf = (input: RequestInfo | URL) => input instanceof Request ? input.url : input.toString()
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done }); return { promise, resolve } }
+const alex = (): CurrentUser => ({ ...me().user, onboarding_step: 4 })
 
-describe('private Friends 401 verification with the real store', () => {
-  beforeEach(() => { clearCookies(); document.cookie = 'XSRF-TOKEN=test; path=/' })
+describe('UnauthenticatedRedirect with the real store', () => {
+  let replace: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    clearCookies(); document.cookie = 'XSRF-TOKEN=test; path=/'
+    window.sessionStorage.clear()
+    replace = vi.spyOn(hardNavigation, 'replace').mockImplementation(() => {})
+  })
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-  it.each(['/u/alex/friends', '/u/alex/friends/', '/u/alex/friends/requests', '/U/alex/FRIENDS/all/'])('quarantines %s until a current anonymous response confirms the redirect', async (path) => {
+  /** An authenticated document whose next private request 401s and whose follow-up /me is `probe`. */
+  async function expire(path: string, probe: () => Response | Promise<Response>) {
     let expired = false
-    const probe = deferred<Response>()
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
-      if (url.endsWith('/api/me')) return expired ? probe.promise : json(me())
+      if (url.endsWith('/api/me')) return expired ? probe() : json(me())
+      if (url.includes('/api/privacy/exports')) return json({}, 401)
       if (url.includes('/api/friends?')) return json({}, 401)
       throw new Error(`Unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
     const store = createTestStore()
     await store.dispatch(authApi.endpoints.getMe.initiate()).unwrap()
-    const router = renderAt(`${path}?search=lee#requests`, store)
+    const router = renderAt(path, store)
     expired = true
-    await act(async () => { await store.dispatch(connectionApi.endpoints.getFriends.initiate({ viewerId: '1', view: 'incoming' })) })
-    expect(router.state.location.pathname).toBe(path)
-    expect(screen.queryByRole('heading', { name: 'Private friends' })).not.toBeInTheDocument()
-    expect(Object.keys(store.getState().connectionApi.queries)).toHaveLength(0)
-    await act(async () => probe.resolve(json({}, 401)))
-    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    expect(router.state.location.state.from).toMatchObject({ pathname: path, search: '?search=lee', hash: '#requests' })
-    expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me'))).toHaveLength(2)
-    expect(store.getState().connectionSession.status).toBe('anonymous')
+    return { store, router, fetchMock }
+  }
+  const trigger = (store: ReturnType<typeof createTestStore>) => act(async () => {
+    await store.dispatch(privacyApi.endpoints.getExports.initiate(undefined, { subscribe: false }))
   })
 
-  it('keeps account B signed in after account A returns a late 401', async () => {
-    let account = me()
+  it.each(['/', '/verify', '/u/alex', '/u/alex/about', '/u/alex/friendsomething', '/login', '/register', '/forgot-password'])(
+    'never navigates an initially anonymous document at %s on its expected 401s', async (path) => {
+      const fetchMock = vi.fn<(input: RequestInfo | URL) => Promise<Response>>(async () => json({}, 401))
+      vi.stubGlobal('fetch', fetchMock)
+      const store = createTestStore()
+      const router = renderAt(path, store)
+      await act(async () => { await store.dispatch(authApi.endpoints.getMe.initiate()) })
+      await trigger(store)
+      await trigger(store)
+      expect(router.state.location.pathname).toBe(path)
+      expect(replace).not.toHaveBeenCalled()
+      expect(selectAuthSession(store.getState()).status).toBe('anonymous')
+      expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me'))).toHaveLength(1)
+    })
+
+  it.each(['/dashboard', '/weird'])('hard-replaces /login with a stored safe return path once the session is confirmed gone from %s', async (path) => {
+    const { store } = await expire(`${path}?token=secret#frag`, () => json({}, 401))
+    await trigger(store)
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith('/login'))
+    expect(replace).toHaveBeenCalledTimes(1)
+    expect(window.sessionStorage.getItem(RETURN_PATH_KEY)).toBe(path) // pathname only: no query, hash or secret
+    expect(selectAuthSession(store.getState()).status).toBe('lost')
+  })
+
+  it.each(['/u/alex/friends', '/u/alex/friends/', '/u/alex/friends/requests', '/U/alex/FRIENDS/all/'])('treats %s as private: stored path, hard /login', async (path) => {
+    const { store } = await expire(`${path}?search=lee#requests`, () => json({}, 401))
+    await act(async () => { await store.dispatch(connectionApi.endpoints.getFriends.initiate({ viewerId: '1', view: 'incoming' })) })
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith('/login'))
+    expect(window.sessionStorage.getItem(RETURN_PATH_KEY)).toBe(path)
+    expect(Object.keys(store.getState().connectionApi.queries)).toHaveLength(0)
+  })
+
+  it.each([['/', '/'], ['/u/alex', '/u/alex'], ['/verify', '/verify'], ['/login', '/login']])('reloads a previously authenticated %s once instead of storing a return path', async (path, expected) => {
+    const { store } = await expire(`${path}?x=1`, () => json({}, 401))
+    await trigger(store)
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith(`${expected}?x=1`))
+    expect(replace).toHaveBeenCalledTimes(1)
+    expect(window.sessionStorage.getItem(RETURN_PATH_KEY)).toBeNull()
+  })
+
+  it('hard-reloads the current route when the fresh probe names another account, never exposing it to the old store', async () => {
+    const { store, router } = await expire('/dashboard?tab=1', () => json(me('2', 'blair')))
+    await trigger(store)
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledWith('/dashboard?tab=1'))
+    expect(replace).toHaveBeenCalledTimes(1)
+    expect(router.state.location.pathname).toBe('/dashboard')
+    expect(selectAuthSession(store.getState()).viewer).toBeNull()
+    expect(selectAuthSession(store.getState()).status).toBe('replaced')
+  })
+
+  it('does not navigate when the fresh probe confirms the same account', async () => {
+    const { store, fetchMock } = await expire('/dashboard', () => json(me()))
+    await trigger(store)
+    await vi.waitFor(() => expect(selectAuthSession(store.getState()).status).toBe('accepted'))
+    expect(replace).not.toHaveBeenCalled()
+    expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me'))).toHaveLength(2)
+  })
+
+  it('coalesces concurrent 401s into one fresh /me', async () => {
+    const probe = deferred<Response>()
+    const { store, fetchMock } = await expire('/dashboard', () => probe.promise)
+    await act(async () => {
+      await Promise.all([1, 2, 3].map(() => store.dispatch(privacyApi.endpoints.getExports.initiate(undefined, { subscribe: false, forceRefetch: true }))))
+    })
+    expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me'))).toHaveLength(2)
+    expect(replace).not.toHaveBeenCalled() // a 401 alone proves nothing
+    await act(async () => probe.resolve(json({}, 401)))
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(1))
+  })
+
+  it('an anonymous visitor on a private Friends route is sent to /login softly, keeping router state', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({}, 401)))
+    const store = createTestStore()
+    const router = renderAt('/u/alex/friends/requests?search=lee#requests', store)
+    await act(async () => { await store.dispatch(authApi.endpoints.getMe.initiate()) })
+    expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
+    expect(router.state.location.state.from).toMatchObject({ pathname: '/u/alex/friends/requests', search: '?search=lee', hash: '#requests' })
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('keeps account B signed out of A\'s late Friends 401: B is never adopted in place', async () => {
     const oldRequest = deferred<Response>()
-    let probes = 0
+    let account = me()
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
-      if (url.endsWith('/api/me')) { probes++; return json(account) }
+      if (url.endsWith('/api/me')) return json(account)
       if (url.endsWith('/login')) { account = me('2', 'blair'); return json(account) }
       if (url.includes('/api/friends?')) return oldRequest.promise
       throw new Error(`Unexpected fetch: ${url}`)
     }))
-    const store = createTestStore()
-    await store.dispatch(authApi.endpoints.getMe.initiate()).unwrap()
-    const router = renderAt('/u/blair/friends/requests', store)
+    const store = createTestStore({ viewer: alex() })
+    const router = renderAt('/u/alex/friends/requests', store)
     const request = store.dispatch(connectionApi.endpoints.getFriends.initiate({ viewerId: '1', view: 'incoming' }))
     await act(async () => { await store.dispatch(authApi.endpoints.login.initiate({ email: 'blair@example.test', password: 'password' })).unwrap() })
-    await vi.waitFor(() => expect(store.getState().connectionSession.viewer?.id).toBe('2'))
+    expect(selectAuthSession(store.getState()).status).toBe('navigating')
+    const probes = vi.mocked(fetch).mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me')).length
     await act(async () => { oldRequest.resolve(json({}, 401)); await request })
-    await vi.waitFor(() => expect(store.getState().connectionSession.status).toBe('ready'))
-    expect(store.getState().connectionSession.viewer?.id).toBe('2')
-    expect(authApi.endpoints.getMe.select()(store.getState()).data?.user.id).toBe('2')
-    expect(router.state.location.pathname).toBe('/u/blair/friends/requests')
-    expect(screen.getByRole('heading', { name: 'Private friends' })).toBeInTheDocument()
-    expect(probes).toBeGreaterThanOrEqual(3)
+    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    expect(selectAuthSession(store.getState()).status).toBe('navigating')
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me')).length).toBe(probes)
+    expect(router.state.location.pathname).toBe('/u/alex/friends/requests')
+    expect(screen.queryByRole('heading', { name: 'Private friends' })).not.toBeInTheDocument()
   })
 
   it('hides private content on a failed probe and keeps a retryable session error', async () => {
@@ -199,28 +229,10 @@ describe('private Friends 401 verification with the real store', () => {
     expect(screen.getByRole('button', { name: 'Retry session' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Private friends' })).not.toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/u/alex/friends/all')
-  })
-
-  it.each(['/u/alex', '/u/alex/about', '/u/alex/reviews', '/u/alex/friendsomething', '/u/alex/friendsomething/all'])('keeps public route %s open on a real /me 401', async (path) => {
-    const fetchMock = vi.fn(async () => json({}, 401))
-    vi.stubGlobal('fetch', fetchMock)
-    const store = createTestStore()
-    const router = renderAt(path, store)
-    await act(async () => { await store.dispatch(authApi.endpoints.getMe.initiate()) })
-    expect(router.state.location.pathname).toBe(path)
-    expect(screen.getByRole('heading', { name: 'Public profile' })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-  })
-
-  it.each(['/login', '/register', '/forgot-password'])('avoids guest probe reset loops at %s', async (path) => {
-    const fetchMock = vi.fn(async () => json({}, 401))
-    vi.stubGlobal('fetch', fetchMock)
-    const store = createTestStore()
-    const router = renderAt(path, store)
-    await act(async () => { await store.dispatch(authApi.endpoints.getMe.initiate()) })
-    expect(router.state.location.pathname).toBe(path)
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(authApi.endpoints.getMe.select()(store.getState()).status).toBe('rejected')
+    expect(replace).not.toHaveBeenCalled()
+    fail = false
+    await act(async () => { screen.getByRole('button', { name: 'Retry session' }).click() })
+    expect(await screen.findByRole('heading', { name: 'Private friends' })).toBeInTheDocument()
   })
 
   it.each([403, 500, 419])('preserves private navigation and CSRF handling for status %s', async (status) => {
@@ -241,5 +253,6 @@ describe('private Friends 401 verification with the real store', () => {
     expect(store.getState().connectionSession.status).toBe('ready')
     expect(listCalls).toBe(status === 419 ? 2 : 1)
     expect(fetchMock.mock.calls.filter(([input]) => urlOf(input).endsWith('/api/me'))).toHaveLength(1)
+    expect(replace).not.toHaveBeenCalled()
   })
 })
