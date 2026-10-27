@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\CoachApplication;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -21,7 +20,11 @@ class CoachApplicationRejected extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(private readonly CoachApplication $application) {}
+    /**
+     * Immutable snapshot (ID + decision reason) captured at decision time, so
+     * a later queued render never depends on a mutable model graph.
+     */
+    public function __construct(private readonly int $applicationId, private readonly ?string $reason = null) {}
 
     /**
      * @return array<int, string>
@@ -36,7 +39,7 @@ class CoachApplicationRejected extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject('An update on your coach application')
             ->line('An administrator has reviewed your submitted credentials and was not able to approve your coach application at this time.')
-            ->when($this->application->decision_reason, fn (MailMessage $mail) => $mail->line($this->application->decision_reason))
+            ->when($this->reason, fn (MailMessage $mail) => $mail->line($this->reason))
             ->line('You may submit a new application at any time.');
     }
 
@@ -55,7 +58,7 @@ class CoachApplicationRejected extends Notification implements ShouldQueue
     {
         return [
             'type' => 'coach_application.rejected',
-            'coach_application_id' => $this->application->id,
+            'coach_application_id' => $this->applicationId,
         ];
     }
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { useStore } from 'react-redux'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
@@ -11,10 +12,13 @@ import { WorkspaceLoginFrame } from '@/components/workspace/WorkspaceLoginFrame'
 import { useLoginMutation } from '@/features/auth/authApi'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { getPostLoginDestination } from '@/lib/roles'
+import { hardNavigation } from '@/lib/hardNavigation'
+import { selectAuthSession, type AuthSessionState } from '@/features/auth/authSession'
+import { consumeReturnPath } from '@/features/auth/returnPath'
 import { loginSchema, type LoginFormValues } from '@/lib/validation'
 
 export default function Login() {
-  const navigate = useNavigate()
+  const store = useStore()
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const [login, { isLoading }] = useLoginMutation()
@@ -38,19 +42,23 @@ export default function Login() {
       // the destination is decided here rather than by bouncing everyone
       // through `/onboarding` and letting that route redirect — which
       // would flash a "Loading…" screen on every single login.
-      const { user } = await login(values).unwrap()
+      const attempt = login(values)
+      const { user } = await attempt.unwrap()
+      // A newer auth attempt (or another tab) has superseded this one: it must not navigate.
+      const current = selectAuthSession(store.getState() as { authSession: AuthSessionState })
+      if (current.latestAttemptId !== attempt.requestId) return
+      // The expiry path stored a validated pathname in sessionStorage; it is consumed once.
+      const stored = consumeReturnPath()
       const from = (location.state as { from?: { pathname?: string } } | null)?.from
-      const destination = getPostLoginDestination(user, from?.pathname)
+      const destination = getPostLoginDestination(user, from?.pathname ?? stored ?? undefined)
       // PLAN-ADMIN-LOGIN-REDIRECT.md §7.3: the panel is on `API_URL`, a
       // different origin — `navigate()` can only express an in-SPA path
       // and would render the 404 route inside this app's own shell.
       // `replace()`, not `assign()`, so Back does not return to the
-      // submitted login form.
-      if (destination.external) {
-        window.location.replace(destination.to)
-      } else {
-        navigate(destination.to, { replace: true })
-      }
+      // submitted login form. Every destination is a hard replace (R1): a
+      // new account must get a fresh document, never the previous
+      // account's Redux store and in-flight promises.
+      hardNavigation.replace(destination.to)
     } catch (error) {
       setFormError(applyServerErrors(error, setError))
     }

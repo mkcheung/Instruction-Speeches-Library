@@ -2,6 +2,7 @@ import { FileText, GraduationCap, Home, Search, Shield, Upload, User, UserRound,
 import type { CurrentUser } from '@/features/auth/types'
 import { API_URL } from '@/lib/api'
 import { profilePath } from '@/lib/profilePath'
+import { sanitizeReturnPath } from '@/features/auth/returnPath'
 
 /**
  * S3 (PLAN-APP-HEADER.md) — role logic is additive only. Registration
@@ -219,8 +220,11 @@ export function getPostLoginDestination(
   user: Pick<CurrentUser, 'roles' | 'onboarding_completed'> | undefined | null,
   from?: string,
 ): PostLoginDestination {
-  if (from) {
-    return { to: from, external: false }
+  // `from` crosses a trust boundary (router state, sessionStorage): only a validated
+  // same-origin pathname may become a hard-navigation target.
+  const safeFrom = sanitizeReturnPath(from)
+  if (safeFrom) {
+    return { to: safeFrom, external: false }
   }
   if (hasRole(user, 'admin')) {
     return { to: ADMIN_LOGIN_CONTINUATION, external: true }

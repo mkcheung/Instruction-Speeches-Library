@@ -20,6 +20,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\Gate;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 /**
  * STEP-12-admin-portal.md demo steps 3-5: the queue, oldest-submitted-
@@ -190,7 +191,9 @@ class CoachApplicationResource extends Resource
                         try {
                             Gate::authorize('role.assign', $record->user);
                             app(CoachApplicationDecisionService::class)->approve($actor, $record, $data['reason'] ?? null);
-                        } catch (AuthorizationException $e) {
+                        } catch (AuthorizationException|HttpException $e) {
+                            // HttpException: a 409 from the decision service (stale
+                            // or conflicting decision) or the 422 self-assignment.
                             // Caught rather than allowed to bubble, same as
                             // every action in `UserResource`, so a denial
                             // renders a Notification instead of Filament's
@@ -208,7 +211,7 @@ class CoachApplicationResource extends Resource
                         try {
                             Gate::authorize('role.assign', $record->user);
                             app(CoachApplicationDecisionService::class)->reject($actor, $record, $data['reason']);
-                        } catch (AuthorizationException $e) {
+                        } catch (AuthorizationException|HttpException $e) {
                             Notification::make()->danger()->title($e->getMessage())->send();
                         }
                     }),

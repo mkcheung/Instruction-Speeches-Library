@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\EssayConflictException;
 use App\Models\Review;
 use App\Models\User;
+use App\Support\PlainTextWords;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -46,7 +47,7 @@ class EssayService
 
             $locked->essay_html = $sanitizedHtml;
             $locked->essay_text = $text;
-            $locked->essay_words = $this->wordCount($text);
+            $locked->essay_words = PlainTextWords::count($text);
             $locked->essay_updated_at = now();
             $locked->essay_lock_version++;
             $locked->save();
@@ -109,19 +110,5 @@ class EssayService
         $normalized = preg_replace('/\s+/u', ' ', $stripped) ?? $stripped;
 
         return trim($normalized);
-    }
-
-    /**
-     * Word count of the plain-text projection (not the HTML) — Unicode-safe
-     * split on whitespace rather than `str_word_count`, which is
-     * locale/ASCII-sensitive.
-     */
-    private function wordCount(string $plainText): int
-    {
-        if ($plainText === '') {
-            return 0;
-        }
-
-        return count(array_filter(preg_split('/\s+/u', $plainText) ?: []));
     }
 }

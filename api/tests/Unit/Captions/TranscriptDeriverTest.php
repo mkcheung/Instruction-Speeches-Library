@@ -75,3 +75,11 @@ it('counts a cue that is only a zero', function () {
 
     expect($derived['word_count'])->toBe(1);
 });
+
+it('counts non-breaking and ideographic whitespace as word separators', function () {
+    $result = (new TranscriptDeriver)->derive([
+        ['start' => 0.0, 'end' => 60.0, 'text' => "one\u{00A0}two\u{3000}0"],
+    ]);
+
+    expect($result['word_count'])->toBe(3);
+});

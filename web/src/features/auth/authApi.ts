@@ -22,10 +22,12 @@ export const authApi = createApi({
   endpoints: (builder) => ({
     getMe: builder.query<MeResponse, void>({
       query: () => '/api/me',
+      extraOptions: { session: 'probe' },
       providesTags: ['Me'],
     }),
     register: builder.mutation<void, RegisterPayload>({
       query: (body) => ({ url: '/register', method: 'POST', body }),
+      extraOptions: { session: 'control' },
       invalidatesTags: ['Me'],
     }),
     /** Typed `MeResponse`, not `void`: `LoginResponse::toResponse` returns
@@ -34,17 +36,21 @@ export const authApi = createApi({
      * second round-trip to `/api/me`. */
     login: builder.mutation<MeResponse, LoginPayload>({
       query: (body) => ({ url: '/login', method: 'POST', body }),
+      extraOptions: { session: 'control' },
       invalidatesTags: ['Me'],
     }),
     logout: builder.mutation<void, void>({
       query: () => ({ url: '/logout', method: 'POST' }),
+      extraOptions: { session: 'control' },
       invalidatesTags: ['Me'],
     }),
     forgotPassword: builder.mutation<void, ForgotPasswordPayload>({
       query: (body) => ({ url: '/forgot-password', method: 'POST', body }),
+      extraOptions: { session: 'public' },
     }),
     resetPassword: builder.mutation<void, ResetPasswordPayload>({
       query: (body) => ({ url: '/reset-password', method: 'POST', body }),
+      extraOptions: { session: 'public' },
     }),
     resendVerificationEmail: builder.mutation<void, void>({
       query: () => ({ url: '/email/verification-notification', method: 'POST' }),

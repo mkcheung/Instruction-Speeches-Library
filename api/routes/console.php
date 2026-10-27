@@ -50,3 +50,8 @@ if (app()->environment('e2e')) {
 } else {
     Schedule::command('connections:reconcile-asymmetry')->daily();
 }
+
+// PLAN-CODE-REVIEW-FOLLOW-UP.md §8.3 (R6): re-queue document scans/cleanups
+// whose wakeup was lost (queue push failure, worker crash, exhausted lease).
+// Capped at 100 per run; every wakeup is rechecked and throttled per row.
+Schedule::command('coach:recover-document-work')->everyFiveMinutes();

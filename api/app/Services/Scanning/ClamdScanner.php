@@ -70,8 +70,24 @@ class ClamdScanner implements ClamScannerContract
                 $response .= fread($socket, self::CHUNK_SIZE);
             }
 
-            // "stream: OK" or "stream: <SIGNATURE NAME> FOUND".
-            return str_contains($response, 'OK') && ! str_contains($response, 'FOUND');
+            // "stream: OK" or "stream: <SIGNATURE NAME> FOUND", NUL-terminated
+            // under the `z` command prefix. Only a positive FOUND is a verdict
+            // of infection: an empty reply (clamd restarted or the read timed
+            // out), "... ERROR" (e.g. INSTREAM size limit exceeded) or anything
+            // else is a scan FAILURE and must throw so ApplicationDocumentWork
+            // retries it. Returning false here would stamp the document
+            // `infected` and delete its bytes on a transient scanner hiccup.
+            $reply = rtrim($response, "\0\r\n ");
+
+            if (str_ends_with($reply, 'FOUND')) {
+                return false;
+            }
+
+            if ($reply === 'OK' || str_ends_with($reply, ' OK')) {
+                return true;
+            }
+
+            throw new RuntimeException('ClamdScanner: unexpected clamd reply ('.($reply === '' ? 'empty' : substr($reply, 0, 120)).').');
         } finally {
             fclose($socket);
         }

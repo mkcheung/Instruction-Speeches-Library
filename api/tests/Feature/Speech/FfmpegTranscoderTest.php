@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Resources\SpeechResource;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Transcoding\FfmpegTranscoder;
@@ -482,4 +483,159 @@ it('keeps a successful video ready and cleans partial poster output when poster 
     expect($video->fresh()->status)->toBe('ready');
     expect($speech->assets()->where('kind', 'poster')->exists())->toBeFalse();
     expect(scratchFiles())->toBe($before);
+});
+
+/**
+ * R7: a replacement poster set is published only when the designated 640w
+ * WebP primary survived. The helpers below break exactly that one variant
+ * (generation, image probe, or upload) while every secondary succeeds.
+ */
+function fakeFfmpegBreakingPrimary(string $mode): void
+{
+    Process::fake(function (PendingProcess $process) use ($mode) {
+        $command = $process->command;
+        $bin = $command[0];
+        $target = (string) end($command);
+        $isPrimary = $bin === 'ffmpeg'
+            && str_ends_with($target, '.webp')
+            && in_array("scale='min(640,iw)':-2", $command, true);
+
+        if ($bin === 'ffprobe') {
+            if (str_contains($target, 'source_') || str_contains($target, 'transcode_') || str_contains($target, 'poster_src_')) {
+                return Process::result(output: json_encode(compliantProbe()));
+            }
+            if ($mode === 'probe' && @file_get_contents($target) === 'primary-bytes') {
+                return Process::result(output: '', exitCode: 1);
+            }
+
+            return Process::result(output: json_encode(['streams' => [['width' => 640, 'height' => 360]]]));
+        }
+
+        if ($isPrimary && $mode === 'generate') {
+            return Process::result(output: '', exitCode: 1);
+        }
+
+        file_put_contents($target, $isPrimary ? 'primary-bytes' : (str_contains($target, '.mp4') ? 'video-bytes' : 'image-bytes'));
+
+        return Process::result(output: '');
+    });
+}
+
+/** @return array{0: Speech, 1: SpeechAsset} a ready video with a healthy poster set at 2000ms and a sprite */
+function speechWithHealthyPosterSet(): array
+{
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+    fakeFfmpeg(compliantProbe());
+    (new FfmpegTranscoder)->transcode($video);
+
+    return [$speech, $video->fresh()];
+}
+
+/** Makes the disk refuse to store the 640w WebP of any frame. */
+function failPrimaryUploads(): void
+{
+    $disk = Mockery::mock(Storage::disk('media'))->makePartial();
+    $disk->shouldReceive('writeStream')->andReturnUsing(function ($path, $resource, $options = []) use ($disk) {
+        if (str_ends_with($path, '/640.webp')) {
+            return false;
+        }
+
+        $disk->getDriver()->writeStream($path, $resource, $options ?? []);
+
+        return true;
+    });
+    Storage::set('media', $disk);
+}
+
+dataset('primary failure modes', ['generation' => ['generate'], 'probe' => ['probe'], 'upload' => ['upload']]);
+
+it('keeps the existing poster set and primary when only the replacement primary fails', function (string $mode) {
+    [$speech, $video] = speechWithHealthyPosterSet();
+    $before = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'poster')->orderBy('id')->get();
+    $oldPrimary = $before->firstWhere('is_primary', true);
+    $oldBytes = Storage::disk('media')->get($oldPrimary->path);
+    $spriteBefore = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'sprite')->first();
+
+    fakeFfmpegBreakingPrimary($mode);
+    if ($mode === 'upload') {
+        failPrimaryUploads();
+    }
+    $scratchBefore = scratchFiles();
+
+    // Distinct frame (7250ms) and same frame (2000ms): neither may disturb the old set.
+    (new FfmpegTranscoder)->generatePoster($video, 7.25);
+    (new FfmpegTranscoder)->generatePoster($video, 2.0);
+
+    $after = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'poster')->orderBy('id')->get();
+    expect($after->pluck('id')->all())->toBe($before->pluck('id')->all());
+    expect($after->where('is_primary', true))->toHaveCount(1);
+    expect($after->firstWhere('is_primary', true)->id)->toBe($oldPrimary->id);
+    // The old primary's object is neither deleted nor overwritten.
+    Storage::disk('media')->assertExists($oldPrimary->path);
+    expect(Storage::disk('media')->get($oldPrimary->path))->toBe($oldBytes);
+    // No secondary of the failed attempt was published at the distinct frame.
+    Storage::disk('media')->assertMissing("speeches/{$speech->ulid}/{$speech->ulid}/poster/7250/320.webp");
+    expect(SpeechAsset::query()->find($spriteBefore->id))->not->toBeNull();
+
+    $payload = (new SpeechResource($speech->fresh()->load('assets')))->toArray(request());
+    expect($payload['poster']['width'])->toBe($oldPrimary->width);
+    expect(scratchFiles())->toBe($scratchBefore);
+})->with('primary failure modes');
+
+it('publishes a complete replacement set and swaps the primary when every variant succeeds', function () {
+    [$speech, $video] = speechWithHealthyPosterSet();
+    $oldPrimary = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'poster')->where('is_primary', true)->first();
+
+    fakeFfmpeg(compliantProbe());
+    (new FfmpegTranscoder)->generatePoster($video, 7.25);
+
+    $posters = SpeechAsset::query()->where('speech_id', $speech->id)->where('kind', 'poster')->get();
+    expect($posters)->toHaveCount(6);
+    expect($posters->where('is_primary', true))->toHaveCount(1);
+    expect($posters->firstWhere('is_primary', true)->id)->not->toBe($oldPrimary->id);
+    expect($posters->pluck('poster_time_seconds')->map(fn ($t) => (float) $t)->unique()->all())->toBe([7.25]);
+});
+
+it('publishes no poster rows on initial derivation when the primary fails, but keeps the video ready and the sprite', function (string $mode) {
+    Storage::fake('media');
+    $speech = Speech::factory()->create();
+    Storage::disk('media')->put('uploads/1/u/source', 'source-bytes');
+    SpeechAsset::factory()->for($speech)->create(['disk' => 'media', 'path' => 'uploads/1/u/source', 'byte_size' => strlen('source-bytes')]);
+    $video = SpeechAsset::factory()->for($speech)->video()->create(['status' => 'processing']);
+    fakeFfmpegBreakingPrimary($mode);
+    if ($mode === 'upload') {
+        failPrimaryUploads();
+    }
+    $before = scratchFiles();
+
+    (new FfmpegTranscoder)->transcode($video);
+
+    expect($video->fresh()->status)->toBe('ready');
+    expect($speech->assets()->where('kind', 'poster')->exists())->toBeFalse();
+    expect($speech->assets()->where('kind', 'sprite')->count())->toBe(1);
+    expect(scratchFiles())->toBe($before);
+})->with('primary failure modes');
+
+it('replaces the sprite independently of a poster set whose primary failed, and keeps the old poster set', function () {
+    [$speech, $video] = speechWithHealthyPosterSet();
+    $oldPosterIds = $speech->assets()->where('kind', 'poster')->pluck('id')->sort()->values()->all();
+    $oldSprite = $speech->assets()->where('kind', 'sprite')->first();
+
+    fakeFfmpegBreakingPrimary('generate');
+    $method = new ReflectionMethod(FfmpegTranscoder::class, 'runPosterPipeline');
+    $source = tempnam(sys_get_temp_dir(), 'poster_src_');
+    try {
+        $method->invoke(new FfmpegTranscoder, $video, $source, null, true);
+    } finally {
+        @unlink($source);
+    }
+
+    expect($speech->assets()->where('kind', 'poster')->pluck('id')->sort()->values()->all())->toBe($oldPosterIds);
+    $sprites = $speech->assets()->where('kind', 'sprite')->get();
+    expect($sprites)->toHaveCount(1);
+    expect($sprites->first()->id)->not->toBe($oldSprite->id);
 });

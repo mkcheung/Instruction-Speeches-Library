@@ -250,3 +250,22 @@ it('forbids an admin from writing or publishing an essay even when a review row 
         'lock_version' => 0,
     ])->assertNotFound();
 });
+
+// 7. A literal "0" is a word: callback-less array_filter used to drop it.
+it('counts literal zero tokens in essay_words', function (string $html, int $expected) {
+    $this->seed(RoleSeeder::class);
+    [$speaker, $reviewer] = essaySpeakerAndCoach();
+    $review = essayAcceptedInProgressReview($speaker, $reviewer);
+
+    $this->actingAs($reviewer)->putJson("/api/speeches/{$review->speech_id}/essay", [
+        'html' => $html,
+        'lock_version' => 0,
+    ])->assertOk()->assertJsonPath('essay.essay_words', $expected);
+
+    expect($review->fresh()->essay_words)->toBe($expected);
+})->with([
+    'zero among words' => ['<p>we scored 0 goals</p>', 4],
+    'zero only' => ['<p>0</p>', 1],
+    'zeros across blocks' => ['<p>0</p><p>0</p>', 2],
+    'empty paragraph' => ['<p></p>', 0],
+]);

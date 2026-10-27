@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAcceptedViewer } from '@/features/auth/authSession'
 import { useGetExportsQuery } from '@/features/privacy/privacyApi'
 import type { DataExport } from '@/features/privacy/types'
 
@@ -23,7 +24,10 @@ import type { DataExport } from '@/features/privacy/types'
 export function useExportJob() {
   const [pollingInterval, setPollingInterval] = useState(4000)
 
-  const { data, isFetching, refetch } = useGetExportsQuery(undefined, { pollingInterval })
+  // Private list: only for the proven viewer of this document.
+  const viewer = useAcceptedViewer()
+  const { currentData, isFetching, refetch } = useGetExportsQuery(undefined, { pollingInterval, skip: !viewer })
+  const data = viewer ? currentData : undefined
 
   const desiredPollingInterval = data?.some((row) => row.status === 'processing') ? 4000 : 0
   if (desiredPollingInterval !== pollingInterval) {

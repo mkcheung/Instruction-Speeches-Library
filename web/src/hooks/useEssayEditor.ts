@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useStore } from 'react-redux'
+import {
+  captureWriteProof,
+  isWriteProofSameViewer,
+  selectAuthSession,
+  type WriteProof,
+} from '@/features/auth/authSession'
 import { API_URL } from '@/lib/api'
 import { readXsrfCookie } from '@/lib/csrf'
 import { useUpdateEssayMutation } from '@/features/essay/essayApi'
@@ -63,6 +70,11 @@ export interface UseEssayEditorResult {
 export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorResult {
   const { speechId, reviewId, initial } = options
 
+  const store = useStore<Parameters<typeof selectAuthSession>[0]>()
+  // Captured when an edit is captured (not at pagehide): the raw exit-flush
+  // may only write for the same accepted viewer/generation that typed it.
+  const writeProofRef = useRef<WriteProof | null>(null)
+
   const [html, setHtmlState] = useState(initial.essay_html ?? '')
   const [lockVersion, setLockVersion] = useState(initial.essay_lock_version)
   const [autosaveState, setAutosaveState] = useState<AutosaveState>('idle')
@@ -125,7 +137,10 @@ export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorRe
         const status = (err as { status?: number } | undefined)?.status
         const data = (err as { data?: unknown } | undefined)?.data
         if (status === 409 && isEssayConflict(data)) {
-          const isClean = currentHtml === savedSnapshotRef.current
+          // Decide from the LIVE text at acknowledgement, not the text this
+          // PUT sent: the user may have typed more while it was in flight,
+          // and adopting the server's essay would silently overwrite that.
+          const isClean = htmlRef.current === savedSnapshotRef.current
           if (isClean) {
             // Silent-adopt: nothing local was typed since the last
             // successful save, so adopting the server's current essay is
@@ -186,6 +201,8 @@ export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorRe
    */
   const beaconSave = useCallback(() => {
     if (autosaveStateRef.current !== 'dirty') return
+    const proof = writeProofRef.current
+    if (!proof || !isWriteProofSameViewer(selectAuthSession(store.getState()), proof)) return
     const token = readXsrfCookie()
     try {
       void fetch(`${API_URL}/api/speeches/${speechId}/essay`, {
@@ -202,7 +219,7 @@ export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorRe
     } catch {
       // Best-effort on the way out — nothing more to do.
     }
-  }, [speechId])
+  }, [speechId, store])
 
   const beaconSaveRef = useRef(beaconSave)
   useEffect(() => {
@@ -265,11 +282,12 @@ export function useEssayEditor(options: UseEssayEditorOptions): UseEssayEditorRe
 
   const setHtml = useCallback(
     (next: string) => {
+      writeProofRef.current = captureWriteProof(selectAuthSession(store.getState()))
       setHtmlState(next)
       markDirty()
       scheduleSave(HTML_DEBOUNCE_MS)
     },
-    [markDirty, scheduleSave],
+    [markDirty, scheduleSave, store],
   )
 
   const keepMine = useCallback(() => {

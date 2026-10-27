@@ -3,6 +3,9 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Register from '@/routes/Register'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { hardNavigation } from '@/lib/hardNavigation'
+import { authSessionActions } from '@/features/auth/authSession'
+import { act } from '@testing-library/react'
 
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {
@@ -68,5 +71,28 @@ describe('Register', () => {
       expect(screen.getByText('Passwords do not match.')).toBeInTheDocument()
     })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('does not hard-navigate when a newer auth attempt superseded this registration', async () => {
+    const replace = vi.spyOn(hardNavigation, 'replace').mockImplementation(() => {})
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = urlOf(input)
+      if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+      if (url.includes('/register')) { await gate; return jsonResponse({ user: { id: 'n' } }, 201) }
+      throw new Error(`unexpected fetch: ${url}`)
+    }))
+    const user = userEvent.setup()
+    const { store } = renderWithProviders(<Register />, { route: '/register' })
+    await user.type(screen.getByLabelText(/^email$/i), 'mars@example.com')
+    await user.type(screen.getByLabelText(/^password$/i), 'correct-horse-battery')
+    await user.type(screen.getByLabelText(/confirm password/i), 'correct-horse-battery')
+    await user.click(screen.getByRole('button', { name: /create account/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /creating account/i })).toBeDisabled())
+    act(() => { store.dispatch(authSessionActions.attemptStarted('newer-attempt')) })
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: /create account/i })).toBeEnabled())
+    expect(replace).not.toHaveBeenCalled()
+    replace.mockRestore()
   })
 })

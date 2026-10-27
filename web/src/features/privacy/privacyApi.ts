@@ -16,6 +16,21 @@ import type { DataExport, DeleteAccountPayload, RequestExportPayload } from '@/f
  * All enveloped identically to every other slice's convention;
  * `transformResponse` unwraps each one. Error bodies are NOT enveloped.
  */
+/** Internal descriptor: the backend `{url}` plus the monotonic client time at
+ * which the request started, so the UI can bound how long it shows the link
+ * (the signature lives 600s server-side; ExportSection shows it for 540s). */
+export interface ExportDownloadLink {
+  url: string
+  requestStartedAtMonotonicMs: number
+  /** Position in the module-wide request-start order; unlike a clock it cannot tie, so
+   * "started before invalidation" is decidable exactly. */
+  requestSeq: number
+}
+
+let requestSeqCounter = 0
+/** Sequence number of the most recently started download-URL request. */
+export const latestExportDownloadRequestSeq = () => requestSeqCounter
+
 export const privacyApi = createApi({
   reducerPath: 'privacyApi',
   baseQuery: baseQueryWithCsrfRetry,
@@ -49,9 +64,15 @@ export const privacyApi = createApi({
      * `useCaptionsJob.ts`'s `useCaptionsBlobUrl`, which exists only because
      * captions have no presigned-URL route; exports do).
      */
-    getExportDownloadUrl: builder.query<string, number>({
-      query: (id) => `/api/privacy/exports/${id}/download`,
-      transformResponse: (response: { url: string }) => response.url,
+    getExportDownloadUrl: builder.query<ExportDownloadLink, number>({
+      async queryFn(id, _api, _extraOptions, baseQuery) {
+        // Captured immediately before transport so latency counts against the display window.
+        const requestStartedAtMonotonicMs = performance.now()
+        const requestSeq = ++requestSeqCounter
+        const result = await baseQuery({ url: `/api/privacy/exports/${id}/download` })
+        if (result.error) return { error: result.error }
+        return { data: { url: (result.data as { url: string }).url, requestStartedAtMonotonicMs, requestSeq } }
+      },
     }),
 
     /** `DELETE /api/account` — self-scoped, no id in the URL (§8: "always

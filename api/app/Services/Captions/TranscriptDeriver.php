@@ -2,6 +2,8 @@
 
 namespace App\Services\Captions;
 
+use App\Support\PlainTextWords;
+
 /**
  * STEP-09-captions.md §6.12: turns a parsed cue list (Vtt::parse()'s
  * output) into the attribute set App\Models\SpeechTranscript stores —
@@ -30,7 +32,7 @@ class TranscriptDeriver
             $cues,
         )));
 
-        $wordCount = $this->wordCount($body);
+        $wordCount = PlainTextWords::count($body);
 
         return [
             'body' => $body,
@@ -43,26 +45,6 @@ class TranscriptDeriver
     private function normalizeWhitespace(string $text): string
     {
         return trim(preg_replace('/\s+/u', ' ', $text) ?? $text);
-    }
-
-    private function wordCount(string $body): int
-    {
-        if ($body === '') {
-            return 0;
-        }
-
-        // Explicit `!== ''` rather than a bare `array_filter`: the callback-
-        // less form drops every FALSY element, so the literal spoken word
-        // "0" was deleted from the count ("we scored 0 goals" counted 3).
-        // `$body` is already whitespace-collapsed and trimmed above, so
-        // preg_split cannot yield an empty token anyway — deleting "0" was
-        // the filter's only observable effect. Both `word_count` and the
-        // `words_per_minute` derived from it were wrong, which matters
-        // because pace comparison across speeches is the point of this table.
-        return count(array_filter(
-            preg_split('/\s+/u', $body) ?: [],
-            fn (string $word): bool => $word !== '',
-        ));
     }
 
     /**

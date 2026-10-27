@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\CoachApplication;
 use App\Models\User;
 use App\Support\FrontendUrl;
 use Illuminate\Bus\Queueable;
@@ -34,7 +33,11 @@ class CoachApplicationApproved extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(private readonly CoachApplication $application) {}
+    /**
+     * Immutable snapshot (ID + decision reason) captured at decision time, so
+     * a later queued render never depends on a mutable model graph.
+     */
+    public function __construct(private readonly int $applicationId, private readonly ?string $reason = null) {}
 
     /**
      * @return array<int, string>
@@ -54,7 +57,7 @@ class CoachApplicationApproved extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject('Your coach application has been approved')
             ->line('An administrator has reviewed your submitted credentials and approved your coach application.')
-            ->when($this->application->decision_reason, fn (MailMessage $mail) => $mail->line($this->application->decision_reason))
+            ->when($this->reason, fn (MailMessage $mail) => $mail->line($this->reason))
             ->action('View your profile', $destination)
             ->line('Your Coach badge is now visible on your profile and you appear in the reviewer directory.');
     }
@@ -75,7 +78,7 @@ class CoachApplicationApproved extends Notification implements ShouldQueue
         /** @var User $notifiable */
         return [
             'type' => 'coach_application.approved',
-            'coach_application_id' => $this->application->id,
+            'coach_application_id' => $this->applicationId,
             'url' => $notifiable->username !== null
                 ? FrontendUrl::to("/u/{$notifiable->username}")
                 : FrontendUrl::to('/profile'),

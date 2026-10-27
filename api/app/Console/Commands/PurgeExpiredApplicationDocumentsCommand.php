@@ -42,7 +42,11 @@ class PurgeExpiredApplicationDocumentsCommand extends Command
 
         $documents = ApplicationDocument::query()
             ->whereIn('application_id', $applicationIds)
-            ->whereIn('status', ['clean', 'pending_scan'])
+            // `infected` too: its bytes are normally removed by the
+            // ApplicationDocumentWork cleanup phase, but a row whose cleanup
+            // budget was exhausted still holds third-party bytes, and the
+            // retention sweep is the backstop that must not skip it.
+            ->whereIn('status', ['clean', 'pending_scan', 'infected'])
             ->get();
 
         $purged = 0;

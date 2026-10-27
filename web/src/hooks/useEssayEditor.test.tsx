@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
+import { authSessionActions, selectAuthSession } from '@/features/auth/authSession'
+import type { CurrentUser } from '@/features/auth/types'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
 import { useEssayEditor } from '@/hooks/useEssayEditor'
 import type { Essay } from '@/features/essay/types'
@@ -39,8 +41,19 @@ function essay(overrides: Partial<Essay> = {}): Essay {
   }
 }
 
+const viewer = {
+  id: '7', email: 'a@example.com', first_name: 'A', last_name: 'B', username: 'ab', display_name: 'A B',
+  email_verified: true, roles: [], onboarding_completed: true, onboarding_step: 4,
+} as unknown as CurrentUser
+
+function makeWrapper(store: ReturnType<typeof createTestStore>) {
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <Provider store={store}>{children}</Provider>
+  }
+}
+
 function wrapper({ children }: { children: ReactNode }) {
-  return <Provider store={createTestStore()}>{children}</Provider>
+  return <Provider store={createTestStore({ viewer })}>{children}</Provider>
 }
 
 describe('useEssayEditor', () => {
@@ -185,6 +198,57 @@ describe('useEssayEditor', () => {
       expect(putCount).toBe(2)
     })
 
+    it('keeps text typed while a 409 was in flight even if the sent text equalled the snapshot', async () => {
+      vi.useFakeTimers()
+      const initial = essay()
+      const serverCurrent = essay({ essay_html: '<p>theirs C</p>', essay_lock_version: 7 })
+      let release: () => void = () => {}
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = urlOf(input)
+        if (url.includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+        if (url.includes('/essay')) {
+          await gate
+          return jsonResponse({ message: 'conflict', conflictSource: 'self', current: serverCurrent }, 409)
+        }
+        throw new Error(`unexpected fetch: ${url}`)
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      const onSilentAdopt = vi.fn()
+      const { result, unmount } = renderHook(
+        () => useEssayEditor({ speechId: 1, reviewId: 1, initial, onSilentAdopt }),
+        { wrapper },
+      )
+
+      // Send text A (equal to the saved snapshot), then type B before the 409 lands.
+      act(() => result.current.setHtml(initial.essay_html ?? ''))
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(750)
+      })
+      act(() => result.current.setHtml('<p>typed B</p>'))
+      await act(async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+
+      expect(onSilentAdopt).not.toHaveBeenCalled()
+      expect(result.current.html).toBe('<p>typed B</p>')
+      expect(result.current.autosaveState).toBe('conflict')
+      expect(result.current.conflict).toEqual(serverCurrent)
+
+      act(() => result.current.useTheirs())
+      expect(result.current.html).toBe('<p>theirs C</p>')
+
+      // Drain the still-pending debounce for B while fetch is stubbed.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000)
+      })
+      unmount()
+    })
+
     it('silently adopts on 409 when the editor is clean', async () => {
       vi.useFakeTimers()
       const initial = essay()
@@ -288,6 +352,61 @@ describe('useEssayEditor', () => {
           ),
         ).toBe(true)
       })
+    })
+
+    const rawPuts = (m: ReturnType<typeof vi.fn>) =>
+      m.mock.calls.filter(([i, init]) => urlOf(i).endsWith('/essay') && (init as RequestInit | undefined)?.keepalive === true)
+
+    async function dirtyThen(
+      mutate: (store: ReturnType<typeof createTestStore>) => void,
+      withViewer = true,
+      settle?: (store: ReturnType<typeof createTestStore>) => Promise<void>,
+    ) {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        if (urlOf(input).includes('/sanctum/csrf-cookie')) return new Response(null, { status: 204 })
+        if (urlOf(input).endsWith('/api/me')) return jsonResponse({ user: viewer })
+        return jsonResponse({ essay: essay() })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      const store = createTestStore(withViewer ? { viewer } : {})
+      const { result, unmount } = renderHook(
+        () => useEssayEditor({ speechId: 1, reviewId: 1, initial: essay() }),
+        { wrapper: makeWrapper(store) },
+      )
+      act(() => result.current.setHtml('<p>typed</p>'))
+      act(() => mutate(store))
+      if (settle) await act(async () => { await settle(store) })
+      window.dispatchEvent(new Event('pagehide'))
+      const n = rawPuts(fetchMock).length
+      unmount()
+      return n
+    }
+
+    it('still flushes after pagehide hides the UI for the same user', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.pageHidden()) })).toBe(1)
+    })
+    it('skips the raw write when an auth attempt started', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.attemptStarted('a1')) })).toBe(0)
+    })
+    it('skips the raw write after a cross-tab account change', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.externalChange()) })).toBe(0)
+    })
+    const settledAccepted = (store: ReturnType<typeof createTestStore>) =>
+      waitFor(() => expect(selectAuthSession(store.getState()).status).toBe('accepted'))
+    it('still flushes after a same-user cross-tab generation bump re-proves the viewer', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.externalChange()) }, true, settledAccepted)).toBe(1)
+    })
+    it('still flushes after a same-user BFCache restore re-proves the viewer', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.pageRestored()) }, true, settledAccepted)).toBe(1)
+    })
+    it('skips the raw write after a BFCache restore', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.pageRestored()) })).toBe(0)
+    })
+    it('skips the raw write in a terminal state', async () => {
+      expect(await dirtyThen((s) => { s.dispatch(authSessionActions.attemptSucceeded()) })).toBe(0)
+    })
+    it('skips the raw write when no accepted viewer existed at capture', async () => {
+      expect(await dirtyThen(() => {}, false)).toBe(0)
     })
   })
 })

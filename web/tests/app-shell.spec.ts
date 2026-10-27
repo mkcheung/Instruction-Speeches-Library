@@ -159,10 +159,10 @@ test.describe('D5 — public profile stays public', () => {
   }) => {
     // Deliberately no storageState override — `page` here is a fresh,
     // unauthenticated context. The bug this guards: any 401 (including
-    // one from an unguarded route's own `useGetMeQuery()`) broadcasts a
-    // global `auth:unauthenticated` event, and `UnauthenticatedRedirect`
-    // exempts only `/login`, `/register`, `/forgot-password` — a public
-    // profile page that called `useGetMeQuery()` would eject the visitor.
+    // one from an unguarded route's own `useGetMeQuery()`) is treated by
+    // `UnauthenticatedRedirect` as an expired session unless the route is
+    // classified guest/public (`classifyRoute`) — a public profile page that
+    // called `useGetMeQuery()` would otherwise eject the visitor.
     await page.goto(`${APP_URL}/u/${USERS.speaker.username}`)
 
     await expect(page).toHaveURL(`${APP_URL}/u/${USERS.speaker.username}`)
@@ -2316,16 +2316,21 @@ test.describe('draggable timeline playhead (isolated frontend)', () => {
       await ready(t)
       const mutations = [...t.wire.mutations]
       await begin(t, .8)
+      const oldTime = await retired.evaluate((element: HTMLVideoElement) => element.currentTime)
+      const oldSeeks = await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)
       poster.resolve(401)
       await presentationExpect(t.page).toHaveURL(/\/login(?:\?|$)/)
       await presentationExpect(t.page.getByRole('heading', { name: 'Log in', exact: true })).toBeVisible()
-      await presentationExpect.poll(() => retired.evaluate((element) => element.isConnected)).toBe(false)
-      const oldTime = await retired.evaluate((element: HTMLVideoElement) => element.currentTime)
-      const oldSeeks = await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)
+      // Identity loss is a hard navigation: the old document, and the handle's
+      // execution context with it, is destroyed. A throwing evaluate means retired.
+      const alive = <T,>(read: (element: HTMLVideoElement) => T) =>
+        retired.evaluate(read).then((value) => ({ gone: false, value }), () => ({ gone: true, value: undefined }))
+      await presentationExpect.poll(async () => (await retired.evaluate((element) => element.isConnected).catch(() => false))).toBe(false)
       await t.page.mouse.up()
       await t.page.waitForTimeout(80)
-      presentationExpect(await retired.evaluate((element: HTMLVideoElement) => element.currentTime)).toBe(oldTime)
-      presentationExpect(await retired.evaluate((element: HTMLVideoElement) => element.dataset.scrubSeeks)).toBe(oldSeeks)
+      const time = await alive((element) => element.currentTime), seeks = await alive((element) => element.dataset.scrubSeeks)
+      if (!time.gone) presentationExpect(time.value).toBe(oldTime)
+      if (!seeks.gone) presentationExpect(seeks.value).toBe(oldSeeks)
       await presentationExpect(t.video).toHaveCount(0)
       presentationExpect(ownerWire.posterRequests).toHaveLength(1)
       presentationExpect(t.wire.mutations).toEqual(mutations)

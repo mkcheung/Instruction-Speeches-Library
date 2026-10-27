@@ -3,15 +3,26 @@ import type { BaseQueryFn, FetchArgs, FetchBaseQueryError } from '@reduxjs/toolk
 import { API_URL } from '@/lib/api'
 import { ensureCsrfCookie, readXsrfCookie } from '@/lib/csrf'
 
+import {
+  authSessionActions,
+  captureProof,
+  isPrivateTransportBlocked,
+  isProofCurrent,
+  SESSION_CHANGED,
+  type AuthSessionState,
+} from '@/features/auth/authSession'
+
 /**
- * A `401` fires from anywhere a query/mutation is used. There's no react-router
- * `navigate` reachable from a base query, so unauthenticated-ness is broadcast
- * as a DOM event; a single listener mounted near the router root (see
- * `useRedirectOnUnauthenticated`) is responsible for the actual redirect.
- * This keeps the 401 path decoupled from any one component and from RTK
- * Query's cache lifecycle.
+ * How a request relates to the document's identity (R1, plan §8.1). The
+ * default is `private`: fenced to the identity that started it, and a 401
+ * withdraws the document's proof until a fresh `/me` decides. Only
+ * code-owned exceptions opt out, through the endpoint's `extraOptions`:
+ *
+ * - `probe`   `/me`: settles identity itself (see `authSessionMiddleware`).
+ * - `control` login/register/logout: change the cookie; never fenced.
+ * - `public`  forgot/reset password and other anonymous-safe requests.
  */
-export const UNAUTHENTICATED_EVENT = 'auth:unauthenticated'
+export interface SessionOptions { session?: 'probe' | 'control' | 'public' }
 
 function isStateChanging(args: string | FetchArgs): boolean {
   if (typeof args === 'string') return false
@@ -48,21 +59,44 @@ const rawBaseQuery = fetchBaseQuery({
 export const baseQueryWithCsrfRetry: BaseQueryFn<
   string | FetchArgs,
   unknown,
-  FetchBaseQueryError
+  FetchBaseQueryError,
+  SessionOptions
 > = async (args, api, extraOptions) => {
-  if (isStateChanging(args) && !readXsrfCookie()) {
-    await ensureCsrfCookie()
+  const mode = extraOptions?.session
+  const fenced = mode === undefined
+  // Stores without the identity slice (isolated transport tests) have nothing to fence against.
+  const read = () => (api.getState() as { authSession?: AuthSessionState }).authSession
+  const sessionChanged = (): { error: FetchBaseQueryError } => ({
+    error: { status: 'CUSTOM_ERROR', error: SESSION_CHANGED, data: undefined },
+  })
+
+  const before = fenced ? read() : undefined
+  if (before && isPrivateTransportBlocked(before)) return sessionChanged()
+  const proof = before ? captureProof(before) : null
+  const stale = () => {
+    const now = read()
+    return !!proof && !!now && !isProofCurrent(now, proof)
   }
 
-  let result = await rawBaseQuery(args, api, extraOptions)
+  if (isStateChanging(args) && !readXsrfCookie()) {
+    await ensureCsrfCookie()
+    if (stale()) return sessionChanged()
+  }
+
+  let result = await rawBaseQuery(args, api, extraOptions ?? {})
 
   if (result.error?.status === 419) {
     await ensureCsrfCookie()
-    result = await rawBaseQuery(args, api, extraOptions)
+    // A replay would carry the CURRENT cookie: never replay on behalf of an obsolete identity.
+    if (stale()) return sessionChanged()
+    result = await rawBaseQuery(args, api, extraOptions ?? {})
   }
 
-  if (result.error?.status === 401) {
-    window.dispatchEvent(new CustomEvent(UNAUTHENTICATED_EVENT))
+  // An obsolete response is a session-change error, never old data or an unqualified 401.
+  if (stale()) return sessionChanged()
+
+  if (fenced && result.error?.status === 401 && proof) {
+    api.dispatch(authSessionActions.privateUnauthorized({ generation: proof.generation }))
   }
 
   return result
