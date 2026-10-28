@@ -53,7 +53,10 @@ class ClamdScanner implements ClamScannerContract
             try {
                 while (! feof($handle)) {
                     $chunk = fread($handle, self::CHUNK_SIZE);
-                    if ($chunk === false || $chunk === '') {
+                    if ($chunk === false) {
+                        throw new RuntimeException("ClamdScanner: read error while streaming {$absolutePath}.");
+                    }
+                    if ($chunk === '') {
                         continue;
                     }
                     fwrite($socket, pack('N', strlen($chunk)).$chunk);
@@ -67,7 +70,13 @@ class ClamdScanner implements ClamScannerContract
 
             $response = '';
             while (! feof($socket)) {
-                $response .= fread($socket, self::CHUNK_SIZE);
+                $part = fread($socket, self::CHUNK_SIZE);
+                $response .= $part === false ? '' : $part;
+                // feof() stays false on a stalled socket: stop at the stream timeout
+                // instead of spinning forever (an empty reply then throws below).
+                if (stream_get_meta_data($socket)['timed_out']) {
+                    break;
+                }
             }
 
             // "stream: OK" or "stream: <SIGNATURE NAME> FOUND", NUL-terminated
