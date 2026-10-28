@@ -86,7 +86,7 @@ export function classifyRoute(pathname: string): RouteClass {
   // `sanitizeReturnPath` uses, so the two cannot drift.
   const lower = pathname.toLowerCase()
   const normalized = lower.length > 1 ? lower.replace(/\/+$/, '') : lower
-  if (GUEST_ROUTES.some((path) => normalized.startsWith(path))) return 'guest'
+  if (GUEST_ROUTES.some((path) => normalized === path || normalized.startsWith(`${path}/`))) return 'guest'
   if (PRIVATE_FRIENDS.test(pathname)) return 'private'
   if (normalized.startsWith('/u/') || EXACT_PUBLIC_ROUTES.includes(normalized)) return 'public'
   return 'private'

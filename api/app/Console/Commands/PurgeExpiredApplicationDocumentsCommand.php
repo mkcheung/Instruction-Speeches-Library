@@ -47,6 +47,7 @@ class PurgeExpiredApplicationDocumentsCommand extends Command
             // budget was exhausted still holds third-party bytes, and the
             // retention sweep is the backstop that must not skip it.
             ->whereIn('status', ['clean', 'pending_scan', 'infected'])
+            ->where('path', '!=', '')
             ->get();
 
         $purged = 0;
