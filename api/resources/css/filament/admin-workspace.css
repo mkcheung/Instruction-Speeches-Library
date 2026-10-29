@@ -23,7 +23,8 @@ body.fi-panel-admin {
     --gray-800: #40342c;
     --gray-900: #352a23;
     --gray-950: #2b211b;
-    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    /* Filament's ->font('Geist') sets --font-family; keep that the single source. */
+    font-family: var(--font-family), ui-sans-serif, system-ui, sans-serif;
     color: var(--admin-ink);
     background: var(--admin-page);
 }
@@ -101,12 +102,16 @@ body.fi-panel-admin :is(.fi-section:not(.fi-section-not-contained):not(.fi-aside
     border: 1px solid var(--admin-outline);
     border-radius: 4px;
     box-shadow: 4px 4px var(--admin-shadow);
-    --tw-ring-shadow: 0 0 #0000;
 }
 
-/* Nested sections stay quiet: the frame belongs to the working panel. */
-body.fi-panel-admin .fi-section .fi-section {
+/* Nested sections stay quiet: the frame belongs to the working panel.
+   Must out-specify the frame rule above (0,4,1), or the shadow survives. */
+body.fi-panel-admin .fi-section .fi-section:not(.fi-section-not-contained):not(.fi-aside) {
     box-shadow: none;
+}
+
+body.fi-panel-admin .fi-section .fi-section > .fi-section-header::after {
+    display: none;
 }
 
 body.fi-panel-admin .fi-section > .fi-section-header {
@@ -115,6 +120,12 @@ body.fi-panel-admin .fi-section > .fi-section-header {
     border-inline-start: 5px solid var(--admin-teal);
     border-start-start-radius: 3px;
     border-start-end-radius: 3px;
+}
+
+/* A collapsed section is all header; round its lower corners to the frame. */
+body.fi-panel-admin .fi-section.fi-collapsed > .fi-section-header {
+    border-end-start-radius: 3px;
+    border-end-end-radius: 3px;
 }
 
 body.fi-panel-admin .fi-section > .fi-section-header::after {
@@ -155,7 +166,9 @@ body.fi-panel-admin :is(.fi-checkbox-input, .fi-radio-input):not(:disabled):not(
     outline-offset: 0;
 }
 
-body.fi-panel-admin :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+/* Fields inside .fi-input-wrp already show the wrapper's focus-within ring;
+   outlining the inner control too would draw a second, offset ring. */
+body.fi-panel-admin :is(a, button, [tabindex], :is(input, select, textarea):not(.fi-input-wrp *)):focus-visible {
     outline: 2px solid var(--admin-teal);
     outline-offset: 3px;
 }
@@ -221,7 +234,7 @@ body.fi-panel-admin .admin-workspace-scene svg {
     body.fi-panel-admin .fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
         border: 2px solid Highlight;
     }
-    body.fi-panel-admin :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+    body.fi-panel-admin :is(a, button, [tabindex], :is(input, select, textarea):not(.fi-input-wrp *)):focus-visible {
         outline-color: Highlight;
     }
 }

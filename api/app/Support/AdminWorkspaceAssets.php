@@ -43,13 +43,18 @@ final class AdminWorkspaceAssets
         return 'notebook-'.self::version('fonts/admin/index.css');
     }
 
+    /** @var array<string, string> Per-process: assets are baked into the image, so hash once. */
+    private static array $versions = [];
+
     private static function version(string $path): string
     {
-        $file = resource_path($path);
+        return self::$versions[$path] ??= (function () use ($path): string {
+            $file = resource_path($path);
 
-        // Missing assets should degrade to the system font/theme, not break panel boot.
-        $hash = is_file($file) ? hash_file('sha256', $file) : false;
+            // Missing assets should degrade to the system font/theme, not break panel boot.
+            $hash = is_file($file) ? hash_file('sha256', $file) : false;
 
-        return $hash !== false ? substr($hash, 0, 16) : 'missing';
+            return $hash !== false ? substr($hash, 0, 16) : 'missing';
+        })();
     }
 }
