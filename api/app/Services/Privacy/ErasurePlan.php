@@ -10,8 +10,9 @@ namespace App\Services\Privacy;
  * drift from the other.
  *
  * `steps` is an ORDERED list (array order is the printed order) of
- * `{key, label, count, bytes}` — exactly the 8 steps of §6, in §6's exact
- * order. `count`/`bytes` are always real numbers (0 when a step touches
+ * `{key, label, count, bytes}` — the 8 steps of §6, in §6's exact order,
+ * with step 6 split into 6a/6b/6c (6c: PLAN-COACH-APPLICATION-REVIEW-PAGE.md
+ * §9). `count`/`bytes` are always real numbers (0 when a step touches
  * nothing), never placeholders.
  */
 final class ErasurePlan

@@ -45,6 +45,14 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    # The `application_documents` disk is `local` (config/filesystems.php),
+    # not S3, and ScanApplicationDocument runs in `queue-worker`, not here.
+    # Without one shared NAMED volume each container keeps a private copy of
+    # this directory, so an upload landed here is "missing on disk" to the
+    # scanner. Mounted identically on app, queue-worker and scheduler, the
+    # only services that touch this disk (clamd gets bytes over INSTREAM).
+    volumes:
+      - application-documents:/var/www/html/storage/app/application_documents
     networks:
       - default
 
@@ -91,6 +99,8 @@ services:
         condition: service_healthy
     env_file:
       - api/.env
+    volumes:
+      - application-documents:/var/www/html/storage/app/application_documents # shared with `app` — see its comment
     networks:
       - default
 
@@ -379,6 +389,8 @@ services:
         condition: service_healthy
     env_file:
       - api/.env
+    volumes:
+      - application-documents:/var/www/html/storage/app/application_documents # shared with `app` — see its comment
     networks:
       - default
 
@@ -765,3 +777,4 @@ volumes:
   whisper-models:
   clamav-signatures:
   uptime-kuma-data:
+  application-documents:

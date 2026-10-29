@@ -46,7 +46,7 @@ beforeEach(function () {
 
 /**
  * ⚠️ ENVIRONMENT, not a convenience — the long-form reasoning lives in
- * `PanelModerationTest::renderPanelTablesWithoutIntl()` and is not
+ * `renderPanelTablesWithoutIntl()` (`PanelHelpers.php`) and is not
  * repeated here. The short version: `filament/support` requires
  * `ext-intl` and this dev host has none, so
  * `support/components/pagination/index.blade.php:51-53` throws

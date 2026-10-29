@@ -31,15 +31,22 @@ class CoachApplicationSubmissionService
     public function __construct(private readonly PdfUploadValidator $validator) {}
 
     /**
-     * Two-step store contract: no application creates a draft; draft/rejected
-     * submits that row; submitted/under_review only syncs the statement;
-     * approved/withdrawn is a 409.
+     * Two-step store contract: no application, or a rejected/withdrawn latest
+     * one, creates a fresh draft row (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8:
+     * one row per attempt); draft submits that row; submitted/under_review only
+     * syncs the statement; approved is a 409. So is any call once account
+     * erasure has started (§9).
      */
     public function saveOrSubmit(User $applicant, string $statement): CoachApplication
     {
         $application = DB::transaction(function () use ($applicant, $statement): CoachApplication {
             // The user row is the stable serialization point for the absent-row case.
-            User::query()->whereKey($applicant->id)->lockForUpdate()->firstOrFail();
+            $lockedUser = User::query()->whereKey($applicant->id)->lockForUpdate()->firstOrFail();
+
+            // §9: erasure stamps this under the same lock before step 1, so a
+            // write either commits first (and a full erasure's step 6c shreds
+            // it) or is refused. `DELETE /api/me` stamps too but never shreds.
+            abort_if($lockedUser->erasure_started_at !== null, Response::HTTP_CONFLICT, 'This account is being erased.');
 
             $existing = CoachApplication::query()
                 ->where('user_id', $applicant->id)
@@ -47,7 +54,9 @@ class CoachApplicationSubmissionService
                 ->lockForUpdate()
                 ->first();
 
-            if ($existing === null) {
+            if ($existing === null || in_array($existing->status, ['rejected', 'withdrawn'], true)) {
+                // A reapplication is a new row. The decided row keeps its
+                // decision, its documents and its retention clock.
                 return CoachApplication::query()->create([
                     'user_id' => $applicant->id,
                     'status' => 'draft',
@@ -55,13 +64,13 @@ class CoachApplicationSubmissionService
                 ]);
             }
 
-            if (in_array($existing->status, ['draft', 'rejected'], true)) {
+            if ($existing->status === 'draft') {
                 $existing->submit($statement);
 
                 return $existing;
             }
 
-            if (in_array($existing->status, ['submitted', 'under_review'], true)) {
+            if (in_array($existing->status, CoachApplication::UNDECIDED_STATUSES, true)) {
                 if ($existing->statement !== $statement) {
                     $existing->forceFill(['statement' => $statement])->save();
                 }
@@ -93,7 +102,9 @@ class CoachApplicationSubmissionService
 
         try {
             DB::transaction(function () use ($applicant, $addressed, $batch, $staged): array {
-                User::query()->whereKey($applicant->id)->lockForUpdate()->firstOrFail();
+                $lockedUser = User::query()->whereKey($applicant->id)->lockForUpdate()->firstOrFail();
+                // §9, same gate as saveOrSubmit; the catch below removes the staged bytes.
+                abort_if($lockedUser->erasure_started_at !== null, Response::HTTP_CONFLICT, 'This account is being erased.');
                 $locked = CoachApplication::query()->whereKey($addressed->id)->lockForUpdate()->firstOrFail();
 
                 $this->assertAdmissible($applicant, $locked, count($batch));

@@ -349,12 +349,13 @@ class ViewUser extends ViewRecord
      * its `action` column is deliberately FREE TEXT at the DB level — an
      * open vocabulary. So this filters on an explicit `whereIn` of the six
      * `AuditAction` constants that are lifecycle verbs on a `User`
-     * subject. It must NOT be a blanket "every row about this user":
-     * `ADMIN_VIEWED_SPEECH`/`ADMIN_VIEWED_DOCUMENT`/
-     * `ADMIN_VIEWED_COMMENTARY` and the account-export verbs also carry
-     * `subject_type = User::class`, and folding an admin's read-audit into
-     * a moderation history would bury four suspensions under four hundred
-     * page views.
+     * subject. It must NOT be a blanket "every row about this user": the
+     * account-export verbs also carry `subject_type = User::class`, and so
+     * would any read-audit verb pointed at a user. (`ADMIN_VIEWED_SPEECH`
+     * and `ADMIN_VIEWED_COMMENTARY` are written against `Speech`,
+     * `ADMIN_VIEWED_DOCUMENT` against `ApplicationDocument`.) Folding an
+     * admin's read-audit into a moderation history would bury four
+     * suspensions under four hundred page views.
      *
      * Role grants ARE included. A demotion is a moderation decision in
      * everything but name — §4 holds `admin`/`super_admin` grants one tier

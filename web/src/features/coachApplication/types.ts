@@ -12,9 +12,10 @@
  */
 
 /** `draft → submitted → under_review → approved | rejected`, plus
- * `rejected → draft` (reusing the row, §12's backend section) and
  * `withdrawn` (the applicant's own opt-out, mirrored on `ReviewStatus`'s
- * `abandoned`/`revoked` precedent). */
+ * `abandoned`/`revoked` precedent). Reapplying after `rejected`/`withdrawn`
+ * creates a new `draft` application row; `GET /me` returns the latest
+ * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8). */
 export type CoachApplicationStatus =
   | 'draft'
   | 'submitted'

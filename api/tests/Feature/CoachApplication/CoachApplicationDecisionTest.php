@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ApplicationDocument;
 use App\Models\AuditLog;
 use App\Models\CoachApplication;
 use App\Models\User;
@@ -14,7 +15,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
-function decisionFixture(string $status = 'submitted'): array
+/**
+ * By default the application holds one clean document, which approval
+ * requires (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §7). The guard reads DB
+ * rows only, so no bytes are stored.
+ */
+function decisionFixture(string $status = 'submitted', bool $withCleanDocument = true): array
 {
     test()->seed(RoleSeeder::class);
     $admin = User::factory()->create();
@@ -23,7 +29,24 @@ function decisionFixture(string $status = 'submitted'): array
     $applicant->assignRole('member');
     $application = CoachApplication::query()->create(['user_id' => $applicant->id, 'status' => $status, 'statement' => 's']);
 
+    if ($withCleanDocument) {
+        decisionDocument($application, 'clean');
+    }
+
     return [$admin, $applicant, $application];
+}
+
+function decisionDocument(CoachApplication $application, string $status, string $path = 'applications/x/doc.pdf'): ApplicationDocument
+{
+    return ApplicationDocument::query()->create([
+        'application_id' => $application->id,
+        'disk' => 'application_documents',
+        'path' => $path,
+        'original_filename' => 'cert.pdf',
+        'byte_size' => 1234,
+        'sha256' => str_repeat('a', 64),
+        'status' => $status,
+    ]);
 }
 
 function decisionAuditCount(string $action): int
@@ -191,4 +214,72 @@ it('a notification enqueue failure after commit is logged and does not undo the 
     expect($application->fresh()->status)->toBe('approved')
         ->and($applicant->fresh()->hasRole('coach'))->toBeTrue();
     Log::shouldHaveReceived('error')->withArgs(fn ($m, $c) => ($c['application_id'] ?? null) === $application->id);
+});
+
+it('approval without a clean document is a 409 with no status change, role or audit', function (array $documents) {
+    Notification::fake();
+    [$admin, $applicant, $application] = decisionFixture(withCleanDocument: false);
+    foreach ($documents as $i => [$status, $path]) {
+        decisionDocument($application, $status, $path ?? "applications/x/{$i}.pdf");
+    }
+
+    try {
+        app(CoachApplicationDecisionService::class)->approve($admin, $application, 'Yes.');
+        $this->fail('expected 409');
+    } catch (HttpException $e) {
+        expect($e->getStatusCode())->toBe(409)
+            ->and($e->getMessage())->toContain('without at least one clean document');
+    }
+
+    expect($application->fresh()->status)->toBe('submitted')
+        ->and($applicant->fresh()->hasRole('coach'))->toBeFalse()
+        ->and(decisionAuditCount(AuditAction::COACH_APPLICATION_APPROVED))->toBe(0)
+        ->and(AuditLog::query()->where('action', AuditAction::ROLE_ASSIGNED)->count())->toBe(0);
+    Notification::assertNothingSent();
+})->with([
+    'no documents' => [[]],
+    'only non-clean documents' => [[['pending_scan', null], ['infected', null], ['clean', '']]],
+]);
+
+it('approval with one clean document among non-clean ones succeeds', function () {
+    Notification::fake();
+    [$admin, $applicant, $application] = decisionFixture(withCleanDocument: false);
+    decisionDocument($application, 'pending_scan', 'applications/x/pending.pdf');
+    decisionDocument($application, 'clean', 'applications/x/clean.pdf');
+
+    app(CoachApplicationDecisionService::class)->approve($admin, $application, 'Yes.');
+
+    expect($application->status)->toBe('approved')
+        ->and($applicant->fresh()->hasRole('coach'))->toBeTrue();
+});
+
+it('rejection needs no documents', function () {
+    Notification::fake();
+    [$admin, , $application] = decisionFixture(withCleanDocument: false);
+
+    app(CoachApplicationDecisionService::class)->reject($admin, $application, 'No.');
+
+    expect($application->status)->toBe('rejected')
+        ->and(decisionAuditCount(AuditAction::COACH_APPLICATION_REJECTED))->toBe(1);
+});
+
+it('approval is a 409 once the applicant\'s erasure has started, while rejection still works', function () {
+    Notification::fake();
+    [$admin, $applicant, $application] = decisionFixture();
+    $applicant->forceFill(['erasure_started_at' => now()])->save();
+
+    try {
+        app(CoachApplicationDecisionService::class)->approve($admin, $application, 'Yes.');
+        $this->fail('expected 409');
+    } catch (HttpException $e) {
+        expect($e->getStatusCode())->toBe(409)
+            ->and($e->getMessage())->toBe('The applicant is erasing their account.');
+    }
+
+    expect($application->fresh()->status)->toBe('submitted')
+        ->and($applicant->fresh()->hasRole('coach'))->toBeFalse()
+        ->and(decisionAuditCount(AuditAction::COACH_APPLICATION_APPROVED))->toBe(0);
+
+    app(CoachApplicationDecisionService::class)->reject($admin, $application, 'No.');
+    expect($application->fresh()->status)->toBe('rejected');
 });

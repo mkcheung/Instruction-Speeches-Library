@@ -28,17 +28,17 @@ class CoachApplicationController extends Controller
      * once from "Save draft and continue" with no existing row, once from
      * "Submit application" once a draft row and its documents exist):
      *
-     *   - no live row yet          -> create a fresh `draft` row, stay draft
-     *     (returns an `id` the document-upload step needs; does NOT
-     *     auto-submit — an earlier version of this endpoint did, which
-     *     made the second call above 500 because `submit()` only accepts
-     *     `draft`/`rejected` as a starting state).
-     *   - row is `draft`/`rejected` -> `submit()` (rejected->draft->submitted
-     *     in one call is the plan's own explicit reapplication rule).
+     *   - no row yet, or the latest is `rejected`/`withdrawn` -> create a
+     *     fresh `draft` row, stay draft (returns an `id` the document-upload
+     *     step needs; does NOT auto-submit). A reapplication is a new row
+     *     per attempt; the decided row keeps its decision and documents
+     *     (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8).
+     *   - row is `draft` -> `submit()`.
      *   - row is `submitted`/`under_review` -> idempotent no-op (keeps the
      *     statement in sync), so a reload or double-click never crashes.
-     *   - row is `approved`/`withdrawn` -> 409, a clear rejection rather
-     *     than an uncaught `RuntimeException`.
+     *   - row is `approved` -> 409, a clear rejection rather than an
+     *     uncaught `RuntimeException`. So is any call once account erasure
+     *     has started (§9).
      */
     public function store(CreateCoachApplicationRequest $request, CoachApplicationSubmissionService $submissions): JsonResponse
     {

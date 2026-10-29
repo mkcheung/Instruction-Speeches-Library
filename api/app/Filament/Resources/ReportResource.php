@@ -32,8 +32,9 @@ use Illuminate\Support\Facades\Gate;
  * PLAN-ADMIN-DASHBOARD.md §5.4, hole 4: `resolve`/`dismiss` were "the
  * only moderation verbs in the panel with NEITHER a `Gate::authorize` NOR
  * an audit write — the class does not even import `AuditLog`." Both are
- * fixed below. The missing import was the tell: `UserResource` and
- * `CoachApplicationResource` each had at least one of the two halves, so
+ * fixed below. The missing import was the tell: `UserResource` and the
+ * coach-application decision actions (then on `CoachApplicationResource`,
+ * now on its review page) each had at least one of the two halves, so
  * this file was not a rule being bent, it was a rule nobody had applied
  * here at all.
  *
@@ -332,7 +333,7 @@ class ReportResource extends Resource
      * pins `allows('some.arbitrary.ability') === true`), so inventing one
      * here without the matching `Gate::define` plus `$mustFallThrough`
      * entry would be a Gate call that authorizes nothing — the same trap
-     * `PanelModerationTest.php:609-614` documents for the deliberately
+     * `PanelModerationTest.php:404-409` documents for the deliberately
      * absent `report.dismiss`. `report.resolve` is not borrowed either:
      * it is the WRITE ability for this model, and reusing it to gate a
      * read would make the two impossible to separate later.

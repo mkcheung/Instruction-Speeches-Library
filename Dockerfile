@@ -132,6 +132,11 @@ COPY docker/php/www-pool.conf /usr/local/etc/php-fpm.d/zz-www-pool.conf
 # before the USER switch below, because `public/` is root-owned and the
 # command mkdir()s into it.
 RUN php artisan filament:assets
+# Pre-create the `application_documents` disk root so the chown below covers
+# it: a fresh named volume (compose.yaml `application-documents`) is seeded
+# from the image's directory, ownership included. Without this line the
+# mount is root-owned and every coach-application upload fails with a 503.
+RUN mkdir -p /var/www/html/storage/app/application_documents
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 USER www-data
 EXPOSE 9000

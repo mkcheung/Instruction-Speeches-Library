@@ -49,21 +49,16 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
  * global scope and an unqualified `User::count()` silently counts deleted
  * accounts.
  *
- * ## Why the status list is duplicated here
+ * ## Where the undecided status list comes from
  *
- * `['submitted', 'under_review']` mirrors
- * `CoachApplicationResource.php:51`'s own
- * `modifyQueryUsing(fn ($query) => $query->whereIn('status', ['submitted',
- * 'under_review'])->orderBy('submitted_at'))`, deliberately copied rather
- * than imported: a widget that reaches into a Resource to borrow its queue
- * definition couples the dashboard to that Resource's internals, and
- * `CoachApplication` exposes no scope or constant for the undecided set
- * (its statuses live in a raw-SQL CHECK constraint,
- * `…create_coach_applications_table.php:74-75`). The cost of the copy is
- * that the tile and the queue can drift; the tile is the half that would be
- * wrong, so if that list ever moves onto the model, move this with it.
- * `under_review` is included because an application an admin has merely
- * opened is still undecided — it has not left the queue.
+ * `CoachApplication::UNDECIDED_STATUSES`, the same constant the coach
+ * application list sorts on (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §4).
+ * It used to be a literal copied from the Resource's queue query, because
+ * the model exposed no constant for the undecided set; now that it does,
+ * the tile and the queue cannot drift, and the widget still does not reach
+ * into a Resource's internals. `under_review` is included because an
+ * application an admin has merely opened is still undecided — it has not
+ * left the queue.
  *
  * ## Why `canView()` — §8.2
  *
@@ -139,7 +134,7 @@ class ModerationQueuesWidget extends StatsOverviewWidget
 
             Stat::make(
                 'Coach applications waiting',
-                CoachApplication::query()->whereIn('status', ['submitted', 'under_review'])->count(),
+                CoachApplication::query()->whereIn('status', CoachApplication::UNDECIDED_STATUSES)->count(),
             )
                 ->description('Submitted or under review, undecided')
                 ->descriptionIcon(Heroicon::OutlinedAcademicCap)

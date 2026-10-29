@@ -26,7 +26,8 @@ use Illuminate\Support\Str;
  * structure; `execute()` performs the writes and returns the same shape
  * for the audit-entry metadata.
  *
- * The 8 steps below are §6 verbatim, in order:
+ * The 8 steps below are §6 verbatim, in order, plus the deliberate 6c
+ * extension (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §9):
  *   1. Revoke sessions
  *   2. Delete media at storage (every speech_assets row of a speech this
  *      user OWNS, excluding voice_note rows — those are steps 3a/3b)
@@ -38,7 +39,9 @@ use Illuminate\Support\Str;
  *      pointed at)
  *   5. Null authorship (reviewer_id -> null on surviving reviews)
  *   6. Hard-delete profile (6a) and every connections row naming this
- *      user, in EITHER mirrored-pair column (6b)
+ *      user, in EITHER mirrored-pair column (6b), then shred coach-
+ *      application statements and document bytes, keeping the decision
+ *      record and hashes (6c, CoachApplicationErasure)
  *   7. Anonymize the user row (never delete it)
  *   8. Write the audit entry
  */
@@ -47,6 +50,7 @@ class AccountErasureService
     public function __construct(
         private readonly EraseReviewerVoiceNotes $eraseReviewerVoiceNotes,
         private readonly RoleAssignmentService $roles,
+        private readonly CoachApplicationErasure $coachApplications,
     ) {}
 
     public function plan(User $user): ErasurePlan
@@ -109,6 +113,9 @@ class AccountErasureService
         // explicit, exactly like `profile_deleted` above.
         $connectionsCount = Connection::query()->where('owner_id', $user->id)->orWhere('peer_id', $user->id)->count();
 
+        // Step 6c: coach-application documents that still hold bytes.
+        $coachApplications = $this->coachApplications->plan($user);
+
         return new ErasurePlan([
             ['key' => 'sessions_revoked', 'label' => '1. Revoke sessions', 'count' => $sessionsCount, 'bytes' => 0],
             ['key' => 'media_deleted', 'label' => '2. Delete media at storage (owned speeches)', 'count' => $mediaAssets->count(), 'bytes' => $mediaBytes],
@@ -118,6 +125,7 @@ class AccountErasureService
             ['key' => 'reviews_authorship_nulled', 'label' => '5. Null authorship on surviving reviews', 'count' => $reviewsToNull, 'bytes' => 0],
             ['key' => 'profile_deleted', 'label' => '6a. Hard-delete profile', 'count' => $profileCount, 'bytes' => 0],
             ['key' => 'connections_deleted', 'label' => '6b. Hard-delete connections rows (owner_id or peer_id)', 'count' => $connectionsCount, 'bytes' => 0],
+            ['key' => 'coach_applications_shredded', 'label' => '6c. Shred coach-application statements and documents', 'count' => $coachApplications['count'], 'bytes' => $coachApplications['bytes']],
             ['key' => 'user_anonymized', 'label' => '7. Anonymize the user row', 'count' => 1, 'bytes' => 0],
             ['key' => 'audit_entry_written', 'label' => '8. Write the audit entry', 'count' => 1, 'bytes' => 0],
         ]);
@@ -145,7 +153,8 @@ class AccountErasureService
         // `voice_erasure_started_at` are the same hard gates
         // `EraseSelfAccount` stamps before its narrower voice-only slice —
         // `ReviewService::invite` and `VoiceNoteService::create` both 409
-        // on them. Without this, a review invite or a new voice note
+        // on them, as do coach-application submission and approval, which
+        // is what lets step 6c see every application. Without this, a review invite or a new voice note
         // recorded against this user as reviewer could land between step
         // 3(a)'s pluck and step 5's null-authorship UPDATE, leaving a
         // voice-note asset that was never purged attached to a review
@@ -229,6 +238,11 @@ class AccountErasureService
         // 6a — the users row survives (anonymized, not deleted) in step 7.
         $connectionsDeleted = Connection::query()->where('owner_id', $user->id)->orWhere('peer_id', $user->id)->delete();
 
+        // Step 6c: shred coach-application statements and document bytes
+        // (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §9). The gate above already
+        // refuses new submissions and approvals, so nothing lands behind it.
+        $coachApplicationsShredded = $this->coachApplications->execute($user);
+
         // Step 7: anonymize the user row. Never delete it — it must
         // survive to hold FK targets other rows still reference
         // (reviews.reviewer_id on surviving reviews elsewhere,
@@ -263,6 +277,7 @@ class AccountErasureService
             ['key' => 'reviews_authorship_nulled', 'label' => '5. Null authorship on surviving reviews', 'count' => $reviewsNulled, 'bytes' => 0],
             ['key' => 'profile_deleted', 'label' => '6a. Hard-delete profile', 'count' => $profileDeleted, 'bytes' => 0],
             ['key' => 'connections_deleted', 'label' => '6b. Hard-delete connections rows (owner_id or peer_id)', 'count' => $connectionsDeleted, 'bytes' => 0],
+            ['key' => 'coach_applications_shredded', 'label' => '6c. Shred coach-application statements and documents', 'count' => $coachApplicationsShredded['count'], 'bytes' => $coachApplicationsShredded['bytes']],
             ['key' => 'user_anonymized', 'label' => '7. Anonymize the user row', 'count' => 1, 'bytes' => 0],
             // Step 8 (write the audit entry) is filled in below, once the
             // metadata to write IS this plan itself.

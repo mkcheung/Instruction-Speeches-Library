@@ -16,9 +16,12 @@ use RuntimeException;
  * so every legal transition is enumerated in exactly one place and an
  * illegal one throws instead of silently writing.
  *
- * States: `draft -> submitted -> under_review -> approved | rejected`,
- * and `rejected -> draft` (reapply, reusing the same row).
- * `withdrawn` is reachable from any pre-decision state.
+ * States: `draft -> submitted -> under_review -> approved | rejected`.
+ * `withdrawn` is reachable from any pre-decision state. Reapplying after
+ * `rejected` or `withdrawn` creates a NEW draft row; the decided row keeps
+ * its decision, documents and retention clock. This deliberately replaces
+ * STEP-12's "`rejected -> draft`, reusing the row"
+ * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8).
  *
  * @property int $id
  * @property int $user_id
@@ -42,6 +45,9 @@ use RuntimeException;
 #[Fillable(['user_id', 'status', 'statement'])]
 class CoachApplication extends Model
 {
+    /** Still awaiting a decision: the admin queue and dashboard tile. */
+    public const UNDECIDED_STATUSES = ['submitted', 'under_review'];
+
     /**
      * @return BelongsTo<User, $this>
      */
@@ -66,6 +72,30 @@ class CoachApplication extends Model
         return $this->hasMany(ApplicationDocument::class, 'application_id');
     }
 
+    /**
+     * PLAN-COACH-APPLICATION-REVIEW-PAGE.md §5.3. The review page's nested
+     * Download action resolves its row by list position, and an unordered
+     * relation can reorder on Postgres after an UPDATE; ids only ever grow.
+     * Kept off `documents()`, whose `count()` would reject an ORDER BY.
+     *
+     * @return HasMany<ApplicationDocument, $this>
+     */
+    public function documentsForReview(): HasMany
+    {
+        return $this->documents()->orderBy('id');
+    }
+
+    /**
+     * Q3 (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §7): approval needs at least
+     * one downloadable document. The one copy of that rule, read by both the
+     * decision service's 409 guard and the review page's disabled Approve.
+     * At most two rows (`CoachApplicationSubmissionService::MAX_DOCUMENTS`).
+     */
+    public function hasDownloadableDocument(): bool
+    {
+        return $this->documentsForReview->contains->isDownloadable();
+    }
+
     private function assertStatus(string ...$allowed): void
     {
         if (! in_array($this->status, $allowed, true)) {
@@ -74,21 +104,18 @@ class CoachApplication extends Model
     }
 
     /**
-     * `draft -> submitted`, or `rejected -> draft -> submitted` in one
-     * call for a reapplication (STEP-12.md: "`rejected -> draft` legal,
-     * reusing the row"). Sets `submitted_at` fresh every time.
+     * `draft -> submitted` only. A reapplication is a fresh draft row
+     * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8), so a submitted row never
+     * carries an earlier decision to clear.
      */
     public function submit(string $statement): void
     {
-        $this->assertStatus('draft', 'rejected');
+        $this->assertStatus('draft');
 
         $this->forceFill([
             'status' => 'submitted',
             'statement' => $statement,
             'submitted_at' => now(),
-            'decided_at' => null,
-            'decided_by_id' => null,
-            'decision_reason' => null,
         ])->save();
     }
 
