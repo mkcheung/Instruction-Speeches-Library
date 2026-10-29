@@ -166,9 +166,12 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
             // STEP-11-FROZEN-CONTRACT.md §3/§6 step 7: set once, by
             // App\Services\Privacy\AccountErasureService, when the full
             // account-erasure job anonymizes this row. Distinct from
-            // `erasure_started_at` above, which only ever gates the
-            // narrower reviewer-voice-note erasure slice
-            // (App\Jobs\EraseSelfAccount, pre-existing).
+            // `erasure_started_at` above, the hard gate stamped by both
+            // AccountErasureService and the narrower App\Jobs\EraseSelfAccount
+            // (`DELETE /api/me`, which never anonymizes): once set, review
+            // invites, coach-application writes and coach approval all 409
+            // (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §9). Only the full job
+            // shreds coach data (its step 6c); `DELETE /api/me` does not.
             'anonymized_at' => 'datetime',
             // PLAN-ADMIN-DASHBOARD.md §5.1. Both columns exist since
             // 2026_08_22_100003_add_suspended_at_to_users_table.php and

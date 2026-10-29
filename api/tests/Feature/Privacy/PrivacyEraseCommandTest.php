@@ -14,9 +14,11 @@ use Database\Seeders\RoleSeeder;
  * Step 6 is now printed as two sub-steps (6a/6b, matching the existing
  * 3a/3b convention), since STEP-13's `connections` table landed and the
  * erasure plan must purge it explicitly alongside the profile row — see
- * AccountErasureService::plan()'s own doc comment.
+ * AccountErasureService::plan()'s own doc comment. Step 6c (shred coach
+ * applications) is a deliberate extension from
+ * PLAN-COACH-APPLICATION-REVIEW-PAGE.md §9, recorded in the contract's §6.
  */
-it('prints the erasure plan in the frozen contract\'s exact order (with 6a/6b for STEP-13 connections) and does not execute anything', function () {
+it('prints the erasure plan in the frozen contract\'s exact order (with 6a/6b/6c) and does not execute anything', function () {
     $this->seed(RoleSeeder::class);
     $user = User::factory()->create();
     $user->assignRole('member');
@@ -31,6 +33,7 @@ it('prints the erasure plan in the frozen contract\'s exact order (with 6a/6b fo
         ->expectsOutputToContain('5. Null authorship on surviving reviews')
         ->expectsOutputToContain('6a. Hard-delete profile')
         ->expectsOutputToContain('6b. Hard-delete connections rows')
+        ->expectsOutputToContain('6c. Shred coach-application')
         ->expectsOutputToContain('7. Anonymize the user row')
         ->expectsOutputToContain('8. Write the audit entry')
         ->assertExitCode(0);

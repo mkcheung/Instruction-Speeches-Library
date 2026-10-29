@@ -80,7 +80,7 @@ beforeEach(function () {
 
 /**
  * ⚠️ ENVIRONMENT, not a test convenience, and a duplicate of
- * `PanelModerationTest::renderPanelTablesWithoutIntl()` under a different
+ * `renderPanelTablesWithoutIntl()` (`PanelHelpers.php`) under a different
  * name ON PURPOSE. Functions declared in a Pest test file are global once
  * PHPUnit loads the file to discover its tests, so re-declaring that exact
  * name here would be a fatal `cannot redeclare` the moment both files are

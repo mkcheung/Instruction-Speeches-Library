@@ -12,7 +12,9 @@ use Illuminate\Console\Command;
  * "The ordered deletion job has no UI by design — its artifact is a CLI
  * command whose output *is* the specification." STEP-11-FROZEN-CONTRACT.md
  * §6: the printed order below IS §11.2/§6, so it must name each of the 8
- * steps, in this exact order, with a real count — never a placeholder.
+ * steps (step 6 as 6a/6b/6c, the 6c coach-application shred added by
+ * PLAN-COACH-APPLICATION-REVIEW-PAGE.md §9), in this exact order, with a
+ * real count — never a placeholder.
  *
  * Templated on App\Console\Commands\MediaReconcileCommand's shape: plain
  * `$this->info()` output, no table/progress-bar dependency.

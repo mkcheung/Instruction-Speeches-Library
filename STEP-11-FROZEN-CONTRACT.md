@@ -190,6 +190,17 @@ but don't spell out — read carefully, this is the part most likely to hide a b
    explicit statement (the FK's own CASCADE never fires this, because the `users` row is never
    hard-deleted — see §4 finding from the backend agent). `connections`: no-op per §5 above.
 
+   > **Amended (deliberate extensions).** Step 6 is printed as sub-steps: 6a profile, 6b every
+   > `connections` row naming the user in either column (STEP-13), and **6c shred coach
+   > applications** (`PLAN-COACH-APPLICATION-REVIEW-PAGE.md` §9,
+   > `App\Services\Privacy\CoachApplicationErasure`, key `coach_applications_shredded`). 6c
+   > withdraws any live application, nulls every application's `statement`, and deletes each
+   > document's bytes before blanking its row (`path = ''`, `original_filename = '[erased]'`),
+   > keeping the decision record and `sha256` per STEP-12's retention rule. It is idempotent.
+   > The `erasure_started_at` gate also refuses coach-application writes and approval, so no
+   > application can land behind 6c. `DELETE /api/me` (`EraseSelfAccount`) stamps that gate but
+   > does not run 6c.
+
 7. **Anonymize the user row** — scrub `first_name`/`last_name`/`email` (replace with a
    collision-safe placeholder, e.g. `erased-{id}@erased.invalid`, since `email` is UNIQUE),
    `username` (release it — write a `username_history` row so the handle can't be

@@ -27,7 +27,9 @@ use Throwable;
  * freshly locked rows, so a stale snapshot cannot authorize a second terminal
  * transition. One terminal winner: repeating the winning decision is a no-op
  * (first reason/time kept, no new role/audit/notice); the opposite decision,
- * a draft or a withdrawn application is a controlled 409.
+ * a draft or a withdrawn application is a controlled 409. Approval is also a
+ * 409 without a clean document, or once the applicant's erasure has started
+ * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §7, §9).
  *
  * `role.assign` is re-authorized here against the freshly read actor and the
  * locked applicant (callers' earlier Gate check may be stale after the roster
@@ -67,9 +69,28 @@ class CoachApplicationDecisionService
             }
 
             abort_unless(
-                in_array($locked->status, ['submitted', 'under_review'], true),
+                in_array($locked->status, CoachApplication::UNDECIDED_STATUSES, true),
                 Response::HTTP_CONFLICT,
                 "CoachApplication#{$locked->id}: cannot be {$outcome} from status \"{$locked->status}\".",
+            );
+
+            // PLAN-COACH-APPLICATION-REVIEW-PAGE.md §7 (Q3): approval needs at
+            // least one clean document. Read on the locked row; addDocuments
+            // locks the same row, so an upload cannot race this check.
+            abort_if(
+                $outcome === 'approved' && ! $locked->hasDownloadableDocument(),
+                Response::HTTP_CONFLICT,
+                "CoachApplication#{$locked->id}: cannot be approved without at least one clean document.",
+            );
+
+            // §9: erasure stamps `erasure_started_at` under this same user
+            // lock before step 1, so an approval cannot land between the
+            // stamp and step 6c and leave an anonymized account holding the
+            // coach role. Reject stays open: it grants nothing.
+            abort_if(
+                $outcome === 'approved' && $applicant->erasure_started_at !== null,
+                Response::HTTP_CONFLICT,
+                'The applicant is erasing their account.',
             );
 
             if ($outcome === 'approved') {

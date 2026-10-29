@@ -227,7 +227,7 @@ class SpeechResource extends Resource
      *    `speech.viewMedia` here without the matching `Gate::define` plus
      *    `$mustFallThrough` entry in `AppServiceProvider` would be a Gate
      *    call that authorizes nothing — the exact trap
-     *    `PanelModerationTest.php:609-614` documents for
+     *    `PanelModerationTest.php:404-409` documents for
      *    `report.dismiss`. An honest `hasAnyRole` check is strictly
      *    better than a decorative `Gate::authorize`.
      *
@@ -560,8 +560,9 @@ class SpeechResource extends Resource
                         // Written from `modalContent()` (modal OPEN), NOT
                         // `->action()` (modal SUBMIT). That distinction
                         // is this codebase's most-repeated bug: §5.4's
-                        // hole 7 here, and the same mistake again in
-                        // `CoachApplicationResource::viewDocuments`. An
+                        // hole 7 here, and the same mistake again in the
+                        // removed `CoachApplicationResource::viewDocuments`
+                        // modal. An
                         // audit row that fires on submit records nothing
                         // about the admin who opened a modal, read it and
                         // clicked away — which is every read.
@@ -597,11 +598,12 @@ class SpeechResource extends Resource
                     // modal, read every annotation and clicked away
                     // generated NO audit row — the single read this panel
                     // most needs to account for was the one read it did not
-                    // record. `CoachApplicationResource::viewDocuments`
-                    // has the identical fix with its own bug history
-                    // written up at that call site; this is the second
-                    // instance of the same mistake, which is why both now
-                    // audit from `modalContent()`.
+                    // record. The coach-application documents modal had
+                    // the second instance of the same mistake; it is gone,
+                    // and its replacement audits per Download click
+                    // (`ViewCoachApplication::downloadAction()`), because
+                    // a document is fetched one at a time, not read in a
+                    // modal.
                     //
                     // Consequence worth naming: opening the modal is now
                     // itself the audited event, so a double-click writes
@@ -772,7 +774,7 @@ class SpeechResource extends Resource
                     // neither a statement of reasons nor notice to the
                     // affected speaker. Same `requiresConfirmation()` +
                     // `->schema([...required()])` shape as
-                    // `CoachApplicationResource::reject`, which is the
+                    // `ViewCoachApplication`'s Reject action, which is the
                     // existing precedent for "a decision that must be
                     // justified in writing".
                     ->schema([

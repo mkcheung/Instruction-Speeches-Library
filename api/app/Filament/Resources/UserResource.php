@@ -61,7 +61,8 @@ use Illuminate\Support\Facades\Gate;
  * constraints.md: "Only an Admin can create a Coach, and only after
  * reviewing certification PDFs the user uploaded" — the only legal path
  * to the `coach` role is `CoachApplicationDecisionService::approve()`
- * (`CoachApplicationResource`'s "approve" action). An earlier version of
+ * (the Approve action on `CoachApplicationResource`'s review page,
+ * `ViewCoachApplication`). An earlier version of
  * this file had a standalone "Grant coach" button here with no
  * application/document precondition at all, bypassing the entire
  * certification-review requirement — found by `/code-review`'s

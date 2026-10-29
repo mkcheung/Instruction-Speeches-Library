@@ -218,6 +218,11 @@ it('creation locks the applicant first; first POST creates draft, second submits
         ->and($b->json('coachApplication.status'))->toBe('submitted');
     $this->actingAs($user)->postJson('/api/coach-applications', ['statement' => 'changed'])->assertCreated()
         ->assertJsonPath('coachApplication.statement', 'changed');
+    // PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8: reapplying after a withdrawal
+    // starts a fresh draft row instead of the old 409.
     CoachApplication::query()->update(['status' => 'withdrawn']);
-    $this->actingAs($user)->postJson('/api/coach-applications', ['statement' => 's'])->assertStatus(409);
+    $c = $this->actingAs($user)->postJson('/api/coach-applications', ['statement' => 's'])->assertCreated();
+    expect($c->json('coachApplication.status'))->toBe('draft')
+        ->and($c->json('coachApplication.id'))->not->toBe($a->json('coachApplication.id'))
+        ->and(CoachApplication::query()->findOrFail($a->json('coachApplication.id'))->status)->toBe('withdrawn');
 });

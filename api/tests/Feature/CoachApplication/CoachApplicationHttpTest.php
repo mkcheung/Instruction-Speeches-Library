@@ -117,6 +117,16 @@ it('a coach approval routes through RoleAssignmentService and reaches the review
     $this->actingAs($member)->postJson('/api/coach-applications', ['statement' => 'Statement.'])->assertCreated();
     $application = CoachApplication::query()->where('user_id', $member->id)->firstOrFail();
     expect($application->status)->toBe('submitted');
+    // Approval needs a clean document (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §7).
+    ApplicationDocument::query()->create([
+        'application_id' => $application->id,
+        'disk' => 'application_documents',
+        'path' => 'applications/'.$application->id.'/clean.pdf',
+        'original_filename' => 'cert.pdf',
+        'byte_size' => 100,
+        'sha256' => str_repeat('a', 64),
+        'status' => 'clean',
+    ]);
 
     app(CoachApplicationDecisionService::class)->approve($admin, $application, 'Looks great.');
 
@@ -141,7 +151,9 @@ it('an admin cannot submit, withdraw, or upload documents to someone else\'s app
     ])->assertNotFound();
 });
 
-it('reapplies after rejection by reusing the same row (rejected -> draft -> submitted)', function () {
+it('reapplying after rejection creates a new draft row; the decided row keeps its decision and documents', function () {
+    Bus::fake();
+    Storage::fake('application_documents');
     $this->seed(RoleSeeder::class);
     $admin = User::factory()->create();
     $admin->assignRole('admin');
@@ -149,18 +161,84 @@ it('reapplies after rejection by reusing the same row (rejected -> draft -> subm
     $member->assignRole('member');
 
     $this->actingAs($member)->postJson('/api/coach-applications', ['statement' => 'First attempt.'])->assertCreated();
+    $old = CoachApplication::query()->where('user_id', $member->id)->firstOrFail();
+    $this->actingAs($member)->postJson("/api/coach-applications/{$old->id}/documents", [
+        'documents' => [
+            UploadedFile::fake()->createWithContent('a.pdf', minimalPdfBytes()),
+            UploadedFile::fake()->createWithContent('b.pdf', minimalPdfBytes()),
+        ],
+    ])->assertCreated();
     $this->actingAs($member)->postJson('/api/coach-applications', ['statement' => 'First attempt.'])->assertCreated();
-    $application = CoachApplication::query()->where('user_id', $member->id)->firstOrFail();
 
-    app(CoachApplicationDecisionService::class)->reject($admin, $application, 'Not enough evidence.');
-    expect($application->fresh()->status)->toBe('rejected');
+    app(CoachApplicationDecisionService::class)->reject($admin, $old, 'Not enough evidence.');
+    $decided = $old->fresh();
+    expect($decided->status)->toBe('rejected');
 
+    // PLAN-COACH-APPLICATION-REVIEW-PAGE.md §8: a reapplication is a new row.
     $reapplied = $this->actingAs($member)->postJson('/api/coach-applications', [
         'statement' => 'Second attempt, with more detail.',
     ])->assertCreated();
-    $reapplied->assertJsonPath('coachApplication.status', 'submitted');
-    $reapplied->assertJsonPath('coachApplication.statement', 'Second attempt, with more detail.');
+    $reapplied->assertJsonPath('coachApplication.status', 'draft')
+        ->assertJsonPath('coachApplication.statement', 'Second attempt, with more detail.');
+    $newId = $reapplied->json('coachApplication.id');
+    expect($newId)->not->toBe($old->id);
+    $new = CoachApplication::query()->findOrFail($newId);
+    expect($new->documents()->count())->toBe(0);
 
-    // Same row reused, not a second application row.
-    expect(CoachApplication::query()->where('user_id', $member->id)->count())->toBe(1);
+    // The decided row is untouched: decision, reason, retention clock, documents.
+    $after = $old->fresh();
+    expect($after->status)->toBe('rejected')
+        ->and($after->decided_at)->toBe($decided->decided_at)
+        ->and($after->decision_reason)->toBe('Not enough evidence.')
+        ->and($after->documents_purge_after)->not->toBeNull()
+        ->and($after->documents_purge_after)->toBe($decided->documents_purge_after)
+        ->and($after->documents()->count())->toBe(2);
+
+    $this->actingAs($member)->getJson('/api/coach-applications/me')
+        ->assertOk()
+        ->assertJsonPath('coachApplication.id', $newId)
+        ->assertJsonPath('coachApplication.status', 'draft');
+
+    // The two-document cap is per attempt: the old row's two do not count.
+    $this->actingAs($member)->postJson("/api/coach-applications/{$newId}/documents", [
+        'documents' => [
+            UploadedFile::fake()->createWithContent('c.pdf', minimalPdfBytes()),
+            UploadedFile::fake()->createWithContent('d.pdf', minimalPdfBytes()),
+        ],
+    ])->assertCreated();
+    expect($new->documents()->count())->toBe(2);
+
+    $this->actingAs($member)->postJson('/api/coach-applications', [
+        'statement' => 'Second attempt, with more detail.',
+    ])->assertCreated()
+        ->assertJsonPath('coachApplication.id', $newId)
+        ->assertJsonPath('coachApplication.status', 'submitted');
+    expect(CoachApplication::query()->where('user_id', $member->id)->count())->toBe(2);
+});
+
+it('refuses coach-application writes once account erasure has started, leaving no staged object', function () {
+    Bus::fake();
+    Storage::fake('application_documents');
+    $this->seed(RoleSeeder::class);
+    $member = User::factory()->create();
+    $member->assignRole('member');
+
+    $this->actingAs($member)->postJson('/api/coach-applications', ['statement' => 'Statement.'])->assertCreated();
+    $application = CoachApplication::query()->where('user_id', $member->id)->firstOrFail();
+
+    // PLAN-COACH-APPLICATION-REVIEW-PAGE.md §9: the gate AccountErasureService
+    // (and `DELETE /api/me`) stamp before step 1.
+    $member->forceFill(['erasure_started_at' => now()])->save();
+
+    $this->actingAs($member)->postJson('/api/coach-applications', ['statement' => 'Statement.'])
+        ->assertStatus(409);
+    expect($application->fresh()->status)->toBe('draft');
+
+    $this->actingAs($member)->postJson("/api/coach-applications/{$application->id}/documents", [
+        'documents' => [UploadedFile::fake()->createWithContent('a.pdf', minimalPdfBytes())],
+    ])->assertStatus(409);
+
+    expect(ApplicationDocument::query()->count())->toBe(0)
+        ->and(Storage::disk('application_documents')->allFiles())->toBe([]);
+    Bus::assertNothingDispatched();
 });

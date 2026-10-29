@@ -15,26 +15,32 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
  * generated only from an authorized admin action (the Filament
  * coach-application review page), never a public/guessable path.
  *
- * `clean` documents only — an `infected` row's storage bytes have already
- * been purged by App\Jobs\ScanApplicationDocument, and a `pending_scan`
- * row must not be openable before the scan has had a chance to run.
+ * Downloadable rows only (`ApplicationDocument::isDownloadable()`): `clean`
+ * with a non-empty path. An `infected` row's bytes have already been purged
+ * by App\Jobs\ScanApplicationDocument, a `pending_scan` row must not be
+ * openable before the scan has run, and purged or erased rows keep `clean`
+ * with `path = ''`. `fileExists`, not `exists`: `exists('')` is true for the
+ * disk root directory, which made a purged row a 500 in `download()`
+ * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §6).
  *
- * This is the first place in the codebase setting `Content-Disposition:
- * attachment` and `X-Content-Type-Options: nosniff` at all (confirmed by
- * repo-wide grep, STEP-12-FROZEN-CONTRACT.md §5) — there is nothing to
- * copy; built directly from the contract's non-negotiables. Forcing
- * `attachment` (never `inline`) is what keeps a PDF — "a scripting
- * environment" per STEP-12.md's "Watch for" section — from ever executing
- * in the admin panel's own high-privilege origin: the browser downloads
- * it instead of rendering it as a page.
+ * Same origin as the panel: the route lives in `routes/web.php` on
+ * `APP_URL`, which is also the admin panel's own high-privilege, cookie-
+ * bearing origin — there is no separate media origin here. Three headers
+ * keep a PDF ("a scripting environment" per STEP-12.md's "Watch for")
+ * from running there: `Content-Disposition: attachment` (never `inline`)
+ * makes the browser download it instead of rendering it, `nosniff` stops
+ * content sniffing, and `Content-Security-Policy: sandbox` (the third
+ * header MODERNIZATION_PLAN.md:1134 requires for the cookie origin) gives
+ * it an opaque origin if anything does render it. A cookieless download
+ * host is the real fix and is deliberately deferred (plan §14).
  */
 class ApplicationDocumentDownloadController extends Controller
 {
     public function show(Request $request, ApplicationDocument $document): HttpResponse
     {
         abort_unless($request->hasValidSignature(), Response::HTTP_FORBIDDEN);
-        abort_unless($document->status === 'clean', Response::HTTP_NOT_FOUND);
-        abort_unless(Storage::disk($document->disk)->exists($document->path), Response::HTTP_NOT_FOUND);
+        abort_unless($document->isDownloadable(), Response::HTTP_NOT_FOUND);
+        abort_unless(Storage::disk($document->disk)->fileExists($document->path), Response::HTTP_NOT_FOUND);
 
         return Storage::disk($document->disk)->download(
             $document->path,
@@ -42,6 +48,7 @@ class ApplicationDocumentDownloadController extends Controller
             [
                 'Content-Type' => 'application/pdf',
                 'X-Content-Type-Options' => 'nosniff',
+                'Content-Security-Policy' => 'sandbox',
             ],
         );
     }
