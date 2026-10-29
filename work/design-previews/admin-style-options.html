@@ -1,0 +1,458 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Luckiest+Guy&display=swap" rel="stylesheet">
+<style>
+  #admin-style-options {
+    --admin-cream: #fff5e6; --admin-paper: #fffdf6; --admin-rail: #f8ecda;
+    --admin-ink: #2b211b; --admin-muted: #66574f; --admin-burgundy: #8a1720;
+    --admin-teal: #0f6b66; --admin-gold: #e9b949; --admin-outline: #8a7668;
+    --admin-shadow: #e7d0a5; --admin-header-paper: #fbf2df;
+    color: var(--admin-ink); font: 400 14px/1.5 'Geist', sans-serif;
+    color-scheme: light; width: 100%; min-width: 0;
+  }
+  #admin-style-options, #admin-style-options * { box-sizing: border-box; }
+  #admin-style-options button { font: inherit; cursor: pointer; }
+  #admin-style-options button:disabled { cursor: default; }
+  #admin-style-options button:focus-visible { outline: 2px solid var(--admin-teal); outline-offset: 3px; }
+  #admin-style-options .admin-design-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+  #admin-style-options .admin-design-choice { border: 1px solid var(--admin-outline); border-radius: 5px; background: var(--admin-paper); color: var(--admin-ink); padding: 12px 13px; text-align: left; min-height: 88px; }
+  #admin-style-options .admin-design-choice[aria-pressed="true"] { border: 2px solid var(--admin-teal); padding: 11px 12px; background: #eaf3e9; }
+  #admin-style-options .admin-design-choice strong { display: block; font-weight: 600; margin-bottom: 3px; }
+  #admin-style-options .admin-design-choice small { display: block; color: var(--admin-muted); font-size: 12px; }
+  #admin-style-options .admin-design-label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 3px; }
+  #admin-style-options .admin-design-letter { font-size: 11px; font-weight: 600; color: var(--admin-teal); letter-spacing: .08em; }
+  #admin-style-options .admin-design-recommended { font-size: 11px; color: var(--admin-teal); border-bottom: 1px solid currentColor; }
+  #admin-style-options .admin-placement-picker { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 14px; color: var(--admin-muted); font-size: 12px; }
+  #admin-style-options .admin-placement-picker > span { margin-right: 4px; }
+  #admin-style-options .admin-placement-choice { min-height: 36px; padding: 6px 12px; border: 1px solid var(--admin-outline); border-radius: 4px; background: var(--admin-paper); color: var(--admin-ink); font-size: 12px; }
+  #admin-style-options .admin-placement-choice[aria-pressed="true"] { background: var(--admin-teal); border-color: var(--admin-teal); color: var(--admin-paper); }
+  #admin-style-options .admin-shell { border: 1px solid var(--admin-outline); border-radius: 5px; overflow: clip; background: var(--admin-cream); min-width: 0; }
+  #admin-style-options .admin-masthead { min-height: 62px; display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 21px 9px; box-shadow: inset 0 4px var(--admin-burgundy), inset 0 -1px var(--admin-gold); background: var(--admin-cream); }
+  #admin-style-options .admin-brand { min-width: 0; overflow-wrap: anywhere; color: var(--admin-burgundy); font: 400 19px/1.2 'Luckiest Guy', cursive; letter-spacing: .035em; }
+  #admin-style-options .admin-brand-label { display: inline-block; font: 500 11px/1.4 'Geist', sans-serif; letter-spacing: .08em; text-transform: uppercase; border-left: 1px solid var(--admin-outline); color: var(--admin-muted); margin-left: 10px; padding-left: 10px; vertical-align: middle; }
+  #admin-style-options .admin-account { display: flex; align-items: center; gap: 9px; color: var(--admin-muted); font-size: 12px; flex-shrink: 0; }
+  #admin-style-options .admin-avatar { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid var(--admin-ink); border-radius: 50%; background: var(--admin-gold); color: var(--admin-ink); font-size: 11px; }
+  #admin-style-options .admin-layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); }
+  #admin-style-options .admin-sidebar { min-width: 0; padding: 17px 12px 18px; background: var(--admin-rail); border-right: 1px solid var(--admin-outline); }
+  #admin-style-options .admin-nav-group { margin: 15px 0 6px 10px; color: var(--admin-muted); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; }
+  #admin-style-options .admin-nav-group:first-child { margin-top: 0; }
+  #admin-style-options .admin-nav-link { width: 100%; min-height: 44px; border: 1px solid transparent; border-radius: 4px; padding: 9px 10px; margin: 1px 0; background: transparent; color: var(--admin-ink); display: flex; align-items: center; text-align: left; gap: 10px; font-size: 12px; }
+  #admin-style-options .admin-nav-link:hover { border-color: var(--admin-outline); background: var(--admin-cream); }
+  #admin-style-options .admin-nav-link[aria-current="page"] { color: var(--admin-paper); background: var(--admin-burgundy); border-color: var(--admin-ink); box-shadow: inset 3px 0 var(--admin-paper); }
+  #admin-style-options .admin-nav-link i { width: 17px; height: 17px; flex-shrink: 0; }
+  #admin-style-options .admin-nav-link small { display: block; font-size: 11px; }
+  #admin-style-options .admin-sidebar-art { max-width: 184px; margin: 17px auto 0; pointer-events: none; }
+  #admin-style-options .admin-character-art svg { display: block; width: 100%; height: auto; }
+  #admin-style-options .admin-art-caption { text-align: center; color: var(--admin-muted); font-size: 11px; margin-top: 0; }
+  #admin-style-options .admin-workspace { min-width: 0; padding: 27px 26px 30px; background: var(--admin-cream); }
+  #admin-style-options .admin-page-heading { display: flex; gap: 15px; align-items: flex-start; justify-content: space-between; margin-bottom: 23px; }
+  #admin-style-options .admin-page-heading > div { min-width: 0; }
+  #admin-style-options .admin-breadcrumb { color: var(--admin-muted); font-size: 11px; margin-bottom: 7px; }
+  #admin-style-options h1 { margin: 0; font: 400 30px/1.2 'Luckiest Guy', cursive; letter-spacing: .025em; overflow-wrap: anywhere; }
+  #admin-style-options .admin-page-description { color: var(--admin-muted); font-size: 12px; margin: 6px 0 0; max-width: 46em; }
+  #admin-style-options .admin-mobile-art { display: none; flex: 0 0 70px; pointer-events: none; }
+  #admin-style-options[data-placement="header"] .admin-mobile-art { display: block; flex-basis: 94px; }
+  #admin-style-options[data-placement="header"] .admin-sidebar-art,
+  #admin-style-options[data-placement="header"] .admin-art-caption { display: none; }
+  #admin-style-options .admin-sample-label { margin: 0 0 15px; color: var(--admin-muted); font-size: 11px; display: flex; align-items: center; gap: 7px; }
+  #admin-style-options .admin-sample-dot { width: 6px; height: 6px; background: var(--admin-teal); border-radius: 50%; flex-shrink: 0; }
+  #admin-style-options .admin-page-content { display: grid; gap: 20px; min-width: 0; }
+  #admin-style-options .admin-queue-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  #admin-style-options .admin-paper-panel { min-width: 0; border: 1px solid var(--admin-outline); border-radius: 4px; background: var(--admin-paper); box-shadow: 4px 4px 0 var(--admin-shadow); }
+  #admin-style-options .admin-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 50px; border-left: 5px solid var(--admin-teal); border-bottom: 1px solid var(--admin-outline); background: var(--admin-header-paper); padding: 13px 15px; position: relative; }
+  #admin-style-options .admin-panel-heading::after { content: ''; position: absolute; right: 17px; top: -6px; width: 25px; height: 11px; transform: rotate(-10deg); background: #e9b94975; pointer-events: none; }
+  #admin-style-options .admin-panel-heading h2 { margin: 0; font-size: 13px; font-weight: 600; }
+  #admin-style-options .admin-panel-heading small { color: var(--admin-muted); font-size: 11px; }
+  #admin-style-options .admin-stat-body { display: flex; align-items: baseline; gap: 10px; padding: 15px 17px 4px; }
+  #admin-style-options .admin-stat-number { font: 500 30px/1.3 'Geist', sans-serif; font-variant-numeric: tabular-nums; }
+  #admin-style-options .admin-stat-word { color: var(--admin-muted); font-size: 12px; }
+  #admin-style-options .admin-stat-footer { padding: 0 17px 17px; color: var(--admin-muted); font-size: 11px; }
+  #admin-style-options .admin-table-wrapper { width: 100%; overflow-x: auto; }
+  #admin-style-options .admin-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; }
+  #admin-style-options .admin-table th { color: var(--admin-muted); font-size: 11px; font-weight: 500; padding: 12px 15px; border-bottom: 1px solid #d7c6b1; background: var(--admin-paper); white-space: nowrap; }
+  #admin-style-options .admin-table td { padding: 14px 15px; border-bottom: 1px solid #e9dfcf; vertical-align: middle; }
+  #admin-style-options .admin-table tbody tr:last-child td { border-bottom: 0; }
+  #admin-style-options .admin-table .admin-name { min-width: 132px; font-weight: 500; }
+  #admin-style-options .admin-table .admin-subtext { display: block; margin-top: 2px; font-size: 11px; font-weight: 400; color: var(--admin-muted); }
+  #admin-style-options .admin-table .admin-number { font-variant-numeric: tabular-nums; text-align: right; }
+  #admin-style-options .admin-status { display: inline-block; white-space: nowrap; padding: 2px 7px; border: 1px solid #b4c6b2; border-radius: 4px; color: #315d35; background: #eff5e9; font-size: 11px; }
+  #admin-style-options .admin-status--pending { color: #714d10; background: #fff2cd; border-color: #d2b46e; }
+  #admin-style-options .admin-status--neutral { color: var(--admin-muted); background: #f1ece4; border-color: #c8b9aa; }
+  #admin-style-options .admin-row-action { color: var(--admin-teal); background: transparent; border: 0; padding: 7px 0; min-height: 44px; white-space: nowrap; font-size: 11px; font-weight: 500; opacity: 1; }
+  #admin-style-options .admin-panel-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid #d7c6b1; color: var(--admin-muted); font-size: 11px; padding: 10px 15px; }
+  #admin-style-options .admin-footer-controls { display: flex; gap: 6px; }
+  #admin-style-options .admin-small-control { border: 1px solid var(--admin-outline); color: var(--admin-muted); background: var(--admin-paper); border-radius: 3px; padding: 4px 8px; min-height: 32px; font-size: 11px; opacity: 1; }
+  #admin-style-options .admin-page-note { color: var(--admin-muted); font-size: 11px; margin: 0; }
+  #admin-style-options .admin-character-roster { margin-top: 23px; }
+  #admin-style-options .admin-roster-title { display: flex; justify-content: space-between; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  #admin-style-options .admin-roster-title h2 { color: var(--admin-ink); font-size: 14px; margin: 0; font-weight: 500; }
+  #admin-style-options .admin-roster-title p { font-size: 11px; color: var(--admin-muted); margin: 0; }
+  #admin-style-options .admin-character-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 9px; }
+  #admin-style-options .admin-character-choice { min-width: 0; display: flex; flex-direction: column; align-items: center; background: var(--admin-paper); border: 1px solid #d7c6b1; border-radius: 4px; color: var(--admin-ink); padding: 5px 5px 10px; }
+  #admin-style-options .admin-character-choice[aria-pressed="true"] { border: 2px solid var(--admin-teal); padding: 4px 4px 9px; }
+  #admin-style-options .admin-character-choice .admin-character-art { width: 100%; max-width: 126px; pointer-events: none; }
+  #admin-style-options .admin-character-choice strong { font-size: 11px; font-weight: 500; line-height: 1.3; }
+  #admin-style-options .admin-character-choice small { color: var(--admin-muted); font-size: 11px; line-height: 1.3; margin-top: 3px; }
+  #admin-style-options[data-direction="playbill"] .admin-masthead { background: var(--admin-burgundy); box-shadow: inset 0 4px var(--admin-ink), inset 0 -3px var(--admin-gold); min-height: 75px; }
+  #admin-style-options[data-direction="playbill"] .admin-brand, #admin-style-options[data-direction="playbill"] .admin-brand-label, #admin-style-options[data-direction="playbill"] .admin-account { color: var(--admin-paper); }
+  #admin-style-options[data-direction="playbill"] .admin-brand-label { border-color: #c87c73; }
+  #admin-style-options[data-direction="playbill"] .admin-page-heading { border-bottom: 3px solid var(--admin-burgundy); padding-bottom: 19px; }
+  #admin-style-options[data-direction="playbill"] .admin-panel-heading { border-left-color: var(--admin-burgundy); background: #f6e5cb; }
+  #admin-style-options[data-direction="playbill"] .admin-paper-panel { box-shadow: 4px 4px 0 #d6b58c; border-color: #705a4a; }
+  #admin-style-options[data-direction="playbill"] .admin-panel-heading::after { background: #e9b949b5; transform: rotate(4deg); }
+  #admin-style-options[data-direction="archive"] .admin-masthead { background: var(--admin-paper); min-height: 56px; box-shadow: inset 0 2px var(--admin-burgundy), inset 0 -1px #d5c4ae; }
+  #admin-style-options[data-direction="archive"] .admin-workspace { background: #fcf7ef; padding-top: 23px; }
+  #admin-style-options[data-direction="archive"] .admin-sidebar { background: #f4ecdf; }
+  #admin-style-options[data-direction="archive"] .admin-paper-panel { box-shadow: none; border-color: #c2b2a1; }
+  #admin-style-options[data-direction="archive"] .admin-panel-heading { background: #f5f0e7; border-left-width: 3px; min-height: 44px; padding-block: 10px; border-bottom-color: #c2b2a1; }
+  #admin-style-options[data-direction="archive"] .admin-panel-heading::after { display: none; }
+  #admin-style-options[data-direction="archive"] .admin-table td { padding-block: 9px; }
+  #admin-style-options[data-direction="archive"] .admin-table th { padding-block: 9px; }
+  #admin-style-options[data-direction="archive"] .admin-page-heading { margin-bottom: 17px; }
+  #admin-style-options[data-direction="archive"] .admin-page-content { gap: 15px; }
+  @media (max-width: 800px) {
+    #admin-style-options .admin-layout { grid-template-columns: 184px minmax(0, 1fr); }
+    #admin-style-options .admin-workspace { padding-inline: 20px; }
+    #admin-style-options .admin-character-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    #admin-style-options .admin-design-choice { padding: 11px; }
+    #admin-style-options .admin-design-choice[aria-pressed="true"] { padding: 10px; }
+    #admin-style-options .admin-brand-label { display: block; padding-left: 0; border-left: 0; margin: 3px 0 0; }
+  }
+  @media (max-width: 610px) {
+    #admin-style-options .admin-design-picker { grid-template-columns: 1fr; gap: 7px; }
+    #admin-style-options .admin-design-choice { min-height: 0; padding: 10px 12px; }
+    #admin-style-options .admin-design-choice[aria-pressed="true"] { padding: 9px 11px; }
+    #admin-style-options .admin-design-label { float: left; margin: 2px 10px 0 0; }
+    #admin-style-options .admin-design-choice strong { font-size: 13px; }
+    #admin-style-options .admin-design-recommended { display: none; }
+    #admin-style-options .admin-layout { grid-template-columns: minmax(0, 1fr); }
+    #admin-style-options .admin-sidebar { border-right: 0; border-bottom: 1px solid var(--admin-outline); padding: 11px; }
+    #admin-style-options .admin-sidebar nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px 6px; }
+    #admin-style-options .admin-nav-group { display: none; }
+    #admin-style-options .admin-nav-link { font-size: 11px; margin: 0; min-height: 44px; padding: 7px 8px; gap: 7px; }
+    #admin-style-options .admin-sidebar-art, #admin-style-options .admin-art-caption { display: none; }
+    #admin-style-options .admin-mobile-art { display: block; }
+    #admin-style-options[data-placement="header"] .admin-mobile-art { flex-basis: 70px; }
+    #admin-style-options .admin-masthead { padding: 12px 14px 10px; gap: 8px; }
+    #admin-style-options .admin-brand { font-size: 17px; }
+    #admin-style-options .admin-account span:not(.admin-avatar) { display: none; }
+    #admin-style-options .admin-workspace { padding: 20px 14px 24px; }
+    #admin-style-options h1 { font-size: 26px; }
+    #admin-style-options .admin-page-heading { gap: 8px; }
+    #admin-style-options .admin-queue-grid { gap: 12px; }
+    #admin-style-options .admin-stat-body { padding-inline: 12px; gap: 7px; }
+    #admin-style-options .admin-stat-footer { padding-inline: 12px; }
+    #admin-style-options .admin-panel-heading { padding-inline: 11px; }
+    #admin-style-options .admin-stat-number { font-size: 27px; }
+    #admin-style-options .admin-table { min-width: 455px; }
+    #admin-style-options .admin-character-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 359px) {
+    #admin-style-options .admin-mobile-art { display: none; }
+    #admin-style-options[data-placement="header"] .admin-mobile-art { display: none; }
+    #admin-style-options .admin-queue-grid { grid-template-columns: 1fr; }
+    #admin-style-options .admin-character-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #admin-style-options .admin-page-description { font-size: 11px; }
+  }
+  @media (forced-colors: active) {
+    #admin-style-options .admin-character-art { display: none; }
+    #admin-style-options button[aria-pressed="true"], #admin-style-options button[aria-current="page"] { outline: 2px solid Highlight; }
+  }
+</style>
+
+<div id="admin-style-options" data-direction="notebook" data-placement="header">
+  <div class="admin-design-picker" role="group" aria-label="Admin styling direction">
+    <button type="button" class="admin-design-choice" data-direction-choice="notebook" aria-pressed="true">
+      <span class="admin-design-label"><span class="admin-design-letter">OPTION A</span><span class="admin-design-recommended">Recommended</span></span>
+      <strong>Backstage notebook</strong><small>Main-site palette, paper panels, warm offset shadows.</small>
+    </button>
+    <button type="button" class="admin-design-choice" data-direction-choice="playbill" aria-pressed="false">
+      <span class="admin-design-label"><span class="admin-design-letter">OPTION B</span></span>
+      <strong>Playbill control room</strong><small>Burgundy masthead, stronger theater framing.</small>
+    </button>
+    <button type="button" class="admin-design-choice" data-direction-choice="archive" aria-pressed="false">
+      <span class="admin-design-label"><span class="admin-design-letter">OPTION C</span></span>
+      <strong>Quiet archive desk</strong><small>Calmer paper tones, compact rows, minimal shadow.</small>
+    </button>
+  </div>
+
+  <div class="admin-placement-picker" role="group" aria-label="Character placement">
+    <span>Character placement</span>
+    <button type="button" class="admin-placement-choice" data-placement-choice="sidebar" aria-pressed="false">Sidebar</button>
+    <button type="button" class="admin-placement-choice" data-placement-choice="header" aria-pressed="true">Header</button>
+  </div>
+
+  <div class="admin-shell">
+    <header class="admin-masthead">
+      <div class="admin-brand">INSTRUCTION SPEECHES LIBRARY<span class="admin-brand-label">Administration</span></div>
+      <div class="admin-account"><span>Example super admin</span><span class="admin-avatar" aria-hidden="true">EA</span></div>
+    </header>
+    <div class="admin-layout">
+      <aside class="admin-sidebar">
+        <nav aria-label="Admin page preview">
+          <button type="button" class="admin-nav-link" data-admin-page="dashboard" aria-current="page"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span>Dashboard</span></button>
+          <p class="admin-nav-group">People</p>
+          <button type="button" class="admin-nav-link" data-admin-page="applications"><i data-lucide="folder-check" aria-hidden="true"></i><span>Coach applications</span></button>
+          <button type="button" class="admin-nav-link" data-admin-page="users"><i data-lucide="users" aria-hidden="true"></i><span>Users</span></button>
+          <button type="button" class="admin-nav-link" data-admin-page="connections"><i data-lucide="network" aria-hidden="true"></i><span>Connections</span></button>
+          <button type="button" class="admin-nav-link" data-admin-page="audit"><i data-lucide="book-open" aria-hidden="true"></i><span>Audit log<small>Super admin only</small></span></button>
+          <p class="admin-nav-group">Moderation</p>
+          <button type="button" class="admin-nav-link" data-admin-page="reports"><i data-lucide="messages-square" aria-hidden="true"></i><span>Reports</span></button>
+          <button type="button" class="admin-nav-link" data-admin-page="speeches"><i data-lucide="film" aria-hidden="true"></i><span>Speeches</span></button>
+        </nav>
+        <div class="admin-sidebar-art admin-character-art" data-current-character aria-hidden="true"></div>
+        <p class="admin-art-caption">Original character concept</p>
+      </aside>
+      <main class="admin-workspace">
+        <div class="admin-page-heading">
+          <div>
+            <div class="admin-breadcrumb" data-admin-breadcrumb>Administration / Dashboard</div>
+            <h1 data-admin-title>Dashboard</h1>
+            <p class="admin-page-description" data-admin-description>A clear view of the queues that need your attention.</p>
+          </div>
+          <div class="admin-mobile-art admin-character-art" data-current-character aria-hidden="true"></div>
+        </div>
+        <p class="admin-sample-label"><span class="admin-sample-dot" aria-hidden="true"></span>Design preview · fictional example data · actions disabled</p>
+        <div class="admin-page-content" data-admin-content></div>
+      </main>
+    </div>
+  </div>
+
+  <section class="admin-character-roster" aria-label="Original admin character concepts">
+    <div class="admin-roster-title"><h2>A new backstage cast</h2><p>Concept sketches · select a character to preview its page</p></div>
+    <div class="admin-character-grid">
+      <button type="button" class="admin-character-choice" data-character-page="dashboard" aria-pressed="true"><span class="admin-character-art" data-character="dashboard" aria-hidden="true"></span><strong>Stage manager</strong><small>Dashboard</small></button>
+      <button type="button" class="admin-character-choice" data-character-page="applications" aria-pressed="false"><span class="admin-character-art" data-character="applications" aria-hidden="true"></span><strong>Credential reviewer</strong><small>Applications</small></button>
+      <button type="button" class="admin-character-choice" data-character-page="users" aria-pressed="false"><span class="admin-character-art" data-character="users" aria-hidden="true"></span><strong>Casting coordinator</strong><small>Users</small></button>
+      <button type="button" class="admin-character-choice" data-character-page="connections" aria-pressed="false"><span class="admin-character-art" data-character="connections" aria-hidden="true"></span><strong>Community weaver</strong><small>Connections</small></button>
+      <button type="button" class="admin-character-choice" data-character-page="audit" aria-pressed="false"><span class="admin-character-art" data-character="audit" aria-hidden="true"></span><strong>Bookkeeper</strong><small>Audit log</small></button>
+      <button type="button" class="admin-character-choice" data-character-page="reports" aria-pressed="false"><span class="admin-character-art" data-character="reports" aria-hidden="true"></span><strong>Calm mediator</strong><small>Reports</small></button>
+      <button type="button" class="admin-character-choice" data-character-page="speeches" aria-pressed="false"><span class="admin-character-art" data-character="speeches" aria-hidden="true"></span><strong>Film archivist</strong><small>Speeches</small></button>
+    </div>
+  </section>
+
+  <template data-scene="dashboard">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="94" cy="86" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <path d="M8 20H24V102Q22 122 9 133Z" fill="#a81e28"/><path d="M15 23V107" stroke="#8a1720"/>
+      <ellipse cx="95" cy="168" rx="58" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M85 121L77 151M102 120L111 152" stroke="#2b211b" stroke-width="14"/><path d="M85 121L77 151M102 120L111 152" stroke="#597180" stroke-width="10"/>
+      <path d="M72 149H82V166H62Q58 159 72 149ZM106 150H115L128 163Q128 168 106 166Z" fill="#2b211b"/>
+      <path d="M74 83Q91 76 110 84L119 124Q96 135 69 124Z" fill="#0f6b66"/>
+      <path d="M77 91L59 109L70 121M109 92L126 78L127 55" stroke="#2b211b" stroke-width="12"/><path d="M77 91L59 109L70 121M109 92L126 78L127 55" stroke="#bd865c" stroke-width="8"/>
+      <g transform="rotate(-7 93 52)">
+        <path d="M64 44Q64 20 89 19Q119 16 123 43L119 67Q110 85 92 83Q70 83 64 63Z" fill="#bd865c"/>
+        <path d="M64 48Q50 24 72 16Q79 7 92 17Q115 11 124 34L124 43L110 35L97 40L83 31L70 41Z" fill="#333132"/>
+        <path d="M76 47L84 44M101 44L110 46"/><circle cx="80" cy="54" r="1.8" fill="#2b211b"/><circle cx="105" cy="54" r="1.8" fill="#2b211b"/>
+        <path d="M91 53L89 61L95 63M83 70Q93 76 104 68"/>
+        <path d="M60 44Q55 19 83 15Q115 9 126 40" stroke="#2b211b" stroke-width="4"/><rect x="58" y="43" width="7" height="16" rx="3" fill="#66574f"/><path d="M61 58L69 69H78" stroke-width="3"/>
+      </g>
+      <path d="M121 53L121 44M126 52L128 42M131 54L135 46" stroke="#bd865c" stroke-width="4"/>
+      <g transform="rotate(9 85 120)"><rect x="68" y="101" width="35" height="47" rx="3" fill="#b88149"/><rect x="71" y="105" width="29" height="39" fill="#fffdf6"/><rect x="79" y="99" width="13" height="7" rx="2" fill="#8a7668"/><path d="M77 115H93M77 122H93M77 129H89" stroke="#8a7668" stroke-width="1.3"/></g>
+      <ellipse cx="70" cy="121" rx="5" ry="4" fill="#bd865c"/>
+      <path d="M141 58L153 52M144 69L158 68" stroke="#8a1720" stroke-width="2"/>
+    </svg>
+  </template>
+  <template data-scene="applications">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="91" cy="86" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <ellipse cx="94" cy="168" rx="60" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M61 132H119V140H61ZM66 141L60 166M112 141L120 166" fill="#b88149"/>
+      <path d="M80 123L65 144L73 158M101 125L113 144L104 159" stroke="#2b211b" stroke-width="13"/><path d="M80 123L65 144L73 158M101 125L113 144L104 159" stroke="#6d5d7c" stroke-width="9"/>
+      <path d="M68 155L80 158L77 167H59Q57 162 68 155ZM101 157L111 159L119 166H97Z" fill="#2b211b"/>
+      <path d="M66 84Q85 77 106 86L117 125Q95 135 64 127Z" fill="#bd6d81"/>
+      <path d="M66 91L48 110L75 124M106 95L128 110L112 121" stroke="#2b211b" stroke-width="12"/><path d="M66 91L48 110L75 124M106 95L128 110L112 121" stroke="#e6ba93" stroke-width="8"/>
+      <path d="M64 44Q49 49 52 79L61 95L73 80Z" fill="#7c4834"/>
+      <g transform="rotate(12 88 54)">
+        <path d="M61 40Q65 20 87 20Q111 19 119 42L116 66Q108 86 87 84Q66 82 61 62Z" fill="#e6ba93"/>
+        <path d="M61 47Q52 28 73 19Q96 11 113 30L119 44L103 37L89 42L75 35Z" fill="#7c4834"/>
+        <path d="M73 44L81 46M98 45L107 42"/><rect x="69" y="50" width="19" height="14" rx="5" fill="#fffdf6" fill-opacity=".35"/><rect x="95" y="50" width="19" height="14" rx="5" fill="#fffdf6" fill-opacity=".35"/><path d="M88 54H95"/>
+        <circle cx="79" cy="56" r="1.5" fill="#2b211b"/><circle cx="104" cy="56" r="1.5" fill="#2b211b"/><path d="M91 58L89 66L94 67M82 74Q90 77 99 72"/>
+      </g>
+      <g transform="rotate(-5 97 128)"><path d="M67 113H83L89 118H128L121 149H72Z" fill="#e9b949"/><path d="M72 108H113V133H72Z" fill="#fffdf6"/><path d="M79 116H104M79 123H98" stroke="#8a7668" stroke-width="1.4"/><path d="M67 123H125L120 151H72Z" fill="#f0cf72"/></g>
+      <ellipse cx="76" cy="126" rx="5" ry="4" fill="#e6ba93"/><ellipse cx="115" cy="123" rx="5" ry="4" fill="#e6ba93"/>
+      <path d="M130 47L140 43M132 57H145" stroke="#0f6b66"/>
+    </svg>
+  </template>
+  <template data-scene="users">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="96" cy="87" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <path d="M160 18H176L175 125Q162 116 160 100Z" fill="#a81e28"/><path d="M169 22V106" stroke="#8a1720"/>
+      <ellipse cx="97" cy="168" rx="61" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M81 119L73 148M100 118L112 150" stroke="#2b211b" stroke-width="14"/><path d="M81 119L73 148M100 118L112 150" stroke="#a77947" stroke-width="10"/>
+      <path d="M66 146H79V167H57Q53 160 66 146ZM107 148H118L131 165H105Z" fill="#2b211b"/>
+      <path d="M66 83Q82 76 103 82L118 124L65 127Z" fill="#537da0"/><path d="M83 82L90 101L98 81" fill="#fffdf6"/>
+      <path d="M70 91L46 84L35 63M107 91L129 110L120 126" stroke="#2b211b" stroke-width="12"/><path d="M70 91L46 84L35 63M107 91L129 110L120 126" stroke="#97613f" stroke-width="8"/>
+      <g transform="rotate(-9 90 51)">
+        <path d="M64 38Q68 15 91 17Q118 18 121 43L118 63Q110 83 89 82Q68 80 64 61Z" fill="#97613f"/>
+        <path d="M64 43Q53 25 67 17Q78 6 91 15Q115 9 122 31L121 42L108 33L96 38L81 30Z" fill="#282326"/>
+        <circle cx="117" cy="15" r="11" fill="#282326"/><circle cx="126" cy="25" r="9" fill="#282326"/>
+        <path d="M75 42L83 40M100 40L109 43M76 51Q80 48 84 51M101 51Q105 48 109 51M91 53L90 60L95 62M80 68Q92 78 106 66"/>
+        <circle cx="65" cy="59" r="4" fill="#e9b949"/><circle cx="120" cy="59" r="4" fill="#e9b949"/>
+      </g>
+      <g transform="rotate(-14 34 59)"><rect x="19" y="38" width="29" height="36" rx="2" fill="#fffdf6"/><circle cx="33" cy="50" r="6" fill="#bd865c"/><path d="M24 65Q33 54 42 65" fill="#0f6b66"/><path d="M25 70H41" stroke="#8a7668" stroke-width="1"/></g>
+      <g transform="rotate(12 123 128)"><rect x="106" y="109" width="31" height="38" rx="2" fill="#fffdf6"/><circle cx="121" cy="121" r="6" fill="#e6ba93"/><path d="M112 136Q122 124 131 136" fill="#bd6d81"/><path d="M114 141H129" stroke="#8a7668" stroke-width="1"/></g>
+      <ellipse cx="35" cy="65" rx="5" ry="4" fill="#97613f"/><ellipse cx="123" cy="127" rx="5" ry="4" fill="#97613f"/>
+    </svg>
+  </template>
+  <template data-scene="connections">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="89" cy="88" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <ellipse cx="93" cy="169" rx="65" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M73 123L52 147L62 160M96 126L114 145L132 157" stroke="#2b211b" stroke-width="14"/><path d="M73 123L52 147L62 160M96 126L114 145L132 157" stroke="#456b81" stroke-width="10"/>
+      <path d="M58 155L68 160L67 169H43Q41 163 58 155ZM127 153L140 158L146 167H121Z" fill="#2b211b"/>
+      <path d="M66 84L95 81L113 119Q96 136 65 127L56 102Z" fill="#b77638"/>
+      <path d="M65 94L42 106L39 92M98 93L125 95L141 72" stroke="#2b211b" stroke-width="12"/><path d="M65 94L42 106L39 92M98 93L125 95L141 72" stroke="#e6bd96" stroke-width="8"/>
+      <g transform="rotate(12 83 52)">
+        <path d="M56 39Q58 17 81 18Q105 15 115 39L111 64Q104 84 82 83Q63 82 56 61Z" fill="#e6bd96"/>
+        <path d="M56 46Q45 27 66 17Q86 7 106 25L115 41L98 36L86 40L72 32Z" fill="#9c5940"/><path d="M57 61Q56 79 75 86L82 83Q61 74 63 64Z" fill="#9c5940"/>
+        <path d="M68 44L76 42M94 44L102 47"/><circle cx="72" cy="53" r="1.8" fill="#2b211b"/><circle cx="99" cy="55" r="1.8" fill="#2b211b"/><path d="M85 54L82 62L88 64M74 70Q85 77 98 69"/>
+      </g>
+      <path d="M35 88Q50 67 75 96T131 105Q151 100 142 74" stroke="#0f6b66" stroke-width="3"/>
+      <path d="M36 91Q34 132 60 137Q82 141 98 119Q117 93 144 112" stroke="#8a1720" stroke-width="3"/>
+      <circle cx="35" cy="87" r="7" fill="#fffdf6"/><circle cx="142" cy="73" r="7" fill="#fffdf6"/><circle cx="144" cy="112" r="7" fill="#fffdf6"/>
+      <circle cx="61" cy="137" r="7" fill="#fffdf6"/><circle cx="99" cy="119" r="7" fill="#e9b949"/>
+      <ellipse cx="39" cy="92" rx="5" ry="4" fill="#e6bd96"/><ellipse cx="141" cy="72" rx="5" ry="4" fill="#e6bd96"/>
+    </svg>
+  </template>
+  <template data-scene="audit">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="94" cy="85" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <ellipse cx="94" cy="170" rx="64" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M65 115Q81 104 100 116L96 145L77 156L60 147Z" fill="#627b61"/>
+      <path d="M76 141L58 151L66 162M94 139L108 151L103 163" stroke="#2b211b" stroke-width="13"/><path d="M76 141L58 151L66 162M94 139L108 151L103 163" stroke="#627b61" stroke-width="9"/>
+      <path d="M61 159L74 162L72 170H51Q49 165 61 159ZM99 160L111 162L118 169H94Z" fill="#2b211b"/>
+      <path d="M64 82Q82 75 103 85L109 120L61 125Z" fill="#8a6c98"/>
+      <path d="M65 94L46 111L71 132M101 94L119 111L108 126" stroke="#2b211b" stroke-width="12"/><path d="M65 94L46 111L71 132M101 94L119 111L108 126" stroke="#b57e57" stroke-width="8"/>
+      <g transform="rotate(16 85 51)">
+        <path d="M57 38Q63 16 85 16Q108 18 115 41L111 67Q101 84 83 83Q62 80 57 61Z" fill="#b57e57"/>
+        <path d="M57 46Q50 25 69 17Q89 6 108 27L115 41L102 35L88 39L72 33Z" fill="#d2c5b2"/><path d="M58 51L61 66" stroke="#d2c5b2" stroke-width="5"/>
+        <path d="M71 43L79 46M96 44L104 42"/><circle cx="75" cy="55" r="10" fill="#fffdf6" fill-opacity=".25"/><circle cx="102" cy="55" r="10" fill="#fffdf6" fill-opacity=".25"/><path d="M85 53H92"/>
+        <circle cx="76" cy="56" r="1.5" fill="#2b211b"/><circle cx="101" cy="56" r="1.5" fill="#2b211b"/><path d="M88 56L87 65L93 67M78 75Q87 78 97 73"/>
+      </g>
+      <path d="M44 139H146V147H44ZM51 147L46 168M139 147L145 168" fill="#b88149"/>
+      <path d="M63 117Q78 110 94 118Q111 112 127 119L130 140Q111 134 95 141Q78 135 60 139Z" fill="#fffdf6"/><path d="M94 119L95 140M69 123L84 125M67 129L85 132M104 124L120 123M104 131L123 130" stroke="#8a7668" stroke-width="1.3"/>
+      <path d="M121 113L134 86" stroke="#2b211b" stroke-width="6"/><path d="M121 113L134 86" stroke="#e9b949" stroke-width="3"/><path d="M120 114L118 119"/>
+      <ellipse cx="73" cy="129" rx="5" ry="4" fill="#b57e57"/><ellipse cx="121" cy="113" rx="5" ry="4" fill="#b57e57"/>
+    </svg>
+  </template>
+  <template data-scene="reports">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="93" cy="87" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <ellipse cx="94" cy="169" rx="62" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M80 123L73 151M101 123L105 153" stroke="#2b211b" stroke-width="14"/><path d="M80 123L73 151M101 123L105 153" stroke="#7e6068" stroke-width="10"/>
+      <path d="M67 149H80V166H57Q55 160 67 149ZM100 151H112L124 165H99Z" fill="#2b211b"/>
+      <path d="M67 83Q87 75 106 85L116 126Q93 136 64 126Z" fill="#6b8c86"/>
+      <path d="M69 94L48 102L34 88M105 94L123 111L110 126" stroke="#2b211b" stroke-width="12"/><path d="M69 94L48 102L34 88M105 94L123 111L110 126" stroke="#c18c69" stroke-width="8"/>
+      <path d="M58 42Q55 15 86 14Q119 12 122 42L118 84L109 89L67 87L57 74Z" fill="#393031"/>
+      <g transform="rotate(-8 89 52)">
+        <path d="M61 39Q64 19 87 21Q111 20 118 42L115 66Q106 85 88 83Q66 82 61 61Z" fill="#c18c69"/>
+        <path d="M61 47Q54 24 76 18Q101 8 118 36L118 45L105 37L91 40L78 31Z" fill="#393031"/>
+        <path d="M73 43Q78 40 83 43M99 43Q104 40 109 43M74 53Q79 50 83 53M99 53Q104 50 108 53M91 53L89 62L94 64M81 71Q91 77 102 69"/>
+      </g>
+      <path d="M33 88L27 79M34 85L31 75M37 85L38 76" stroke="#c18c69" stroke-width="4"/>
+      <g transform="rotate(9 105 126)"><path d="M87 107H118L127 116V149H87Z" fill="#fffdf6"/><path d="M118 107V117H127M95 121H118M95 128H118M95 135H111" stroke="#8a7668" stroke-width="1.3"/></g>
+      <ellipse cx="111" cy="126" rx="5" ry="4" fill="#c18c69"/>
+      <path d="M135 39H158Q163 39 163 44V55Q163 60 157 60H146L139 66V60H135Q130 60 130 54V45Q130 39 135 39Z" fill="#fffdf6"/><path d="M139 47H154M139 53H149" stroke="#0f6b66" stroke-width="1.5"/>
+    </svg>
+  </template>
+  <template data-scene="speeches">
+    <svg viewBox="0 0 184 184" aria-hidden="true" focusable="false" fill="none" stroke="#2b211b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="92" cy="86" r="65" fill="#e9b949" fill-opacity=".28" stroke="none"/>
+      <path d="M8 19H23V102Q22 124 9 133Z" fill="#a81e28"/><path d="M15 23V105" stroke="#8a1720"/>
+      <ellipse cx="94" cy="169" rx="63" ry="5" fill="#2b211b" fill-opacity=".09" stroke="none"/>
+      <path d="M79 122L60 145L43 154M100 122L116 146L128 155" stroke="#2b211b" stroke-width="14"/><path d="M79 122L60 145L43 154M100 122L116 146L128 155" stroke="#485f6b" stroke-width="10"/>
+      <path d="M41 149L52 155L49 167L27 166Q26 159 41 149ZM124 151L135 156L145 165H119Z" fill="#2b211b"/>
+      <path d="M65 83L95 79L116 119Q98 133 68 128L57 103Z" fill="#cc9347"/><path d="M81 81L91 97L97 80" fill="#fffdf6"/>
+      <path d="M66 94L46 111L72 124M102 92L128 99L130 119" stroke="#2b211b" stroke-width="12"/><path d="M66 94L46 111L72 124M102 92L128 99L130 119" stroke="#e8bd98" stroke-width="8"/>
+      <g transform="rotate(-13 87 51)">
+        <path d="M59 39Q63 17 86 18Q112 18 119 42L115 65Q106 84 87 83Q65 80 59 60Z" fill="#e8bd98"/>
+        <path d="M59 45Q49 26 69 17Q81 8 94 18Q113 15 119 34L119 44L104 37L91 41L77 33Z" fill="#5c4c40"/>
+        <path d="M72 44L80 42M99 43L107 46"/><circle cx="76" cy="53" r="1.8" fill="#2b211b"/><circle cx="103" cy="54" r="1.8" fill="#2b211b"/><path d="M89 53L87 61L93 63M78 69Q90 79 105 66"/>
+        <path d="M57 27Q76 8 107 16L118 28L62 33Z" fill="#7f9385"/><path d="M57 31L123 25Q129 30 123 33L63 39Z" fill="#536f64"/>
+      </g>
+      <g transform="rotate(-8 104 125)"><rect x="72" y="112" width="61" height="13" rx="3" fill="#a9c4ba"/><rect x="67" y="124" width="61" height="13" rx="3" fill="#dbc0bc"/><rect x="74" y="137" width="61" height="13" rx="3" fill="#e9c97b"/><path d="M79 115V121M126 115V121M74 127V133M121 127V133M81 140V146M128 140V146" stroke-dasharray="1 3" stroke-width="3"/></g>
+      <ellipse cx="72" cy="124" rx="5" ry="4" fill="#e8bd98"/><ellipse cx="131" cy="119" rx="5" ry="4" fill="#e8bd98"/>
+      <circle cx="143" cy="78" r="16" fill="#c6cfc4"/><circle cx="143" cy="78" r="4" fill="#fffdf6"/><circle cx="136" cy="71" r="3" fill="#fffdf6"/><circle cx="151" cy="73" r="3" fill="#fffdf6"/><circle cx="146" cy="87" r="3" fill="#fffdf6"/>
+    </svg>
+  </template>
+
+  <template data-page-content="dashboard">
+    <div class="admin-queue-grid">
+      <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Pending reports</h2></div><div class="admin-stat-body"><span class="admin-stat-number">3</span><span class="admin-stat-word">to review</span></div><div class="admin-stat-footer">Moderation queue</div></section>
+      <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Coach applications</h2></div><div class="admin-stat-body"><span class="admin-stat-number">2</span><span class="admin-stat-word">pending</span></div><div class="admin-stat-footer">Credential review</div></section>
+    </div>
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Most connections</h2><small>Example snapshot</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col" class="admin-number">Connections</th><th scope="col"><span class="admin-subtext">Preview action</span></th></tr></thead><tbody><tr><td class="admin-name">Maya Chen<span class="admin-subtext">@maya.example</span></td><td>Coach</td><td class="admin-number">24</td><td><button class="admin-row-action" type="button" disabled>View user</button></td></tr><tr><td class="admin-name">Theo Brooks<span class="admin-subtext">@theo.example</span></td><td>Member</td><td class="admin-number">18</td><td><button class="admin-row-action" type="button" disabled>View user</button></td></tr><tr><td class="admin-name">Noor Patel<span class="admin-subtext">@noor.example</span></td><td>Coach</td><td class="admin-number">15</td><td><button class="admin-row-action" type="button" disabled>View user</button></td></tr></tbody></table></div><div class="admin-panel-footer"><span>3 fictional people</span><span>Example data</span></div></section>
+  </template>
+  <template data-page-content="applications">
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Coach applications</h2><small>2 fictional records</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Applicant</th><th scope="col">Received</th><th scope="col">Status</th><th scope="col">Preview action</th></tr></thead><tbody><tr><td class="admin-name">Elena Rivera<span class="admin-subtext">elena@example.test</span></td><td>Oct 28</td><td><span class="admin-status admin-status--pending">Pending</span></td><td><button class="admin-row-action" type="button" disabled>Open review</button></td></tr><tr><td class="admin-name">Sam Okafor<span class="admin-subtext">sam@example.test</span></td><td>Oct 27</td><td><span class="admin-status admin-status--pending">Pending</span></td><td><button class="admin-row-action" type="button" disabled>Open review</button></td></tr></tbody></table></div><div class="admin-panel-footer"><span>Showing 1–2 of 2 examples</span><span>Review actions disabled</span></div></section>
+    <p class="admin-page-note">The credential reviewer accompanies the queue; application documents and decisions stay in the review workflow.</p>
+  </template>
+  <template data-page-content="users">
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Users</h2><small>3 fictional records</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Account</th><th scope="col">Preview action</th></tr></thead><tbody><tr><td class="admin-name">Maya Chen<span class="admin-subtext">maya@example.test</span></td><td>Coach</td><td><span class="admin-status">Active</span></td><td><button class="admin-row-action" type="button" disabled>View details</button></td></tr><tr><td class="admin-name">Theo Brooks<span class="admin-subtext">theo@example.test</span></td><td>Member</td><td><span class="admin-status">Active</span></td><td><button class="admin-row-action" type="button" disabled>View details</button></td></tr><tr><td class="admin-name">Noor Patel<span class="admin-subtext">noor@example.test</span></td><td>Coach</td><td><span class="admin-status">Active</span></td><td><button class="admin-row-action" type="button" disabled>View details</button></td></tr></tbody></table></div><div class="admin-panel-footer"><span>Showing 1–3 of 3 examples</span><div class="admin-footer-controls"><button type="button" class="admin-small-control" disabled>Previous</button><button type="button" class="admin-small-control" disabled>Next</button></div></div></section>
+  </template>
+  <template data-page-content="connections">
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Connections</h2><small>3 fictional records</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Requester</th><th scope="col">Addressee</th><th scope="col">Status</th><th scope="col">Requested</th></tr></thead><tbody><tr><td class="admin-name">Theo Brooks</td><td>Maya Chen</td><td><span class="admin-status">Accepted</span></td><td>Oct 26</td></tr><tr><td class="admin-name">Noor Patel</td><td>Theo Brooks</td><td><span class="admin-status admin-status--pending">Pending</span></td><td>Oct 28</td></tr><tr><td class="admin-name">Elena Rivera</td><td>Noor Patel</td><td><span class="admin-status">Accepted</span></td><td>Oct 25</td></tr></tbody></table></div><div class="admin-panel-footer"><span>Showing 1–3 of 3 examples</span><span>Example data</span></div></section>
+    <p class="admin-page-note">Warm, linked-thread artwork keeps this page distinct without taking space from the connection records.</p>
+  </template>
+  <template data-page-content="audit">
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Audit log</h2><small>Super admin only</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Event</th><th scope="col">Actor</th><th scope="col">Time</th><th scope="col">Preview action</th></tr></thead><tbody><tr><td class="admin-name">Coach application reviewed</td><td>Example admin</td><td>Oct 28, 10:42</td><td><button class="admin-row-action" type="button" disabled>View entry</button></td></tr><tr><td class="admin-name">User role updated</td><td>Example super admin</td><td>Oct 28, 09:16</td><td><button class="admin-row-action" type="button" disabled>View entry</button></td></tr><tr><td class="admin-name">Report reviewed</td><td>Example admin</td><td>Oct 27, 16:05</td><td><button class="admin-row-action" type="button" disabled>View entry</button></td></tr></tbody></table></div><div class="admin-panel-footer"><span>3 fictional events</span><span>Preview shows super-admin navigation</span></div></section>
+  </template>
+  <template data-page-content="reports">
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Reports</h2><small>3 fictional records</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Reported item</th><th scope="col">Reason</th><th scope="col">Status</th><th scope="col">Preview action</th></tr></thead><tbody><tr><td class="admin-name">Speech #104<span class="admin-subtext">Example speech record</span></td><td>Spam</td><td><span class="admin-status admin-status--pending">Pending</span></td><td><button class="admin-row-action" type="button" disabled>Review report</button></td></tr><tr><td class="admin-name">Speech #108<span class="admin-subtext">Example speech record</span></td><td>Harassment</td><td><span class="admin-status admin-status--pending">Pending</span></td><td><button class="admin-row-action" type="button" disabled>Review report</button></td></tr><tr><td class="admin-name">Speech #112<span class="admin-subtext">Example speech record</span></td><td>Other</td><td><span class="admin-status admin-status--pending">Pending</span></td><td><button class="admin-row-action" type="button" disabled>Review report</button></td></tr></tbody></table></div><div class="admin-panel-footer"><span>Showing 1–3 of 3 examples</span><span>Moderation actions disabled</span></div></section>
+  </template>
+  <template data-page-content="speeches">
+    <section class="admin-paper-panel"><div class="admin-panel-heading"><h2>Speeches</h2><small>3 fictional records</small></div><div class="admin-table-wrapper"><table class="admin-table"><thead><tr><th scope="col">Speech</th><th scope="col">Speaker</th><th scope="col">State</th><th scope="col">Preview action</th></tr></thead><tbody><tr><td class="admin-name">A better first impression<span class="admin-subtext">Example speech · 03:42</span></td><td>Theo Brooks</td><td><span class="admin-status">Live</span></td><td><button class="admin-row-action" type="button" disabled>View speech</button></td></tr><tr><td class="admin-name">Finding your own voice<span class="admin-subtext">Example speech · 05:18</span></td><td>Noor Patel</td><td><span class="admin-status admin-status--neutral">Removed</span></td><td><button class="admin-row-action" type="button" disabled>View speech</button></td></tr><tr><td class="admin-name">The stories we share<span class="admin-subtext">Example speech · 04:09</span></td><td>Elena Rivera</td><td><span class="admin-status">Live</span></td><td><button class="admin-row-action" type="button" disabled>View speech</button></td></tr></tbody></table></div><div class="admin-panel-footer"><span>Showing 1–3 of 3 examples</span><span>Example data</span></div></section>
+  </template>
+  <span data-admin-announcement aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0"></span>
+</div>
+<script>
+  (() => {
+    const root = document.getElementById('admin-style-options');
+    if (!root) return;
+    const pages = {
+      dashboard: { title: 'Dashboard', group: '', description: 'A clear view of the queues that need your attention.' },
+      applications: { title: 'Coach applications', group: 'People', description: 'Review the people who would like to join the coaching community.' },
+      users: { title: 'Users', group: 'People', description: 'Find people and review their account details.' },
+      connections: { title: 'Connections', group: 'People', description: 'Review the connections across the community.' },
+      audit: { title: 'Audit log', group: 'People', description: 'A readable record of administrative activity.' },
+      reports: { title: 'Reports', group: 'Moderation', description: 'Review concerns carefully, with the relevant context close at hand.' },
+      speeches: { title: 'Speeches', group: 'Moderation', description: 'Browse speech records and their removal state.' }
+    };
+    const directionNames = { notebook: 'Backstage notebook', playbill: 'Playbill control room', archive: 'Quiet archive desk' };
+    let currentPage = 'dashboard';
+    const scene = (key) => root.querySelector('template[data-scene="' + key + '"]').content.cloneNode(true);
+    function showPage(key, announce = true) {
+      if (!pages[key]) return;
+      currentPage = key;
+      const page = pages[key];
+      root.querySelector('[data-admin-title]').textContent = page.title;
+      root.querySelector('[data-admin-description]').textContent = page.description;
+      root.querySelector('[data-admin-breadcrumb]').textContent = ['Administration', page.group, page.title].filter(Boolean).join(' / ');
+      root.querySelector('[data-admin-content]').replaceChildren(root.querySelector('template[data-page-content="' + key + '"]').content.cloneNode(true));
+      root.querySelectorAll('[data-current-character]').forEach((slot) => slot.replaceChildren(scene(key)));
+      root.querySelectorAll('[data-admin-page]').forEach((button) => {
+        if (button.dataset.adminPage === key) button.setAttribute('aria-current', 'page');
+        else button.removeAttribute('aria-current');
+      });
+      root.querySelectorAll('[data-character-page]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.characterPage === key)));
+      if (announce) root.querySelector('[data-admin-announcement]').textContent = page.title + ' preview. Fictional example data; actions disabled.';
+    }
+    root.querySelectorAll('[data-character]').forEach((slot) => slot.replaceChildren(scene(slot.dataset.character)));
+    root.querySelectorAll('[data-admin-page]').forEach((button) => button.addEventListener('click', () => showPage(button.dataset.adminPage)));
+    root.querySelectorAll('[data-character-page]').forEach((button) => button.addEventListener('click', () => showPage(button.dataset.characterPage)));
+    root.querySelectorAll('[data-direction-choice]').forEach((button) => button.addEventListener('click', () => {
+      const direction = button.dataset.directionChoice;
+      root.dataset.direction = direction;
+      root.querySelectorAll('[data-direction-choice]').forEach((choice) => choice.setAttribute('aria-pressed', String(choice === button)));
+      root.querySelector('[data-admin-announcement]').textContent = directionNames[direction] + ', ' + pages[currentPage].title + ' preview.';
+    }));
+    root.querySelectorAll('[data-placement-choice]').forEach((button) => button.addEventListener('click', () => {
+      root.dataset.placement = button.dataset.placementChoice;
+      root.querySelectorAll('[data-placement-choice]').forEach((choice) => choice.setAttribute('aria-pressed', String(choice === button)));
+      root.querySelector('[data-admin-announcement]').textContent = 'Character in ' + button.textContent.toLowerCase() + '. Small screens use a compact heading cameo.';
+    }));
+    showPage(currentPage, false);
+    if (typeof lucide !== 'undefined') lucide.createIcons({ attrs: { width: 17, height: 17 } });
+  })();
+</script>
