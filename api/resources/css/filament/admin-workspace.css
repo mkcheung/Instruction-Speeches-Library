@@ -1,0 +1,227 @@
+/* Backstage Notes: additive presentation over Filament, never a layout replacement. */
+body.fi-panel-admin {
+    --admin-page: #fff5e6;
+    --admin-paper: #fffdf6;
+    --admin-rail: #f8ecda;
+    --admin-ink: #2b211b;
+    --admin-muted: #66574f;
+    --admin-outline: #8a7668;
+    --admin-rule: #dfcfba;
+    --admin-shadow: #e7d0a5;
+    --admin-teal: #0f6b66;
+    --admin-selected: #8a1720;
+    --admin-selected-ink: #fffdf6;
+    --admin-gold: #e9b949;
+    --gray-50: #fffdf6;
+    --gray-100: #f8ecda;
+    --gray-200: #dfcfba;
+    --gray-300: #c4b09c;
+    --gray-400: #8a7668;
+    --gray-500: #79675b;
+    --gray-600: #66574f;
+    --gray-700: #54463d;
+    --gray-800: #40342c;
+    --gray-900: #352a23;
+    --gray-950: #2b211b;
+    font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    color: var(--admin-ink);
+    background: var(--admin-page);
+}
+
+html.dark body.fi-panel-admin {
+    --admin-page: #211d1a;
+    --admin-paper: #2c2723;
+    --admin-rail: #27211e;
+    --admin-ink: #fff5e6;
+    --admin-muted: #d7c5b2;
+    --admin-outline: #aa9482;
+    --admin-rule: #5d4f44;
+    --admin-shadow: #100e0c;
+    --admin-teal: #73d5c9;
+    --admin-selected: #9c303b;
+    --admin-gold: #d4b46b;
+    /* Preserve Filament's dark utility scale, with warm neutral counterparts. */
+    --gray-50: #fffdf6;
+    --gray-100: #fff5e6;
+    --gray-200: #eadbca;
+    --gray-300: #d7c5b2;
+    --gray-400: #c5b09b;
+    --gray-500: #aa9482;
+    --gray-600: #877364;
+    --gray-700: #5d4f44;
+    --gray-800: #40362f;
+    --gray-900: #2c2723;
+    --gray-950: #211d1a;
+}
+
+body.fi-panel-admin .fi-topbar,
+body.fi-panel-admin .fi-sidebar,
+body.fi-panel-admin .fi-sidebar-header {
+    background-color: var(--admin-rail);
+}
+
+body.fi-panel-admin .fi-topbar {
+    border-bottom: 1px solid var(--admin-outline);
+    box-shadow: 0 3px var(--admin-shadow);
+}
+
+body.fi-panel-admin .fi-sidebar {
+    border-inline-end: 1px solid var(--admin-outline);
+}
+
+body.fi-panel-admin .fi-logo {
+    font-family: 'Luckiest Guy', 'Geist', system-ui, sans-serif;
+    font-weight: 400;
+    font-size: 1rem;
+    line-height: 1.2;
+    letter-spacing: .025em;
+    white-space: normal;
+    max-width: 14rem;
+    color: var(--admin-ink);
+}
+
+body.fi-panel-admin .fi-sidebar-item-btn {
+    border-radius: 4px;
+    border: 1px solid transparent;
+}
+
+body.fi-panel-admin .fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
+    background: var(--admin-selected);
+    color: var(--admin-selected-ink);
+    border-color: var(--admin-outline);
+    box-shadow: inset 3px 0 var(--admin-gold);
+}
+
+body.fi-panel-admin .fi-sidebar-item.fi-active > .fi-sidebar-item-btn > :is(.fi-sidebar-item-label, .fi-icon) {
+    color: var(--admin-selected-ink);
+}
+
+body.fi-panel-admin :is(.fi-section:not(.fi-section-not-contained):not(.fi-aside), .fi-ta-ctn, .fi-wi-stats-overview-stat) {
+    background: var(--admin-paper);
+    border: 1px solid var(--admin-outline);
+    border-radius: 4px;
+    box-shadow: 4px 4px var(--admin-shadow);
+    --tw-ring-shadow: 0 0 #0000;
+}
+
+/* Nested sections stay quiet: the frame belongs to the working panel. */
+body.fi-panel-admin .fi-section .fi-section {
+    box-shadow: none;
+}
+
+body.fi-panel-admin .fi-section > .fi-section-header {
+    position: relative;
+    background: var(--admin-rail);
+    border-inline-start: 5px solid var(--admin-teal);
+    border-start-start-radius: 3px;
+    border-start-end-radius: 3px;
+}
+
+body.fi-panel-admin .fi-section > .fi-section-header::after {
+    content: '';
+    position: absolute;
+    inset-inline-end: 1rem;
+    top: -.35rem;
+    width: 1.5rem;
+    height: .55rem;
+    background: var(--admin-gold);
+    transform: rotate(-5deg);
+    pointer-events: none;
+}
+
+body.fi-panel-admin :is(.fi-ta-header, .fi-ta-header-toolbar, .fi-ta-header-cell, .fi-ta-filters-above-content-ctn) {
+    background-color: var(--admin-rail);
+    border-color: var(--admin-rule);
+}
+
+body.fi-panel-admin :is(.fi-modal-window, .fi-dropdown-panel, .fi-no-notification) {
+    border-radius: 4px;
+    border: 1px solid var(--admin-outline);
+    background-color: var(--admin-paper);
+}
+
+body.fi-panel-admin :is(.fi-btn, .fi-input-wrp, .fi-tabs, .fi-tabs-item) {
+    border-radius: 4px;
+}
+
+body.fi-panel-admin .fi-input-wrp {
+    background-color: var(--admin-paper);
+}
+
+/* Keep inactive controls distinguishable without replacing error/focus rings. */
+body.fi-panel-admin .fi-input-wrp:not(.fi-disabled):not(.fi-invalid):not(:focus-within),
+body.fi-panel-admin :is(.fi-checkbox-input, .fi-radio-input):not(:disabled):not(.fi-invalid):not(:checked):not(:indeterminate):not(:focus) {
+    outline: 1px solid var(--admin-outline);
+    outline-offset: 0;
+}
+
+body.fi-panel-admin :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--admin-teal);
+    outline-offset: 3px;
+}
+
+/* The heading hook lives inside the first header div, away from header actions. */
+body.fi-panel-admin .fi-header > div:first-child:has(> .admin-workspace-scene) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 1rem;
+    min-width: 0;
+    flex: 1;
+}
+
+body.fi-panel-admin .fi-header > div:first-child:has(> .admin-workspace-scene) > :not(.admin-workspace-scene) {
+    grid-column: 1;
+    overflow-wrap: anywhere;
+}
+
+body.fi-panel-admin .fi-header-heading:has(~ .admin-workspace-scene:not(.admin-workspace-scene--compact)) {
+    font-family: 'Luckiest Guy', 'Geist', system-ui, sans-serif;
+    font-weight: 400;
+    letter-spacing: .025em;
+    line-height: 1.3;
+}
+
+body.fi-panel-admin .admin-workspace-scene {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    width: 104px;
+    height: 96px;
+    pointer-events: none;
+    user-select: none;
+}
+
+body.fi-panel-admin .admin-workspace-scene--compact {
+    width: 72px;
+    height: 68px;
+}
+
+body.fi-panel-admin .admin-workspace-scene svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+@media (max-width: 767px), (max-height: 650px) {
+    body.fi-panel-admin .admin-workspace-scene {
+        width: 56px;
+        height: 56px;
+    }
+    body.fi-panel-admin .fi-section > .fi-section-header::after { display: none; }
+}
+
+@media (max-width: 374px) {
+    body.fi-panel-admin .admin-workspace-scene { display: none; }
+    body.fi-panel-admin .fi-header > div:first-child:has(> .admin-workspace-scene) { display: block; }
+}
+
+@media (forced-colors: active) {
+    body.fi-panel-admin .admin-workspace-scene,
+    body.fi-panel-admin .fi-section > .fi-section-header::after { display: none; }
+    body.fi-panel-admin .fi-sidebar-item.fi-active > .fi-sidebar-item-btn {
+        border: 2px solid Highlight;
+    }
+    body.fi-panel-admin :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+        outline-color: Highlight;
+    }
+}

@@ -7,13 +7,16 @@ use App\Http\Controllers\AdminLoginRedirectController;
 use App\Http\Middleware\CheckUserIsActive;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\RequireFilamentMfaChallenge;
+use App\Support\AdminScene;
+use App\Support\AdminWorkspaceAssets;
 use Filament\Auth\MultiFactor\App\AppAuthentication;
+use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Panel;
 use Filament\PanelProvider;
-use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -91,7 +94,32 @@ class AdminPanelProvider extends PanelProvider
             // it as a panel page, which would attach its own MFA gate to its route.
             ->livewireComponents([MfaChallenge::class])
             ->authGuard('web')
-            ->colors(['primary' => Color::Indigo])
+            ->brandName('Instruction Speeches Library')
+            // Explicit shades preserve the notebook teal: Color::hex generates a
+            // new spectrum from hue alone in this Filament version.
+            ->colors(['primary' => [
+                50 => '#effaf7',
+                100 => '#d5efeb',
+                200 => '#afe2da',
+                300 => '#99e1d8',
+                400 => '#73d5c9',
+                500 => '#148079',
+                600 => '#0f6b66',
+                700 => '#0c5955',
+                800 => '#0a4643',
+                900 => '#083a38',
+                950 => '#052422',
+            ]])
+            // Registered Font emits its stylesheet once through @filamentStyles.
+            ->font('Geist', provider: LocalFontProvider::class)
+            ->assets(AdminWorkspaceAssets::assets(), package: AdminWorkspaceAssets::PACKAGE)
+            // The installed base layout emits ordinary assets before its theme.
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => AdminWorkspaceAssets::stylesheetHtml())
+            ->renderHook(PanelsRenderHook::PAGE_HEADER_HEADING_AFTER, function (array $scopes) {
+                $scene = AdminScene::forScopes($scopes);
+
+                return $scene ? view('filament.admin.header-scene', ['scene' => $scene]) : '';
+            })
             // PLAN-ADMIN-DASHBOARD.md §7. Filament already collapses the
             // sidebar to an overlay below `lg` with no help, so the mobile
             // case was never the gap — the DESKTOP one was. This panel's
