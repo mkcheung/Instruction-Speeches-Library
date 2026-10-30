@@ -116,21 +116,25 @@ it('sorts the roster by last_transition_at desc, id asc', function () {
     $speaker = User::factory()->create();
     $speaker->assignRole('member');
     $speech = Speech::factory()->for($speaker)->create();
+    // One instant for both tied rows: two now() calls can straddle a
+    // second boundary (the column stores whole seconds), and then tieB is
+    // genuinely newer and correctly sorts first.
+    $tiedAt = now();
 
     $older = Review::factory()->create([
         'speech_id' => $speech->id, 'speech_owner_id' => $speaker->id,
         'reviewer_id' => User::factory()->create()->id,
-        'status' => 'invited', 'last_transition_at' => now()->subDay(),
+        'status' => 'invited', 'last_transition_at' => $tiedAt->copy()->subDay(),
     ]);
     $tieA = Review::factory()->create([
         'speech_id' => $speech->id, 'speech_owner_id' => $speaker->id,
         'reviewer_id' => User::factory()->create()->id,
-        'status' => 'invited', 'last_transition_at' => now(),
+        'status' => 'invited', 'last_transition_at' => $tiedAt,
     ]);
     $tieB = Review::factory()->create([
         'speech_id' => $speech->id, 'speech_owner_id' => $speaker->id,
         'reviewer_id' => User::factory()->create()->id,
-        'status' => 'invited', 'last_transition_at' => now(),
+        'status' => 'invited', 'last_transition_at' => $tiedAt,
     ]);
 
     $roster = $this->actingAs($speaker)->getJson("/api/speeches/{$speech->id}/review-roster");
