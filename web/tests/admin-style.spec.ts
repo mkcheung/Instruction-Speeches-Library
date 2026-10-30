@@ -5,7 +5,8 @@ import { completePanelChallenge, MFA_CHALLENGE_URL, submitSharedCredentials } fr
 /** Read-only content checks; run only on the dedicated, seeded E2E stack. */
 const destinations = [
   ['', 'Dashboard', 'dashboard'],
-  ['/coach-applications', 'Coach applications', 'coach-applications'],
+  // ListRecords titles are Filament's title-cased plural model label, not the nav label.
+  ['/coach-applications', 'Coach Applications', 'coach-applications'],
   ['/users', 'Users', 'users'],
   ['/connections', 'Connections', 'connections'],
   ['/reports', 'Reports', 'reports'],
@@ -93,13 +94,17 @@ for (const role of ['admin', 'superAdmin'] as const) {
         await expectScene(page, key)
       }
       const auditLink = page.getByRole('link', { name: 'Audit log', exact: true })
+      const auditUrl = `${API_URL}/control-panel/audit-logs`
       if (role === 'superAdmin') {
-        await expect(auditLink).toBeVisible()
-        await auditLink.click()
+        // Navigate by href: below lg the rail is a closed off-canvas overlay,
+        // so clicking the link would fail on narrow projects (mobile-webkit).
+        await expect(auditLink).toHaveAttribute('href', /\/control-panel\/audit-logs$/)
+        const response = await page.goto(auditUrl)
+        expect(response?.status()).toBe(200)
         await expectScene(page, 'audit-log')
       } else {
         await expect(auditLink).toHaveCount(0)
-        const response = await page.goto(`${API_URL}/control-panel/audit-logs`)
+        const response = await page.goto(auditUrl)
         expect(response?.status()).toBe(403)
         await expect(page.locator('[data-admin-scene]')).toHaveCount(0)
       }
