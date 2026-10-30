@@ -2,13 +2,14 @@
 
 use App\Filament\Resources\UserResource\Pages\ManageUsers;
 use App\Models\User;
+use App\Support\FilamentMfaStamp;
 use App\Support\Role;
 use Filament\Tables\Table;
 
 /*
  * Shared panel-test helpers, loaded with `require_once` by
- * `PanelModerationTest.php` and `CoachApplicationReviewPageTest.php`
- * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §11). Global functions in a Pest
+ * `PanelModerationTest.php`, `CoachApplicationReviewPageTest.php`
+ * (PLAN-COACH-APPLICATION-REVIEW-PAGE.md §11) and `AdminStyleTest.php`. Global functions in a Pest
  * file are declared once per process, so a copy in each file would be a
  * "cannot redeclare" fatal and leaving them in one would be an "undefined
  * function" when the other runs alone. Not a `*Test.php`, so Pest never
@@ -100,4 +101,27 @@ function panelCoach(): User
     $coach->assignRole(Role::COACH);
 
     return $coach;
+}
+
+/** A user with an app-authentication secret, so the panel's enrollment check passes. */
+function enrolledPanelUser(string $role): User
+{
+    $user = User::factory()->create(['two_factor_secret' => 'E2EADMINE2EADMIN']);
+    $user->assignRole($role);
+
+    return $user;
+}
+
+/**
+ * The session stamp a completed panel MFA challenge writes, for tests whose
+ * subject is not the challenge itself.
+ *
+ * @return array<string, array{user: mixed, at: string}>
+ */
+function panelMfaStamp(User $user): array
+{
+    return [FilamentMfaStamp::SESSION_KEY => [
+        'user' => $user->getAuthIdentifier(),
+        'at' => now()->toIso8601String(),
+    ]];
 }

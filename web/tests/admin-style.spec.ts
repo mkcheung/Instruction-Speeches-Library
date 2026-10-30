@@ -1,11 +1,12 @@
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page, type Response } from '@playwright/test'
 import { API_URL, USERS } from './fixtures.js'
 import { completePanelChallenge, MFA_CHALLENGE_URL, submitSharedCredentials } from './panel-auth.js'
 
 /** Read-only content checks; run only on the dedicated, seeded E2E stack. */
 const destinations = [
   ['', 'Dashboard', 'dashboard'],
-  ['/coach-applications', 'Coach applications', 'coach-applications'],
+  // ListRecords titles are Filament's title-cased plural model label, not the nav label.
+  ['/coach-applications', 'Coach Applications', 'coach-applications'],
   ['/users', 'Users', 'users'],
   ['/connections', 'Connections', 'connections'],
   ['/reports', 'Reports', 'reports'],
@@ -44,7 +45,8 @@ for (const role of ['admin', 'superAdmin'] as const) {
     test('serves the theme and fonts from the API with immutable, fingerprinted assets', async () => {
       const failures: string[] = []
       const loadedFonts = new Set<string>()
-      page.on('response', (response) => {
+      // The page is shared across this serial block; detach before the next test.
+      const auditAsset = (response: Response): void => {
         const url = new URL(response.url())
         if (url.origin !== API_URL || !/\/(?:css|fonts)\/filament\/admin\//.test(url.pathname)) return
         const headers = response.headers()
@@ -56,18 +58,24 @@ for (const role of ['admin', 'superAdmin'] as const) {
         } else if (!headers['content-type']?.includes('text/css')) {
           failures.push(`wrong CSS MIME: ${url.pathname}`)
         }
-      })
-      await page.reload({ waitUntil: 'networkidle' })
-      await page.evaluate(() => document.fonts.ready)
+      }
+      page.on('response', auditAsset)
+      try {
+        await page.reload({ waitUntil: 'networkidle' })
+        await page.evaluate(() => document.fonts.ready)
+      } finally {
+        page.off('response', auditAsset)
+      }
       const links = await page.locator('link[rel="stylesheet"]').evaluateAll((elements) =>
         elements.map((element) => (element as HTMLLinkElement).href),
       )
       const notebook = links.filter((href) => /\/css\/filament\/admin\/admin-workspace-[a-f0-9]+\.css/.test(href))
       expect(notebook).toHaveLength(1)
       expect(links.filter((href) => /\/fonts\/filament\/admin\/notebook-[a-f0-9]+\/index\.css/.test(href))).toHaveLength(1)
-      expect(links.findIndex((href) => href === notebook[0])).toBeGreaterThan(
-        links.findIndex((href) => href.includes('/css/filament/filament/app.css')),
-      )
+      // A missing base theme (-1) must fail rather than trivially pass the ordering check.
+      const themeIndex = links.findIndex((href) => href.includes('/css/filament/filament/app.css'))
+      expect(themeIndex).toBeGreaterThanOrEqual(0)
+      expect(links.indexOf(notebook[0])).toBeGreaterThan(themeIndex)
       expect(links.some((href) => /fonts\.(?:bunny\.net|googleapis\.com)/.test(href))).toBe(false)
       expect(loadedFonts.size).toBeGreaterThanOrEqual(2)
       expect(failures).toEqual([])
@@ -86,13 +94,17 @@ for (const role of ['admin', 'superAdmin'] as const) {
         await expectScene(page, key)
       }
       const auditLink = page.getByRole('link', { name: 'Audit log', exact: true })
+      const auditUrl = `${API_URL}/control-panel/audit-logs`
       if (role === 'superAdmin') {
-        await expect(auditLink).toBeVisible()
-        await auditLink.click()
+        // Navigate by href: below lg the rail is a closed off-canvas overlay,
+        // so clicking the link would fail on narrow projects (mobile-webkit).
+        await expect(auditLink).toHaveAttribute('href', /\/control-panel\/audit-logs$/)
+        const response = await page.goto(auditUrl)
+        expect(response?.status()).toBe(200)
         await expectScene(page, 'audit-log')
       } else {
         await expect(auditLink).toHaveCount(0)
-        const response = await page.goto(`${API_URL}/control-panel/audit-logs`)
+        const response = await page.goto(auditUrl)
         expect(response?.status()).toBe(403)
         await expect(page.locator('[data-admin-scene]')).toHaveCount(0)
       }

@@ -2,9 +2,7 @@
 
 use App\Filament\Auth\MfaChallenge;
 use App\Filament\Resources\AuditLogResource;
-use App\Models\User;
 use App\Support\AdminWorkspaceAssets;
-use App\Support\FilamentMfaStamp;
 use App\Support\Role;
 use Database\Seeders\RoleSeeder;
 use Filament\Facades\Filament;
@@ -21,19 +19,9 @@ beforeEach(function () {
     renderPanelTablesWithoutIntl();
 });
 
-function styleEnrolledUser(string $role): User
-{
-    $user = User::factory()->create(['two_factor_secret' => 'E2EADMINE2EADMIN']);
-    $user->assignRole($role);
-
-    return $user;
-}
-
 it('loads the notebook stylesheet once after the base theme with local fonts', function () {
-    $admin = styleEnrolledUser(Role::ADMIN);
-    $this->actingAs($admin)->withSession([FilamentMfaStamp::SESSION_KEY => [
-        'user' => $admin->getAuthIdentifier(), 'at' => now()->toIso8601String(),
-    ]]);
+    $admin = enrolledPanelUser(Role::ADMIN);
+    $this->actingAs($admin)->withSession(panelMfaStamp($admin));
 
     $html = $this->get('/control-panel')->assertOk()->getContent();
     $panel = Filament::getCurrentOrDefaultPanel();
@@ -43,16 +31,21 @@ it('loads the notebook stylesheet once after the base theme with local fonts', f
     // in Filament. Require no extra manual font link beyond those registrations;
     // the browser test asserts exactly one link in a real HTTP process.
     $registeredFonts = FilamentAsset::getFonts([AdminWorkspaceAssets::PACKAGE]);
+    $fontHref = $registeredFonts[0]->getStyle()->getHref();
+    // strpos() is false when absent, and false compares below every int: a
+    // missing base theme must fail rather than trivially pass the ordering check.
+    $themePosition = strpos($html, $panel->getTheme()->getHref());
 
     expect($style)->not->toBeNull()
         ->and($style->isLoadedOnRequest())->toBeTrue()
         ->and(substr_count($html, $style->getHref()))->toBe(1)
-        ->and(strpos($html, $style->getHref()))->toBeGreaterThan(strpos($html, $panel->getTheme()->getHref()))
+        ->and($themePosition)->toBeInt()
+        ->and(strpos($html, $style->getHref()))->toBeGreaterThan($themePosition)
         ->and($panel->getFontFamily())->toBe('Geist')
         ->and($panel->getFontProvider())->toBe(LocalFontProvider::class)
         ->and($panel->getFontUrl())->toBeNull()
-        ->and(substr_count($html, AdminWorkspaceAssets::fontStylesheetUrl()))->toBe(count($registeredFonts))
-        ->and($html)->toContain(AdminWorkspaceAssets::fontStylesheetUrl(), 'data-admin-scene="dashboard"')
+        ->and(substr_count($html, $fontHref))->toBe(count($registeredFonts))
+        ->and($html)->toContain($fontHref, 'data-admin-scene="dashboard"')
         ->not->toContain('fonts.bunny.net', 'fonts.googleapis.com');
     expect(substr_count($html, 'data-admin-scene='))->toBe(1);
 });
@@ -73,13 +66,18 @@ it('packages fingerprinted stylesheet and font sources under nginx served namesp
     preg_match_all('/url\([\'\"]?([^\)\'\"]+\.woff2)[\'\"]?\)/', $css, $matches);
     expect($matches[1])->not->toBeEmpty();
     foreach ($matches[1] as $filename) {
-        expect($filename)->toMatch('/^\.\/[a-z0-9-]+-[a-f0-9]+\.woff2$/')
-            ->and(is_file($font->getPath().'/'.$filename))->toBeTrue();
+        $path = $font->getPath().'/'.$filename;
+        expect($filename)->toMatch('/^\.\/[a-z0-9-]+-[a-f0-9]{16}\.woff2$/')
+            ->and(is_file($path))->toBeTrue();
+        // The font directory is versioned by index.css alone and served immutable,
+        // so a WOFF2 whose bytes change without a new filename would stay cached.
+        preg_match('/-([a-f0-9]{16})\.woff2$/', $filename, $hash);
+        expect(substr(hash_file('sha256', $path), 0, 16))->toBe($hash[1]);
     }
 });
 
 it('keeps MFA free of characters and does not admit an unstamped session', function () {
-    $this->actingAs(styleEnrolledUser(Role::ADMIN));
+    $this->actingAs(enrolledPanelUser(Role::ADMIN));
     $url = route(MfaChallenge::getRouteName(Filament::getDefaultPanel()));
 
     $this->get('/control-panel')->assertRedirect($url);
@@ -87,10 +85,8 @@ it('keeps MFA free of characters and does not admit an unstamped session', funct
 });
 
 it('keeps audit navigation and its scene restricted to super administrators', function (string $role, bool $allowed) {
-    $user = styleEnrolledUser($role);
-    $this->actingAs($user)->withSession([FilamentMfaStamp::SESSION_KEY => [
-        'user' => $user->getAuthIdentifier(), 'at' => now()->toIso8601String(),
-    ]]);
+    $user = enrolledPanelUser($role);
+    $this->actingAs($user)->withSession(panelMfaStamp($user));
 
     $dashboard = $this->get('/control-panel')->assertOk();
     $auditUrl = AuditLogResource::getUrl('index');
