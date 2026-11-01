@@ -575,3 +575,544 @@ it('reads the account badge in precedence order: Deleted, Suspended, Active', fu
     reviewPage(panelAdmin(), reviewApplication($suspended))->assertSchemaComponentStateSet('account', 'Suspended');
     reviewPage(panelAdmin(), reviewApplication(panelMember()))->assertSchemaComponentStateSet('account', 'Active');
 });
+
+// ---------------------------------------------------------------------
+// Test 12 — PLAN-COACH-APPLICATION-DECISION-PANEL.md phase 1: the
+// "Approve is unavailable" box and the scan-status poll
+// ---------------------------------------------------------------------
+
+const POLL_ATTRIBUTE = 'wire:poll.10s="pollScanStatus"';
+
+/** A pending_scan document that is still within its retry budget, so it reads "Scanning". */
+function reviewScanningDocument(CoachApplication $application): ApplicationDocument
+{
+    return reviewDocument($application, ['status' => 'pending_scan']);
+}
+
+function reviewErasingApplicant(): User
+{
+    $applicant = panelMember();
+    $applicant->forceFill(['erasure_started_at' => now()])->save();
+
+    return $applicant;
+}
+
+/**
+ * Each case: the application builder, the box text, and whether the page polls.
+ *
+ * @return array<string, array{0: Closure(): CoachApplication, 1: string, 2: bool}>
+ */
+dataset('unavailable approve cases', [
+    'erasing, no documents' => [
+        fn () => reviewApplication(reviewErasingApplicant()),
+        "The applicant is erasing their account, so they can't be approved. You can still reject.",
+        false,
+    ],
+    'erasing with a scanning document' => [
+        function () {
+            $application = reviewApplication(reviewErasingApplicant());
+            reviewScanningDocument($application);
+
+            return $application;
+        },
+        "The applicant is erasing their account, so they can't be approved. You can still reject.",
+        false,
+    ],
+    'no documents' => [
+        fn () => reviewApplication(panelMember()),
+        "Approval needs at least one clean document, and the applicant hasn't uploaded any.",
+        false,
+    ],
+    'one scanning document' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewScanningDocument($application);
+
+            return $application;
+        },
+        'Approval needs at least one clean document. 1 document is still being scanned; this page checks again every 10 seconds.',
+        true,
+    ],
+    'two scanning documents' => [
+        function () {
+            $application = reviewApplication(panelMember(), 'under_review');
+            reviewScanningDocument($application);
+            reviewScanningDocument($application);
+
+            return $application;
+        },
+        'Approval needs at least one clean document. 2 documents are still being scanned; this page checks again every 10 seconds.',
+        true,
+    ],
+    'quarantined only' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewDocument($application, ['status' => 'infected']);
+
+            return $application;
+        },
+        "Approval needs at least one clean document, and none of the uploaded documents is clean. The Documents tab shows each one's status.",
+        false,
+    ],
+    'purged only' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewDocument($application, ['path' => ''], withBytes: false);
+
+            return $application;
+        },
+        "Approval needs at least one clean document, and none of the uploaded documents is clean. The Documents tab shows each one's status.",
+        false,
+    ],
+    'scan failed only' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewDocument($application, ['status' => 'pending_scan', 'work_attempts' => 99]);
+
+            return $application;
+        },
+        "Approval needs at least one clean document, and none of the uploaded documents is clean. The Documents tab shows each one's status.",
+        false,
+    ],
+    // `displayState()`'s one tricky branch: retries are used up, but a live
+    // lease means a worker still holds the row and may yet finish it.
+    'retries used up but a worker holds the lease' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewDocument($application, ['status' => 'pending_scan', 'work_attempts' => 99, 'work_lease_until' => now()->addMinute()]);
+
+            return $application;
+        },
+        'Approval needs at least one clean document. 1 document is still being scanned; this page checks again every 10 seconds.',
+        true,
+    ],
+    'erased document only' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewDocument($application, ['path' => '', 'original_filename' => ApplicationDocument::ERASED_FILENAME], withBytes: false);
+
+            return $application;
+        },
+        "Approval needs at least one clean document, and none of the uploaded documents is clean. The Documents tab shows each one's status.",
+        false,
+    ],
+    'quarantined plus scanning' => [
+        function () {
+            $application = reviewApplication(panelMember());
+            reviewDocument($application, ['status' => 'infected']);
+            reviewScanningDocument($application);
+
+            return $application;
+        },
+        'Approval needs at least one clean document. 1 document is still being scanned; this page checks again every 10 seconds.',
+        true,
+    ],
+]);
+
+it('explains why Approve is unavailable, polls only while a scan is pending, and announces as a status', function (Closure $build, string $text, bool $polls) {
+    $page = reviewPage(panelAdmin(), $build())
+        ->assertSee('Approve is unavailable')
+        ->assertSeeText($text)
+        ->assertSeeHtml('role="status"');
+
+    $polls ? $page->assertSeeHtml(POLL_ATTRIBUTE) : $page->assertDontSeeHtml(POLL_ATTRIBUTE);
+})->with('unavailable approve cases');
+
+it('shows no box and no poll when Approve is allowed, even with another document still scanning', function () {
+    $application = reviewApplication(panelMember());
+    reviewDocument($application);
+    reviewScanningDocument($application);
+
+    reviewPage(panelAdmin(), $application)
+        ->assertActionEnabled('approve')
+        ->assertDontSee('Approve is unavailable')
+        ->assertDontSeeHtml(POLL_ATTRIBUTE);
+});
+
+it('shows no box and no poll on a decided application without a clean document', function (string $status) {
+    $application = reviewApplication(panelMember(), $status);
+    reviewScanningDocument($application);
+
+    reviewPage(panelAdmin(), $application)
+        ->assertDontSee('Approve is unavailable')
+        ->assertDontSeeHtml(POLL_ATTRIBUTE);
+})->with(['approved', 'rejected', 'withdrawn']);
+
+it('unlocks Approve on the next poll once the scan finishes: box and poll attribute go away', function () {
+    $application = reviewApplication(panelMember());
+    $document = reviewScanningDocument($application);
+
+    $page = reviewPage(panelAdmin(), $application)
+        ->assertActionDisabled('approve')
+        ->assertSee('Approve is unavailable')
+        ->assertSeeHtml(POLL_ATTRIBUTE);
+
+    $document->forceFill(['status' => 'clean'])->save();
+    Storage::disk('application_documents')->put($document->path, '%PDF-1.4 fake');
+
+    $page->call('pollScanStatus')
+        ->assertActionEnabled('approve')
+        ->assertDontSee('Approve is unavailable')
+        ->assertDontSeeHtml(POLL_ATTRIBUTE);
+});
+
+it('stops polling when a scan ends without a clean result, and switches to the none-is-clean text', function (array $ending) {
+    $application = reviewApplication(panelMember());
+    $document = reviewScanningDocument($application);
+
+    $page = reviewPage(panelAdmin(), $application)->assertSeeHtml(POLL_ATTRIBUTE);
+
+    $document->forceFill($ending)->save();
+
+    $page->call('pollScanStatus')
+        ->assertDontSeeHtml(POLL_ATTRIBUTE)
+        ->assertSeeText("Approval needs at least one clean document, and none of the uploaded documents is clean. The Documents tab shows each one's status.")
+        ->assertActionDisabled('approve');
+})->with([
+    'quarantined' => [['status' => 'infected']],
+    'retries used up, lease expired' => [['work_attempts' => 99, 'work_lease_until' => now()->subMinute()]],
+]);
+
+it('counts every answered poll, and stops promising checks after the 30th', function () {
+    $application = reviewApplication(panelMember());
+    reviewScanningDocument($application);
+
+    $page = reviewPage(panelAdmin(), $application)
+        ->call('pollScanStatus')
+        ->call('pollScanStatus')
+        ->assertSet('scanPolls', 2);
+
+    // The 29th poll still leaves the attribute; the 30th removes it.
+    $page->set('scanPolls', 28)
+        ->call('pollScanStatus')
+        ->assertSeeHtml(POLL_ATTRIBUTE)
+        ->assertSeeText('this page checks again every 10 seconds')
+        ->call('pollScanStatus')
+        ->assertDontSeeHtml(POLL_ATTRIBUTE)
+        ->assertSeeText('1 document is still being scanned. Automatic checking has stopped; reload the page to check again.')
+        ->assertSee('Approve is unavailable');
+});
+
+it('re-renders on a poll when no pop-up is open', function () {
+    $application = reviewApplication(panelMember());
+    reviewScanningDocument($application);
+
+    $page = reviewPage(panelAdmin(), $application)->call('pollScanStatus');
+
+    expect($page->effects)->toHaveKey('html');
+});
+
+it('skips the render while a pop-up is open, so a half-typed reason survives the poll', function () {
+    $application = reviewApplication(panelMember());
+    $document = reviewScanningDocument($application);
+
+    $page = reviewPage(panelAdmin(), $application)
+        ->mountAction('reject')
+        ->fillForm(['reason' => 'Half-typed reason']);
+
+    // Filament renders only the open pop-up while one is mounted, and never
+    // the full page. The page is changed first so that a full render would
+    // show: it would drop the box and the poll attribute.
+    $document->forceFill(['status' => 'clean'])->save();
+    Storage::disk('application_documents')->put($document->path, '%PDF-1.4 fake');
+
+    $page->call('pollScanStatus');
+
+    expect($page->effects)->not->toHaveKey('html');
+
+    $page->assertActionMounted('reject')->callMountedAction();
+
+    $fresh = $application->fresh();
+    expect($fresh->status)->toBe('rejected')
+        ->and($fresh->decision_reason)->toBe('Half-typed reason');
+});
+
+it('re-authorizes every poll: a demoted admin gets a 403', function () {
+    $application = reviewApplication(panelMember());
+    $admin = panelAdmin();
+
+    $page = reviewPage($admin, $application);
+    $admin->syncRoles([Role::MEMBER]);
+
+    $page->call('pollScanStatus')->assertForbidden();
+});
+
+it('puts the erasing reason ahead of the missing-document reason on the Approve tooltip', function () {
+    $erasing = reviewApplication(reviewErasingApplicant());
+    $empty = reviewApplication(panelMember());
+
+    $tooltip = fn (CoachApplication $application): ?string => reviewPage(panelAdmin(), $application)
+        ->instance()->getAction('approve')->getTooltip();
+
+    expect($tooltip($erasing))->toBe('The applicant is erasing their account.')
+        ->and($tooltip($empty))->toBe('Approval needs at least one clean document.');
+});
+
+// ---------------------------------------------------------------------
+// Test 13 — phase 2: queue navigation and the Documents column
+// ---------------------------------------------------------------------
+
+/** An application submitted `$daysAgo` days before a fixed moment. */
+function queueApplication(string $status = 'submitted', int $daysAgo = 0, array $attributes = []): CoachApplication
+{
+    return reviewApplication(panelMember(), $status, array_merge([
+        'submitted_at' => now()->startOfDay()->subDays($daysAgo),
+    ], $attributes));
+}
+
+/** @return list<int> */
+function queueWalk(CoachApplication $start, string $direction, int $steps): array
+{
+    $visited = [];
+    $current = $start;
+
+    for ($i = 0; $i < $steps; $i++) {
+        $current = $current->{$direction}();
+        $visited[] = $current?->id;
+    }
+
+    return $visited;
+}
+
+/** Statements that touch the given table, recorded while `$work` runs. */
+function statementsTouching(string $needle, Closure $work): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $work();
+    $log = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    return array_values(array_filter(
+        array_column($log, 'query'),
+        fn (string $sql): bool => str_contains($sql, $needle),
+    ));
+}
+
+it('walks next and previous in submitted order, wrapping at both ends and never returning a decided row', function () {
+    $a = queueApplication('submitted', 5);
+    $b = queueApplication('under_review', 3);
+    $c = queueApplication('submitted', 1);
+    $decided = queueApplication('approved', 4);
+
+    expect($b->nextUndecided()->id)->toBe($c->id)
+        ->and($b->previousUndecided()->id)->toBe($a->id)
+        ->and($c->nextUndecided()->id)->toBe($a->id)
+        ->and($c->previousUndecided()->id)->toBe($b->id)
+        ->and($a->nextUndecided()->id)->toBe($b->id)
+        ->and($a->previousUndecided()->id)->toBe($c->id);
+
+    foreach ([$a, $b, $c, $decided] as $from) {
+        expect($from->nextUndecided()?->id)->not->toBe($decided->id)
+            ->and($from->previousUndecided()?->id)->not->toBe($decided->id);
+    }
+});
+
+it('breaks equal submitted_at ties by id, without looping or skipping', function () {
+    $moment = now()->startOfDay()->subDays(2);
+    $a = queueApplication('submitted', 0, ['submitted_at' => $moment]);
+    $b = queueApplication('submitted', 0, ['submitted_at' => $moment]);
+    $c = queueApplication('submitted', 1);
+    expect($a->id)->toBeLessThan($b->id);
+
+    expect($a->nextUndecided()->id)->toBe($b->id)
+        ->and($b->previousUndecided()->id)->toBe($a->id);
+
+    // Queue order is c, a, b. Two laps of next visit each row twice, in order.
+    expect(queueWalk($c, 'nextUndecided', 6))->toBe([$a->id, $b->id, $c->id, $a->id, $b->id, $c->id])
+        ->and(queueWalk($c, 'previousUndecided', 3))->toBe([$b->id, $a->id, $c->id]);
+});
+
+it('skips decided, rejected, withdrawn and draft rows even when they fall between undecided ones', function () {
+    $oldest = queueApplication('submitted', 10);
+    queueApplication('approved', 9);
+    queueApplication('rejected', 8);
+    queueApplication('withdrawn', 7);
+    queueApplication('draft', 6, ['submitted_at' => now()->startOfDay()->subDays(6)]);
+    $underReview = queueApplication('under_review', 5);
+    queueApplication('rejected', 4);
+    $newest = queueApplication('submitted', 3);
+
+    expect($oldest->nextUndecided()->id)->toBe($underReview->id)
+        ->and($underReview->nextUndecided()->id)->toBe($newest->id)
+        ->and($newest->previousUndecided()->id)->toBe($underReview->id)
+        ->and($underReview->previousUndecided()->id)->toBe($oldest->id);
+});
+
+it('has no neighbour when it is the only undecided application, or the only row', function () {
+    $only = queueApplication('submitted', 1);
+    expect($only->nextUndecided())->toBeNull()
+        ->and($only->previousUndecided())->toBeNull();
+
+    $decided = queueApplication('approved', 2);
+    expect($only->nextUndecided())->toBeNull()
+        ->and($only->previousUndecided())->toBeNull()
+        ->and($decided->nextUndecided()->id)->toBe($only->id)
+        ->and($decided->previousUndecided()->id)->toBe($only->id);
+});
+
+it('handles a null submitted_at (withdrawn from a draft): oldest next, newest previous, and the page renders', function () {
+    $oldest = queueApplication('submitted', 8);
+    queueApplication('under_review', 4);
+    $newest = queueApplication('submitted', 1);
+    $withdrawn = reviewApplication(panelMember(), 'withdrawn', ['submitted_at' => null]);
+
+    expect($withdrawn->nextUndecided()->id)->toBe($oldest->id)
+        ->and($withdrawn->previousUndecided()->id)->toBe($newest->id);
+
+    reviewPage(panelAdmin(), $withdrawn)
+        ->assertSuccessful()
+        ->assertActionVisible('nextUndecided')
+        ->assertActionVisible('previousUndecided');
+});
+
+it('shows Previous and Next undecided links to the right neighbours', function () {
+    $a = queueApplication('submitted', 5);
+    $b = queueApplication('submitted', 3);
+    $c = queueApplication('submitted', 1);
+
+    $url = fn (CoachApplication $record): string => CoachApplicationResource::getUrl('view', ['record' => $record->id]);
+
+    reviewPage(panelAdmin(), $b)
+        ->assertActionVisible('previousUndecided')
+        ->assertActionVisible('nextUndecided')
+        ->assertActionHasLabel('previousUndecided', 'Previous undecided')
+        ->assertActionHasLabel('nextUndecided', 'Next undecided')
+        ->assertActionHasUrl('previousUndecided', $url($a))
+        ->assertActionHasUrl('nextUndecided', $url($c));
+
+    // Wrapping: the newest links forward to the oldest.
+    reviewPage(panelAdmin(), $c)->assertActionHasUrl('nextUndecided', $url($a));
+});
+
+it('hides both links when no other undecided application exists, but keeps them on a decided application', function () {
+    $only = queueApplication('submitted', 2);
+    $decided = queueApplication('approved', 3);
+
+    reviewPage(panelAdmin(), $only)
+        ->assertActionHidden('previousUndecided')
+        ->assertActionHidden('nextUndecided');
+
+    reviewPage(panelAdmin(), $decided)
+        ->assertActionVisible('previousUndecided')
+        ->assertActionVisible('nextUndecided')
+        ->assertActionHasUrl('nextUndecided', CoachApplicationResource::getUrl('view', ['record' => $only->id]));
+
+    $only->forceFill(['status' => 'rejected', 'decided_at' => now()])->save();
+
+    reviewPage(panelAdmin(), $decided)
+        ->assertActionHidden('previousUndecided')
+        ->assertActionHidden('nextUndecided');
+});
+
+it('orders the header actions previous, next, approve, reject', function () {
+    $current = queueApplication('submitted', 2);
+    queueApplication('submitted', 1);
+
+    $names = array_map(
+        fn ($action) => $action->getName(),
+        reviewPage(panelAdmin(), $current)->instance()->getCachedHeaderActions(),
+    );
+
+    expect(array_values(array_intersect($names, ['previousUndecided', 'nextUndecided', 'approve', 'reject'])))
+        ->toBe(['previousUndecided', 'nextUndecided', 'approve', 'reject']);
+});
+
+it('looks up each neighbour at most once per direction while the page renders', function () {
+    // The middle of the queue, so both the after and the before query find a
+    // row and the wrap query never runs: exactly two lookups when memoized.
+    $current = queueApplication('submitted', 2);
+    queueApplication('submitted', 3);
+    queueApplication('submitted', 1);
+
+    $queries = statementsTouching('"coach_applications"', function () use ($current) {
+        reviewPage(panelAdmin(), $current)->assertSuccessful();
+    });
+
+    // Neighbour lookups are the only statements that compare submitted_at.
+    $neighbourQueries = array_filter($queries, fn (string $sql): bool => str_contains($sql, '"submitted_at" >')
+        || str_contains($sql, '"submitted_at" <')
+        || str_contains($sql, '"submitted_at" = ?'));
+
+    expect(count($neighbourQueries))->toBe(2);
+});
+
+it('formats the Documents column as None, "total · clean clean", and does not count a purged row as clean', function () {
+    $none = queueApplication('submitted', 4);
+
+    $pending = queueApplication('submitted', 3);
+    reviewDocument($pending, ['status' => 'pending_scan']);
+
+    $mixed = queueApplication('submitted', 2);
+    reviewDocument($mixed);
+    reviewDocument($mixed, ['status' => 'infected']);
+
+    $purged = queueApplication('submitted', 1);
+    reviewDocument($purged, ['status' => 'clean', 'path' => ''], withBytes: false);
+
+    Livewire::actingAs(panelAdmin())
+        ->test(ManageCoachApplications::class)
+        ->loadTable()
+        ->assertTableColumnFormattedStateSet('documents_count', 'None', $none)
+        ->assertTableColumnFormattedStateSet('documents_count', "1 \u{00B7} 0 clean", $pending)
+        ->assertTableColumnFormattedStateSet('documents_count', "2 \u{00B7} 1 clean", $mixed)
+        ->assertTableColumnFormattedStateSet('documents_count', "1 \u{00B7} 0 clean", $purged);
+});
+
+it('runs the same number of application_documents statements for 1 and for 3 listed applications', function () {
+    $render = fn () => statementsTouching('application_documents', function () {
+        Livewire::actingAs(panelAdmin())->test(ManageCoachApplications::class)->loadTable();
+    });
+
+    $first = queueApplication('submitted', 1);
+    reviewDocument($first);
+    reviewDocument($first, ['status' => 'pending_scan']);
+    $withOne = count($render());
+
+    foreach ([2, 3] as $daysAgo) {
+        $extra = queueApplication('submitted', $daysAgo);
+        reviewDocument($extra);
+        reviewDocument($extra, ['status' => 'infected']);
+    }
+    $withThree = count($render());
+
+    expect($withOne)->toBeGreaterThan(0)
+        ->and($withThree)->toBe($withOne);
+});
+
+it('lists undecided applications with equal submitted_at by id ascending', function () {
+    $moment = now()->startOfDay()->subDay();
+    $first = queueApplication('submitted', 0, ['submitted_at' => $moment]);
+    $second = queueApplication('under_review', 0, ['submitted_at' => $moment]);
+    $third = queueApplication('submitted', 0, ['submitted_at' => $moment]);
+
+    Livewire::actingAs(panelAdmin())
+        ->test(ManageCoachApplications::class)
+        ->loadTable()
+        ->assertCanSeeTableRecords([$first, $second, $third], inOrder: true);
+});
+
+it('orders the list by id after submitted_at in SQL, so equal timestamps cannot reorder on Postgres', function () {
+    // SQLite returns ties in row order whatever the SQL says, so the data
+    // tests above cannot see a missing tiebreak. The SQL can.
+    $statements = statementsTouching('"coach_applications"', fn () => Livewire::actingAs(panelAdmin())
+        ->test(ManageCoachApplications::class)
+        ->loadTable());
+
+    $select = collect($statements)->first(fn (string $sql): bool => str_contains($sql, 'order by'));
+
+    expect($select)->toContain('"submitted_at" asc, "id" asc');
+});
+
+it('does not blow up when a hidden Next or Previous link is mounted anyway', function () {
+    // A hand-crafted Livewire call can mount an action whatever its
+    // visibility; with no neighbour the URL closure must not throw.
+    $only = queueApplication('submitted', 1);
+
+    reviewPage(panelAdmin(), $only)
+        ->assertActionHidden('nextUndecided')
+        ->mountAction('nextUndecided')
+        ->assertSuccessful()
+        ->mountAction('previousUndecided')
+        ->assertSuccessful();
+});

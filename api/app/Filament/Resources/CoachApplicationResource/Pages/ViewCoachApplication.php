@@ -19,6 +19,7 @@ use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Actions;
+use Filament\Schemas\Components\Callout;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
@@ -54,6 +55,25 @@ class ViewCoachApplication extends ViewRecord
     /** §5.4: the signed URL is minted at click time and used at once. */
     private const DOWNLOAD_URL_TTL_SECONDS = 60;
 
+    /**
+     * Polls (10 s apart) before a scan that never finishes stops being
+     * re-checked: 5 minutes. Unbounded, a stuck queue worker would keep an
+     * unattended tab polling, and the session sliding, indefinitely.
+     */
+    private const MAX_SCAN_POLLS = 30;
+
+    /** Polls answered since this page was mounted; a reload starts again. */
+    public int $scanPolls = 0;
+
+    /**
+     * Queue neighbours per application id, worked out once per request.
+     * Private on purpose: Livewire only persists public properties, and
+     * these are models.
+     *
+     * @var array<int, array{previous: CoachApplication|null, next: CoachApplication|null}>
+     */
+    private array $queueNeighbours = [];
+
     public function getTitle(): string
     {
         return 'Coach application: '.CoachApplicationResource::getRecordTitle($this->getRecord());
@@ -78,8 +98,23 @@ class ViewCoachApplication extends ViewRecord
         $multiline = fn (?string $state): HtmlString => new HtmlString(nl2br(e($state ?? ''), false));
 
         return $schema->components([
+            // Says why Approve is disabled, where the admin is looking; the
+            // button's tooltip alone is easy to miss. While documents are
+            // still being scanned it also re-checks every 10 s (see
+            // `pollScanStatus()`).
+            Callout::make('Approve is unavailable')
+                ->warning()
+                ->columnSpanFull()
+                ->visible(fn (CoachApplication $record): bool => in_array($record->status, CoachApplication::UNDECIDED_STATUSES, true)
+                    && self::approvalBlockedReason($record) !== null)
+                ->description(fn (CoachApplication $record): ?string => self::approvalNotice($record, $this->scanPolls >= self::MAX_SCAN_POLLS))
+                ->extraAttributes(fn (CoachApplication $record): array => [
+                    'role' => 'status',
+                    ...(self::isAwaitingScan($record) && $this->scanPolls < self::MAX_SCAN_POLLS ? ['wire:poll.10s' => 'pollScanStatus'] : []),
+                ]),
             Section::make('Application')
                 ->columns(3)
+                ->columnSpanFull()
                 ->schema([
                     TextEntry::make('user.username')
                         ->label('Applicant')
@@ -292,6 +327,29 @@ class ViewCoachApplication extends ViewRecord
         $undecided = fn (CoachApplication $record): bool => in_array($record->status, CoachApplication::UNDECIDED_STATUSES, true);
 
         return [
+            Action::make('previousUndecided')
+                ->label('Previous undecided')
+                ->icon(Heroicon::OutlinedArrowLeft)
+                // Icon-only: with four labelled buttons the title column was
+                // crushed to a sliver at ~1024 px. The label stays as the
+                // accessible name; the tooltip says what the arrow does.
+                ->iconButton()
+                ->tooltip('Previous undecided application')
+                ->color('gray')
+                ->url(fn (CoachApplication $record): ?string => ($neighbour = $this->neighbours($record)['previous']) !== null
+                    ? CoachApplicationResource::getUrl('view', ['record' => $neighbour])
+                    : null)
+                ->visible(fn (CoachApplication $record): bool => $this->neighbours($record)['previous'] !== null),
+            Action::make('nextUndecided')
+                ->label('Next undecided')
+                ->icon(Heroicon::OutlinedArrowRight)
+                ->iconButton()
+                ->tooltip('Next undecided application')
+                ->color('gray')
+                ->url(fn (CoachApplication $record): ?string => ($neighbour = $this->neighbours($record)['next']) !== null
+                    ? CoachApplicationResource::getUrl('view', ['record' => $neighbour])
+                    : null)
+                ->visible(fn (CoachApplication $record): bool => $this->neighbours($record)['next'] !== null),
             Action::make('approve')
                 ->color('success')
                 ->requiresConfirmation()
@@ -323,6 +381,20 @@ class ViewCoachApplication extends ViewRecord
     }
 
     /**
+     * PLAN-COACH-APPLICATION-DECISION-PANEL.md phase 2: both buttons need
+     * the neighbours for `visible()` and `url()`, so look each up once.
+     *
+     * @return array{previous: CoachApplication|null, next: CoachApplication|null}
+     */
+    private function neighbours(CoachApplication $record): array
+    {
+        return $this->queueNeighbours[$record->getKey()] ??= [
+            'previous' => $record->previousUndecided(),
+            'next' => $record->nextUndecided(),
+        ];
+    }
+
+    /**
      * Mirrors the decision service's two approve-only 409 guards — Q3's
      * clean document (§7) and §9's erasure gate — so Approve is disabled,
      * with this as its tooltip, rather than offered as a certain refusal.
@@ -330,11 +402,77 @@ class ViewCoachApplication extends ViewRecord
      */
     private static function approvalBlockedReason(CoachApplication $record): ?string
     {
+        // Erasing is checked first: no document can fix it, so it must win
+        // over the "needs a clean document" advice.
         return match (true) {
-            ! $record->hasDownloadableDocument() => 'Approval needs at least one clean document.',
             $record->user->erasure_started_at !== null => 'The applicant is erasing their account.',
+            ! $record->hasDownloadableDocument() => 'Approval needs at least one clean document.',
             default => null,
         };
+    }
+
+    /**
+     * The callout's longer explanation of `approvalBlockedReason()`.
+     * `$pollingStopped`: the page has used up `MAX_SCAN_POLLS`, so it must
+     * not promise another check.
+     */
+    private static function approvalNotice(CoachApplication $record, bool $pollingStopped = false): ?string
+    {
+        if (self::approvalBlockedReason($record) === null) {
+            return null;
+        }
+
+        if ($record->user->erasure_started_at !== null) {
+            return 'The applicant is erasing their account, so they can\'t be approved. You can still reject.';
+        }
+
+        if ($record->documentsForReview->isEmpty()) {
+            return 'Approval needs at least one clean document, and the applicant hasn\'t uploaded any.';
+        }
+
+        $scanning = self::scanningCount($record);
+
+        if ($scanning > 0) {
+            return 'Approval needs at least one clean document. '
+                .($scanning === 1 ? '1 document is' : "{$scanning} documents are")
+                .($pollingStopped
+                    ? ' still being scanned. Automatic checking has stopped; reload the page to check again.'
+                    : ' still being scanned; this page checks again every 10 seconds.');
+        }
+
+        return 'Approval needs at least one clean document, and none of the uploaded documents is clean. The Documents tab shows each one\'s status.';
+    }
+
+    /** Documents still in the scan queue, from the already-loaded relation. */
+    private static function scanningCount(CoachApplication $record): int
+    {
+        return $record->documentsForReview
+            ->filter(fn (ApplicationDocument $document): bool => $document->displayState() === 'Scanning')
+            ->count();
+    }
+
+    /** Undecided, not erasing, nothing clean yet, and a scan may still finish. */
+    private static function isAwaitingScan(CoachApplication $record): bool
+    {
+        return in_array($record->status, CoachApplication::UNDECIDED_STATUSES, true)
+            && $record->user->erasure_started_at === null
+            && ! $record->hasDownloadableDocument()
+            && self::scanningCount($record) > 0;
+    }
+
+    /**
+     * Target of the callout's `wire:poll`. The header actions live outside
+     * every schema component, so Filament's own `->poll()` cannot refresh
+     * them; a plain Livewire re-render does, and the method body only has to
+     * count. While an Approve / Reject pop-up is open Filament itself skips
+     * the full render (`PartialsComponentHook::shouldSkipRender()`), so a
+     * poll cannot clobber a half-typed reason; a test pins that.
+     * `ViewRecord::hydrate()` has already re-authorized this request.
+     * Every answered poll counts toward `MAX_SCAN_POLLS`.
+     */
+    public function pollScanStatus(): void
+    {
+        $this->scanPolls++;
     }
 
     /** The one body behind Approve and Reject; hole 3's Gate is the first thing it runs. */
