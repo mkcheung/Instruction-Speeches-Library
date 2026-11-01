@@ -17,8 +17,9 @@ namespace App\Support;
  * us — it has to be written at every call site. `ADMIN_TIER` is that
  * statement, in one place.
  *
- * Names must match `database/seeders/RoleSeeder.php:23` exactly; that
- * seeder is the only thing that creates these rows.
+ * Names must match the rows created by
+ * `database/migrations/2026_08_07_000612_create_default_roles.php` (and the
+ * idempotent `RoleSeeder`) exactly; a new role needs its own migration.
  */
 final class Role
 {

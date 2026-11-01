@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instruction Speeches UX Proposals</title>
+<meta name="description" content="Eight UX changes for the speech-coaching platform, each shown as today's screen beside the proposed design, with pros and cons.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Luckiest+Guy&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Layout: a review document. Each proposal is a band of app mockups (today vs proposed) with pros and cons beneath. */
+  --bg: #f7f1e7;
+  --surface: #fffdf8;
+  --ink: #261d18;
+  --muted: #6a5b51;
+  --rule: #ddcdb8;
+  --accent: #0f6b66;
+  --accent-soft: #e2f0ee;
+  --bad: #b3261e;
+  --bad-soft: #fbe8e5;
+  --display: "Luckiest Guy", "Arial Black", Impact, sans-serif;
+  --body: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1815; --surface: #27211d; --ink: #f6ecdf; --muted: #cdbba8; --rule: #4b4038;
+    --accent: #73d5c9; --accent-soft: #1c3835; --bad: #ff9a90; --bad-soft: #3d2320;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1815; --surface: #27211d; --ink: #f6ecdf; --muted: #cdbba8; --rule: #4b4038;
+  --accent: #73d5c9; --accent-soft: #1c3835; --bad: #ff9a90; --bad-soft: #3d2320;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--body); }
+a { color: var(--accent); }
+a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+code { font: 0.86em var(--mono); }
+
+.wrap { max-width: 1240px; margin: 0 auto; padding: 32px 20px 64px; display: flex; flex-direction: column; gap: 28px; }
+.intro { display: flex; flex-direction: column; gap: 12px; max-width: 72ch; }
+h1 { font: 400 clamp(2rem, 4.6vw, 3.1rem)/1.05 var(--display); letter-spacing: 0.02em; margin: 0; text-wrap: balance; }
+.lede { font-size: 1.12rem; margin: 0; }
+.small { font-size: 0.92rem; color: var(--muted); margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 0.92rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+.summary { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+.summary h2 { margin: 0; font-size: 1.15rem; }
+.table-scroll { overflow-x: auto; }
+table.sum { width: 100%; border-collapse: collapse; font-size: 0.95rem; min-width: 640px; }
+table.sum th, table.sum td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.sum th { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; }
+table.sum td:first-child { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
+table.sum tr:last-child td { border-bottom: 0; }
+
+.proposal { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: clamp(16px, 3vw, 28px); display: flex; flex-direction: column; gap: 20px; scroll-margin-top: 16px; }
+.p-head { display: flex; gap: 14px; align-items: flex-start; }
+.p-num { flex: none; width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: var(--surface); display: grid; place-items: center; font: 400 1.4rem/1 var(--display); }
+.p-head h2 { margin: 0 0 6px; font-size: clamp(1.25rem, 2.6vw, 1.6rem); line-height: 1.2; text-wrap: balance; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.chip { font-size: 0.8rem; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); }
+.chip.effort { border-color: var(--accent); color: var(--accent); }
+.chip.alert { border-color: var(--bad); color: var(--bad); }
+.problem { margin: 0; max-width: 78ch; }
+.problem b { color: var(--ink); }
+
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 470px), 1fr)); gap: 26px 24px; align-items: start; }
+figure { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.cap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 600; }
+.tag { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 9px; border-radius: 999px; }
+.tag.cur { background: var(--bad-soft); color: var(--bad); }
+.tag.pro { background: var(--accent-soft); color: var(--accent); }
+.scroll { overflow-x: auto; padding: 2px 8px 10px 2px; }
+ol.marks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 0.93rem; color: var(--muted); }
+ol.marks li { display: flex; gap: 8px; align-items: flex-start; }
+ol.marks .mk { margin-top: 2px; }
+
+.pc { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; }
+.pc > div { border-top: 3px solid var(--accent); padding-top: 10px; }
+.pc > div.cons { border-top-color: var(--bad); }
+.pc h3 { margin: 0 0 6px; font-size: 1rem; }
+.pc ul { margin: 0; padding-left: 1.15em; display: flex; flex-direction: column; gap: 5px; }
+.foot { display: flex; flex-direction: column; gap: 6px; font-size: 0.92rem; color: var(--muted); }
+.foot p { margin: 0; }
+.foot b { color: var(--ink); }
+
+.quick { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 20px; }
+.quick h2 { margin: 0 0 8px; font-size: 1.15rem; }
+.quick ul { margin: 0; padding-left: 1.15em; display: flex; flex-direction: column; gap: 6px; }
+.endnote { font-size: 0.9rem; color: var(--muted); margin: 0; max-width: 80ch; }
+
+/* Numbered markers: red = a problem in today's screen, teal = what the proposal changes */
+.mk { display: inline-grid; place-items: center; flex: none; width: 17px; height: 17px; border-radius: 50%; background: #c0392b; color: #fff; font: 700 10px/1 var(--body); vertical-align: middle; box-shadow: 0 0 0 2px #fffdf6; }
+.mk.g { background: #0f6b66; }
+
+/* ---------- App mockups: always the app's own light palette, as the app itself is light-only ---------- */
+.mock {
+  --m-page: #fff5e6; --m-paper: #fffdf6; --m-side: #f8ecda; --m-head: #fbf2df;
+  --m-ink: #2b211b; --m-muted: #66574f; --m-line: #8a7668; --m-soft: #dfcfba;
+  --m-teal: #0f6b66; --m-burg: #8a1720; --m-gold: #e9b949; --m-shadow: #e7d0a5; --m-red: #b91c1c;
+  color-scheme: light; background: var(--m-page); color: var(--m-ink);
+  font: 12px/1.45 var(--body); border: 1px solid #c9b8a4; border-radius: 10px; overflow: hidden;
+  min-width: 450px; box-shadow: 0 10px 26px -14px rgba(43, 33, 27, 0.45);
+}
+.mock.phone { min-width: 0; width: 272px; max-width: 100%; margin: 0 auto; border: 7px solid #2b211b; border-radius: 26px; }
+.m-chrome { display: flex; align-items: center; gap: 5px; padding: 6px 10px; background: #ebe2d4; border-bottom: 1px solid #d3c5b3; }
+.m-chrome i { width: 8px; height: 8px; border-radius: 50%; background: #cbbba6; }
+.m-url { margin-left: 6px; flex: 1; min-width: 0; background: #fffdf6; border-radius: 999px; padding: 1px 10px; font: 10.5px var(--mono); color: #6a5b51; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 34px; padding: 0 10px; background: var(--m-page); box-shadow: inset 0 3px 0 var(--m-burg); border-bottom: 1px solid var(--m-gold); }
+.m-hdr.admin { background: var(--m-side); box-shadow: none; border-bottom: 1px solid var(--m-soft); }
+.m-brand { font: 400 12px/1 var(--display); color: var(--m-burg); letter-spacing: 0.03em; white-space: nowrap; }
+.m-icons { display: flex; align-items: center; gap: 6px; }
+.m-ic { position: relative; width: 18px; height: 18px; border-radius: 6px; border: 1px solid var(--m-soft); background: var(--m-paper); }
+.m-ic.dot::after { content: ""; position: absolute; top: -3px; right: -3px; width: 7px; height: 7px; border-radius: 50%; background: var(--m-burg); }
+.m-av { width: 20px; height: 20px; border-radius: 50%; background: #d8c3a5; color: var(--m-ink); display: inline-grid; place-items: center; font-size: 8.5px; font-weight: 700; flex: none; }
+.m-av.lg { width: 26px; height: 26px; font-size: 10px; }
+.m-app { display: grid; grid-template-columns: 112px minmax(0, 1fr); }
+.m-side { background: var(--m-side); border-right: 1px solid var(--m-soft); padding: 8px 6px; display: flex; flex-direction: column; gap: 1px; }
+.m-side span { padding: 3px 6px; border-radius: 4px; font-size: 10.5px; }
+.m-side span.on { background: var(--m-teal); color: #fff; font-weight: 600; }
+.m-side.admin span.on { background: var(--m-burg); color: var(--m-paper); box-shadow: inset 3px 0 0 var(--m-gold); }
+.m-main { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.m-h1 { font: 400 15px/1.1 var(--display); letter-spacing: 0.03em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; }
+.m-crumb { font-size: 10.5px; color: var(--m-muted); }
+.m-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.m-row.start { justify-content: flex-start; }
+.m-stack { display: flex; flex-direction: column; gap: 5px; }
+.m-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.m-split { display: grid; grid-template-columns: 1.15fr 1fr; gap: 10px; align-items: start; }
+.m-panel { background: var(--m-paper); border: 1px solid var(--m-line); border-radius: 4px; box-shadow: 3px 3px 0 var(--m-shadow); }
+.m-ph { position: relative; background: var(--m-head); border-left: 4px solid var(--m-teal); border-bottom: 1px solid var(--m-soft); padding: 4px 8px; font-weight: 600; font-size: 11.5px; display: flex; justify-content: space-between; align-items: center; gap: 6px; border-radius: 3px 3px 0 0; }
+.m-ph::after { content: ""; position: absolute; top: -4px; right: 12px; width: 20px; height: 9px; background: rgba(233, 185, 73, 0.6); transform: rotate(-12deg); }
+.m-pb { padding: 7px 8px; display: flex; flex-direction: column; gap: 6px; }
+.m-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 1px solid var(--m-line); border-radius: 4px; background: var(--m-paper); color: var(--m-ink); font-weight: 600; font-size: 10.5px; white-space: nowrap; }
+.m-btn.pri { background: var(--m-teal); border-color: var(--m-teal); color: #fff; }
+.m-btn.red { background: var(--m-red); border-color: var(--m-red); color: #fff; }
+.m-btn.redtext { color: var(--m-red); border-color: #e3a3a3; }
+.m-btn.ghost { border-color: transparent; background: transparent; color: var(--m-teal); padding-inline: 4px; }
+.m-btn.off { opacity: 0.45; }
+.m-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--m-line); border-radius: 999px; font-size: 10.5px; background: var(--m-paper); white-space: nowrap; }
+.m-pill.on { background: var(--m-teal); border-color: var(--m-teal); color: #fff; }
+.m-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--m-burg); display: inline-block; }
+.m-pill.on .m-dot { background: var(--m-gold); }
+.m-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--m-soft); }
+.m-tabs > span { padding: 4px 8px; font-size: 10.5px; color: var(--m-muted); display: inline-flex; align-items: center; gap: 4px; }
+.m-tabs > span.on { color: var(--m-teal); font-weight: 700; box-shadow: inset 0 -3px 0 var(--m-teal); }
+.m-tabs > .mk { padding: 0; align-self: center; }
+.m-badge { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 4px; background: #efe3cf; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.m-badge.raw { font-family: var(--mono); }
+.m-badge.ok { background: #dcfce7; color: #166534; }
+.m-badge.wait { background: #fef3c7; color: #92400e; }
+.m-in { border: 1px solid var(--m-line); border-radius: 4px; background: #fff; padding: 3px 6px; color: var(--m-muted); font-size: 10.5px; min-height: 22px; display: flex; align-items: center; gap: 4px; }
+.m-in.tall { min-height: 38px; align-items: flex-start; }
+.m-lbl { font-size: 10px; font-weight: 600; }
+.m-mut { color: var(--m-muted); }
+.m-empty { color: var(--m-muted); font-style: italic; }
+.m-small { font-size: 10px; }
+.m-video { position: relative; aspect-ratio: 16 / 7; background: linear-gradient(135deg, #3d322b, #1d1916); border-radius: 4px; display: grid; place-items: center; }
+.m-video::before { content: ""; border-left: 15px solid rgba(255, 255, 255, 0.85); border-top: 9px solid transparent; border-bottom: 9px solid transparent; }
+.m-video small { position: absolute; left: 8px; bottom: 5px; color: #f3e9dc; font: 9.5px var(--mono); }
+.m-video.short { aspect-ratio: 16 / 6; }
+.m-tl { display: grid; grid-template-columns: 34px 1fr; gap: 4px 6px; align-items: center; font-size: 9.5px; color: var(--m-muted); }
+.m-bar { position: relative; height: 9px; background: #efe3cf; border-radius: 3px; }
+.m-bar b { position: absolute; top: 0; bottom: 0; background: var(--m-teal); border-radius: 2px; opacity: 0.85; }
+.m-bar i { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--m-burg); }
+.m-cb { width: 12px; height: 12px; border: 1px solid var(--m-line); border-radius: 2px; display: inline-grid; place-items: center; font-size: 9px; background: #fff; flex: none; }
+.m-cb.on { background: var(--m-teal); border-color: var(--m-teal); color: #fff; }
+.m-radio { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid currentColor; display: inline-block; flex: none; }
+.m-pill.on .m-radio { background: radial-gradient(circle, #fff 35%, transparent 40%); }
+.m-prog { height: 7px; background: #efe3cf; border-radius: 99px; overflow: hidden; }
+.m-prog b { display: block; height: 100%; background: var(--m-teal); }
+.m-kbd { font: 600 9px/1.5 var(--mono); padding: 0 4px; border: 1px solid #b9a690; border-bottom-width: 2px; border-radius: 3px; background: #fff; color: var(--m-ink); }
+.m-btn.pri .m-kbd { color: var(--m-ink); }
+.m-scrim { background: rgba(43, 33, 27, 0.3); padding: 14px; border-radius: 4px; }
+.m-dialog { background: var(--m-paper); border-radius: 8px; box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.55); padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.m-dialog-title { font-weight: 700; font-size: 12.5px; }
+.m-toast { align-self: flex-start; background: var(--m-ink); color: var(--m-page); border-radius: 6px; padding: 4px 9px; font-size: 10.5px; display: inline-flex; gap: 8px; align-items: center; }
+.m-menu { border: 1px solid var(--m-line); border-radius: 6px; background: #fff; box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.45); padding: 3px; display: flex; flex-direction: column; font-size: 10.5px; }
+.m-menu > span { padding: 3px 8px; border-radius: 4px; display: flex; justify-content: space-between; gap: 10px; }
+.m-menu > span.red { color: var(--m-red); }
+.m-menu > span.hi { background: #f3eadb; }
+.m-menu hr { border: 0; border-top: 1px solid var(--m-soft); margin: 2px 0; }
+.m-tip { background: var(--m-ink); color: #fff; font-size: 10px; padding: 3px 7px; border-radius: 4px; align-self: flex-end; }
+.m-alert { border: 1px solid #e3b341; background: #fff8e1; border-radius: 4px; padding: 5px 8px; font-size: 10.5px; display: flex; gap: 6px; align-items: flex-start; }
+.m-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+.m-table th, .m-table td { text-align: left; padding: 3px 5px; border-bottom: 1px solid var(--m-soft); white-space: nowrap; }
+.m-table th { color: var(--m-muted); font-weight: 600; }
+.m-steps { display: flex; flex-direction: column; gap: 6px; padding: 10px; }
+.m-step { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; align-items: start; }
+.m-step > b { width: 20px; height: 20px; border-radius: 50%; background: var(--m-ink); color: #fff; display: grid; place-items: center; font-size: 10px; }
+.m-step .m-pb { gap: 4px; padding: 5px 7px; }
+.m-stepper { display: flex; align-items: center; gap: 6px; font-size: 10.5px; }
+.m-stepper span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.m-stepper span b { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; border: 1px solid var(--m-line); }
+.m-stepper .done b { background: var(--m-teal); color: #fff; border-color: var(--m-teal); }
+.m-stepper .cur { font-weight: 700; }
+.m-stepper i { flex: 1; height: 1px; background: var(--m-line); min-width: 10px; }
+.m-thumb { width: 54px; height: 32px; border-radius: 3px; background: linear-gradient(135deg, #5b4a3e, #231d19); flex: none; }
+.m-scene { width: 38px; height: 30px; border-radius: 6px; background: radial-gradient(circle at 35% 40%, #e9b949 0 22%, transparent 23%), radial-gradient(circle at 68% 58%, #0f6b66 0 20%, transparent 21%), #f8ecda; border: 1px solid var(--m-soft); flex: none; }
+.m-note { display: flex; gap: 6px; font-size: 10.5px; align-items: baseline; }
+.m-note time { font: 600 9.5px var(--mono); color: var(--m-teal); flex: none; }
+.m-sticky { border: 1.5px dashed var(--m-teal); border-radius: 6px; padding: 5px; display: flex; flex-direction: column; gap: 6px; }
+.m-cap-bar { display: flex; flex-wrap: wrap; gap: 3px; padding: 4px; background: var(--m-head); border: 1px solid var(--m-soft); border-radius: 6px; }
+.m-cap-bar .m-btn { padding-inline: 5px; }
+.m-label-chip { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--m-teal); }
+.m-hr { border: 0; border-top: 1px dashed var(--m-soft); margin: 2px 0; }
+s.m-done { color: var(--m-muted); }
+
+@media (max-width: 520px) {
+  .wrap { padding: 22px 16px 48px; }
+  .p-head { gap: 10px; }
+  .p-num { width: 34px; height: 34px; font-size: 1.2rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+
+<header class="intro">
+  <h1>Instruction Speeches UX Proposals</h1>
+  <p class="lede">Eight changes that would make the coaching loop easier to use. Each one shows the screen as the code renders it today next to the proposed design, followed by the trade-offs.</p>
+  <p class="small">Reviewed 31 October 2026 on branch <code>development</code>. Labels in the "Current" mockups are copied from the code, and every problem cites the file that causes it. The full findings, including readiness, performance and Docker images, are in <code>PLATFORM-READINESS-REVIEW.md</code> at the repo root.</p>
+  <div class="legend" aria-label="Legend">
+    <span><span class="mk" aria-hidden="true">1</span> A problem in today's screen</span>
+    <span><span class="mk g" aria-hidden="true">1</span> What the proposal changes</span>
+    <span>Effort: S is about a day, M is two to four days</span>
+  </div>
+</header>
+
+<section class="summary" aria-labelledby="sum-h">
+  <h2 id="sum-h">The eight proposals, ranked by value for effort</h2>
+  <div class="table-scroll">
+    <table class="sum">
+      <thead><tr><th>#</th><th>Change</th><th>Who it helps</th><th>Effort</th><th>Main win</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><a href="#p1">A home that says what to do next</a></td><td>New users, speakers</td><td>S to M</td><td>The first screen always has one clear action</td></tr>
+        <tr><td>2</td><td><a href="#p2">Upload and invite in one flow</a></td><td>Speakers</td><td>S to M</td><td>The first invitation takes one screen instead of six</td></tr>
+        <tr><td>3</td><td><a href="#p3">Faster note capture with visible shortcuts</a></td><td>Reviewers, coaches</td><td>S to M</td><td>About half the pointer trips per note</td></tr>
+        <tr><td>4</td><td><a href="#p4">One "Review &amp; send" step, with guarded exits</a></td><td>Coaches, speakers</td><td>M</td><td>The speaker hears when the essay arrives; nothing irreversible fires on one click</td></tr>
+        <tr><td>5</td><td><a href="#p5">One "Feedback from" bar at the video</a></td><td>Speakers</td><td>M</td><td>The reviewer switch sits next to the video it changes</td></tr>
+        <tr><td>6</td><td><a href="#p6">Access and removal in plain language</a></td><td>Speakers</td><td>S to M</td><td>Closes a draft-count privacy leak; one menu per person</td></tr>
+        <tr><td>7</td><td><a href="#p7">A directory you can choose from</a></td><td>Speakers, coaches</td><td>S to M</td><td>Faces, short bios and an invite action</td></tr>
+        <tr><td>8</td><td><a href="#p8">Admin decision panel for coach applications</a></td><td>Admins</td><td>S</td><td>Evidence, the blocked reason and the decision on one screen</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- =============================== 1 =============================== -->
+<section class="proposal" id="p1" aria-labelledby="p1-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">1</span>
+    <div>
+      <h2 id="p1-h">A home that says what to do next</h2>
+      <p class="chips"><span class="chip">New users</span><span class="chip">Speakers</span><span class="chip effort">Effort S (A) or M (B)</span></p>
+    </div>
+  </header>
+  <p class="problem">Finishing onboarding sends everyone to <code>/dashboard</code> (<code>Onboarding.tsx:69-72</code>), which is the <b>reviewer's inbox</b>. A new speaker sees four empty sections and no way to upload or invite from there (<code>Dashboard.tsx:96-129</code>). The brand link goes to the same page, and My speeches' empty state is a single line.</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>Right after onboarding</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current My reviews page after onboarding: four empty review sections and no upload or invite action.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/dashboard</span></div>
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches Library</span><span class="m-icons"><span class="m-ic"></span><span class="m-ic"></span><span class="m-av">MA</span></span></div>
+        <div class="m-app">
+          <div class="m-side"><span class="on">My reviews</span><span>My speeches</span><span>Upload a speech</span><span>Search</span><span>Edit profile</span><span>Account &amp; privacy</span><span>Find reviewers</span><span>Become a Coach</span></div>
+          <div class="m-main">
+            <div class="m-row"><span class="m-h1">My reviews <span class="mk">1</span></span><span class="m-btn">Your profile &amp; connections</span></div>
+            <div class="m-panel"><div class="m-ph">Invitations awaiting response</div><div class="m-pb"><span class="m-empty">No pending invitations.</span></div></div>
+            <div class="m-panel"><div class="m-ph">In progress</div><div class="m-pb"><span class="m-empty">Nothing in progress.</span></div></div>
+            <div class="m-panel"><div class="m-ph">Published work</div><div class="m-pb"><span class="m-empty">Nothing published yet.</span></div></div>
+            <div class="m-panel"><div class="m-ph">Revoked <span class="mk">2</span></div><div class="m-pb"><span class="m-empty">Nothing revoked.</span></div></div>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>A new speaker lands on the page for reviews other people ask them to do.</span></li>
+        <li><span class="mk">2</span><span>Four empty sections, and no upload or invite action anywhere on the page.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed A</span>A "Get started" card on the same page</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: a Get started checklist with Upload a speech done, Invite someone you trust as the next step with an Invite reviewers button, then the empty review sections collapsed to one line.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/dashboard</span></div>
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches Library</span><span class="m-icons"><span class="m-ic"></span><span class="m-ic"></span><span class="m-av">MA</span></span></div>
+        <div class="m-app">
+          <div class="m-side"><span class="on">My reviews</span><span>My speeches</span><span>Upload a speech</span><span>Search</span><span>Edit profile</span><span>Account &amp; privacy</span><span>Find reviewers</span><span>Become a Coach</span></div>
+          <div class="m-main">
+            <span class="m-h1">My reviews</span>
+            <div class="m-panel"><div class="m-ph">Get started <span class="mk g">1</span><span class="m-btn ghost">Hide</span></div>
+              <div class="m-pb">
+                <div class="m-row start"><span class="m-cb on">&#10003;</span><s class="m-done">1. Upload a speech</s><span class="m-mut m-small">Toast for Ben's wedding</span></div>
+                <div class="m-row"><span class="m-row start"><span class="m-cb"></span><b>2. Invite someone you trust</b></span><span class="m-btn pri">Invite reviewers</span></div>
+                <div class="m-row start m-mut"><span class="m-cb"></span>3. Watch their notes appear on your video</div>
+              </div>
+            </div>
+            <span class="m-mut m-small">Reviews other people ask you to do appear below.</span>
+            <div class="m-panel"><div class="m-pb"><div class="m-row"><span>Invitations · In progress · Published</span><span class="m-row start"><span class="m-empty">nothing yet</span><span class="mk g">2</span></span></div></div></div>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>The checklist teaches the loop: upload, invite, watch. Shown here after the first upload.</span></li>
+        <li><span class="mk g">2</span><span>Empty reviewer sections shrink to one line until something arrives.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed B</span>A two-lane Home</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: the nav item becomes Home, with a Your speeches lane showing new feedback from Cora above a Reviews you're doing lane.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/dashboard</span></div>
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches Library</span><span class="m-icons"><span class="m-ic"></span><span class="m-ic dot"></span><span class="m-av">MA</span></span></div>
+        <div class="m-app">
+          <div class="m-side"><span class="on">Home</span><span>My speeches</span><span>Upload a speech</span><span>Search</span><span>Edit profile</span><span>Account &amp; privacy</span><span>Find reviewers</span><span>Become a Coach</span></div>
+          <div class="m-main">
+            <span class="m-h1">Home</span>
+            <div class="m-panel"><div class="m-ph">Your speeches <span class="mk g">1</span></div>
+              <div class="m-pb">
+                <div class="m-row"><span class="m-row start"><span class="m-thumb"></span><span class="m-stack" style="gap:2px"><b>Toast for Ben's wedding</b><span class="m-row start" style="gap:4px"><span class="m-dot"></span>New feedback from Cora</span><span class="m-mut m-small">2 reviewers · 1 awaiting reply</span></span></span><span class="m-btn pri">Open</span></div>
+              </div>
+            </div>
+            <div class="m-panel"><div class="m-ph">Reviews you're doing <span class="mk g">2</span></div>
+              <div class="m-pb">
+                <span class="m-mut m-small">Invitations 0 · In progress 1 · Published 2 · Revoked 0</span>
+                <div class="m-row"><span>Keynote draft · by Dan · Started Oct 27</span><span class="m-btn">Watch</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>New feedback shows up where speakers look first. Today it only appears in the bell and as a dot inside Notes.</span></li>
+        <li><span class="mk g">2</span><span>The four reviewer sections stay, below the speaker lane.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>The first screen always offers one primary action.</li>
+      <li>The card teaches the upload, invite, watch loop without a tutorial.</li>
+      <li>B gives speakers a place where new feedback shows up.</li>
+      <li>Empty sections stop dominating the page.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>Steps 2 and 3, and lane B, need per-speech review counts that <code>SpeechResource</code> doesn't send yet.</li>
+      <li>Renaming "My reviews" touches about 41 references, including 4 end-to-end specs.</li>
+      <li>The copy must never suggest an open pool of reviewers.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>Dashboard.tsx</code>, <code>MySpeeches.tsx</code>, <code>SpeechController@index</code> and <code>SpeechResource</code> (<code>withCount</code>); B also changes <code>lib/roles.ts</code>.</p>
+    <p><b>Product rules:</b> no effect on how commentary plays or who sees it.</p>
+  </div>
+</section>
+
+<!-- =============================== 2 =============================== -->
+<section class="proposal" id="p2" aria-labelledby="p2-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">2</span>
+    <div>
+      <h2 id="p2-h">Upload and invite in one flow</h2>
+      <p class="chips"><span class="chip">Speakers</span><span class="chip effort">Effort S to M</span></p>
+    </div>
+  </header>
+  <p class="problem">The upload ends with "Uploaded. Processing now" and a <b>Go to my speeches</b> button (<code>SpeechCreate.tsx:74,80-82</code>). The card has no link while the video processes, even though inviting doesn't need a ready video (<code>SpeechPolicy.php:22-25</code>). Once ready, the speech opens on Notes, whose empty state says "No reviewers available." Inviting is the fourth tab. Getting to the first invitation takes about six screens and nine clicks.</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>Six screens to the first invitation</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current flow: six steps from the details form to sending an invitation from the Reviewers tab.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">6 screens · about 9 clicks</span></div>
+        <div class="m-steps">
+          <div class="m-step"><b>1</b><div class="m-panel"><div class="m-pb"><span class="m-mut m-small">/speeches/new</span><span>Title · Description · Delivered on · This replaces an earlier attempt &#9662;</span><span><span class="m-btn pri">Continue to upload</span></span></div></div></div>
+          <div class="m-step"><b>2</b><div class="m-panel"><div class="m-pb"><span>Upload "Toast for Ben's wedding" · quota meter · drop zone</span><div class="m-prog"><b style="width:100%"></b></div><span class="m-row"><span>Uploaded. Processing now — check My speeches for status.</span><span class="m-row start"><span class="m-btn">Go to my speeches</span><span class="mk">1</span></span></span></div></div></div>
+          <div class="m-step"><b>3</b><div class="m-panel"><div class="m-pb"><span class="m-mut m-small">/speeches</span><span class="m-row"><span>Toast for Ben's wedding <span class="m-badge wait">Processing</span> 2 videos ahead of yours</span><span class="m-row start"><span class="m-mut m-small">no link</span><span class="mk">2</span></span></span></div></div></div>
+          <div class="m-step"><b>4</b><div class="m-panel"><div class="m-pb"><span class="m-row"><span>Toast for Ben's wedding <span class="m-badge ok">Ready</span></span><span class="m-btn">Watch</span></span></div></div></div>
+          <div class="m-step"><b>5</b><div class="m-panel"><div class="m-pb"><div class="m-tabs"><span class="on">Notes</span><span>Essay</span><span>Transcript</span><span>Reviewers</span></div><span class="m-row start"><span class="m-empty">No reviewers available.</span><span class="mk">3</span></span></div></div></div>
+          <div class="m-step"><b>6</b><div class="m-panel"><div class="m-pb"><span class="m-in">Search by name or username…</span><span class="m-row start"><span class="m-pill on">All</span><span class="m-pill">Coaches</span><span class="m-pill">Members</span></span><span class="m-row start"><span class="m-cb"></span>Let them preview the video before accepting <span class="mk">4</span></span><span><span class="m-btn pri">Send invitation</span></span></div></div></div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>The flow stops before the step that matters most: inviting someone.</span></li>
+        <li><span class="mk">2</span><span>Processing cards can't be opened, so the wait can't be used.</span></li>
+        <li><span class="mk">3</span><span>Notes and the timeline's empty states point at each other; Reviewers is the fourth tab.</span></li>
+        <li><span class="mk">4</span><span>This checkbox is stored, but nothing reads it (<code>IMPLEMENTATION-PLANS.md:899</code>).</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed</span>Invite while it uploads</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: one page with a three-step stepper; the upload progresses at 72 percent while the speaker picks Cora Lee and sends one invitation.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/new</span></div>
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches Library</span><span class="m-icons"><span class="m-ic"></span><span class="m-ic"></span><span class="m-av">MA</span></span></div>
+        <div class="m-main">
+          <span class="m-h1">Upload a speech</span>
+          <div class="m-stepper"><span class="done"><b>&#10003;</b>Details</span><i></i><span><b>2</b>Upload</span><i></i><span class="cur"><b>3</b>Invite reviewers</span></div>
+          <div class="m-panel"><div class="m-ph">Upload "Toast for Ben's wedding" <span class="mk g">1</span></div><div class="m-pb"><div class="m-prog"><b style="width:72%"></b></div><span class="m-mut m-small">72% · keeps going while you invite</span></div></div>
+          <div class="m-panel"><div class="m-ph">Who should review it? <span class="mk g">2</span></div>
+            <div class="m-pb">
+              <span class="m-in">Search people…</span>
+              <span class="m-row start"><span class="m-pill on">Your connections</span><span class="m-pill">Coaches</span><span class="m-pill">Everyone</span></span>
+              <div class="m-cols">
+                <span class="m-row start"><span class="m-cb on">&#10003;</span><span class="m-av">CL</span>Cora Lee · Coach</span>
+                <span class="m-row start"><span class="m-cb"></span><span class="m-av">DN</span>Dan Ng · Member</span>
+              </div>
+              <span class="m-lbl">Message (optional)</span>
+              <span class="m-in tall">Tell them what you'd like feedback on…</span>
+              <div class="m-row"><span class="m-btn pri">Send 1 invitation</span><span class="m-btn ghost">I'll invite later</span></div>
+            </div>
+          </div>
+          <span class="m-toast">Cora will be notified. We'll tell you when feedback arrives. <span class="m-btn">Open speech</span><span class="mk g">3</span></span>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>The upload keeps running while the speaker chooses reviewers.</span></li>
+        <li><span class="mk g">2</span><span>People the speaker knows come first, and several can be invited at once.</span></li>
+        <li><span class="mk g">3</span><span>A clear "what happens next" and a direct link to the speech.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>The first invitation takes one screen instead of about six.</li>
+      <li>The transcode wait gets used instead of wasted.</li>
+      <li>The two circular empty states go away. They also gain an <b>Invite reviewers</b> button and a <code>?tab=reviewers</code> deep link that notifications can reuse.</li>
+      <li>Cards get an <b>Open</b> button while processing.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>Inviting several people means several <code>POST /speeches/{id}/reviews</code> calls or a new batch endpoint.</li>
+      <li><code>InviteReviewerPanel</code> is single-select today and needs reworking.</li>
+      <li>The unused preview checkbox should be removed or actually built.</li>
+      <li><code>speech-create.spec.ts</code> covers this route and needs updating.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>SpeechCreate.tsx</code>, <code>InviteReviewerPanel.tsx</code>, <code>SpeechWatch.tsx</code> (read the tab from the URL), <code>MySpeeches.tsx</code>, <code>TrackSelector.tsx</code>, <code>OwnerVideoTools.tsx</code>.</p>
+    <p><b>Product rules:</b> every review still starts with a named invitation; there is no open pool.</p>
+  </div>
+</section>
+
+<!-- =============================== 3 =============================== -->
+<section class="proposal" id="p3" aria-labelledby="p3-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">3</span>
+    <div>
+      <h2 id="p3-h">Faster note capture with visible shortcuts</h2>
+      <p class="chips"><span class="chip">Reviewers</span><span class="chip">Coaches</span><span class="chip effort">Effort S (A) or M (B)</span></p>
+    </div>
+  </header>
+  <p class="problem">Every text note takes five pointer trips: <b>Use current time</b> for Start, play, <b>Use current time</b> for End, type, then <b>Add annotation</b> (<code>AnnotationEditor.tsx:43-68</code>). A keyboard map exists (<code>useKeyboardShortcuts.ts</code>), but <code>C</code> only stamps Start, nothing ends or submits, and no screen mentions any shortcut. The form sits below the heading, the timeline and the tool tabs, so on a phone the video is off-screen at the moment of capture.</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>The reviewer's note form</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current reviewer note form: Start and End each with a Use current time button, a commentary box, and Add annotation and Discard new note buttons.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42 (reviewer)</span></div>
+        <div class="m-main">
+          <div class="m-video short"><small>0:12 / 3:00</small></div>
+          <div class="m-tabs"><span class="on">Notes</span><span>Essay</span><span>Transcript</span></div>
+          <b>Your commentary <span class="mk">3</span></b>
+          <span class="m-mut m-small">Choose Start and End, enter commentary, then add the annotation. Publish when your…</span>
+          <div class="m-tl"><span>Text</span><div class="m-bar"><b style="left:6%;width:4%"></b><b style="left:22%;width:6%"></b></div><span>Voice</span><div class="m-bar"><i style="left:40%"></i></div></div>
+          <span class="m-row start">Add commentary <span class="m-pill on">Text note</span><span class="m-pill">Voice note</span></span>
+          <div class="m-panel"><div class="m-ph">New annotation <span class="m-row start"><span class="m-mut m-small">Not added or saved</span><span class="mk">2</span></span></div>
+            <div class="m-pb">
+              <div class="m-cols">
+                <span class="m-stack"><span class="m-lbl">Start</span><span class="m-row start"><span class="m-in">0:12.500</span><span class="m-btn">Use current time</span></span></span>
+                <span class="m-stack"><span class="m-lbl">End</span><span class="m-row start"><span class="m-in">0:18.000</span><span class="m-btn">Use current time</span><span class="mk">1</span></span></span>
+              </div>
+              <span class="m-mut m-small">Seconds or M:SS.mmm</span>
+              <span class="m-lbl">Commentary</span>
+              <span class="m-in tall">Enter your commentary about this segment…</span>
+              <span class="m-row start"><span class="m-btn pri">Add annotation</span><span class="m-btn">Discard new note</span></span>
+              <span class="m-mut m-small">Only you can see added notes until you publish your feedback.</span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>Five pointer trips per note: Start, play, End, type, Add.</span></li>
+        <li><span class="mk">2</span><span>Shortcuts exist, but nothing on screen mentions them.</span></li>
+        <li><span class="mk">3</span><span>The form sits below the video, timeline and tool tabs. On a phone the video scrolls away.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed A</span>Same fields, keys on the buttons</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: the same form with key hints on each button, quick end buttons of plus 3, 5 and 10 seconds, and an open keyboard shortcuts sheet.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42 (reviewer)</span></div>
+        <div class="m-main">
+          <div class="m-panel"><div class="m-ph">New annotation <span class="m-btn ghost">? Keyboard shortcuts</span></div>
+            <div class="m-pb">
+              <span class="m-row start"><span class="m-lbl" style="width:30px">Start</span><span class="m-in">0:12.500</span><span class="m-btn">Use current time <span class="m-kbd">C</span></span><span class="mk g">1</span></span>
+              <span class="m-row start"><span class="m-lbl" style="width:30px">End</span><span class="m-in">0:18.000</span><span class="m-btn">Use current time <span class="m-kbd">E</span></span><span class="m-btn">+3 s</span><span class="m-btn">+5 s</span><span class="m-btn">+10 s</span><span class="mk g">2</span></span>
+              <span class="m-lbl">Commentary</span>
+              <span class="m-in tall">Great opener: the pause before the joke lands well.</span>
+              <span class="m-row start"><span class="m-btn pri">Add annotation <span class="m-kbd">Ctrl</span>+<span class="m-kbd">Enter</span></span><span class="m-btn">Discard new note</span></span>
+            </div>
+          </div>
+          <div class="m-menu" style="align-self:flex-end; min-width:250px">
+            <span class="hi"><b>Keyboard shortcuts</b><span class="mk g">3</span></span>
+            <span>Play or pause <span class="m-kbd">Space</span></span>
+            <span>Back or forward 5 s <span><span class="m-kbd">J</span> <span class="m-kbd">L</span></span></span>
+            <span>Step one frame <span><span class="m-kbd">,</span> <span class="m-kbd">.</span></span></span>
+            <span>Previous or next note <span><span class="m-kbd">[</span> <span class="m-kbd">]</span></span></span>
+            <span>Set start · set end <span><span class="m-kbd">C</span> <span class="m-kbd">E</span></span></span>
+            <span>Add the note <span class="m-kbd">Ctrl/Cmd+Enter</span></span>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>Each button shows its key, so shortcuts are learned by using the form.</span></li>
+        <li><span class="mk g">2</span><span>End takes one press, and is never filled in automatically.</span></li>
+        <li><span class="mk g">3</span><span>A sheet lists every key in one place.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed B</span>A capture bar for phones</figcaption>
+      <div class="scroll"><div class="mock phone" role="img" aria-label="Proposed phone layout: a capture bar with back 5 seconds, play, start, end and add buttons stays right under the video.">
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches</span><span class="m-av">CL</span></div>
+        <div class="m-main">
+          <div class="m-sticky">
+            <span class="m-label-chip">Stays under the video <span class="mk g">1</span></span>
+            <div class="m-video"><small>0:14 / 3:00</small></div>
+            <div class="m-cap-bar"><span class="m-btn">-5 s</span><span class="m-btn">Play</span><span class="m-btn pri">Start 0:12</span><span class="m-btn">End</span><span class="m-btn">Add</span></div>
+          </div>
+          <div class="m-tabs"><span class="on">Notes</span><span>Essay</span><span>Transcript</span></div>
+          <span class="m-in tall">Commentary for 0:12…</span>
+          <div class="m-note"><time>0:12</time>Great opener…</div>
+          <div class="m-note"><time>0:40</time>Slow down here…</div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>While Notes is open, capture never needs a scroll back to the video.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>Roughly half the pointer trips per note.</li>
+      <li>Shortcuts become discoverable on the buttons they replace.</li>
+      <li>On a phone, the video stays in view while capturing.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li><code>PLAN-ANNOTATION-RANGE-AUTHORING.md:63</code> says End must never be filled implicitly, so the +N s buttons must stay deliberate presses.</li>
+      <li>New keys must respect the typing guard in <code>useKeyboardShortcuts.ts:187-207</code>.</li>
+      <li>The accessible name "Use current time for start" is pinned by <code>annotation-range/authoring.spec.ts</code>.</li>
+      <li>B adds a sticky element, which the layout has avoided so far.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>AnnotationEditor.tsx</code>, <code>useAnnotationEditor.ts</code>, <code>useKeyboardShortcuts.ts</code>, new <code>ShortcutSheet.tsx</code>.</p>
+    <p><b>Product rules:</b> no effect.</p>
+  </div>
+</section>
+
+<!-- =============================== 4 =============================== -->
+<section class="proposal" id="p4" aria-labelledby="p4-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">4</span>
+    <div>
+      <h2 id="p4-h">One "Review &amp; send" step, with guarded exits</h2>
+      <p class="chips"><span class="chip">Coaches</span><span class="chip">Speakers</span><span class="chip effort">Effort M</span><span class="chip alert">Includes a missing notification</span></p>
+    </div>
+  </header>
+  <p class="problem">Feedback goes out through two buttons in two tabs: <b>Publish feedback</b> under Notes and the essay's own <b>Publish</b>. The essay one <b>notifies nobody</b>: <code>EssayService.php:65-81</code> only stamps <code>essay_published_at</code>, while notes publishing sends <code>ReviewPublished</code>. Both are irreversible and unconfirmed. <b>Withdraw</b> and <b>Abandon</b> also fire on one click, and nothing explains that one becomes "declined" and the other "abandoned".</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>Three places, three one-click actions</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current: Notes footer with Clear all notes, Abandon and Publish feedback; the essay tab with its own Publish button; and a dashboard row with Watch, Withdraw and Abandon.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">speeches/42 · Notes, Essay · and /dashboard</span></div>
+        <div class="m-main">
+          <span class="m-label-chip">Notes tab footer</span>
+          <div class="m-row"><span class="m-row start"><span class="m-btn">Clear all notes</span><span class="m-btn redtext">Abandon</span></span><span class="m-row start"><span class="m-btn pri">Publish feedback</span><span class="mk">2</span></span></div>
+          <span class="m-toast">Published 11 notes</span>
+          <hr class="m-hr">
+          <span class="m-label-chip">Essay tab</span>
+          <div class="m-panel"><div class="m-ph">Your essay</div>
+            <div class="m-pb">
+              <span class="m-mut m-small">A longer-form writeup, published separately from your notes.</span>
+              <span class="m-in tall">The toast had a strong opening and a clear arc. Two things to work on…</span>
+              <span class="m-row" style="justify-content:flex-end"><span class="m-btn pri">Publish</span><span class="mk">1</span></span>
+            </div>
+          </div>
+          <hr class="m-hr">
+          <span class="m-label-chip">My reviews › In progress</span>
+          <div class="m-row"><span>Toast for Ben's wedding · by Maria · Started Oct 28</span><span class="m-row start"><span class="m-btn">Watch</span><span class="m-btn">Withdraw</span><span class="m-btn">Abandon</span><span class="mk">3</span></span></div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>The essay has its own Publish button, and publishing it sends the speaker no notification.</span></li>
+        <li><span class="mk">2</span><span>Publishing is irreversible and asks for no confirmation.</span></li>
+        <li><span class="mk">3</span><span>Withdraw and Abandon fire on one click, with no explanation of how they differ.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed</span>One confirmation covers notes and essay</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: a Send your feedback to Maria dialog listing 11 notes and the essay, with Keep working and Send feedback buttons, plus a Step back menu that explains Withdraw and Abandon.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42 (reviewer)</span></div>
+        <div class="m-main">
+          <div class="m-row"><span class="m-btn">Step back &#9662;</span><span class="m-btn pri">Review &amp; send…</span></div>
+          <div class="m-scrim">
+            <div class="m-dialog">
+              <span class="m-dialog-title">Send your feedback to Maria? <span class="mk g">1</span></span>
+              <span class="m-row start"><span class="m-cb on">&#10003;</span>11 notes (2 voice) · first at 0:12 "Great opener…"</span>
+              <span class="m-row"><span class="m-row start"><span class="m-cb on">&#10003;</span>Include your essay · 612 words · saved 2 min ago</span><span class="m-btn ghost">Open essay</span></span>
+              <span class="m-mut m-small">Maria is notified once, including about the essay. <span class="mk g">2</span></span>
+              <span class="m-row" style="justify-content:flex-end"><span class="m-btn">Keep working</span><span class="m-btn pri">Send feedback</span></span>
+            </div>
+          </div>
+          <div class="m-menu" style="max-width:330px">
+            <span class="hi"><b>Step back</b><span class="mk g">3</span></span>
+            <span class="m-stack" style="gap:0"><span>I can't do this review</span><span class="m-mut m-small">Withdraw. Maria sees it as declined.</span></span>
+            <hr>
+            <span class="m-stack red" style="gap:0"><span>Stop reviewing. Nothing you wrote is sent.</span><span class="m-mut m-small">Abandon. Asks you to confirm first.</span></span>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>One moment of sending, with a summary of exactly what goes out.</span></li>
+        <li><span class="mk g">2</span><span>The speaker is told when the essay arrives, not just the notes.</span></li>
+        <li><span class="mk g">3</span><span>Both exits explained in the coach's own words; the irreversible one confirms first.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>One clear moment of sending instead of two easy-to-miss buttons.</li>
+      <li>The essay's arrival finally reaches the speaker.</li>
+      <li>Irreversible actions get a confirmation step.</li>
+      <li>The exits are explained in terms the coach understands.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>The backend must notify on the first essay publish, reusing the <code>$wasFirstPublish &amp;&amp; $delta &gt; 0</code> debounce (<code>IMPLEMENTATION-PLANS.md:190</code>).</li>
+      <li>Coaches who publish in batches pay one extra click each time.</li>
+      <li>End-to-end specs reference the "Publish feedback" and "Abandon" labels.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>AnnotationComposerPanel.tsx</code>, <code>EssayEditorPanel.tsx</code>, new <code>SendFeedbackDialog.tsx</code>, <code>Dashboard.tsx</code>, <code>EssayService.php</code>, <code>ReviewPublished.php</code>.</p>
+    <p><b>Product rules:</b> no effect; reviewers still see only their own work.</p>
+  </div>
+</section>
+
+<!-- =============================== 5 =============================== -->
+<section class="proposal" id="p5" aria-labelledby="p5-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">5</span>
+    <div>
+      <h2 id="p5-h">One "Feedback from" bar at the video</h2>
+      <p class="chips"><span class="chip">Speakers</span><span class="chip effort">Effort M</span></p>
+    </div>
+  </header>
+  <p class="problem">The speaker chooses whose commentary plays in <b>Notes › Commentary track</b> (<code>TrackSelector.tsx:30-48</code>), two panels below the video. A second tab bar above it can only say "Choose a reviewer in Notes". The playback-mode pills look exactly like the reviewer pills. The Essay tab repeats the reviewer picker, and the poster picker, a one-time job, holds a tab. In one column, the video scrolls away while the speaker reads notes.</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>The owner's watch page</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current owner watch page: video, a second tab bar with Commentary timeline and Frame selector, then main tabs, then the Commentary track panel with reviewer pills and identical-looking playback mode pills.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42</span></div>
+        <div class="m-main">
+          <div class="m-row"><span class="m-h1">Toast for Ben's wedding</span><span class="m-scene"></span></div>
+          <div class="m-video"><small>0:00 / 3:00</small></div>
+          <span class="m-row start"><span class="m-btn">Captions on</span><span class="m-mut m-small">Captions processing…</span></span>
+          <div class="m-tabs"><span class="on">Commentary timeline</span><span>Frame selector</span><span class="mk">3</span></div>
+          <span class="m-row"><span>Cora · Text + audio</span><span class="m-btn">Open Notes</span></span>
+          <div class="m-tl"><span>Text</span><div class="m-bar"><b style="left:6%;width:4%"></b><b style="left:22%;width:6%"></b><b style="left:55%;width:3%"></b></div><span>Voice</span><div class="m-bar"><i style="left:33%"></i><i style="left:71%"></i></div></div>
+          <div class="m-tabs"><span class="on">Notes</span><span>Essay</span><span>Transcript</span><span>Reviewers</span></div>
+          <div class="m-panel"><div class="m-ph">Commentary track <span class="m-btn">Report</span></div>
+            <div class="m-pb">
+              <span class="m-mut m-small">Choose whose commentary to watch alongside the video.</span>
+              <span class="m-row start"><span class="m-pill on">Cora · 11 notes total <span class="m-dot"></span></span><span class="m-pill">Dan · 3 notes total</span><span class="mk">1</span></span>
+              <span class="m-row start"><span class="m-pill on">Text + audio</span><span class="m-pill">Written notes only</span><span class="m-pill">Audio only</span><span class="m-pill">Off</span><span class="mk">2</span></span>
+              <div class="m-note"><time>0:12</time>Great opener…</div>
+              <div class="m-note"><time>0:40</time>Slow down here…</div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>The reviewer switch sits two panels below the video it controls.</span></li>
+        <li><span class="mk">2</span><span>Playback-mode pills look exactly like reviewer pills.</span></li>
+        <li><span class="mk">3</span><span>A second tab bar; the one-time poster picker holds one of its tabs.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed A</span>One column, one picker</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: a Feedback from radio bar directly under the video with Cora selected, a Play mode menu, one row of tabs with an essay dot, and one-time tools moved to a title menu.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42</span></div>
+        <div class="m-main">
+          <div class="m-row"><span class="m-h1">Toast for Ben's wedding</span><span class="m-row start"><span class="m-btn">&hellip;</span><span class="mk g">3</span></span></div>
+          <div class="m-menu" style="align-self:flex-end"><span>Edit details</span><span>Change poster…</span><hr><span class="red">Remove speech</span></div>
+          <div class="m-video"><small>0:12 / 3:00</small></div>
+          <div class="m-row">
+            <span class="m-row start"><b class="m-small">Feedback from:</b><span class="m-pill on"><span class="m-radio"></span>Cora · 11 notes · new</span><span class="m-pill"><span class="m-radio"></span>Dan · 3</span><span class="m-pill"><span class="m-radio"></span>Just the video</span><span class="mk g">1</span></span>
+            <span class="m-row start"><span class="m-small">Play</span><span class="m-in">Text + audio &#9662;</span><span class="mk g">2</span></span>
+          </div>
+          <div class="m-tl"><span>Text</span><div class="m-bar"><b style="left:6%;width:4%"></b><b style="left:22%;width:6%"></b><b style="left:55%;width:3%"></b></div><span>Voice</span><div class="m-bar"><i style="left:33%"></i><i style="left:71%"></i></div></div>
+          <div class="m-tabs"><span class="on">Notes</span><span>Essay <span class="m-dot"></span></span><span>Transcript</span><span>Reviewers 3</span></div>
+          <div class="m-note"><time>0:12</time>Great opener…</div>
+          <div class="m-note"><time>0:40</time>Slow down here…</div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>One single-choice picker beside the video drives the timeline, the notes and the essay.</span></li>
+        <li><span class="mk g">2</span><span>Playback mode becomes a menu, so it can't be mistaken for a reviewer.</span></li>
+        <li><span class="mk g">3</span><span>One-time tools move into the title menu; the second tab bar disappears.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed B</span>Side by side at 1024 px and wider</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed wide layout: video, picker and timeline in a left column that stays in view; tabs and notes scroll in the right column.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42 (wide screen)</span></div>
+        <div class="m-main">
+          <span class="m-h1">Toast for Ben's wedding</span>
+          <div class="m-split">
+            <div class="m-sticky">
+              <span class="m-label-chip">Stays in view <span class="mk g">1</span></span>
+              <div class="m-video"><small>0:12 / 3:00</small></div>
+              <span class="m-row start"><span class="m-pill on"><span class="m-radio"></span>Cora · new</span><span class="m-pill"><span class="m-radio"></span>Dan</span><span class="m-pill"><span class="m-radio"></span>Just the video</span></span>
+              <div class="m-tl"><span>Text</span><div class="m-bar"><b style="left:6%;width:4%"></b><b style="left:22%;width:6%"></b></div><span>Voice</span><div class="m-bar"><i style="left:33%"></i></div></div>
+            </div>
+            <div class="m-stack">
+              <div class="m-tabs"><span class="on">Notes</span><span>Essay <span class="m-dot"></span></span><span>Transcript</span><span>Reviewers 3</span></div>
+              <div class="m-note"><time>0:12</time>Great opener…</div>
+              <div class="m-note"><time>0:40</time>Slow down here…</div>
+              <div class="m-note"><time>1:05</time>Good eye contact…</div>
+              <div class="m-note"><time>1:48</time>Land the last line…</div>
+              <span class="m-label-chip">Scrolls on its own <span class="mk g">2</span></span>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>The video, picker and timeline never scroll away.</span></li>
+        <li><span class="mk g">2</span><span>Notes, essay and transcript scroll in their own column.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>The switch sits next to the video it changes.</li>
+      <li>One picker drives timeline, notes and essay, so the essay's duplicate picker goes away.</li>
+      <li>Two tab bars become one, and an essay dot shows when an essay has arrived.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>It must stay a single-select radiogroup, so only one reviewer's commentary ever plays.</li>
+      <li>The accessible names "Choose commentary track" and "Choose whose essay to read" are pinned in end-to-end specs.</li>
+      <li>Fullscreen "Commentary controls" must keep a single owner.</li>
+      <li>B needs fullscreen and iOS testing.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>SpeechWatch.tsx</code>, <code>TrackSelector.tsx</code>, <code>CommentaryPlaybackControls.tsx</code>, <code>OwnerVideoTools.tsx</code>, remove <code>EssayReviewerPicker.tsx</code>, <code>ReviewRosterResource.php</code> (add <code>essay_published_at</code>).</p>
+    <p><b>Product rules:</b> keeps "exactly one reviewer's commentary plays at a time" by design: the picker is single-choice.</p>
+  </div>
+</section>
+
+<!-- =============================== 6 =============================== -->
+<section class="proposal" id="p6" aria-labelledby="p6-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">6</span>
+    <div>
+      <h2 id="p6-h">Access and removal in plain language</h2>
+      <p class="chips"><span class="chip">Speakers</span><span class="chip effort">Effort S to M</span><span class="chip alert">Fixes a privacy leak</span></p>
+    </div>
+  </header>
+  <p class="problem">Roster badges show raw status codes such as <code>in_progress</code> (<code>ReviewerRoster.tsx:149</code>). Each active row has two red buttons. Cancelling an invitation nobody has answered still requires typing a reason. The purge dialog says "This deletes 7 notes, 3 of them published", built from the draft-inclusive <code>annotations_count</code> (<code>RevokeReviewDialog.tsx:104</code>). <b>That tells the speaker how many unpublished drafts the coach has</b>, which the project's own rule forbids. The same leak was already fixed once, in the note-count badge.</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>Reviewers tab and purge dialog</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current Reviewers tab: raw status codes, red Revoke and Revoke and delete their work buttons, and a purge message that reveals the draft count.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42 · Reviewers</span></div>
+        <div class="m-main">
+          <b>Awaiting a reply</b>
+          <div class="m-panel"><div class="m-ph">Dan Ng <span class="m-badge raw">invited</span></div><div class="m-pb"><span><span class="m-btn red">Revoke</span></span></div></div>
+          <b>Working on it</b>
+          <div class="m-panel"><div class="m-ph">Cora Lee <span class="m-row start"><span class="m-badge raw">in_progress</span><span class="mk">1</span></span></div><div class="m-pb"><span class="m-row start"><span class="m-btn red">Revoke</span><span class="m-btn red">Revoke and delete their work</span><span class="mk">2</span></span></div></div>
+          <b>Closed</b>
+          <div class="m-panel"><div class="m-ph">Eve Park <span class="m-badge raw">declined</span></div><div class="m-pb"><span class="m-mut">Declined your invitation</span></div></div>
+          <div class="m-scrim"><div class="m-dialog">
+            <span class="m-dialog-title">Revoke and delete their work</span>
+            <span>This deletes 7 notes, 3 of them published, along with their essay and any voice recordings. This cannot be undone. <span class="mk">4</span></span>
+            <span class="m-lbl">Reason (shown to them) <span class="mk">3</span></span>
+            <span class="m-in">Required</span>
+          </div></div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>Raw status codes instead of words.</span></li>
+        <li><span class="mk">2</span><span>Two red buttons on every active row.</span></li>
+        <li><span class="mk">3</span><span>Even cancelling an unanswered invitation needs a typed reason.</span></li>
+        <li><span class="mk">4</span><span>"7 notes, 3 of them published" reveals 4 unpublished drafts to the speaker.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed</span>"Who can see this speech"</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed: a Who can see this speech list with plain status lines and one Manage menu per person, one-tap reasons, purge copy without the draft count, and an access line on My speeches cards.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/speeches/42 · Reviewers</span></div>
+        <div class="m-main">
+          <div class="m-row"><b>Who can see this speech</b><span class="m-mut m-small">2 people · 1 invitation pending</span></div>
+          <div class="m-panel"><div class="m-pb"><div class="m-row"><span class="m-row start"><span class="m-av">DN</span>Dan Ng · Invited 2 days ago · Awaiting reply</span><span class="m-btn">Manage &#9662;</span></div></div></div>
+          <div class="m-panel"><div class="m-pb"><div class="m-row"><span class="m-row start"><span class="m-av">CL</span>Cora Lee · Reviewing since Oct 28 <span class="mk g">1</span></span><span class="m-btn">Manage &#9662;</span></div></div></div>
+          <div class="m-menu" style="align-self:flex-end; min-width:260px">
+            <span>Remove access…</span>
+            <hr>
+            <span class="red">Remove access and delete their notes…</span>
+          </div>
+          <span class="m-lbl">Reason (shown to them) <span class="mk g">2</span></span>
+          <span class="m-row start"><span class="m-pill on">Sent by mistake</span><span class="m-pill">Found another reviewer</span><span class="m-pill">Other…</span></span>
+          <span class="m-in">Deletes their notes (3 published), any drafts, essay and voice notes. Type DELETE to confirm. <span class="mk g">3</span></span>
+          <hr class="m-hr">
+          <span class="m-label-chip">On My speeches</span>
+          <div class="m-row"><span class="m-row start"><span class="m-thumb"></span>Toast for Ben's wedding <span class="m-badge ok">Ready</span></span><span class="m-row start"><span class="m-mut m-small">Shared with Cora · 1 invitation pending</span><span class="mk g">4</span><span class="m-btn">Watch</span></span></div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>Plain status lines and one Manage menu per person; the destructive option comes last.</span></li>
+        <li><span class="mk g">2</span><span>One-tap reasons meet the required-reason rule without typing.</span></li>
+        <li><span class="mk g">3</span><span>The purge message counts only published notes, so drafts stay private.</span></li>
+        <li><span class="mk g">4</span><span>Who has access is visible where speeches are listed.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>Closes the draft-count leak, which is a rule fix and not just polish.</li>
+      <li>The verbs match the situation: cancel an invitation, remove access.</li>
+      <li>One destructive control per row, behind a menu and a typed confirmation.</li>
+      <li>Access becomes visible from My speeches.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>The card line needs the same per-speech counts as proposal 1.</li>
+      <li>Canned reasons are sent verbatim, so their wording needs care.</li>
+      <li>The test ids <code>revoke-dialog</code> and <code>revoke-and-purge-dialog</code> must keep working.</li>
+      <li>The roster API itself returns <code>annotations_count</code> to the speaker; the full fix also drops it from <code>ReviewRosterResource</code>.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>ReviewerRoster.tsx</code>, <code>RevokeReviewDialog.tsx</code>, <code>MySpeeches.tsx</code>, <code>SpeechResource.php</code>, <code>ReviewRosterResource.php</code>.</p>
+    <p><b>Product rules:</b> restores "the speaker never sees a coach's drafts" (<code>IMPLEMENTATION-PLANS.md:232</code>).</p>
+  </div>
+</section>
+
+<!-- =============================== 7 =============================== -->
+<section class="proposal" id="p7" aria-labelledby="p7-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">7</span>
+    <div>
+      <h2 id="p7-h">A directory you can choose from</h2>
+      <p class="chips"><span class="chip">Speakers</span><span class="chip">Coaches being found</span><span class="chip effort">Effort S to M</span></p>
+    </div>
+  </header>
+  <p class="problem">Directory rows show only a name, a username and a role badge (<code>ReviewerDirectory.tsx:92-107</code>), and the invite picker looks the same. The API already sends <code>avatar_url</code>, but no face is drawn. There is no profile link, bio or invite action, so the page is a dead end. Re-inviting someone already invited changes nothing (<code>ReviewService.php:137-139</code>) but still reports "Invitation sent".</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>Find reviewers</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current Find reviewers page: a plain list of names, usernames and role badges with paging, and an invite picker that says Invitation sent even for a repeat invitation.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/reviewers</span></div>
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches Library</span><span class="m-icons"><span class="m-ic"></span><span class="m-ic"></span><span class="m-av">MA</span></span></div>
+        <div class="m-app">
+          <div class="m-side"><span>My reviews</span><span>My speeches</span><span>Upload a speech</span><span>Search</span><span>Edit profile</span><span>Account &amp; privacy</span><span class="on">Find reviewers</span><span>Become a Coach</span></div>
+          <div class="m-main">
+            <span class="m-h1">Find reviewers</span>
+            <span class="m-mut m-small">Browse everyone who can review a speech — no open pool, this is the only way to find them.</span>
+            <div class="m-panel"><div class="m-ph">Reviewers <span class="m-mut m-small">14 reviewers</span></div>
+              <div class="m-pb">
+                <span class="m-lbl">Search by name or username</span><span class="m-in">Search…</span>
+                <span class="m-row start"><span class="m-pill on">All</span><span class="m-pill">Coaches</span><span class="m-pill">Members</span></span>
+                <div class="m-row"><span class="m-row start">Cora Lee <span class="m-mut">@cora</span><span class="mk">1</span></span><span class="m-badge">Coach</span></div>
+                <div class="m-row"><span>Dan Ng <span class="m-mut">@dan</span></span><span class="m-badge">Member</span></div>
+                <div class="m-row"><span class="m-row start">Eve Park <span class="m-mut">@eve</span><span class="mk">2</span></span><span class="m-badge">Member</span></div>
+                <div class="m-row"><span class="m-btn">Previous</span><span class="m-mut m-small">Page 1 of 3</span><span class="m-btn">Next</span></div>
+              </div>
+            </div>
+            <span class="m-label-chip">Invite picker, inviting Eve a second time</span>
+            <span class="m-row start"><span class="m-toast">Invitation sent to Eve Park.</span><span class="mk">3</span></span>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>No faces, though the API already sends each person's avatar.</span></li>
+        <li><span class="mk">2</span><span>No bio, profile link or invite action: you can browse, but not act.</span></li>
+        <li><span class="mk">3</span><span>A repeat invitation does nothing, yet reports success.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed</span>Faces, bios and "Invite to…"</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed directory: connections first, rows with avatar, short bio, View profile and an Invite to menu, and an already-invited state in the picker.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">app.speechcoach.test/reviewers</span></div>
+        <div class="m-hdr"><span class="m-brand">Instruction Speeches Library</span><span class="m-icons"><span class="m-ic"></span><span class="m-ic"></span><span class="m-av">MA</span></span></div>
+        <div class="m-app">
+          <div class="m-side"><span>My reviews</span><span>My speeches</span><span>Upload a speech</span><span>Search</span><span>Edit profile</span><span>Account &amp; privacy</span><span class="on">Find reviewers</span><span>Become a Coach</span></div>
+          <div class="m-main">
+            <span class="m-h1">Find reviewers</span>
+            <span class="m-in">Search people…</span>
+            <span class="m-row start"><span class="m-pill on">Your connections 4</span><span class="m-pill">Coaches</span><span class="m-pill">Everyone</span><span class="mk g">2</span></span>
+            <div class="m-panel"><div class="m-pb">
+              <div class="m-row"><span class="m-row start"><span class="m-av lg">CL</span><span class="m-stack" style="gap:1px"><b>Cora Lee · Coach <span class="mk g">1</span></b><span class="m-mut m-small">"Former debate coach; weddings and keynotes"</span><span class="m-small" style="color:var(--m-teal)">View profile ›</span></span></span><span class="m-btn pri">Invite to… &#9662;</span></div>
+            </div></div>
+            <div class="m-panel"><div class="m-pb">
+              <div class="m-row"><span class="m-row start"><span class="m-av lg">DN</span><span class="m-stack" style="gap:1px"><b>Dan Ng · Member · Connected</b><span class="m-small" style="color:var(--m-teal)">View profile ›</span></span></span><span class="m-row start"><span class="m-btn pri">Invite to… &#9662;</span><span class="mk g">3</span></span></div>
+            </div></div>
+            <div class="m-menu" style="align-self:flex-end; min-width:220px"><span class="hi">Toast for Ben's wedding</span><span>Keynote draft</span></div>
+            <span class="m-label-chip">In the invite picker</span>
+            <span class="m-row start m-mut"><span class="m-av">EP</span>Eve Park · Already invited, awaiting reply <span class="m-cb"></span><span class="mk g">4</span></span>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>Face and a short bio help people choose.</span></li>
+        <li><span class="mk g">2</span><span>People you're connected with come first, tying in the social layer.</span></li>
+        <li><span class="mk g">3</span><span>"Invite to…" opens that speech's Reviewers tab with the person preselected.</span></li>
+        <li><span class="mk g">4</span><span>Already-invited people are shown as such and can't be picked again.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>Choosing a reviewer becomes a real decision, with face and bio.</li>
+      <li>The social layer finally feeds the core loop.</li>
+      <li>The directory stops being a dead end.</li>
+      <li>No more false "sent" messages.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>Bio needs a new resource field, and bio text in a list is a moderation surface (<code>MODERNIZATION_PLAN.md:2033</code>).</li>
+      <li>"Connected" must never reveal that someone blocked you.</li>
+      <li>The role guard must stay first (<code>User.php:101</code>), and the directory must never list anyone's speeches.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>ReviewerDirectory.tsx</code>, <code>InviteReviewerPanel.tsx</code>, <code>ReviewerDirectoryResource.php</code>, <code>ReviewerDirectoryController.php</code>.</p>
+    <p><b>Product rules:</b> invitations stay named and explicit; the "Invite to…" menu lists only the speaker's own speeches.</p>
+  </div>
+</section>
+
+<!-- =============================== 8 =============================== -->
+<section class="proposal" id="p8" aria-labelledby="p8-h">
+  <header class="p-head">
+    <span class="p-num" aria-hidden="true">8</span>
+    <div>
+      <h2 id="p8-h">Admin decision panel for coach applications</h2>
+      <p class="chips"><span class="chip">Admins</span><span class="chip effort">Effort S</span></p>
+    </div>
+  </header>
+  <p class="problem">The statement and the documents are separate tabs, and the page opens on <b>Request</b>, even though the documents decide whether Approve is allowed (<code>ViewCoachApplication.php:133-192</code>). Why Approve is disabled is explained only by a hover tooltip, which keyboard and touch users can't reach. Nothing refreshes, so "Scanning" never turns "Clean" without a reload. There is no "next application" and the list doesn't show whether documents are ready.</p>
+  <div class="compare">
+    <figure>
+      <figcaption class="cap-head"><span class="tag cur">Current</span>The review page shipped on 29 October</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Current admin coach application page: a disabled Approve with a hover-only tooltip, an Application section, and Request and Documents tabs with the Request tab open.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">api.speechcoach.test/control-panel/coach-applications/2</span></div>
+        <div class="m-hdr admin"><span class="m-brand">Instruction Speeches Library</span><span class="m-av">AD</span></div>
+        <div class="m-app">
+          <div class="m-side admin"><span>Dashboard</span><span>Users</span><span>Speeches</span><span>Reports</span><span class="on">Coach Applications</span><span>Audit log</span></div>
+          <div class="m-main">
+            <span class="m-crumb">Coach Applications › Review</span>
+            <div class="m-row"><span class="m-h1">Coach application</span><span class="m-row start"><span class="m-btn pri off">Approve</span><span class="m-btn">Reject</span></span></div>
+            <span class="m-row start" style="justify-content:flex-end"><span class="m-tip">Approval needs at least one clean document.</span><span class="m-mut m-small">hover only</span><span class="mk">2</span></span>
+            <div class="m-panel"><div class="m-ph">Application</div>
+              <div class="m-pb"><div class="m-cols">
+                <span>Applicant <b>cora</b></span><span>Account <span class="m-badge ok">Active</span></span>
+                <span>Status <span class="m-badge wait">Submitted</span></span><span>Submitted Oct 29</span>
+                <span>Decided <span class="m-mut">Undecided</span></span><span>Decided by <span class="m-mut">—</span></span>
+              </div></div>
+            </div>
+            <div class="m-tabs"><span class="on">Request</span><span>Documents 2</span><span class="mk">1</span></div>
+            <span>I've coached debate for six years and judged regional tournaments…</span>
+            <span class="m-label-chip">Documents tab, after a scan started</span>
+            <table class="m-table"><thead><tr><th>File</th><th>Size</th><th>Status</th><th></th></tr></thead><tbody><tr><td>cert.pdf</td><td>1.2 MB</td><td><span class="m-badge wait">Scanning</span> <span class="mk">3</span></td><td></td></tr></tbody></table>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk">1</span><span>The evidence is split across tabs, and the page opens on the statement.</span></li>
+        <li><span class="mk">2</span><span>Why Approve is blocked lives in a hover tooltip only.</span></li>
+        <li><span class="mk">3</span><span>"Scanning" stays until the admin reloads the page.</span></li>
+      </ol>
+    </figure>
+    <figure>
+      <figcaption class="cap-head"><span class="tag pro">Proposed</span>Decision, statement and documents together</figcaption>
+      <div class="scroll"><div class="mock" role="img" aria-label="Proposed admin page: a Decision section with a visible reason why Approve is locked, a reason field and the buttons, then the statement and the documents side by side, plus previous and next navigation.">
+        <div class="m-chrome"><i></i><i></i><i></i><span class="m-url">api.speechcoach.test/control-panel/coach-applications/2</span></div>
+        <div class="m-hdr admin"><span class="m-brand">Instruction Speeches Library</span><span class="m-av">AD</span></div>
+        <div class="m-app">
+          <div class="m-side admin"><span>Dashboard</span><span>Users</span><span>Speeches</span><span>Reports</span><span class="on">Coach Applications</span><span>Audit log</span></div>
+          <div class="m-main">
+            <div class="m-row"><span class="m-h1">Coach application</span><span class="m-row start"><span class="m-btn ghost">‹ Previous</span><span class="m-btn ghost">Next undecided ›</span><span class="mk g">4</span></span></div>
+            <div class="m-panel"><div class="m-ph">Decision</div>
+              <div class="m-pb">
+                <div class="m-alert"><b>!</b><span>Approve unlocks when a document is Clean. 1 still scanning, checking every 10 s. <span class="mk g">1</span></span></div>
+                <span class="m-lbl">Reason, sent to the applicant word for word</span>
+                <span class="m-in">Optional for approval, required to reject</span>
+                <span class="m-row start"><span class="m-btn pri off">Approve as coach</span><span class="m-btn">Reject</span></span>
+              </div>
+            </div>
+            <div class="m-stack" style="gap:8px">
+              <div class="m-panel"><div class="m-ph">Statement <span class="mk g">2</span></div><div class="m-pb"><span>I've coached debate for six years and judged regional tournaments…</span></div></div>
+              <div class="m-panel"><div class="m-ph">Documents (2)</div><div class="m-pb">
+                <table class="m-table"><tbody>
+                  <tr><td>cert.pdf</td><td>1.2 MB</td><td><span class="m-badge ok">Clean</span></td><td><span class="m-btn">Download</span></td></tr>
+                  <tr><td>cv.pdf</td><td>0.4 MB</td><td><span class="m-badge wait">Scanning</span> <span class="mk g">3</span></td><td></td></tr>
+                </tbody></table>
+              </div></div>
+            </div>
+            <span class="m-label-chip">List page gains a column</span>
+            <span class="m-mut m-small">Documents: 1 clean · 1 scanning</span>
+          </div>
+        </div>
+      </div></div>
+      <ol class="marks">
+        <li><span class="mk g">1</span><span>The blocked reason is visible text, reachable by keyboard, touch and screen readers.</span></li>
+        <li><span class="mk g">2</span><span>Statement and documents sit right under the decision, with no tabs to switch.</span></li>
+        <li><span class="mk g">3</span><span>The page re-checks while a scan runs, then stops polling.</span></li>
+        <li><span class="mk g">4</span><span>Admins can move through the queue without going back to the list.</span></li>
+      </ol>
+    </figure>
+  </div>
+  <div class="pc">
+    <div class="pros"><h3>Pros</h3><ul>
+      <li>Evidence and decision are visible together.</li>
+      <li>The blocked state is explained accessibly instead of in a tooltip.</li>
+      <li>Auto-refresh ends the reload guessing.</li>
+      <li>Faster passes through the queue.</li>
+    </ul></div>
+    <div class="cons"><h3>Cons and risks</h3><ul>
+      <li>It moves away from Filament's modal pattern, so keep a confirm step and <code>Gate::authorize('role.assign')</code>.</li>
+      <li>Polling costs queries, so stop once nothing is scanning.</li>
+      <li>Keep the sign-and-audit at click time, and don't preview PDFs inline.</li>
+    </ul></div>
+  </div>
+  <div class="foot">
+    <p><b>Changes:</b> <code>ViewCoachApplication.php</code>, <code>CoachApplicationResource.php</code>, <code>admin-workspace.css</code>.</p>
+    <p><b>Product rules:</b> only an admin can make a coach, after reviewing the uploaded certificates; unchanged.</p>
+  </div>
+</section>
+
+<section class="quick" aria-labelledby="quick-h">
+  <h2 id="quick-h">Smaller fixes that need no mockup</h2>
+  <ul>
+    <li>Notifications: add timestamps and "Mark all read", and give <code>speech.deleted</code> a proper message instead of the bare title (<code>NotificationBell.tsx:88-89</code>).</li>
+    <li>Give every route its own page title. Today every tab reads the same (<code>index.html:7</code>; no <code>document.title</code> anywhere).</li>
+    <li>Bring Register, Forgot password, Reset password, Verify email and Onboarding into the new login look (<code>WorkspaceLoginFrame</code>).</li>
+    <li>Replace the essay editor's link entry, which uses <code>window.prompt</code> (<code>EssayToolbar.tsx:23</code>), with a small inline form.</li>
+    <li>Show error states with Retry on My speeches and My reviews; a failed request currently looks like "No speeches yet."</li>
+    <li>Replace the stock favicon, add a touch icon and a share image, and give the admin character art a dark-mode treatment.</li>
+  </ul>
+</section>
+
+<p class="endnote">Mockups are simplified drawings in the app's own colours and type, not screenshots: the dev stack was offline during this review. Every "Current" label was checked against the source on 31 October 2026. Effort figures are estimates for one developer who knows the codebase.</p>
+
+</main>
+</body>
+</html>

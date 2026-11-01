@@ -37,7 +37,7 @@ class GrantRoleCommand extends Command
         $roleName = $this->argument('role');
 
         if (! Role::query()->where('name', $roleName)->where('guard_name', 'web')->exists()) {
-            $this->error("Unknown role \"{$roleName}\". Run the RoleSeeder first.");
+            $this->error("Unknown role \"{$roleName}\". Expected one of: ".implode(', ', AppRole::ASSIGNABLE).'. If the name is right, run php artisan migrate first.');
 
             return self::FAILURE;
         }
