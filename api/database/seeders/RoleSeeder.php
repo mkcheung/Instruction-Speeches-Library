@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Support\Role as AppRole;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Cache;
 use Spatie\Permission\Models\Role;
@@ -13,6 +14,11 @@ use Spatie\Permission\PermissionRegistrar;
  * `coach`, `member`. Lowercase per Spatie convention even though the
  * product/UI name for `member` is "Member" (§7 — chosen to avoid colliding
  * with the `users` table's own meaning of the word).
+ *
+ * The roles now come from the `2026_08_07_000612_create_default_roles`
+ * migration, so a migrated database already has them. This seeder stays
+ * because 48 test files and `DatabaseSeeder` call it; it is an idempotent
+ * no-op after the migration.
  */
 class RoleSeeder extends Seeder
 {
@@ -20,7 +26,7 @@ class RoleSeeder extends Seeder
     {
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        foreach (['super_admin', 'admin', 'coach', 'member'] as $role) {
+        foreach (AppRole::ASSIGNABLE as $role) {
             Role::query()->firstOrCreate(['name' => $role, 'guard_name' => 'web']);
         }
 
