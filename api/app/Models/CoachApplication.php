@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -180,5 +181,73 @@ class CoachApplication extends Model
         $this->assertStatus('draft', 'submitted', 'under_review');
 
         $this->forceFill(['status' => 'withdrawn'])->save();
+    }
+
+    /**
+     * The next application in the decision queue
+     * (PLAN-COACH-APPLICATION-DECISION-PANEL.md phase 2): the first
+     * undecided row strictly after this one by `submitted_at, id`, else a
+     * wrap to the first undecided overall, else null when this is the only
+     * one. Ignores the admin list's filters on purpose.
+     */
+    public function nextUndecided(): ?self
+    {
+        // A null `submitted_at` (withdrawn while still a draft) must never
+        // reach `where('submitted_at', '>', null)`: Laravel throws on Postgres.
+        if ($this->submitted_at !== null) {
+            $after = $this->undecidedQueue()
+                ->where(fn ($q) => $q
+                    ->where('submitted_at', '>', $this->submitted_at)
+                    ->orWhere(fn ($q) => $q->where('submitted_at', $this->submitted_at)->where('id', '>', $this->getKey())))
+                ->first();
+
+            if ($after !== null) {
+                return $after;
+            }
+        }
+
+        return $this->undecidedQueue()->first();
+    }
+
+    /**
+     * Mirror image of {@see nextUndecided()}: the last undecided row
+     * strictly before this one, else a wrap to the last undecided overall.
+     */
+    public function previousUndecided(): ?self
+    {
+        // Null `submitted_at`: skip the comparison, see nextUndecided().
+        if ($this->submitted_at !== null) {
+            $before = $this->undecidedQueue(descending: true)
+                ->where(fn ($q) => $q
+                    ->where('submitted_at', '<', $this->submitted_at)
+                    ->orWhere(fn ($q) => $q->where('submitted_at', $this->submitted_at)->where('id', '<', $this->getKey())))
+                ->first();
+
+            if ($before !== null) {
+                return $before;
+            }
+        }
+
+        return $this->undecidedQueue(descending: true)->first();
+    }
+
+    /**
+     * The decision queue minus this application, in the list's order
+     * (`submitted_at, id`), or its exact reverse. Every undecided row has a
+     * `submitted_at` (`submit()` sets it), though no constraint enforces
+     * that: a NULL would sort last on Postgres ascending and first
+     * descending, and first on SQLite ascending.
+     *
+     * @return Builder<self>
+     */
+    private function undecidedQueue(bool $descending = false): Builder
+    {
+        $direction = $descending ? 'desc' : 'asc';
+
+        return self::query()
+            ->whereIn('status', self::UNDECIDED_STATUSES)
+            ->whereKeyNot($this->getKey())
+            ->orderBy('submitted_at', $direction)
+            ->orderBy('id', $direction);
     }
 }

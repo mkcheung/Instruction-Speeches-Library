@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * STEP-12-admin-portal.md demo steps 3-5, reshaped by
  * PLAN-COACH-APPLICATION-REVIEW-PAGE.md: a list of every non-draft
- * application with its status, and a review page per application
+ * application with its status and document counts, and a review page per application
  * (`Pages\ViewCoachApplication`) holding the statement, the documents and
  * the Approve / Reject decision.
  *
@@ -104,20 +104,41 @@ class CoachApplicationResource extends Resource
         // table is four readable ones and a fifth nobody noticed.
             ->stackedOnMobile()
             // Still reads as a queue: undecided first, then oldest
-            // submission first. A clicked column sort takes precedence and
-            // this stays as the tiebreaker (`CanSortRecords.php:88-117`).
+            // submission first, then `id` so ties order the same way the
+            // review page's Next / Previous undecided buttons do
+            // (PLAN-COACH-APPLICATION-DECISION-PANEL.md phase 2). A clicked
+            // column sort takes precedence and this stays as the tiebreaker
+            // (`CanSortRecords.php:88-117`).
             ->defaultSort(fn (Builder $query): Builder => $query
                 ->orderByRaw(
                     'CASE WHEN status IN ('.implode(',', array_fill(0, count(CoachApplication::UNDECIDED_STATUSES), '?')).') THEN 0 ELSE 1 END',
                     CoachApplication::UNDECIDED_STATUSES,
                 )
-                ->orderBy('submitted_at'))
+                ->orderBy('submitted_at')
+                ->orderBy('id'))
+            // Not in `getEloquentQuery()`: the review page's {record}
+            // resolves through that. One subselect per count, no per-row
+            // queries. "Clean" must equal `ApplicationDocument::isDownloadable()`.
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->withCount([
+                'documents',
+                'documents as clean_documents_count' => fn ($q) => $q->where('status', 'clean')->where('path', '!=', ''),
+            ]))
             ->columns([
                 TextColumn::make('user.username')->label('Applicant')->placeholder('—'),
                 TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn (string $state): string => self::STATUS_BADGES[$state][0] ?? $state)
                     ->color(fn (string $state): string => self::STATUS_BADGES[$state][1] ?? 'gray'),
+                TextColumn::make('documents_count')
+                    ->label('Documents')
+                    // No `->numeric()`: it needs ext-intl, absent on the dev host.
+                    ->formatStateUsing(function (mixed $state, CoachApplication $record): string {
+                        $total = (int) $state;
+
+                        return $total === 0
+                            ? 'None'
+                            : $total.' · '.(int) $record->getAttribute('clean_documents_count').' clean';
+                    }),
                 TextColumn::make('submitted_at')->label('Submitted')->dateTime()->sortable(),
                 TextColumn::make('decided_at')->label('Decided')->dateTime()->placeholder('—')->sortable(),
             ])
