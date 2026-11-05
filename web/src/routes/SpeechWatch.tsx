@@ -15,7 +15,9 @@ import { InviteReviewerPanel } from '@/components/review/InviteReviewerPanel'
 import { ReviewerRoster } from '@/components/review/ReviewerRoster'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OwnerVideoTools, type OwnerTimelineStatus } from '@/components/review/OwnerVideoTools'
-import { CommentaryPlaybackControls, VoicePlaybackControls } from '@/components/review/CommentaryPlaybackControls'
+import { CommentaryPlaybackControls } from '@/components/review/CommentaryPlaybackControls'
+import { FullscreenVoiceControls } from '@/components/annotation/VoicePlaybackControls'
+import { handleVoiceControlsKeyDown } from '@/lib/voiceControlsKeys'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
 import { AnnotationComposerPanel } from '@/components/annotation/AnnotationComposerPanel'
 import { VoiceNoteMarkers } from '@/components/annotation/VoiceNoteMarkers'
@@ -104,7 +106,26 @@ type ReadyPlayback = {
   video: HTMLVideoElement
 }
 
-type PreviewRegistration = { identity: string; node: HTMLDivElement; token: symbol }
+type PresentationRegistration = { identity: string; node: HTMLDivElement; token: symbol }
+
+/**
+ * Identity-safe registration of a DOM node inside the reviewer presentation.
+ * Returns the node only while it was registered for the current identity.
+ * React 19 runs the exact registration's cleanup, so an older cleanup can
+ * never clear its replacement, even within the same identity.
+ */
+function usePresentationTarget(identity: string | null | false | undefined | 0): [(node: HTMLDivElement | null) => void | (() => void), HTMLDivElement | null] {
+  const [registration, setRegistration] = useState<PresentationRegistration | null>(null)
+  const key = identity || null
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    if (!node || !key) return
+    const next = { identity: key, node, token: Symbol('reviewer presentation target') }
+    setRegistration(next)
+    return () => setRegistration((current) =>
+      current?.token === next.token && current.node === node ? null : current)
+  }, [key])
+  return [ref, key && registration?.identity === key ? registration.node : null]
+}
 
 /** Recording lock report, keyed to the `${user}:${speech}:${review}` session that sent it. */
 type RecordingLock = { scopeKey: string; locked: boolean }
@@ -233,7 +254,6 @@ export default function SpeechWatch() {
   const [playbackSource, setPlaybackSource] = useState<PlaybackSource | null>(null)
   const initialUrl = playbackSource?.url ?? null
   const [readyPlayback, setReadyPlayback] = useState<ReadyPlayback | null>(null)
-  const [previewRegistration, setPreviewRegistration] = useState<PreviewRegistration | null>(null)
   const playerRef = useRef<Player | null>(null)
   // Render-triggering state, deliberately not a bare ref — §8.2: a ref
   // mutation doesn't re-render, so `useTimedAnnotations` (inside
@@ -487,17 +507,8 @@ export default function SpeechWatch() {
     myReview.speech?.id === speechId && myReview.revoked_at === null &&
     isAccessGrantingReviewStatus(myReview.status)
     ? `${me.user.id}:${speechId}:${asset!.id}:${myReview.id}` : null
-  const registerPreviewTarget = useCallback((node: HTMLDivElement | null) => {
-    if (!node || !previewIdentity) return
-    const registration = { identity: previewIdentity, node, token: Symbol('reviewer preview') }
-    setPreviewRegistration(registration)
-    // React 19 runs this exact registration's cleanup. An older cleanup
-    // cannot clear its replacement, even within the same preview identity.
-    return () => setPreviewRegistration((current) =>
-      current?.token === registration.token && current.node === node ? null : current)
-  }, [previewIdentity])
-  const previewTarget = previewIdentity && previewRegistration?.identity === previewIdentity
-    ? previewRegistration.node : null
+  const [registerPreviewTarget, previewTarget] = usePresentationTarget(previewIdentity)
+  const [registerVoiceControlsTarget, voiceControlsTarget] = usePresentationTarget(previewIdentity)
 
   // Same key the panel remounts on. A lock report only counts for the session
   // it came from, so retained A state can never disable B's tabs.
@@ -734,31 +745,24 @@ export default function SpeechWatch() {
                     annotations={commentary.markerAnnotations}
                     durationSeconds={asset.duration_seconds === null ? (videoEl?.duration ?? 0) : Number(asset.duration_seconds)}
                   />
-                  {htmlFullscreen && (commentary.voicePlayback.current || commentary.voicePlayback.hint || commentary.voicePlayback.error) && (
-                    <div className="pointer-events-auto absolute bottom-12 left-3 z-30 max-w-[min(360px,calc(100%-24px))] rounded-lg border bg-background p-2 text-foreground shadow-lg"
-                      onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
-                        if (event.key === 'Escape') commentary.voicePlayback.skip()
-                        event.stopPropagation()
-                      }}>
-                      <VoicePlaybackControls playback={commentary.voicePlayback} />
-                    </div>
-                  )}
+                  {htmlFullscreen && <FullscreenVoiceControls playback={commentary.voicePlayback} />}
                   {htmlFullscreen && <details className="pointer-events-auto absolute right-3 top-3 z-30 max-h-[60vh] w-[min(360px,calc(100%-24px))] overflow-y-auto rounded-lg border bg-background p-3 text-foreground shadow-lg"
                     open={fullscreenControlsOpen} onToggle={(event) => setFullscreenControlsOpen(event.currentTarget.open)}
-                    onClick={(event) => event.stopPropagation()} onKeyDown={(event) => {
-                        if (event.key === 'Escape') commentary.voicePlayback.skip()
-                        event.stopPropagation()
-                      }}>
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => handleVoiceControlsKeyDown(event, commentary.voicePlayback.skip)}>
                     <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Commentary controls</summary>
                     <CommentaryPlaybackControls {...playbackControlProps} showVoiceControls={false} />
                   </details>}
                 </>
                 ) : previewIdentity ? (
-                  <div className="owner-feedback-frame" style={{ '--video-ar': videoAr } as React.CSSProperties}>
-                    <OverlayPositioner anchor={captionsAnchor}>
-                      <div data-testid="reviewer-preview-target" className="pointer-events-none" ref={registerPreviewTarget} />
-                    </OverlayPositioner>
-                  </div>
+                  <>
+                    <div className="owner-feedback-frame" style={{ '--video-ar': videoAr } as React.CSSProperties}>
+                      <OverlayPositioner anchor={captionsAnchor}>
+                        <div data-testid="reviewer-preview-target" className="pointer-events-none" ref={registerPreviewTarget} />
+                      </OverlayPositioner>
+                    </div>
+                    <div data-testid="reviewer-voice-controls-target" ref={registerVoiceControlsTarget} />
+                  </>
                 ) : null}
               />
             </div>
@@ -982,6 +986,8 @@ export default function SpeechWatch() {
               review={myReview}
               previewTarget={previewTarget}
               previewEnabled={reviewerTab === 'notes' && !!previewIdentity}
+              htmlFullscreen={htmlFullscreen}
+              voiceControlsTarget={voiceControlsTarget}
               previewAnchor={captionsAnchor}
               authoringActive={reviewerTab === 'notes'}
               onRecordingLockChange={onRecordingLockChange}

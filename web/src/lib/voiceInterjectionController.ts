@@ -1,5 +1,5 @@
 import type { Annotation, VoiceAudioUrlResponse } from '@/features/annotation/types'
-import { crossedNotes } from '@/lib/crossedNotes'
+import { PLAYHEAD_TOLERANCE_SECONDS, crossedNotes } from '@/lib/crossedNotes'
 
 type VoiceIdentity = { id: string; assetId: number }
 export type VoicePlaybackState = 'idle' | 'hinting' | 'loading' | 'playing' | 'paused'
@@ -161,8 +161,10 @@ export class VoiceInterjectionController {
       this.video.pause()
       return
     }
-    this.previousTime = this.video.currentTime
-    this.started = this.video.currentTime > 0
+    const now = this.video.currentTime
+    // Only when > 0: at 0 the raised value would swallow a note stamped 0.000.
+    this.previousTime = now > 0 ? now + PLAYHEAD_TOLERANCE_SECONDS : now
+    this.started = now > 0
   }
 
   private onSeeking = (): void => {
@@ -222,6 +224,11 @@ export class VoiceInterjectionController {
       window.removeEventListener('keydown', this.onKey)
       this.finish(false)
     }
+  }
+
+  /** Author intent (capture, delete, Clear all): the note and its queue may finish, but the video must not auto-resume. */
+  suppressResume = (): void => {
+    if (this.active || this.queue.length) this.resumeSuppressed = true
   }
 
   skip = (): void => { if (this.active) this.finish(true) }

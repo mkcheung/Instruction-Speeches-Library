@@ -440,7 +440,8 @@ fresh signed URL, and awaits `audio.play()`. `ended` advances the queue; the fin
 video. `play()` rejection, audio error, URL failure, or the R22 duration+3-second safety timeout
 clears the queue and resumes. No branch may leave the video stranded.
 
-Skip button or Escape stops audio, clears the whole crossing queue, and resumes immediately.
+Skip button or Escape stops audio, clears the whole crossing queue, and resumes immediately
+unless manual-pause or author intent was recorded.
 Manual pause intent during a note sets `resumeSuppressed`; ending/error/timeout then leaves the
 video paused. The player adapter must expose manual pause intent even though the video element is
 already programmatically paused. Switching to `text` or `none`, changing reviewer, leaving the
@@ -487,3 +488,26 @@ actually purged. A bulk annotation clear must not create permanent orphan object
 
 The only new frontend runtime dependency is `wavesurfer.js`. Do not add RecordRTC,
 `extendable-media-recorder`, Web Audio wrappers, or a second playback library.
+
+## Amendment 2026-11-03: author voice preview
+
+Authority: [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md). Owner (speaker) playback is unchanged.
+
+- **Own notes interject, drafts included.** In the authoring view, the reviewer's own voice notes,
+  drafts included, interject with the same state machine as owner playback (§7).
+- **Suspension (D3/D4).** The interjection controller is suspended whenever the video preview is not
+  allowed (D3: preview disabled, access denied or blocked) or a recording/upload is pending (D4).
+  Suspension uses the existing teardown path; no new state or "stop without resume" API.
+  Record is blocked while an interjection is active or loading.
+- **Author intent (D5).** An author action during an interjection is an instance of the existing
+  manual-pause intent (§7, `resumeSuppressed`), not a new exception. After a capture, queued notes
+  from the same crossing still play with the video paused. A delete or Clear all ends the current
+  note and its queue, with the video paused. Skip/Escape likewise resume unless this intent was
+  recorded (see the edited "Skip resumes immediately" rule above).
+- **Notes tab only (D3).** Auto-play runs only while the Notes tab is active. This is deliberately
+  stricter than the speaker, whose engine has no tab gate.
+- **Toggle (D6/D7).** A per-user, local, boolean voice-autoplay toggle, default on, controls whether
+  the author's notes interject. Toggling off mid-note stops the note and resumes the video, unless
+  author intent preceded it (D6).
+- **Peers' notes never play (D1).** Another reviewer's notes, and notes of any review other than the
+  one being authored, never play in the authoring view.

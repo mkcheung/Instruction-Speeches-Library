@@ -258,6 +258,25 @@ Run the real queued erase-self path for the coach fixture. Poll completion; requ
 longer resolves and DB asset is gone. As speaker, the same published annotation transcript remains
 under Former reviewer with no audio control, broken-player message, or failure alert.
 
+### Scenario I — author preview interjection
+
+Note: this section lists Scenarios A–F, but `voice-annotations.spec.ts` already contains G and H
+(not listed here); this scenario is named I to avoid a collision. Added per the 2026-11-03 contract
+amendment (PLAN-COACH-VOICE-PREVIEW.md).
+
+As Coach with a saved voice note (draft, unpublished) at a short fixture timestamp and the voice
+autoplay toggle on, play the authoring preview. Require the natural crossing, video paused, audio
+playing, ended, then video advancing again. Subcases, each traced
+by polling `currentTime` advancing or stable:
+
+- toggle off: no interjection;
+- a peer reviewer's note never plays;
+- Record is blocked during an interjection;
+- a pending recording or disabled/denied preview suspends it;
+- after a capture, the note and its queue keep playing and the video stays paused; deleting the playing note or Clear all ends the note and its queue (video stays paused);
+- Skip/Escape resume unless author intent was recorded;
+- no transcript is shown in the coach view (D9).
+
 ## 5. Browser and device matrix
 
 CI must install Chromium, Firefox, and WebKit and explicitly run the immutable, deterministic

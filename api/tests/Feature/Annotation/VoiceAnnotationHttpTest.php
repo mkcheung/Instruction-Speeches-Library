@@ -287,6 +287,47 @@ it('never distinguishes a peer reviewer\'s voice annotation from a nonexistent o
     'restore' => ['POST', '/restore'],
 ]);
 
+it('lets the author fetch a playback URL for their own draft and published voice notes', function (bool $published) {
+    // The coach preview plays the author's own notes, drafts included.
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $asset = SpeechAsset::factory()->for($speech)->voiceNote()->create(['status' => 'ready']);
+    $factory = Annotation::factory()->for($review);
+    $annotation = ($published ? $factory : $factory->draft())->create([
+        'audio_asset_id' => $asset->id,
+        'transcript_status' => 'failed',
+    ]);
+
+    $this->actingAs($coach)->withHeader('Accept', 'application/json')
+        ->getJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}/voice-playback-url")
+        ->assertOk()
+        ->assertJsonStructure(['audio' => ['url', 'expires_at']]);
+})->with([
+    'draft' => [false],
+    'published' => [true],
+]);
+
+it('returns 404 for the playback URL once the author\'s review access is revoked', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $asset = SpeechAsset::factory()->for($speech)->voiceNote()->create(['status' => 'ready']);
+    $annotation = Annotation::factory()->for($review)->create([
+        'audio_asset_id' => $asset->id,
+        'transcript_status' => 'failed',
+    ]);
+    $url = "/api/speeches/{$speech->id}/annotations/{$annotation->id}/voice-playback-url";
+
+    $this->actingAs($coach)->withHeader('Accept', 'application/json')->getJson($url)->assertOk();
+
+    $review->update(['revoked_at' => now()]);
+
+    $this->actingAs($coach->fresh())->withHeader('Accept', 'application/json')->getJson($url)->assertNotFound();
+});
+
 it('returns only the frozen public voice resource fields', function () {
     $this->seed(RoleSeeder::class);
     Storage::fake('media');

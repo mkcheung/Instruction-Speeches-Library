@@ -636,7 +636,7 @@ N+1-safe: `/api/me` already calls `->load('profile')`. Add the field to [`types.
 
 **3. Fix the `id` type — server-side, by casting to string.** `UserResource` emits a JSON number while [`types.ts:13`](web/src/features/auth/types.ts#L13) claims `string`.
 
-**Cast in the resource: `'id' => (string) $this->id`. Do not "fix" the TypeScript type to `number` instead** — that breaks the build. [`SpeechWatch.tsx:168`](web/src/routes/SpeechWatch.tsx#L168) passes `me?.user.id` into `AnnotationComposerPanel`'s `userId: string | undefined` ([`AnnotationComposerPanel.tsx:48`](web/src/components/annotation/AnnotationComposerPanel.tsx#L48)), which flows on into `useAutoPausePreference`. The server-side cast satisfies both sides at once, and `SpeechWatch.tsx:64`'s `Number(me.user.id)` keeps working across it.
+**Cast in the resource: `'id' => (string) $this->id`. Do not "fix" the TypeScript type to `number` instead** — that breaks the build. [`SpeechWatch.tsx:168`](web/src/routes/SpeechWatch.tsx#L168) passes `me?.user.id` into `AnnotationComposerPanel`'s `userId: string | undefined` ([`AnnotationComposerPanel.tsx:48`](web/src/components/annotation/AnnotationComposerPanel.tsx#L48)), which flows on into `useLocalBooleanPreference`. The server-side cast satisfies both sides at once, and `SpeechWatch.tsx:64`'s `Number(me.user.id)` keeps working across it.
 
 This matters beyond tidiness: D3's identical-hue bug is a direct consequence of nobody noticing the mismatch.
 

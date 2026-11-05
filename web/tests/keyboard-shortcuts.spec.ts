@@ -37,6 +37,11 @@ async function expectCloseTo(actual: number, expected: number, tolerance = 0.2) 
  * actually decodable — `readyState >= 1` is what `voice-annotations.spec.ts`
  * itself waits for before trusting `currentTime`. */
 async function openNotesTab(page: Page): Promise<void> {
+  // Voice auto-play is ON by default and coach A's first voice note sits at 0.75 s; these specs press
+  // Space and seek by keyboard, so pin the per-user preference (reviewerA id 9003) off before navigating.
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('annotation-composer:voice-autoplay:9003', 'false') } catch { /* about:blank */ }
+  })
   await openSpeech(page, VOICE.coachSpeechId)
   const video = page.getByTestId('speech-video')
   await expect.poll(() => video.evaluate((el) => (el as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1)

@@ -6,6 +6,7 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { AnnotationComposerPanel } from './AnnotationComposerPanel'
 import type { Annotation, AnnotationsResponse } from '@/features/annotation/types'
 import type { Review } from '@/features/review/types'
+import { FakeAudio, playableVideo, tick } from '@/test/voiceAudio'
 
 function note(id: string, start = 2, duration = 4): Annotation {
   return { id, timing_type: 'range', start_seconds: start, duration_seconds: duration,
@@ -18,6 +19,9 @@ const createVoice = vi.fn((arg: { body: { client_uuid: string; start_seconds: nu
   unwrap: () => Promise.resolve({ ...note('voice-saved', arg.body.start_seconds, 5), client_uuid: arg.body.client_uuid, timing_type: 'point' as const,
     voice: { asset_id: 7, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }),
 }))
+// Stable across renders (a fresh trigger would rebuild the voice controller each render).
+const loadAudio = vi.hoisted(() => vi.fn())
+const audioUrlTrigger = vi.hoisted(() => [loadAudio, { isFetching: false }] as const)
 vi.mock('@/features/annotation/annotationApi', () => ({
   useGetAnnotationsQuery: () => queryState,
   useClearAnnotationsMutation: () => [mutation, { isLoading: false }],
@@ -26,7 +30,7 @@ vi.mock('@/features/annotation/annotationApi', () => ({
   useDeleteAnnotationMutation: () => [mutation, { isLoading: false }],
   useRestoreVoiceAnnotationMutation: () => [mutation, { isLoading: false }],
   useRestorePointAnnotationMutation: () => [mutation, { isLoading: false }],
-  useLazyGetVoiceAudioUrlQuery: () => [mutation, { isFetching: false }],
+  useLazyGetVoiceAudioUrlQuery: () => audioUrlTrigger,
   useRetryVoiceTranscriptMutation: () => [mutation, { isLoading: false }],
   useCreateVoiceAnnotationMutation: () => [createVoice, { isLoading: false }],
 }))
@@ -125,6 +129,8 @@ beforeEach(() => {
   localStorage.clear()
   integ.real = false
   createVoice.mockClear()
+  loadAudio.mockReset()
+  FakeAudio.instances = []
 })
 afterEach(() => {
   cleanup()
@@ -618,5 +624,72 @@ describe('annotation workspace unmocked integration (real VoiceRecorder + real A
     view.unmount()
     expect(onLock).toHaveBeenLastCalledWith(false)
     expect(stopTrack).toHaveBeenCalled()
+  })
+})
+
+
+describe('author voice preview (real engine, list and editors)', () => {
+  const voiceNote = (id: string, start: number): Annotation => ({ ...note(id, start, 2), timing_type: 'point' as const, body: 'Spoken words',
+    voice: { asset_id: 5, audio_status: 'ready' as const, transcript_status: 'ready' as const, failure_code: null } })
+
+  function setup() {
+    integ.real = true
+    vi.stubGlobal('Audio', FakeAudio)
+    loadAudio.mockImplementation(() => ({ unwrap: () => Promise.resolve({ audio: { url: 'https://media/v1.m4a', expires_at: '' } }) }))
+    const data = { review_id: 9, reviewer: null, annotations: [voiceNote('v1', 1)] }
+    queryState = { ...queryState, data, currentData: data }
+    const video = playableVideo()
+    Object.defineProperty(video, 'duration', { value: 100 })
+    video.currentTime = 0.5 // a jump over one second counts as a seek, so start close to the note
+    const panel = mountPanel({ videoEl: video })
+    return { video, panel }
+  }
+
+  it('interjects at a real crossing, then resumes the video when the note ends', async () => {
+    const { video } = setup()
+    expect(loadAudio).not.toHaveBeenCalled()
+    tick(video, 1.2)
+    await screen.findByText('Playing voice commentary')
+    expect(loadAudio).toHaveBeenCalledTimes(1)
+    expect(video.pause).toHaveBeenCalled()
+    expect(video.play).not.toHaveBeenCalled()
+    act(() => FakeAudio.instances[0].onended?.())
+    await waitFor(() => expect(video.play).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the video paused after the note when the author captures mid-note', async () => {
+    const { video } = setup()
+    tick(video, 1.2)
+    await screen.findByText('Playing voice commentary')
+    pressC()
+    expect(startField().value).not.toBe('')
+    act(() => FakeAudio.instances[0].onended?.())
+    await waitFor(() => expect(screen.queryByText('Playing voice commentary')).not.toBeInTheDocument())
+    expect(video.play).not.toHaveBeenCalled()
+  })
+
+  it('keeps the video paused after deleting the playing note', async () => {
+    const user = userEvent.setup()
+    const { video, panel } = setup()
+    await user.click(screen.getByRole('button', { name: /^Saved notes/ }))
+    await user.click(screen.getByRole('button', { name: /^Show details, voice note at/ }))
+    tick(video, 1.2)
+    await screen.findByText('Playing voice commentary')
+    await user.click(screen.getByRole('button', { name: /^Delete voice note at/ }))
+    expect(mutation).toHaveBeenCalled()
+    const data = { ...queryState.data, annotations: [] }
+    queryState = { ...queryState, data, currentData: data }
+    panel.update()
+    await waitFor(() => expect(screen.queryByText('Playing voice commentary')).not.toBeInTheDocument())
+    expect(video.play).not.toHaveBeenCalled()
+  })
+
+  it('does not interject at all when the toggle is off', async () => {
+    localStorage.setItem('annotation-composer:voice-autoplay:3', 'false')
+    const { video } = setup()
+    tick(video, 1.2)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(loadAudio).not.toHaveBeenCalled()
+    expect(video.pause).not.toHaveBeenCalled()
   })
 })

@@ -15,6 +15,9 @@ import { ToastProvider, Toaster, useToastManager } from '@/components/ui/toast'
 import { useGetAnnotationsQuery, useClearAnnotationsMutation } from '@/features/annotation/annotationApi'
 import { useAbandonReviewMutation, usePublishReviewMutation } from '@/features/review/reviewApi'
 import { isAccessGrantingReviewStatus } from '@/features/review/reviewAccess'
+import { VoicePlaybackControls, FullscreenVoiceControls } from '@/components/annotation/VoicePlaybackControls'
+import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
+import { useLocalBooleanPreference } from '@/hooks/useLocalBooleanPreference'
 import { useTimedAnnotations } from '@/hooks/useTimedAnnotations'
 import { useVideoCurrentTime } from '@/hooks/useVideoCurrentTime'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
@@ -61,6 +64,10 @@ export interface AnnotationComposerPanelProps {
    *  recording (blocksToolSwitch). Fires on mount and on change; fires false when the panel
    *  (or its user/speech/review scope) goes away. */
   onRecordingLockChange?: (locked: boolean) => void
+  /** True while the player is in HTML fullscreen: the voice controls move into `voiceControlsTarget`. */
+  htmlFullscreen?: boolean
+  /** Host for the floating voice controls inside the player (reviewer presentation). */
+  voiceControlsTarget?: HTMLElement | null
 }
 
 export function AnnotationComposerPanel({
@@ -78,6 +85,8 @@ export function AnnotationComposerPanel({
   previewAnchor,
   authoringActive = true,
   onRecordingLockChange,
+  htmlFullscreen,
+  voiceControlsTarget,
 }: AnnotationComposerPanelProps) {
   return (
     <ToastProvider>
@@ -97,6 +106,8 @@ export function AnnotationComposerPanel({
         previewAnchor={previewAnchor}
         authoringActive={authoringActive}
         onRecordingLockChange={onRecordingLockChange}
+        htmlFullscreen={htmlFullscreen}
+        voiceControlsTarget={voiceControlsTarget}
       />
       <Toaster />
     </ToastProvider>
@@ -118,6 +129,8 @@ function AnnotationComposerPanelInner({
   previewAnchor,
   authoringActive = true,
   onRecordingLockChange,
+  htmlFullscreen = false,
+  voiceControlsTarget = null,
 }: AnnotationComposerPanelProps) {
   const reviewId = review.id
   const { data, currentData, isError, isFetching, isSuccess, error, refetch } = useGetAnnotationsQuery(
@@ -273,6 +286,9 @@ function AnnotationComposerPanelInner({
 
   const handleClear = async () => {
     if (Object.keys(pendingWorkRef.current).length > 0 || !data || !writable) return
+    // Author intent only once Clear actually proceeds. `handleAuthorIntent` is declared later in the
+    // component body, which is safe: this runs from an event, never during render.
+    handleAuthorIntent()
     try {
       await clearAnnotations({ speechId, reviewId }).unwrap()
       setLiveOverrides({})
@@ -423,6 +439,22 @@ function AnnotationComposerPanelInner({
     setToPlayhead: captureAllowed ? handleCapture : undefined,
   })
 
+  // Author voice preview: the author's own voice notes (drafts included) interject like the speaker's.
+  const [autoplayOn, setAutoplayOn] = useLocalBooleanPreference({ key: 'annotation-composer:voice-autoplay', userId, defaultValue: true })
+  const recorderPending = voiceReports.some((report) => report.pending)
+  // One expression for the voice gate and the overlay portal.
+  const previewAllowed = previewEnabled && !previewAccessDenied && !previewAccessBlocked
+  const voicePreviewSuspended = !previewAllowed || recorderPending
+  const voicePlayback = useVoiceInterjections({
+    speechId,
+    videoEl: voicePreviewSuspended ? null : videoEl, // teardown = stop, no resume
+    notes: voiceRows,
+    audioEnabled: autoplayOn,
+    resetKey: reviewId,
+  })
+  const interjecting = voicePlayback.current !== null
+  const handleAuthorIntent = voicePlayback.suppressResume
+
   const voiceTabLabel = voiceBadge ? `Voice note · ${voiceBadge.text}` : 'Voice note'
   const textTabLabel = textBadge ? `Text note · ${textBadge}` : 'Text note'
   const toolsHeadingId = `${useId()}-tools`
@@ -444,7 +476,7 @@ function AnnotationComposerPanelInner({
             disabled={timelineNavigation.pending} onClick={timelineNavigation.retry}>Retry timeline navigation</Button>}
         </div>}
         {legacyConflict && <p role="status" className="aw-notice text-sm text-muted-foreground">Some older feedback overlaps or has unclassified timing. You can read, edit its text and publish it. New or moved annotations must use a free segment.</p>}
-        {previewTarget && previewEnabled && !previewAccessDenied && !previewAccessBlocked && createPortal(
+        {previewTarget && previewAllowed && createPortal(
           <OverlayStack annotations={merged} activeIds={activeIds} currentTime={currentTime} draftIds={draftIds} anchor={previewAnchor} />,
           previewTarget,
         )}
@@ -465,6 +497,19 @@ function AnnotationComposerPanelInner({
             activeIds={activeIds}
           />
         </div>
+
+        {voiceRows.length > 0 && <div className="aw-section flex flex-col gap-2">
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" checked={autoplayOn} onChange={(event) => setAutoplayOn(event.target.checked)} />
+            Auto-play my voice notes
+          </label>
+          <div className="sm:min-h-16">
+            {recorderPending && autoplayOn
+              ? <p className="text-sm text-muted-foreground">Voice notes won't auto-play while a recording is in progress or unsaved.</p>
+              : !(htmlFullscreen && voiceControlsTarget) && <VoicePlaybackControls playback={voicePlayback} />}
+          </div>
+        </div>}
+        {htmlFullscreen && voiceControlsTarget && createPortal(<FullscreenVoiceControls playback={voicePlayback} />, voiceControlsTarget)}
 
         <div className="aw-section">
           <h4 className="aw-section-title" id={toolsHeadingId}>Add commentary</h4>
@@ -501,6 +546,7 @@ function AnnotationComposerPanelInner({
                   onLiveRemove={handleLiveRemove}
                   onEditorReady={handleComposerEditorReady}
                   onSaved={handleComposerSaved}
+                  onAuthorIntent={handleAuthorIntent}
                 />
               </div>
             </TabsPanel>
@@ -517,6 +563,8 @@ function AnnotationComposerPanelInner({
                   onSessionStateChange={handleSessionState}
                   onAcknowledgedSave={handleVoiceSaved}
                   active={authoringActive && tool === 'voice'}
+                  recordBlocked={interjecting}
+                  onAuthorIntent={handleAuthorIntent}
                 />
               </TabsPanel>
             )}
@@ -549,7 +597,8 @@ function AnnotationComposerPanelInner({
             onLiveRemove={handleLiveRemove}
             open={savedOpen}
             onOpenChange={handleSavedOpenChange}
-            active={authoringActive}
+            active={authoringActive && !interjecting}
+            onAuthorIntent={handleAuthorIntent}
             revealRequest={revealRequest}
             onSelectedChange={setSelectedId}
             acknowledgedSave={acknowledgedSave}

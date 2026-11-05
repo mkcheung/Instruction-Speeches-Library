@@ -26,6 +26,8 @@ The playback controls apply to the speaker/owner's watch screen. Coach recording
 editing, publishing, access policies, media processing, and the speech's own
 captions retain their existing responsibilities. The Essay tab remains separate.
 
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
+
 ## 2. Verified current implementation
 
 These are source observations, not claims of browser verification of this plan:
@@ -343,6 +345,8 @@ choices remain stable across later visits.
 - Across tabs, last committed server write wins. Refetch on focus when no local
   save is pending. Global ordering of human clicks across tabs is not promised.
 
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
+
 ## 7. Files and ordered implementation work
 
 | Phase | Main files / work | Completion condition |
@@ -398,6 +402,8 @@ viewer in fullscreen while attempting to implement Skip; provide the explicit
 Skip button inside the root and test the shortcut/exit interaction in browsers.
 This integration is for owner playback; do not relocate the coach composer or
 change authoring's playback lifecycle.
+
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
 
 ### 8.2 Native iPhone fullscreen is a documented exception
 
@@ -556,6 +562,8 @@ Exclude new transcription providers/models, recording/upload changes, precise
 per-note unread tracking, historical voice-origin metadata, and a redesign of
 the coach authoring surface. Address only lifecycle faults encountered in the
 mode-switching paths described above.
+
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
 
 ## 12. Adversarial review record
 

@@ -31,6 +31,8 @@ export interface UseAnnotationEditorOptions {
   onSilentAdopt?: (annotation: Annotation) => void
   onPendingChange?: (instanceId: string, pending: boolean) => void
   onCancel?: () => void
+  /** Called when the author acts on the timeline (a capture) before the video is paused; the voice preview uses it to keep the video paused after a note. */
+  onAuthorIntent?: () => void
 }
 
 function fieldsFromAnnotation(row: Annotation | null): AnnotationDraftFields {
@@ -140,6 +142,7 @@ export function useAnnotationEditor(options: UseAnnotationEditorOptions) {
     if (!latest.videoEl || busyRef.current || uncertainRef.current) return
     const time = captureAnnotationTime(latest.videoEl.currentTime, latest.durationMs ?? null, latest.videoEl.ended)
     if (time === null) { setMessage('The current video position is unavailable or outside the speech.'); return }
+    latest.onAuthorIntent?.()
     latest.videoEl.pause()
     change(field, formatAnnotationTime(time))
   }, [change])

@@ -2056,6 +2056,11 @@ test.describe('draggable timeline playhead (isolated frontend)', () => {
     const fixture = { media, reviewer, reviewerOverlay: reviewer, notebookTools: reviewer, ownerVideoTools: !reviewer,
       feedback: true, playbackMode: 'written' as const, ...options, draggable: true, scrubWire: wire }
     const mocked = await interceptPresentationApi(context, true, fixture)
+    // Coach voice auto-play (default ON) would pause the reviewer's scrub clock at the first mocked voice
+    // note; the scrub scenarios measure the player, so pin the per-user preference off (reviewer user id 2).
+    if (reviewer) await context.addInitScript(() => {
+      try { window.localStorage.setItem('annotation-composer:voice-autoplay:2', 'false') } catch { /* about:blank */ }
+    })
     const page = await context.newPage()
     if (recorder) await installDeterministicRecorder(page)
     await page.goto(`${APP_URL}/speeches/9`, { waitUntil: 'domcontentloaded' })
