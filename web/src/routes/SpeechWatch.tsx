@@ -114,9 +114,8 @@ type PresentationRegistration = { identity: string; node: HTMLDivElement; token:
  * React 19 runs the exact registration's cleanup, so an older cleanup can
  * never clear its replacement, even within the same identity.
  */
-function usePresentationTarget(identity: string | null | false | undefined | 0): [(node: HTMLDivElement | null) => void | (() => void), HTMLDivElement | null] {
+function usePresentationTarget(key: string | null): [(node: HTMLDivElement | null) => void | (() => void), HTMLDivElement | null] {
   const [registration, setRegistration] = useState<PresentationRegistration | null>(null)
-  const key = identity || null
   const ref = useCallback((node: HTMLDivElement | null) => {
     if (!node || !key) return
     const next = { identity: key, node, token: Symbol('reviewer presentation target') }

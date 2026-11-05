@@ -562,6 +562,18 @@ describe('useVoiceInterjections', () => {
       expect(video.pause).not.toHaveBeenCalled()
     })
 
+    it('keeps the tolerance when the first tick after play reports the unchanged playhead', async () => {
+      const video = renderAt(5.0004, 5)
+      act(() => {
+        video.dispatchEvent(new Event('play'))
+        video.dispatchEvent(new Event('timeupdate'))
+        video.currentTime = 5.1
+        video.dispatchEvent(new Event('timeupdate'))
+      })
+      await act(async () => {})
+      expect(loadAudio).not.toHaveBeenCalled()
+    })
+
     it('still fires a note 0.002 s ahead of the paused playhead', async () => {
       const video = renderAt(5.002, 5)
       tick(video, 5.1)
