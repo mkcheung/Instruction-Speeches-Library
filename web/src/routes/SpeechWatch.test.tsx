@@ -1202,6 +1202,23 @@ describe('SpeechWatch reviewers tab', () => {
     expect(document.querySelector('div.pointer-events-none.min-h-16')).toBeNull()
   })
 
+  it('mounts a sibling voice-controls target next to the preview frame, hands it to the panel, and drops it with the preview', async () => {
+    const mock = stubReviewerFetch()
+    const original = mock.getMockImplementation()!
+    mock.mockImplementation((input) => pathOf(input) === '/api/speeches/18' ? new Promise<Response>(() => {}) : original(input))
+    const view = renderWatch()
+    const preview = await screen.findByTestId('reviewer-preview-target')
+    const controls = await screen.findByTestId('reviewer-voice-controls-target')
+    expect(controls).not.toBe(preview)
+    expect(activePlayer().root).toContainElement(controls)
+    expect(controls.closest('.owner-feedback-frame')).toBeNull()
+    expect(preview.closest('.owner-feedback-frame')).toBeInTheDocument()
+    await waitFor(() => expect(latestPanel().voiceControlsTarget).toBe(controls))
+    expect(latestPanel().htmlFullscreen).toBe(false)
+    await act(async () => { await view.router.navigate('/speeches/18') })
+    expect(screen.queryByTestId('reviewer-voice-controls-target')).not.toBeInTheDocument()
+  })
+
   it.each([403, 404])('removes A preview during pending B and B %s while retaining A-bound URL refresh', async (status) => {
     const mock = stubReviewerFetch()
     const original = mock.getMockImplementation()!

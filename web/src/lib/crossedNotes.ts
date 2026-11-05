@@ -1,4 +1,6 @@
 export const VOICE_NOTE_SEEK_EPSILON_SECONDS = 1
+/** Absorbs a saved start rounded up to the millisecond (annotationTiming) so Play from that paused playhead does not replay it. */
+export const PLAYHEAD_TOLERANCE_SECONDS = 0.001
 
 export interface VoiceNoteTiming {
   id: string

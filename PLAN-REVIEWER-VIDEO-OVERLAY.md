@@ -18,6 +18,8 @@ Acceptance behavior:
 
 This is a frontend preview-placement correction. It does not add reviewer voice playback, a new subtitles feature, or native iOS/PiP support for HTML overlays.
 
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
+
 ## 2. Findings verified in the actual code
 
 | Area | Current implementation and implication |
@@ -101,6 +103,8 @@ On no target, route change, access denial, review revocation/removal, player tea
 - Reuse existing full-frame/aspect math, container units, control clearance and neutral player theme. A React portal inherits DOM styling from the player target; keep notebook surfaces outside that DOM subtree.
 - Owner modes, voice playback, captions, markers, fullscreen controls, native iOS fallback and PiP behavior stay unchanged. HTML player fullscreen should include the reviewer preview through the shared presentation host. Native video-only fullscreen and PiP generally do not include HTML siblings; do not promise reviewer draft text there or add it to actual captions tracks.
 
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
+
 ## 4. Exact implementation inventory and dependency order
 
 These are proposed future edits, not work authorized now. All other application/test files remain read-only. If actual code requires another production path, stop and report the mismatch before expanding scope.
@@ -116,6 +120,8 @@ These are proposed future edits, not work authorized now. All other application/
 The inventory contains **eight application/test paths**: two production components and six test files. For later multi-worker execution, do not overlap editors. T1 and T2 share an API dependency and must run in that order; T3/T4 follow the completed API. No staging, commit or deployment unless separately requested.
 
 Explicitly unchanged: VideoPlayer source and adapter, OverlayStack source, timing/voice/autosave hooks, index.css/notebook.css, UI primitives, role/authentication rules and routing configuration, backend/database/object storage/Whisper, dependencies, artwork/sidebar, publish/access policies, annotation/editor/recorder internals and real data.
+
+_Superseded for the reviewer's own voice notes by [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md)._
 
 ## 5. Required regressions and acceptance checks
 

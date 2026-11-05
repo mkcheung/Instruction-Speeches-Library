@@ -8,26 +8,7 @@ vi.mock('@/features/annotation/annotationApi', () => ({
 }))
 
 import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
-
-class FakeAudio {
-  static instances: FakeAudio[] = []
-  onended: (() => void) | null = null
-  onerror: (() => void) | null = null
-  paused = true
-  play = vi.fn(async () => {
-    this.paused = false
-  })
-  pause = vi.fn(() => {
-    this.paused = true
-  })
-  removeAttribute = vi.fn()
-  load = vi.fn()
-  src: string
-  constructor(src: string) {
-    this.src = src
-    FakeAudio.instances.push(this)
-  }
-}
+import { FakeAudio, deferred, playableVideo, tick } from '@/test/voiceAudio'
 
 function voice(id: string, start: number): Annotation {
   return {
@@ -41,40 +22,6 @@ function voice(id: string, start: number): Annotation {
     client_uuid: `uuid-${id}`,
     voice: { asset_id: Number(id), audio_status: 'ready', transcript_status: 'ready', failure_code: null },
   }
-}
-
-function playableVideo() {
-  const video = document.createElement('video')
-  let paused = false
-  Object.defineProperty(video, 'paused', { configurable: true, get: () => paused })
-  video.pause = vi.fn(() => {
-    paused = true
-  })
-  video.play = vi.fn(async () => {
-    paused = false
-  })
-  const dispatch = video.dispatchEvent.bind(video)
-  video.dispatchEvent = (event: Event) => {
-    if (event.type === 'play') paused = false
-    return dispatch(event)
-  }
-  video.currentTime = 0
-  return video
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason: unknown) => void
-  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
-  return { promise, resolve, reject }
-}
-
-function tick(video: HTMLVideoElement, now = 1) {
-  act(() => {
-    video.dispatchEvent(new Event('play'))
-    video.currentTime = now
-    video.dispatchEvent(new Event('timeupdate'))
-  })
 }
 
 describe('useVoiceInterjections', () => {
@@ -597,5 +544,119 @@ describe('useVoiceInterjections', () => {
     })
     tick(video, 0.1)
     await waitFor(() => expect(loadAudio).toHaveBeenCalledWith({ speechId: 1, annotationId: '2' }, false))
+  })
+
+  describe('playhead tolerance on play', () => {
+    function renderAt(start: number, playhead: number) {
+      const video = playableVideo()
+      video.currentTime = playhead
+      renderHook(() => useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', start)], audioEnabled: true, resetKey: 1 }))
+      return video
+    }
+
+    it('does not replay a just-saved note stamped 0.0004 s after the paused playhead', async () => {
+      const video = renderAt(5.0004, 5)
+      tick(video, 5.1)
+      await act(async () => {})
+      expect(loadAudio).not.toHaveBeenCalled()
+      expect(video.pause).not.toHaveBeenCalled()
+    })
+
+    it('still fires a note 0.002 s ahead of the paused playhead', async () => {
+      const video = renderAt(5.002, 5)
+      tick(video, 5.1)
+      await waitFor(() => expect(loadAudio).toHaveBeenCalledOnce())
+    })
+
+    it('keeps a 0.000 note firing on the first tick after play from zero', async () => {
+      const video = renderAt(0, 0)
+      tick(video, 0.0005)
+      await waitFor(() => expect(loadAudio).toHaveBeenCalledOnce())
+    })
+  })
+
+  describe('suppressResume', () => {
+    it('ends a playing note without resuming the video', async () => {
+      const video = playableVideo()
+      const { result } = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }))
+      tick(video)
+      await waitFor(() => expect(result.current.state).toBe('playing'))
+      act(() => result.current.suppressResume())
+      act(() => FakeAudio.instances[0].onended?.())
+      await waitFor(() => expect(result.current.current).toBeNull())
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('holds for a note that is still loading, including Skip', async () => {
+      const pending = deferred<{ audio: { url: string; expires_at: string } }>()
+      loadAudio.mockImplementationOnce(() => ({ unwrap: () => pending.promise }))
+      const video = playableVideo()
+      const { result } = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }))
+      tick(video)
+      expect(result.current.state).toBe('loading')
+      act(() => result.current.suppressResume())
+      act(() => result.current.skip())
+      expect(result.current.current).toBeNull()
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('lets notes queued from the same crossing play, then leaves the video paused', async () => {
+      const video = playableVideo()
+      const { result } = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 0.1), voice('2', 0.2)], audioEnabled: true, resetKey: 1 }))
+      act(() => {
+        video.dispatchEvent(new Event('play'))
+        video.currentTime = 0.25
+        video.dispatchEvent(new Event('timeupdate'))
+      })
+      await waitFor(() => expect(FakeAudio.instances).toHaveLength(1))
+      act(() => result.current.suppressResume())
+      act(() => FakeAudio.instances[0].onended?.())
+      await waitFor(() => expect(FakeAudio.instances).toHaveLength(2))
+      act(() => FakeAudio.instances[1].onended?.())
+      await waitFor(() => expect(result.current.current).toBeNull())
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('does nothing with no active note, so the next interjection still resumes', async () => {
+      const video = playableVideo()
+      const { result } = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }))
+      act(() => result.current.suppressResume())
+      tick(video)
+      await waitFor(() => expect(result.current.state).toBe('playing'))
+      act(() => FakeAudio.instances[0].onended?.())
+      await waitFor(() => expect(video.play).toHaveBeenCalledOnce())
+    })
+
+    it('is a callable no-op when there is no video', () => {
+      const { result } = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: null, notes: [], audioEnabled: true, resetKey: 1 }))
+      expect(() => result.current.suppressResume()).not.toThrow()
+    })
+  })
+
+  it('videoEl going null stops the note without resuming; a returning video gets a fresh controller with no replay', async () => {
+    const video = playableVideo()
+    const { result, rerender } = renderHook(({ el }: { el: HTMLVideoElement | null }) =>
+      useVoiceInterjections({ speechId: 1, videoEl: el, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }),
+    { initialProps: { el: video as HTMLVideoElement | null } })
+    tick(video)
+    await waitFor(() => expect(result.current.state).toBe('playing'))
+    const audio = FakeAudio.instances[0]
+    rerender({ el: null })
+    expect(result.current.current).toBeNull()
+    expect(audio.pause).toHaveBeenCalled()
+    expect(video.play).not.toHaveBeenCalled()
+    // Video returns paused at 1.0 s (past the note): nothing replays on Play.
+    video.currentTime = 1
+    rerender({ el: video })
+    loadAudio.mockClear()
+    tick(video, 1.2)
+    await act(async () => {})
+    expect(loadAudio).not.toHaveBeenCalled()
+    expect(result.current.current).toBeNull()
   })
 })

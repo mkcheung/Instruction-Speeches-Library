@@ -540,4 +540,30 @@ describe('VoiceRecorder session reporting', () => {
       expect(last()).toMatchObject({ phase: 'recording', blocksToolSwitch: true })
     })
   })
+
+  describe('author voice preview', () => {
+    const hint = 'To record here, choose “Use current time”, then record once the voice note ends or you skip it.'
+
+    it('replaces Record with the hint while recordBlocked, and restores it afterwards', () => {
+      const props = { durationMs: 100_000, annotations: [], speechId: 1, reviewId: 2, videoEl: pausedVideo() }
+      const view = renderControlled({ ...props, recordBlocked: true })
+      expect(screen.queryByRole('button', { name: /record/i })).not.toBeInTheDocument()
+      expect(screen.getByText(hint)).toBeInTheDocument()
+      view.rerender({ ...props, recordBlocked: false })
+      expect(screen.getByRole('button', { name: /^record/i })).toBeInTheDocument()
+      expect(screen.queryByText(hint)).not.toBeInTheDocument()
+    })
+
+    it('reports author intent before pausing when Use current time is pressed', async () => {
+      const user = userEvent.setup()
+      const video = pausedVideo()
+      const order: string[] = []
+      video.pause = vi.fn(() => { order.push('pause') })
+      const onAuthorIntent = vi.fn(() => { order.push('intent') })
+      renderWithProviders(<VoiceRecorder durationMs={100_000} annotations={[]} speechId={1} reviewId={2} videoEl={video} onAuthorIntent={onAuthorIntent} />)
+      await user.click(screen.getByRole('button', { name: 'Use current time for voice note' }))
+      expect(onAuthorIntent).toHaveBeenCalledTimes(1)
+      expect(order).toEqual(['intent', 'pause'])
+    })
+  })
 })

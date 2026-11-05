@@ -37,6 +37,7 @@ export function useVoiceInterjections({ speechId, videoEl, notes, audioEnabled, 
     current,
     hint: audioEnabled ? snapshot.hint : null,
     skip: controller?.skip ?? noop,
+    suppressResume: controller?.suppressResume ?? noop,
     pauseCommentary: controller?.pauseCommentary ?? noop,
     resumeCommentary: controller?.resumeCommentary ?? noopAsync,
   }

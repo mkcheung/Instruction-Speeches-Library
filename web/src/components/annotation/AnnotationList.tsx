@@ -111,6 +111,8 @@ export interface AnnotationListProps {
   onSelectedChange?: (id: string | null) => void
   acknowledgedSave?: AcknowledgedSave | null
   onHoldChange?: (hold: SavedNotesHoldState) => void
+  /** Author intent (an editor capture or a delete); read through the latest-ref so a stale closure cannot keep an old handler. */
+  onAuthorIntent?: () => void
 }
 
 interface HoldEntry { kind: 'edit' | 'delete' | 'undo' | 'retry'; rowId: string | null }
@@ -315,6 +317,7 @@ function SavedNotes(props: AnnotationListProps) {
     const index = order.indexOf(annotation.id)
     const nextId = index < 0 ? null : (order[index + 1] ?? order[index - 1] ?? null)
     const hadFocus = focusedRowRef.current === annotation.id
+    latest.current.onAuthorIntent?.()
     mark(deleteKey, true); beginHold(deleteKey, { kind: 'delete', rowId: annotation.id })
     try {
       await deleteAnnotation({ speechId, reviewId, annotationId: annotation.id }).unwrap()
@@ -425,7 +428,8 @@ function SavedNotes(props: AnnotationListProps) {
               audioActive={active && isOpen} onPendingChange={handlePending} />
             : <AnnotationRow key={rowKey(annotation)} {...common} speechId={speechId} reviewId={reviewId} userId={userId}
               videoEl={videoEl} autoPause={autoPause} annotations={annotations} durationMs={durationMs}
-              onLiveChange={onLiveChange} onLiveRemove={onLiveRemove} onSaved={onSaved} onSilentAdopt={onSilentAdopt} onPendingChange={handlePending} />
+              onLiveChange={onLiveChange} onLiveRemove={onLiveRemove} onSaved={onSaved} onSilentAdopt={onSilentAdopt} onPendingChange={handlePending}
+              onAuthorIntent={props.onAuthorIntent} />
         })}
       </ol>}
     </div>

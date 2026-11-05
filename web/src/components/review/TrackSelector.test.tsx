@@ -22,7 +22,7 @@ function props(mode: CommentaryPlaybackMode = 'all'): TrackSelectorProps {
     activeIds: new Set(), currentTime: 0, onSeek: vi.fn(), mode, onModeChange: vi.fn(),
     preference: { mode, ready: true, loading: false, saving: false, loadError: false, saveError: false,
       accessDenied: false, preference: { speech_id: 8, mode, source: 'saved' }, select: vi.fn(), retry: vi.fn() },
-    voicePlayback: { state: 'idle', current: null, hint: null, error: null, skip: vi.fn(), pauseCommentary: vi.fn(), resumeCommentary: vi.fn() },
+    voicePlayback: { state: 'idle', current: null, hint: null, error: null, skip: vi.fn(), suppressResume: vi.fn(), pauseCommentary: vi.fn(), resumeCommentary: vi.fn() },
     disabled: false, allAnnotations: [written, voice], hideReadableBody: projection.hideReadableBody,
     readingKey: `owner:8:1:${mode}`, visible: true, onReadAll: vi.fn(),
   }

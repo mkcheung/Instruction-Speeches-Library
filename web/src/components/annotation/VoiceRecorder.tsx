@@ -36,7 +36,7 @@ function useVideoPaused(videoEl: HTMLVideoElement | null): boolean {
   return paused
 }
 
-export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, annotations, writable = true, onPendingChange, onSessionStateChange, onAcknowledgedSave, active = true }: {
+export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, annotations, writable = true, onPendingChange, onSessionStateChange, onAcknowledgedSave, active = true, recordBlocked = false, onAuthorIntent }: {
   speechId: number
   reviewId: number
   videoEl: HTMLVideoElement | null
@@ -48,6 +48,10 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
   onAcknowledgedSave?: VoiceRecorderSavedCallback
   /** When false the contained preview audio is paused (never discarded). Defaults to true. */
   active?: boolean
+  /** True while one of the author's own voice notes is interjecting: Record is replaced by a hint. */
+  recordBlocked?: boolean
+  /** Called when "Use current time" is pressed, before the video is paused. */
+  onAuthorIntent?: () => void
 }) {
   const [instanceId] = useState(newClientUuid)
   const inputId = useId()
@@ -178,7 +182,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     if (!videoEl || frozen || busyRef.current) return
     const time = captureAnnotationTime(videoEl.currentTime, durationMs, videoEl.ended)
     if (time === null) { setMessage('Choose a position within the speech.'); return }
-    positionEditedRef.current = true; videoEl.pause(); setPosition(formatAnnotationTime(time)); setMessage(null)
+    positionEditedRef.current = true; onAuthorIntent?.(); videoEl.pause(); setPosition(formatAnnotationTime(time)); setMessage(null)
   }
   const acknowledge = (saved: Annotation, submission: VoiceSubmission): boolean => {
     if (saved.client_uuid !== submission.clientUuid || Math.round(saved.start_seconds * 1000) !== submission.startMs || !isPointAnnotation(saved)) return false
@@ -227,6 +231,7 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
   }, [annotations, uncertain, isSaving])
 
   if (!recordingApiAvailable || state === 'unsupported') return <p className="text-sm text-muted-foreground">Voice recording is not supported by this browser.</p>
+  const canStartRecording = !blob && ['idle', 'denied', 'no-device', 'error'].includes(state)
   return <section className="min-w-0 space-y-2 rounded-md border border-border p-3" aria-label="Record a voice note">
     <label htmlFor={inputId} className="block text-sm font-medium">Voice note position</label>
     <div className="flex flex-wrap gap-2">
@@ -236,10 +241,11 @@ export function VoiceRecorder({ speechId, reviewId, videoEl, durationMs = null, 
     </div>
     {validation.message && !uncertain && <p role="status" className="text-sm text-muted-foreground">{validation.message}</p>}
     <div className="flex min-h-11 flex-wrap items-center gap-2">
-      {!blob && ['idle', 'denied', 'no-device', 'error'].includes(state) && paused && <Button type="button" variant="outline" className="min-h-11" disabled={!validation.valid || !writable} onClick={() => void record()}>Record <span aria-hidden="true" className="text-[var(--color-danger)]">●</span></Button>}
+      {canStartRecording && recordBlocked && <span className="text-sm text-muted-foreground">To record here, choose “Use current time”, then record once the voice note ends or you skip it.</span>}
+      {canStartRecording && paused && !recordBlocked && <Button type="button" variant="outline" className="min-h-11" disabled={!validation.valid || !writable} onClick={() => void record()}>Record <span aria-hidden="true" className="text-[var(--color-danger)]">●</span></Button>}
       {state === 'requesting' && <span role="status">Requesting microphone access…</span>}
       {state === 'recording' && <><span role="status">Recording… 90 second maximum.</span><Button type="button" className="min-h-11" onClick={stop}>Stop</Button></>}
-      {state === 'idle' && !paused && <span className="text-sm text-muted-foreground">Pause the video to record a voice note.</span>}
+      {state === 'idle' && !paused && !recordBlocked && <span className="text-sm text-muted-foreground">Pause the video to record a voice note.</span>}
     </div>
     {state === 'denied' && <p role="alert" className="text-sm text-[var(--color-danger)]">Microphone access is blocked. Allow microphone access for this site in your browser settings, then try again.</p>}
     {state === 'no-device' && <p role="alert" className="text-sm text-[var(--color-danger)]">No microphone was found. Connect or enable a microphone, then try again.</p>}

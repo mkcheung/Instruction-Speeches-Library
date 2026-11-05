@@ -1,19 +1,18 @@
 import { useCallback, useState } from 'react'
 
-const KEY_PREFIX = 'annotation-composer:auto-pause:'
-
-function readPreference(key: string | null): boolean {
-  if (!key) return false
+function readPreference(key: string | null, defaultValue: boolean): boolean {
+  if (!key) return defaultValue
   try {
-    return localStorage.getItem(key) === 'true'
+    const stored = localStorage.getItem(key)
+    return stored === 'true' ? true : stored === 'false' ? false : defaultValue
   } catch {
-    return false
+    return defaultValue
   }
 }
 
 /**
- * MODERNIZATION_PLAN.md §8.4: "Optional auto-pause on first keystroke, a
- * per-user preference."
+ * A generic per-user, device-local boolean preference. The caller supplies
+ * the storage key prefix and the default (e.g. auto-pause, voice auto-play).
  *
  * The plan's long-term home for per-user preferences is `users.preferences`
  * (JSON column) — but as of this step neither `CurrentUser`
@@ -26,10 +25,15 @@ function readPreference(key: string | null): boolean {
  * storage for a real `PATCH` once a preferences endpoint exists is a
  * one-line change confined to this file.
  */
-export function useAutoPausePreference(userId: string | undefined): [boolean, (next: boolean) => void] {
-  const key = userId ? `${KEY_PREFIX}${userId}` : null
+export function useLocalBooleanPreference({ key: prefix, userId, defaultValue }: {
+  /** Prefix without a trailing colon; the stored key is `${key}:${userId}`. */
+  key: string
+  userId: string | undefined
+  defaultValue: boolean
+}): [boolean, (next: boolean) => void] {
+  const key = userId ? `${prefix}:${userId}` : null
 
-  const [value, setValue] = useState(() => readPreference(key))
+  const [value, setValue] = useState(() => readPreference(key, defaultValue))
   // React's own "adjusting state during render" pattern (not an effect —
   // an effect that calls setState unconditionally on every run is exactly
   // what the React Compiler's lint flags) for the rare case `userId`
@@ -38,7 +42,7 @@ export function useAutoPausePreference(userId: string | undefined): [boolean, (n
   const [lastKey, setLastKey] = useState(key)
   if (key !== lastKey) {
     setLastKey(key)
-    setValue(readPreference(key))
+    setValue(readPreference(key, defaultValue))
   }
 
   const update = useCallback(

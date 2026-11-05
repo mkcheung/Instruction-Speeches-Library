@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Response } from '@playwright/test'
+import { expect, test, type Browser, type Page, type Response } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { API_URL, APP_URL, POSTGRES_CONTAINER, USERS, VOICE } from './fixtures.js'
 import { selectPlaybackMode } from './commentary-test-helpers.js'
@@ -33,9 +33,13 @@ function voicePost(response: Response): boolean {
   return response.url() === `${API_URL}/api/speeches/${VOICE.coachSpeechId}/voice-notes`
 }
 
-async function annotations(page: Page): Promise<VoiceAnnotationPayload[]> {
+async function annotations(
+  page: Page,
+  speechId: number = VOICE.coachSpeechId,
+  reviewId: number = VOICE.coachReviewId,
+): Promise<VoiceAnnotationPayload[]> {
   const response = await page.request.get(
-    `${API_URL}/api/speeches/${VOICE.coachSpeechId}/annotations?review_id=${VOICE.coachReviewId}`,
+    `${API_URL}/api/speeches/${speechId}/annotations?review_id=${reviewId}`,
     { headers: JSON_HEADERS },
   )
   expect(response.ok()).toBeTruthy()
@@ -58,10 +62,11 @@ async function prepareSpeakerInterjection(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
 }
 
-async function startNaturalCrossing(page: Page) {
+/** Step 1: wait for metadata, count native plays, mute, and park the playhead just before the first voice note. */
+async function seekBeforeCrossing(page: Page, seconds = 0.2) {
   const video = page.getByTestId('speech-video')
   await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).readyState)).toBeGreaterThanOrEqual(1)
-  await video.evaluate(async (node) => {
+  await video.evaluate(async (node, target) => {
     const element = node as unknown as BrowserVideo
     const state = globalThis as typeof globalThis & { __voiceVideoPlayCount?: number }
     state.__voiceVideoPlayCount = 0
@@ -69,14 +74,44 @@ async function startNaturalCrossing(page: Page) {
       state.__voiceVideoPlayCount = (state.__voiceVideoPlayCount ?? 0) + 1
     })
     element.muted = true
-    element.currentTime = 0.2
-  })
-  await expect(page.getByText('🔊 Commentary ahead')).toBeVisible()
+    element.currentTime = target
+  }, seconds)
+  return video
+}
+
+/** Step 2: start the native clock. */
+async function playVideo(video: ReturnType<Page['getByTestId']>): Promise<void> {
   await video.evaluate(async (node) => {
     const element = node as unknown as BrowserVideo
     await element.play()
   })
+}
+
+async function startNaturalCrossing(page: Page) {
+  const video = await seekBeforeCrossing(page)
+  await expect(page.getByText('🔊 Commentary ahead')).toBeVisible()
+  await playVideo(video)
   return video
+}
+
+const VOICE_URL_PATH = /\/annotations\/(\d+)\/voice-playback-url/
+
+/** Collects the annotation ids whose signed-audio URL the page asked for. */
+function trackVoiceUrlRequests(page: Page): string[] {
+  const ids: string[] = []
+  page.on('request', (request) => {
+    const match = VOICE_URL_PATH.exec(request.url())
+    if (match) ids.push(match[1])
+  })
+  return ids
+}
+
+async function currentTimeOf(video: ReturnType<Page['getByTestId']>): Promise<number> {
+  return video.evaluate((node) => (node as unknown as BrowserVideo).currentTime)
+}
+
+async function waitForClockPast(video: ReturnType<Page['getByTestId']>, seconds: number): Promise<void> {
+  await expect.poll(() => currentTimeOf(video), { timeout: 20_000, message: `video clock never passed ${seconds}s` }).toBeGreaterThan(seconds)
 }
 
 async function expectVideoToAdvance(video: ReturnType<Page['getByTestId']>): Promise<void> {
@@ -547,4 +582,183 @@ test('Scenario H — fullscreen owns one usable control surface and preserves pa
   await expect(page.getByRole('radiogroup', { name: 'Commentary playback' })).toHaveCount(1)
   await expect(page.getByRole('radio', { name: 'Off', exact: true })).toBeChecked()
   await context.close()
+})
+
+const AUTOPLAY_LABEL = 'Auto-play my voice notes'
+
+async function openCoach(
+  browser: Browser,
+  user: 'reviewerA' | 'reviewerB',
+  options: { recorder?: boolean; mode?: 'natural' | 'hold'; viewport?: { width: number; height: number } } = {},
+) {
+  const context = await browser.newContext({ storageState: USERS[user].storageState, viewport: options.viewport })
+  const page = await context.newPage()
+  await installDeterministicVoiceAudio(page, options.mode ?? 'hold')
+  if (options.recorder) await installDeterministicRecorder(page)
+  const requested = trackVoiceUrlRequests(page)
+  await openSpeech(page, VOICE.coachSpeechId)
+  await expect(page.getByRole('checkbox', { name: AUTOPLAY_LABEL })).toBeVisible({ timeout: 60_000 })
+  return { context, page, requested }
+}
+
+test('Scenario I — coach A hears their own published voice note at a natural crossing, then Skip resumes', async ({ browser }) => {
+  const { context, page, requested } = await openCoach(browser, 'reviewerA')
+  const video = await startNaturalCrossing(page)
+  await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
+  expect(requested).toContain(String(VOICE.firstVoiceAnnotationId))
+  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  // D9: the coach view never shows the transcript; "Transcribing…" lives only in the folded voice row.
+  await expect(page.getByText('Voice commentary paused')).toHaveCount(0)
+  await page.getByRole('button', { name: /^Skip/ }).click()
+  await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
+  await expectVideoToAdvance(video)
+  await context.close()
+})
+
+test('Scenario J — coach B hears their own draft voice note (9822) and requests no other reviewer\'s audio', async ({ browser }) => {
+  const { context, page, requested } = await openCoach(browser, 'reviewerB')
+  const urlResponses: number[] = []
+  page.on('response', (response) => {
+    const match = VOICE_URL_PATH.exec(response.url())
+    if (match && match[1] === String(VOICE.peerDraftVoiceAnnotationId)) urlResponses.push(response.status())
+  })
+  const video = await startNaturalCrossing(page)
+  await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
+  expect(requested).toContain(String(VOICE.peerDraftVoiceAnnotationId))
+  expect(urlResponses).toEqual([200])
+  await expect.poll(async () => (await deterministicAudioEvents(page)).some((event) => event.phase === 'range')).toBe(true)
+  await page.getByRole('button', { name: /^Skip/ }).click()
+  await expectVideoToAdvance(video)
+  // Let the clock run past a few more seconds: B owns exactly one note, so nothing else may be requested.
+  const others = requested.filter((id) => Number(id) >= 9801 && Number(id) <= 9807)
+  expect(others, 'coach B must never request coach A\'s voice rows').toEqual([])
+  await context.close()
+})
+
+test('Scenario K — a pending recorder session suspends auto-play; the Voice tool shows the hint instead of Record during a note', async ({ browser }) => {
+  {
+    const { context, page, requested } = await openCoach(browser, 'reviewerA', { recorder: true, mode: 'natural' })
+    await chooseVoiceTool(page)
+    const recorder = page.getByRole('region', { name: 'Record a voice note' })
+    const video = await seekBeforeCrossing(page)
+    await recorder.getByRole('button', { name: /^Record/ }).click()
+    await expect(recorder.getByRole('button', { name: 'Stop' })).toBeVisible()
+    await playVideo(video)
+    await waitForClockPast(video, 1.6)
+    expect(requested, 'a recording in progress must not trigger voice playback').toEqual([])
+    await video.evaluate((node) => (node as unknown as { pause: () => void }).pause())
+    await recorder.getByRole('button', { name: 'Stop' }).click()
+    await expect(recorder.getByLabel('Voice note preview')).toBeVisible()
+    // Unsaved recording: still pending, still suspended.
+    await video.evaluate((node) => { (node as unknown as { currentTime: number }).currentTime = 0.2 })
+    await playVideo(video)
+    await waitForClockPast(video, 1.6)
+    expect(requested, 'an unsaved recording must not trigger voice playback').toEqual([])
+    await context.close()
+  }
+
+  {
+    const { context, page, requested } = await openCoach(browser, 'reviewerA', { recorder: true })
+    await chooseVoiceTool(page)
+    const recorder = page.getByRole('region', { name: 'Record a voice note' })
+    const hint = page.getByText('To record here, choose “Use current time”', { exact: false })
+    const video = await startNaturalCrossing(page)
+    await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
+    expect(requested).toContain(String(VOICE.firstVoiceAnnotationId))
+    await expect(hint).toBeVisible()
+    await expect(recorder.getByRole('button', { name: /^Record/ })).toHaveCount(0)
+    // Without author intent the video resumes after the note and Record stays hidden.
+    await finishDeterministicAudio(page)
+    await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
+    await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(false)
+    await expect(recorder.getByRole('button', { name: /^Record/ })).toHaveCount(0)
+    await context.close()
+  }
+
+  {
+    const { context, page } = await openCoach(browser, 'reviewerA', { recorder: true })
+    await chooseVoiceTool(page)
+    const recorder = page.getByRole('region', { name: 'Record a voice note' })
+    const video = await startNaturalCrossing(page)
+    await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
+    await recorder.getByRole('button', { name: 'Use current time' }).click()
+    await page.getByRole('button', { name: /^Skip/ }).click()
+    await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
+    await expectVideoToStayAtManualPause(video)
+    expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+    // Record is back (the hint is gone). The playhead sits on the note that just played, which is an occupied
+    // position, so Record stays disabled until the coach picks a free one; a free position enables it.
+    const record = recorder.getByRole('button', { name: /^Record/ })
+    await expect(record).toBeVisible()
+    await expect(page.getByText('To record here, choose “Use current time”', { exact: false })).toHaveCount(0)
+    await recorder.getByRole('textbox', { name: 'Voice note position' }).fill('0')
+    await expect(record).toBeEnabled()
+    await context.close()
+  }
+})
+
+test('Scenario L — turning auto-play off stops requests and persists across a reload', async ({ browser }) => {
+  const { context, page, requested } = await openCoach(browser, 'reviewerA', { mode: 'natural' })
+  const toggle = page.getByRole('checkbox', { name: AUTOPLAY_LABEL })
+  await expect(toggle).toBeChecked()
+  await toggle.uncheck()
+  const video = await seekBeforeCrossing(page)
+  await playVideo(video)
+  await waitForClockPast(video, 1.6)
+  expect(requested, 'auto-play off must not fetch signed audio').toEqual([])
+  await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
+  await expect(page.getByText('🔊 Commentary ahead')).toHaveCount(0)
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  const reloaded = page.getByRole('checkbox', { name: AUTOPLAY_LABEL })
+  await expect(reloaded).toBeVisible({ timeout: 60_000 })
+  await expect(reloaded).not.toBeChecked()
+  const video2 = await seekBeforeCrossing(page)
+  await playVideo(video2)
+  await waitForClockPast(video2, 1.6)
+  expect(requested, 'the stored off preference must survive a reload').toEqual([])
+  await context.close()
+})
+
+test.describe('Scenario M — the voice controls never shift the Composer', () => {
+  const composerTop = (page: Page) => page.getByRole('tablist', { name: 'Add commentary' }).evaluate(
+    (node) => node.getBoundingClientRect().top + window.scrollY,
+  )
+  const overflow = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+
+  for (const width of [1440, 640, 375]) {
+    test(`composer position across idle/hint/loading/playing/paused at ${width}px`, async ({ browser }) => {
+      const { context, page } = await openCoach(browser, 'reviewerA', { viewport: { width, height: 900 } })
+      let release: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      await page.route(VOICE_URL_PATH, async (route) => { await gate; await route.continue() })
+      const strictY = width >= 640
+      const positions: Record<string, number> = {}
+      const record = async (name: string) => {
+        positions[name] = await composerTop(page)
+        expect(await overflow(page), `${name}: horizontal overflow at ${width}px`).toBeLessThanOrEqual(0)
+      }
+
+      await record('idle')
+      const video = await seekBeforeCrossing(page)
+      await expect(page.getByText('🔊 Commentary ahead')).toBeVisible()
+      await record('hint')
+      await playVideo(video)
+      await expect(page.getByText('Loading voice commentary…')).toBeVisible({ timeout: 10_000 })
+      await record('loading')
+      release()
+      await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
+      await record('playing')
+      await page.getByRole('button', { name: 'Pause commentary', exact: true }).click()
+      await expect(page.getByText('Voice commentary paused')).toBeVisible()
+      await record('paused')
+
+      if (strictY) {
+        for (const [name, y] of Object.entries(positions)) {
+          expect(y, `Composer top moved in the ${name} state at ${width}px`).toBe(positions.idle)
+        }
+      }
+      await context.close()
+    })
+  }
 })
