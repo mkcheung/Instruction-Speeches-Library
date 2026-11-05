@@ -189,7 +189,10 @@ export class VoiceInterjectionController {
     const crossed = this.video.seeking || this.video.paused
       ? []
       : crossedNotes(playable, this.previousTime, now, this.started)
-    this.previousTime = now
+    // A tick that has not yet moved past onPlay's raised value must not lower it again,
+    // or the next tick would replay a note stamped inside that tolerance.
+    const previous = this.previousTime
+    this.previousTime = now < previous && previous - now < 2 * PLAYHEAD_TOLERANCE_SECONDS ? previous : now
     this.started = true
     if (crossed.length) {
       this.queue = crossed.map((note) => ({ id: note.id, assetId: note.voice!.asset_id }))
