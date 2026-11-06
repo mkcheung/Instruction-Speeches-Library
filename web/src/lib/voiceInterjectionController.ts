@@ -30,6 +30,8 @@ export class VoiceInterjectionController {
   private resumeSuppressed = false
   private previousTime: number
   private started: boolean
+  /** onPlay's raised lower bound; held until playback passes it or a seek/re-enable resets the playhead. */
+  private playFloor: number | null = null
   private timer: ReturnType<typeof setTimeout> | null = null
   private remaining = 0
   private deadline = 0
@@ -67,6 +69,7 @@ export class VoiceInterjectionController {
       return
     }
     if (!wasEnabled) {
+      this.playFloor = null
       this.previousTime = this.video.currentTime
       this.started = this.video.currentTime > 0
     }
@@ -163,7 +166,8 @@ export class VoiceInterjectionController {
     }
     const now = this.video.currentTime
     // Only when > 0: at 0 the raised value would swallow a note stamped 0.000.
-    this.previousTime = now > 0 ? now + PLAYHEAD_TOLERANCE_SECONDS : now
+    this.playFloor = now > 0 ? now + PLAYHEAD_TOLERANCE_SECONDS : null
+    this.previousTime = this.playFloor ?? now
     this.started = now > 0
   }
 
@@ -173,6 +177,7 @@ export class VoiceInterjectionController {
     // wipe the "commentary ahead" hint the timeupdate just computed for the
     // new position (the paused-seek `seeked` event arrives after it).
     if (this.active || this.queue.length || this.request) this.finish(false)
+    this.playFloor = null
     this.previousTime = this.video.currentTime
     this.started = true
   }
@@ -191,8 +196,8 @@ export class VoiceInterjectionController {
       : crossedNotes(playable, this.previousTime, now, this.started)
     // A tick that has not yet moved past onPlay's raised value must not lower it again,
     // or the next tick would replay a note stamped inside that tolerance.
-    const previous = this.previousTime
-    this.previousTime = now < previous && previous - now < 2 * PLAYHEAD_TOLERANCE_SECONDS ? previous : now
+    if (this.playFloor !== null && now >= this.playFloor) this.playFloor = null
+    this.previousTime = this.playFloor ?? now
     this.started = true
     if (crossed.length) {
       this.queue = crossed.map((note) => ({ id: note.id, assetId: note.voice!.asset_id }))
