@@ -629,7 +629,8 @@ test('Scenario J — coach B hears their own draft voice note (9822) and request
   await expect.poll(async () => (await deterministicAudioEvents(page)).some((event) => event.phase === 'range')).toBe(true)
   await page.getByRole('button', { name: /^Skip/ }).click()
   await expectVideoToAdvance(video)
-  // Let the clock run past a few more seconds: B owns exactly one note, so nothing else may be requested.
+  // Let the clock run past A's last note (4.65 s): B owns exactly one note, so nothing else may be requested.
+  await waitForClockPast(video, 4.8)
   const others = requested.filter((id) => Number(id) >= 9801 && Number(id) <= 9807)
   expect(others, 'coach B must never request coach A\'s voice rows').toEqual([])
   await context.close()

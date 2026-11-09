@@ -206,7 +206,9 @@ export class VoiceInterjectionController {
       this.video.pause()
       void this.playNext()
     } else {
-      const hint = playable.find((note) => note.start_seconds > now && note.start_seconds <= now + 3) ?? null
+      // Same lower bound as the crossing: a note inside onPlay's tolerance is never announced.
+      const hintFrom = this.playFloor ?? now
+      const hint = playable.find((note) => note.start_seconds > hintFrom && note.start_seconds <= now + 3) ?? null
       if (hint !== this.snapshot.hint) this.publish({ hint, state: hint ? 'hinting' : 'idle' })
     }
   }

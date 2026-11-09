@@ -512,6 +512,19 @@ describe('useVoiceInterjections', () => {
     expect(loadAudio).toHaveBeenCalledTimes(2)
   })
 
+  it('hides a playback error once audio is turned off', async () => {
+    const video = playableVideo()
+    const { result, rerender } = renderHook(({ audioEnabled }) =>
+      useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled, resetKey: 1 }),
+    { initialProps: { audioEnabled: true } })
+    tick(video)
+    await waitFor(() => expect(FakeAudio.instances.length).toBeGreaterThan(0))
+    act(() => FakeAudio.instances.at(-1)?.onerror?.())
+    expect(result.current.error).toContain('Could not play')
+    rerender({ audioEnabled: false })
+    expect(result.current.error).toBeNull()
+  })
+
   it('re-enables audio at future crossings without replaying notes passed while disabled', async () => {
     const video = playableVideo()
     const { result, rerender } = renderHook(({ audioEnabled }) =>
@@ -585,6 +598,17 @@ describe('useVoiceInterjections', () => {
       })
       await act(async () => {})
       expect(loadAudio).not.toHaveBeenCalled()
+    })
+
+    it('does not announce "commentary ahead" for a note inside the play tolerance', () => {
+      const video = playableVideo()
+      video.currentTime = 5
+      const { result } = renderHook(() => useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 5.0004)], audioEnabled: true, resetKey: 1 }))
+      act(() => {
+        video.dispatchEvent(new Event('play'))
+        video.dispatchEvent(new Event('timeupdate'))
+      })
+      expect(result.current.hint).toBeNull()
     })
 
     it('still fires a note 0.002 s ahead of the paused playhead', async () => {
