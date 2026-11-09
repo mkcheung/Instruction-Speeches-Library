@@ -318,9 +318,9 @@ async function loaded(prefix = 'a') {
 // reaches the commentary controls. On failure, report just the facts that
 // decide whether the controller ever started: every status line and the
 // commentary-playback radios (disabled = preference not ready/enabled yet).
-async function findVoiceStatus(text: string, video: HTMLVideoElement) {
+async function withVoiceDiagnostics<T>(video: HTMLVideoElement, wait: () => Promise<T>) {
   try {
-    return await screen.findByText(text, undefined, { timeout: 4000 })
+    return await wait()
   } catch (error) {
     const radios = screen.queryAllByRole('radio').map((radio) => {
       const input = radio as HTMLInputElement
@@ -334,6 +334,21 @@ async function findVoiceStatus(text: string, video: HTMLVideoElement) {
     })}`, { cause: error })
   }
 }
+const findVoiceStatus = (text: string, video: HTMLVideoElement) =>
+  withVoiceDiagnostics(video, () => screen.findByText(text, undefined, { timeout: 4000 }))
+// The cause of that failure: the markers `loaded()` waits for commit before the
+// passive effect that arms the voice engine (`update(notes, true)`), so the engine
+// can still be disarmed when `loaded()` returns; whether it is depends on timing,
+// hence CI-only. A tick sent then is ignored, and arming reseeds the engine at the
+// current time, past the note, so it never crosses. Re-send the tick until the
+// engine itself announces the note ahead. Poll on a timer (`vi.waitFor`), not
+// RTL's `waitFor`: that re-runs on every DOM mutation, a tick mutates the DOM, and
+// the microtask loop starves the very effect it waits for (it hung when forced).
+const armVoiceAhead = (video: HTMLVideoElement, tick: () => void) =>
+  withVoiceDiagnostics(video, () => vi.waitFor(() => {
+    act(tick)
+    expect(screen.getByText('🔊 Commentary ahead')).toBeInTheDocument()
+  }, { timeout: 4000, interval: 20 }))
 function currentPlayer() {
   const active = playerHarness.instances.filter((instance) => !instance.disposed)
   expect(active).toHaveLength(1)
@@ -1084,7 +1099,8 @@ describe('draggable timeline owner cache, source and native voice boundaries', (
     Object.defineProperty(instance.video, 'paused', { configurable: true, get: () => paused })
     const play = vi.spyOn(instance.video, 'play').mockImplementation(async () => { paused = false })
     vi.spyOn(instance.video, 'pause').mockImplementation(() => { paused = true })
-    act(() => { instance.advance(11.5); instance.video.dispatchEvent(new Event('play')); instance.advance(12.1) })
+    await armVoiceAhead(instance.video, () => instance.advance(11.5))
+    act(() => { instance.video.dispatchEvent(new Event('play')); instance.advance(12.1) })
     await findVoiceStatus('Loading voice commentary…', instance.video)
     if (voiceState !== 'loading') {
       await act(async () => { audioUrl.resolve(json({ audio: { url: 'https://media.example.test/voice.mp3', expires_at: '2099-01-01T00:00:00Z' } })); await audioUrl.promise })
