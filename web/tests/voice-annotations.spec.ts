@@ -115,17 +115,17 @@ async function waitForClockPast(video: ReturnType<Page['getByTestId']>, seconds:
 }
 
 async function expectVideoToAdvance(video: ReturnType<Page['getByTestId']>): Promise<void> {
-  const before = await video.evaluate((node) => (node as unknown as BrowserVideo).currentTime)
+  const before = await currentTimeOf(video)
   await expect.poll(
-    () => video.evaluate((node) => (node as unknown as BrowserVideo).currentTime),
+    () => currentTimeOf(video),
     { message: 'video clock did not advance after commentary recovery' },
   ).toBeGreaterThan(before + 0.05)
 }
 
 async function expectVideoToStayAtManualPause(video: ReturnType<Page['getByTestId']>): Promise<void> {
-  const before = await video.evaluate((node) => (node as unknown as BrowserVideo).currentTime)
+  const before = await currentTimeOf(video)
   await video.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)))
-  const after = await video.evaluate((node) => (node as unknown as BrowserVideo).currentTime)
+  const after = await currentTimeOf(video)
   expect(Math.abs(after - before)).toBeLessThan(0.05)
 }
 
@@ -607,7 +607,7 @@ test('Scenario I — coach A hears their own published voice note at a natural c
   await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
   expect(requested).toContain(String(VOICE.firstVoiceAnnotationId))
   expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
-  // D9: the coach view never shows the transcript; "Transcribing…" lives only in the folded voice row.
+  // Playing, not paused. (D9, not asserted here: the coach view shows no transcript; "Transcribing…" lives only in the folded voice row.)
   await expect(page.getByText('Voice commentary paused')).toHaveCount(0)
   await page.getByRole('button', { name: /^Skip/ }).click()
   await expect(page.getByText('Playing voice commentary')).toHaveCount(0)

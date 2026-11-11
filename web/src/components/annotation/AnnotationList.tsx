@@ -21,9 +21,9 @@
  * - `headingLevel` (default 3) picks the heading element.
  *
  * Active gate
- * - `active` (default true): false while outer Notes is not the selected reviewer tab. Pauses and
- *   unmounts any preview audio, never unmounts editors. Folded/paged-away/closed-detail rows also
- *   pause audio independently.
+ * - `active` (default true): false while outer Notes is not the selected reviewer tab, and while one
+ *   of the author's own voice notes is interjecting. Pauses and unmounts any preview audio, never
+ *   unmounts editors. Folded/paged-away/closed-detail rows also pause audio independently.
  *
  * Reveal / selection (timeline marker, Show selected note, etc.)
  * - `revealRequest: { id, token } | null`. `token` MUST be distinct for every deliberate request
@@ -111,7 +111,8 @@ export interface AnnotationListProps {
   onSelectedChange?: (id: string | null) => void
   acknowledgedSave?: AcknowledgedSave | null
   onHoldChange?: (hold: SavedNotesHoldState) => void
-  /** Author intent (an editor capture or a delete); read through the latest-ref so a stale closure cannot keep an old handler. */
+  /** Author intent (an editor capture or a delete). The delete handler reads it through the latest-ref, so its fixed
+   *  `useCallback` deps cannot pin an old handler; text rows receive the current prop. */
   onAuthorIntent?: () => void
 }
 
@@ -132,7 +133,7 @@ function rangeText(page: number, total: number): string {
 function SavedNotes(props: AnnotationListProps) {
   const { annotations, speechId, reviewId, videoEl, autoPause, currentId, userId, durationMs, onSeek, onLiveChange, onLiveRemove, onSaved,
     onSilentAdopt, open, defaultOpen = false, onOpenChange, headingLevel = 3, active = true, revealRequest, onRevealResult,
-    onSelectedChange, acknowledgedSave, onHoldChange } = props
+    onSelectedChange, acknowledgedSave, onHoldChange, onAuthorIntent } = props
   const baseId = useId()
   const prefix = props.id ?? `saved-notes-${baseId}`
   const toggleId = `${prefix}-toggle`
@@ -429,7 +430,7 @@ function SavedNotes(props: AnnotationListProps) {
             : <AnnotationRow key={rowKey(annotation)} {...common} speechId={speechId} reviewId={reviewId} userId={userId}
               videoEl={videoEl} autoPause={autoPause} annotations={annotations} durationMs={durationMs}
               onLiveChange={onLiveChange} onLiveRemove={onLiveRemove} onSaved={onSaved} onSilentAdopt={onSilentAdopt} onPendingChange={handlePending}
-              onAuthorIntent={props.onAuthorIntent} />
+              onAuthorIntent={onAuthorIntent} />
         })}
       </ol>}
     </div>

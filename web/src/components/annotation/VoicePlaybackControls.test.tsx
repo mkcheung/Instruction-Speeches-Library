@@ -1,10 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { Annotation } from '@/features/annotation/types'
-import type { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
+import type { VoicePlayback as Playback } from '@/hooks/useVoiceInterjections'
 import { FullscreenVoiceControls } from '@/components/annotation/VoicePlaybackControls'
 
-type Playback = ReturnType<typeof useVoiceInterjections>
 const note = { id: '1', start_seconds: 1, duration_seconds: 2, kind: 'observation', topic: null, body: 'b',
   lock_version: 0, client_uuid: 'u', voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null } } as Annotation
 

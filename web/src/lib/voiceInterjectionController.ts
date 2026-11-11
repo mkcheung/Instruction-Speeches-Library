@@ -65,7 +65,8 @@ export class VoiceInterjectionController {
     this.enabled = enabled
     if (!enabled) {
       if (this.active || this.queue.length) this.finish(true)
-      else if (this.snapshot.hint) this.publish({ hint: null, state: 'idle' })
+      // Drop a stale error too, or re-enabling would show it again.
+      else if (this.snapshot.hint || this.snapshot.error) this.publish({ hint: null, error: null, state: 'idle' })
       return
     }
     if (!wasEnabled) {
