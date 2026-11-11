@@ -523,6 +523,8 @@ describe('useVoiceInterjections', () => {
     expect(result.current.error).toContain('Could not play')
     rerender({ audioEnabled: false })
     expect(result.current.error).toBeNull()
+    rerender({ audioEnabled: true })
+    expect(result.current.error).toBeNull()
   })
 
   it('re-enables audio at future crossings without replaying notes passed while disabled', async () => {

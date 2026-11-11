@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
@@ -23,7 +23,8 @@ let voiceRows = makeVoiceRows(7)
 
 // Stable across renders: a per-render trigger would rebuild the voice controller every render.
 const { loadVoiceAudioUrl } = vi.hoisted(() => {
-  const trigger = (() => Promise.resolve({ data: { url: 'https://audio.test/note.m4a' } })) as unknown
+  // The real trigger's shape (`unwrap` resolving `{ audio }`), so a crossing here would not land in fail().
+  const trigger = (() => ({ unwrap: () => Promise.resolve({ audio: { url: 'https://audio.test/note.m4a', expires_at: '' } }) })) as unknown
   return { loadVoiceAudioUrl: [trigger] as const }
 })
 vi.mock('@/features/annotation/annotationApi', () => ({
@@ -324,12 +325,12 @@ describe('AnnotationComposerPanel voice preview wiring', () => {
     playbackOverride = { current: voiceRows[0], state: 'playing' }
     const target = document.createElement('div')
     document.body.appendChild(target)
+    onTestFinished(() => target.remove())
     const { rerender } = renderPanel()
     expect(screen.getByText('Playing voice commentary')).toBeInTheDocument()
     rerender(<TestRouter><AnnotationComposerPanel previewTarget={null} previewEnabled previewAnchor="default" speechId={1} review={review}
       videoEl={video} durationSeconds={100} userId="3" canRecordVoice onSeek={vi.fn()} htmlFullscreen voiceControlsTarget={target} /></TestRouter>)
     expect(target).toHaveTextContent('Playing voice commentary')
     expect(screen.getAllByText('Playing voice commentary')).toHaveLength(1)
-    target.remove()
   })
 })

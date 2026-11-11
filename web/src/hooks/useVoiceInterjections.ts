@@ -8,6 +8,9 @@ const noopSubscribe = () => () => {}
 const noop = () => {}
 const noopAsync = async () => {}
 
+/** What the voice controls render from and act on. */
+export type VoicePlayback = ReturnType<typeof useVoiceInterjections>
+
 export function useVoiceInterjections({ speechId, videoEl, notes, audioEnabled, resetKey }: {
   speechId: number
   videoEl: HTMLVideoElement | null

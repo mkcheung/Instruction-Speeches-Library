@@ -11,19 +11,14 @@ function readPreference(key: string | null, defaultValue: boolean): boolean {
 }
 
 /**
- * A generic per-user, device-local boolean preference. The caller supplies
- * the storage key prefix and the default (e.g. auto-pause, voice auto-play).
+ * A generic per-user, device-local boolean preference (e.g. the coach's voice
+ * auto-play). The caller supplies the storage key prefix and the default.
  *
- * The plan's long-term home for per-user preferences is `users.preferences`
- * (JSON column) — but as of this step neither `CurrentUser`
- * (`features/auth/types.ts`) nor any API route exposes a preferences
- * read/write surface on the frontend (confirmed by grepping both
- * `api/app` and `web/src` for `preferences`: zero matches beyond
- * MODERNIZATION_PLAN.md's own prose). Adding that column/endpoint is
- * backend territory this step doesn't touch. This hook is a local,
- * per-user (keyed by id), `localStorage`-persisted stand-in — swapping the
- * storage for a real `PATCH` once a preferences endpoint exists is a
- * one-line change confined to this file.
+ * Deliberately `localStorage`, not the server-side `users.preferences`
+ * namespaces (`UserPreferenceWriter`): reads are synchronous, need no
+ * endpoint, and cannot collide with the speaker's per-speech server
+ * preference (PLAN-COACH-VOICE-PREVIEW.md D7). Cross-device sync would mean
+ * a new server namespace; swapping the storage is confined to this file.
  */
 export function useLocalBooleanPreference({ key: prefix, userId, defaultValue }: {
   /** Prefix without a trailing colon; the stored key is `${key}:${userId}`. */

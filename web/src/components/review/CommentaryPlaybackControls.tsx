@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/types'
 import type { useCommentaryPlaybackPreference } from '@/hooks/useCommentaryPlaybackPreference'
-import type { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
+import type { VoicePlayback } from '@/hooks/useVoiceInterjections'
 import { COMMENTARY_PLAYBACK_MODES } from '@/lib/commentaryPlayback'
 import { Transcript } from '@/components/annotation/Transcript'
 import { VoicePlaybackControls } from '@/components/annotation/VoicePlaybackControls'
@@ -11,7 +11,7 @@ export interface CommentaryPlaybackControlsProps {
   mode: CommentaryPlaybackMode
   onModeChange: (mode: CommentaryPlaybackMode) => void
   preference: ReturnType<typeof useCommentaryPlaybackPreference>
-  voicePlayback: ReturnType<typeof useVoiceInterjections>
+  voicePlayback: VoicePlayback
   disabled: boolean
   annotations: readonly Annotation[]
   allAnnotations: readonly Annotation[]
