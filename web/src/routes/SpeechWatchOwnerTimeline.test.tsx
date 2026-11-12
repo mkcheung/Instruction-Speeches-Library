@@ -301,9 +301,9 @@ function server(override: Override = () => undefined) {
   return { mock, requests, count: (path: string) => requests.filter((request) => new URL(request.url).pathname === path).length }
 }
 function makeStore() { const store = freshStore(); stores.push(store); return store }
-function watch(store = makeStore(), id = 17, strict = false) {
+function watch(store = makeStore(), id = 17, strict = false, search = '') {
   const router = createMemoryRouter([{ path: '/speeches/:id', element:
-    <WorkspaceCompanionProvider><SpeechWatch /></WorkspaceCompanionProvider> }], { initialEntries: [`/speeches/${id}`] })
+    <WorkspaceCompanionProvider><SpeechWatch /></WorkspaceCompanionProvider> }], { initialEntries: [`/speeches/${id}${search}`] })
   const view = <Provider store={store}><RouterProvider router={router} /></Provider>
   return { store, router, ...render(strict ? <StrictMode>{view}</StrictMode> : view) }
 }
@@ -877,6 +877,22 @@ describe('owner timeline with the production RTK session middleware', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Commentary timeline' }))
     fireEvent.click(screen.getByTestId('range-marker-other-text'))
     expect(instance.video.currentTime).toBe(40)
+  })
+
+  it('starts on a requested older reviewer under StrictMode without loading the default reviewer first', async () => {
+    const older = { ...review(17, 503), first_published_at: '2026-09-01T00:00:00Z', last_published_at: '2026-09-01T00:00:00Z' }
+    const { requests } = server((_request, url) => {
+      if (url.pathname === '/api/speeches/17/review-roster') return json({ reviews: [older, review()] })
+      if (url.pathname === '/api/speeches/17/annotations' && url.searchParams.get('review_id') === '503')
+        return json({ review_id: 503, reviewer: older.reviewer, annotations: notes() })
+    })
+    watch(makeStore(), 17, true, '?review=503')
+    const radiogroup = await screen.findByRole('radiogroup', { name: 'Choose commentary track' })
+    await waitFor(() => expect(within(radiogroup).getByRole('radio', { name: /Coach 503/ })).toBeChecked())
+    expect(requests.some((request) => {
+      const url = new URL(request.url)
+      return url.pathname === '/api/speeches/17/annotations' && url.searchParams.get('review_id') === '501'
+    })).toBe(false)
   })
 
 })

@@ -13,8 +13,9 @@ import type { ProfileTimelineItem, ProfileTimelineTab } from '@/features/connect
  * §6.7.3's "honest product consequence": a profile connected-but-never-
  * reviewed renders an empty timeline BY DESIGN. `firstName` names the
  * page for what it is ("Your history with Jordan") at the call site, not
- * here — this component only owns the empty-state COPY, which must never
- * read as a bare "No results."
+ * here — this component owns the empty-state COPY, which must never read
+ * as a bare "No results.", and passes `tab` + `firstName` down so each
+ * card can say whose speech and whose commentary it shows.
  *
  * Callers (`ProfileReviewsLeft`/`ProfileReviewsReceived`) key this
  * component by `username` — remounting on a profile change resets the
@@ -74,7 +75,7 @@ export function ProfileTimelineFeed({
   return (
     <div className="flex flex-col gap-4">
       {items.map((item) => (
-        <TimelineCard key={item.review_id} item={item} />
+        <TimelineCard key={item.review_id} item={item} tab={tab} firstName={firstName} />
       ))}
 
       {nextCursor && (

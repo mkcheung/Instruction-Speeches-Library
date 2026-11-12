@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useStore } from 'react-redux'
 import type { AppDispatch, RootState } from '@/app/store'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import type Player from 'video.js/dist/types/player'
 import { NotebookPage } from '@/components/workspace/NotebookPage'
 import { ActivityScene } from '@/components/workspace/ActivityScene'
@@ -44,6 +44,7 @@ import { useGetSpeechQuery, useLazyGetPlaybackUrlQuery, useSetPosterFrameMutatio
 import type { SpeechSprite } from '@/features/speech/types'
 import { useGetMeQuery } from '@/features/auth/authApi'
 import { cn } from '@/lib/utils'
+import { parseReviewQueryParam, REVIEW_QUERY_PARAM } from '@/lib/speechPath'
 
 
 /**
@@ -247,6 +248,10 @@ function useReviewerTimelineValidation({
 export default function SpeechWatch() {
   const { id } = useParams<{ id: string }>()
   const speechId = Number(id)
+  // The profile timeline's "Reviews they left you" link names its review, so
+  // the owner's commentary track starts on that reviewer.
+  const [searchParams] = useSearchParams()
+  const requestedReviewId = parseReviewQueryParam(searchParams.get(REVIEW_QUERY_PARAM))
   const { data: speech, isLoading, error, requestId: speechRequestId } = useGetSpeechQuery(speechId, { skip: !speechId })
   const { data: me, error: meError, isLoading: meLoading, isFetching: meFetching, requestId: authRequestId } = useGetMeQuery()
   const [fetchPlaybackUrl] = useLazyGetPlaybackUrlQuery()
@@ -436,7 +441,7 @@ export default function SpeechWatch() {
   // Keep the one canonical hook mounted. Bind only the current concrete video;
   // same-identity preparation retains utility/picker state without binding A to B.
   const commentary = useCommentaryTrack(speechId, ownerVideo, ownerScope !== null, me?.user.id,
-    htmlFullscreen ? fullscreenControlsOpen : ownerTab === 'notes')
+    htmlFullscreen ? fullscreenControlsOpen : ownerTab === 'notes', requestedReviewId)
   const commentaryDenied = isTerminalAccessError(commentary.error) ||
     commentary.preference.accessDenied
   let ownerTimelineStatus: OwnerTimelineStatus
