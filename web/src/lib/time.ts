@@ -36,3 +36,24 @@ export function formatTimestamp(value: string | null): string | null {
   if (!value) return null
   return new Date(value).toLocaleString()
 }
+
+const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}/
+const calendarDate = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+
+/**
+ * `"October 19, 2026"` — a date-only value (`delivered_on`) is a calendar
+ * day, not an instant. `new Date('2026-10-19')` is UTC midnight, which every
+ * zone west of UTC displays as October 18, so the leading `YYYY-MM-DD` is
+ * parsed as an explicit UTC instant and formatted in UTC: the viewer's zone
+ * never enters. Also accepts the `2026-10-19 00:00:00` shape SQLite returns
+ * and ISO timestamps; anything else, or an impossible date, is `null` rather
+ * than a thrown `RangeError`.
+ */
+export function formatCalendarDate(value: string | null): string | null {
+  const day = value ? CALENDAR_DATE.exec(value)?.[0] : undefined
+  if (!day) return null
+  const date = new Date(`${day}T00:00:00Z`)
+  // V8 rolls a day past the month's end forward (`2026-02-30` → March 2) where
+  // Firefox returns an Invalid Date; the round trip rejects it in every engine.
+  return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(day) ? calendarDate.format(date) : null
+}

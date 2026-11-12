@@ -40,6 +40,7 @@ export function useCommentaryTrack(
   enabled = true,
   userId?: string,
   notesVisible = true,
+  requestedReviewId: number | null = null,
 ) {
   const ownerEnabled = enabled && !!userId && Number.isSafeInteger(speechId) && speechId > 0
   const context = `${userId ?? ''}:${speechId}`
@@ -79,13 +80,16 @@ export function useCommentaryTrack(
 
   useEffect(() => {
     if (!ownerEnabled || roster === undefined || (choice.context === context && choice.initialized)) return
+    // A requested review (`?review=`) is an explicit choice, honored like a chip click even before
+    // it publishes; one missing from the roster (revoked, another speech's) falls back to the default.
+    const requested = requestedReviewId === null ? undefined : reviews?.find((review) => review.id === requestedReviewId)
     const published = (reviews ?? []).filter((review) => review.first_published_at !== null)
     const latest = published.reduce<RosterReview | null>((best, review) =>
       !best || new Date(review.last_published_at ?? 0).getTime() > new Date(best.last_published_at ?? 0).getTime() ? review : best, null)
     // Synchronize the initial selection and its crossfade with an asynchronous roster.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    select(latest?.id ?? NO_COMMENTARY)
-  }, [choice.context, choice.initialized, context, ownerEnabled, reviews, roster, select])
+    select(requested?.id ?? latest?.id ?? NO_COMMENTARY)
+  }, [choice.context, choice.initialized, context, ownerEnabled, requestedReviewId, reviews, roster, select])
 
   useEffect(() => {
     if (choice.context !== context || candidate === NO_COMMENTARY || roster === undefined) return

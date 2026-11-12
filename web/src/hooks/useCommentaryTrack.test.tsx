@@ -26,8 +26,8 @@ let error: unknown
 let isFetching: boolean
 let playback: { state: string; current: Annotation | null; hint: Annotation | null }
 
-function mount(visible = true) {
-  const hook = renderHook(({ notesVisible }) => useCommentaryTrack(8, null, true, 'owner', notesVisible), { initialProps: { notesVisible: visible } })
+function mount(visible = true, requested: number | null = null) {
+  const hook = renderHook(({ notesVisible }) => useCommentaryTrack(8, null, true, 'owner', notesVisible, requested), { initialProps: { notesVisible: visible } })
   act(() => vi.advanceTimersByTime(651))
   return hook
 }
@@ -143,6 +143,35 @@ describe('owner commentary projections and presentation', () => {
     expect(localStorage.getItem('commentary-seen:8:7')).toBeNull()
     isFetching = false; rerender({ notesVisible: true })
     expect(localStorage.getItem('commentary-seen:8:7')).toBe(review.last_published_at)
+    vi.useRealTimers()
+  })
+
+  // `review` (7) published last, so it is the default when nothing is requested.
+  const older = { ...review, id: 5, first_published_at: '2026-09-01', last_published_at: '2026-09-01', reviewer: { id: 2, name: 'Older' } } as RosterReview
+  const pending = { ...review, id: 9, status: 'accepted', first_published_at: null, last_published_at: null, reviewer: { id: 4, name: 'Pending' } } as unknown as RosterReview
+  const revoked = { ...review, id: 10, revoked_at: '2026-10-06', reviewer: { id: 5, name: 'Revoked' } } as unknown as RosterReview
+
+  it.each([
+    [5, 5, 'an older published review'],
+    [9, 9, 'nothing published yet'],
+    [999, 7, 'not in the roster, so the default'],
+    [10, 7, 'revoked, so the default'],
+  ])('requesting review %i starts on %i (%s)', (requested, expected) => {
+    roster = [older, review, pending, revoked]
+    const { result } = mount(false, requested)
+    expect(result.current.selected).toBe(expected)
+    vi.useRealTimers()
+  })
+
+  it('never undoes a manual choice made after starting on a requested review', () => {
+    roster = [older, review]
+    const { result, rerender } = mount(false, 5)
+    expect(result.current.selected).toBe(5)
+    act(() => result.current.select(7))
+    // A 3s poll hands back a fresh roster array, which re-runs the initialization effect.
+    roster = [...roster]
+    rerender({ notesVisible: false })
+    expect(result.current.selected).toBe(7)
     vi.useRealTimers()
   })
 })

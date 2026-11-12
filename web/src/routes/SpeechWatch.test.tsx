@@ -568,7 +568,7 @@ describe('SpeechWatch reviewers tab', () => {
     }
   }
 
-  function renderWatch() {
+  function renderWatch(route = '/speeches/17') {
     return renderWithProviders(
       <WorkspaceCompanionProvider>
         <CompanionProbe />
@@ -576,7 +576,7 @@ describe('SpeechWatch reviewers tab', () => {
           <Route path="/speeches/:id" element={<SpeechWatch />} />
         </Routes>
       </WorkspaceCompanionProvider>,
-      { route: '/speeches/17' },
+      { route },
     )
   }
 
@@ -671,6 +671,46 @@ describe('SpeechWatch reviewers tab', () => {
     expect(within(radiogroup).queryByRole('radio', { name: 'No commentary' })).not.toBeInTheDocument()
     expect(within(radiogroup).getByRole('radio', { name: /Still Working Coach/ })).not.toBeChecked()
     expect(screen.getByRole('radio', { name: 'Text + audio' })).toBeDisabled()
+  })
+
+  // The profile timeline's received-tab link names a review (`?review=`): an
+  // explicit choice wins over the default even before it publishes, and an
+  // id outside the roster falls back to the default.
+  it.each([
+    ['/speeches/17?review=1', /Earlier Coach/, /Later Coach/],
+    ['/speeches/17?review=3', /Still Working Coach/, /Later Coach/],
+    ['/speeches/17?review=999', /Later Coach/, /Earlier Coach/],
+  ])('%s starts on the requested commentary track', async (route, checked, unchecked) => {
+    stubWatchFetch({
+      speech: speechFixture(),
+      roster: [
+        rosterReview({
+          id: 1,
+          reviewer: { id: 7, name: 'Earlier Coach' },
+          first_published_at: '2026-09-01T10:00:00Z',
+          last_published_at: '2026-09-01T10:00:00Z',
+        }),
+        rosterReview({
+          id: 2,
+          reviewer: { id: 8, name: 'Later Coach' },
+          first_published_at: '2026-09-03T10:00:00Z',
+          last_published_at: '2026-09-03T10:00:00Z',
+        }),
+        rosterReview({
+          id: 3,
+          status: 'accepted',
+          reviewer: { id: 9, name: 'Still Working Coach' },
+          first_published_at: null,
+          last_published_at: null,
+        }),
+      ],
+    })
+    renderWatch(route)
+
+    const radiogroup = await screen.findByRole('radiogroup', { name: 'Choose commentary track' })
+    const requested = await within(radiogroup).findByRole('radio', { name: checked })
+    await waitFor(() => expect(requested).toBeChecked())
+    expect(within(radiogroup).getByRole('radio', { name: unchecked })).not.toBeChecked()
   })
 
   it('gives the owner a Reviewers tab in the Speech tools strip', async () => {

@@ -354,30 +354,33 @@ describe('PublicProfile', () => {
     expect(screen.queryByText(/^No results\.?$/i)).not.toBeInTheDocument()
   })
 
-  it('renders a timeline card with the exact privacy indicator, commentary block, and a single primary link', async () => {
+  function timelineItem(overrides: Record<string, unknown> = {}) {
+    return {
+      review_id: 501,
+      status: 'published',
+      last_transition_at: '2026-03-14T00:00:00Z',
+      commentary: { notes_count: 12, has_essay: true },
+      speech: {
+        id: 77,
+        ulid: 'speech-ulid-77',
+        title: 'Opening Remarks — District Final',
+        // The API's real shape: a raw Postgres `date`, not a timestamp.
+        delivered_on: '2026-03-12',
+        duration_seconds: '494',
+      },
+      poster: null,
+      arc: null,
+      ...overrides,
+    }
+  }
+
+  function stubJordanTimeline(item: ReturnType<typeof timelineItem>, tab: 'left' | 'received') {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = urlOf(input)
-      if (url.includes('/api/u/jordan/timeline')) {
-        return jsonResponse({
-          timeline: [
-            {
-              review_id: 501,
-              status: 'published',
-              last_transition_at: '2026-03-14T00:00:00Z',
-              commentary: { notes_count: 12, has_essay: true },
-              speech: {
-                id: 77,
-                ulid: 'speech-ulid-77',
-                title: 'Opening Remarks — District Final',
-                delivered_on: '2026-03-12T00:00:00Z',
-                duration_seconds: '494',
-              },
-              poster: null,
-              arc: null,
-            },
-          ],
-          meta: { next_cursor: null, tab: 'left', profile_username: 'jordan' },
-        })
+      // Answer only the tab under test, so a route that fetched the other tab fails loudly
+      // instead of rendering its rows under this tab's copy.
+      if (url.includes('/api/u/jordan/timeline') && new URL(url, 'http://localhost').searchParams.get('tab') === tab) {
+        return jsonResponse({ timeline: [item], meta: { next_cursor: null, tab, profile_username: 'jordan' } })
       }
       if (url.includes('/api/u/jordan')) {
         return jsonResponse({
@@ -400,12 +403,17 @@ describe('PublicProfile', () => {
       throw new Error(`unexpected fetch: ${url}`)
     })
     vi.stubGlobal('fetch', fetchMock)
+  }
+
+  it('renders a timeline card with the exact privacy indicator, commentary block, and a single primary link', async () => {
+    stubJordanTimeline(timelineItem(), 'left')
 
     renderProfileApp('/u/jordan/reviews-left')
 
     expect(await screen.findByText('Opening Remarks — District Final')).toBeInTheDocument()
     expect(screen.getByText('🔒 Private · visible to you because you reviewed it')).toBeInTheDocument()
     expect(screen.getByText('12 notes · essay')).toBeInTheDocument()
+    expect(screen.getByText('March 12, 2026 · 8 min 14 sec')).toBeInTheDocument()
 
     const primaryLink = screen.getByRole('link', { name: /watch with your commentary/i })
     expect(primaryLink).toHaveAttribute('href', '/speeches/77')
@@ -413,6 +421,35 @@ describe('PublicProfile', () => {
     // destination off the poster/title (§6.7.4's accessibility rule).
     expect(screen.getAllByRole('link', { name: /watch with your commentary/i })).toHaveLength(1)
   })
+
+  it('names the reviewer on the received tab and links to their commentary track', async () => {
+    stubJordanTimeline(timelineItem(), 'received')
+
+    renderProfileApp('/u/jordan/reviews-received')
+
+    expect(await screen.findByText('Opening Remarks — District Final')).toBeInTheDocument()
+    expect(screen.getByText('🔒 Your private speech · shared with Jordan')).toBeInTheDocument()
+    expect(screen.getByText("Jordan's commentary")).toBeInTheDocument()
+    expect(screen.getByText('12 notes · essay')).toBeInTheDocument()
+    expect(screen.queryByText(/visible to you because you reviewed it/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Your commentary')).not.toBeInTheDocument()
+
+    const links = screen.getAllByRole('link', { name: /watch with jordan's commentary/i })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/speeches/77?review=501')
+  })
+
+  it('says nothing is published yet on the received tab and still links to that review', async () => {
+    stubJordanTimeline(timelineItem({ status: 'accepted', commentary: { notes_count: 0, has_essay: false } }), 'received')
+
+    renderProfileApp('/u/jordan/reviews-received')
+
+    expect(await screen.findByText('Nothing published yet')).toBeInTheDocument()
+    const links = screen.getAllByRole('link', { name: 'Watch your speech →' })
+    expect(links).toHaveLength(1)
+    expect(links[0]).toHaveAttribute('href', '/speeches/77?review=501')
+  })
+
   /**
    * `/u/:username` is registered outside `AppLayout` (it must render for
    * anonymous visitors, D5), so it has no header and no sidebar — a
