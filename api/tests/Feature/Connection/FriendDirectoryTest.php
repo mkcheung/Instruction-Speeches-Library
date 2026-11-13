@@ -329,3 +329,34 @@ it('rejects a search that is not valid UTF-8 with 422 instead of reaching the qu
         $this->actingAs($viewer)->getJson($url)->assertUnprocessable()->assertJsonValidationErrors('search');
     }
 });
+
+it('samples a bounded random set of accepted friends with the true total and mutual counts', function () {
+    $viewer = directoryPerson();
+    [$first, $second, $third] = [directoryPerson(), directoryPerson(), directoryPerson()];
+    foreach ([$first, $second, $third] as $friend) {
+        directoryPair($viewer, $friend);
+    }
+    directoryPair($first, $second);
+    directoryPair($viewer, directoryPerson(), 'pending');
+    $mutual = [$first->id => 1, $second->id => 1, $third->id => 0];
+
+    $friends = $this->actingAs($viewer)->getJson('/api/friends/sample?limit=2')->assertOk()
+        ->assertJsonPath('meta.total', 3)->assertJsonCount(2, 'friends')->json('friends');
+    $ids = array_column(array_column($friends, 'person'), 'id');
+    expect(array_unique($ids))->toHaveCount(2)->and(array_diff($ids, array_keys($mutual)))->toBe([]);
+    foreach ($friends as $friend) {
+        expect($friend['mutual_friends_count'])->toBe($mutual[$friend['person']['id']]);
+    }
+    $this->getJson('/api/friends/sample')->assertOk()->assertJsonCount(3, 'friends');
+});
+
+it('guards the friends sample like the other directory reads', function () {
+    $this->getJson('/api/friends/sample')->assertUnauthorized();
+    $viewer = directoryPerson();
+    foreach (['0', '21', 'abc'] as $limit) {
+        $this->actingAs($viewer)->getJson('/api/friends/sample?limit='.$limit)->assertUnprocessable()->assertJsonValidationErrors('limit');
+    }
+    $admin = directoryPerson([], 'admin');
+    $admin->assignRole('member');
+    $this->actingAs($admin)->getJson('/api/friends/sample')->assertForbidden();
+});

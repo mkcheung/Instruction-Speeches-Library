@@ -256,7 +256,6 @@ class E2ESeeder extends Seeder
                 [
                     'display_name' => "{$user->first_name} {$user->last_name}",
                     'bio' => "E2E fixture profile for the {$role} role.",
-                    'pronouns' => null,
                     'location' => 'Fixture City',
                     'timezone' => 'UTC',
                     'locale' => 'en',

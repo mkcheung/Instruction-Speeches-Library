@@ -45,10 +45,10 @@ async function refreshMe(dispatch: (action: unknown) => unknown, queryFulfilled:
  *
  * There is no `GET /api/profile` for "my own profile with bio/avatar" —
  * `UserResource` (what `/api/me` and the mutations below return)
- * deliberately never carries profile fields (bio, pronouns, location,
- * avatar), only `PublicProfileResource` does. `ProfileEdit.tsx` reads its
- * own bio/avatar the same way anyone else would: `getPublicProfile` against
- * its own username (known from `/api/me`).
+ * deliberately never carries profile fields (bio, location, avatar), only
+ * `PublicProfileResource` does. `ProfileHome.tsx` reads its own bio/avatar
+ * the same way anyone else would: `getPublicProfile` against its own
+ * username (known from `/api/me`).
  */
 export const profileApi = createApi({
   reducerPath: 'profileApi',

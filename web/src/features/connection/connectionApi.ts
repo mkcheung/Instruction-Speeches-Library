@@ -5,6 +5,8 @@ import type {
   Connection,
   FriendsQueryArgs,
   FriendsResponse,
+  FriendSampleArgs,
+  FriendSampleResponse,
   FindFriendsQueryArgs,
   FindFriendsResponse,
   FriendRelationshipResponse,
@@ -66,6 +68,12 @@ export const connectionApi = createApi({
         endpointName, ...normalizedFriendsArgs(queryArgs),
       }),
       providesTags: ['Friends'],
+    }),
+    /** The profile page's friends card. Every response is a new random
+     * set, so callers refetch on mount instead of reusing a cached order. */
+    getFriendSample: builder.query<FriendSampleResponse, FriendSampleArgs>({
+      query: ({ limit = 9 }) => `/api/friends/sample?limit=${limit}`,
+      providesTags: ['FriendSample'],
     }),
     findFriends: builder.query<FindFriendsResponse, FindFriendsQueryArgs>({
       query: (args) => {
@@ -159,6 +167,7 @@ export const connectionApi = createApi({
 
 export const {
   useGetFriendsQuery,
+  useGetFriendSampleQuery,
   useFindFriendsQuery,
   useGetFriendRelationshipQuery,
   useGetConnectionsRailQuery,

@@ -10,7 +10,7 @@ import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceC
 /**
  * STEP-11-FROZEN-CONTRACT.md §10: a new `/account` route, nested in
  * `App.tsx`'s existing `RequireAuth`+`RequireVerified`+`AppLayout` group —
- * not bolted onto `ProfileEdit.tsx` ("this is higher-stakes and deserves
+ * not bolted onto the profile page ("this is higher-stakes and deserves
  * its own screen," per the frontend agent's recommendation the contract
  * cites).
  *

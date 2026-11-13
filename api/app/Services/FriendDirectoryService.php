@@ -27,21 +27,11 @@ final class FriendDirectoryService
     {
         $this->eligibility->assertActor($viewer);
         $position = $this->decodeCursor($cursor, $viewer->id, $view, $search);
-        $column = $view === 'incoming' ? 'requested_at' : 'connected_at';
-        $state = $view === 'incoming' ? 'pending' : 'accepted';
-        $query = $this->people()->join('connections as mine', 'mine.peer_id', '=', 'users.id')
-            ->where('mine.owner_id', $viewer->id)
-            ->where('users.id', '<>', $viewer->id);
-        $this->reciprocal($query, 'mine', 'mirror', $state);
-        if ($view === 'incoming') {
-            $query->whereColumn('mine.initiated_by_id', 'mine.peer_id');
-        }
+        $column = $this->listColumn($view);
+        $query = $this->listQuery($viewer, $view);
         if ($view === 'accepted' && $search !== '') {
             $this->search($query, $search);
         }
-
-        // Missing historical times have no truthful seek position; the reconciler reports them.
-        $query->whereNotNull('mine.'.$column);
         $total = (clone $query)->count();
         if ($position !== null) {
             $query->where(function (Builder $seek) use ($column, $position): void {
@@ -51,9 +41,7 @@ final class FriendDirectoryService
                     });
             });
         }
-        $rows = $query->select('users.id as person_id', 'users.username', 'profiles.avatar_path',
-            'mine.id as connection_id', 'mine.requested_at', 'mine.connected_at', 'mine.note')
-            ->selectRaw($this->eligibility->nameExpression().' as person_name')
+        $rows = $this->selectListRows($query)
             ->orderByDesc('mine.'.$column)->orderByDesc('mine.id')->limit(self::PAGE_SIZE + 1)->get();
         $more = $rows->count() > self::PAGE_SIZE;
         $rows = $rows->take(self::PAGE_SIZE)->values();
@@ -62,8 +50,25 @@ final class FriendDirectoryService
             ? $this->encodeCursor($viewer->id, $view, $search, (int) $last->connection_id, (string) $last->{$column})
             : null;
 
-        return ['rows' => $rows, 'mutual' => $this->mutualCounts($viewer->id, $this->personIds($rows)),
+        return ['rows' => $rows, 'mutual' => $this->mutualCounts($viewer->id, $rows),
             'total' => $total, 'next_cursor' => $next];
+    }
+
+    /**
+     * A random handful of the viewer's accepted friends for the profile
+     * page's friends card. Random order can't be paged with a keyset
+     * cursor, so this is one bounded page; the full list stays on friends().
+     *
+     * @return array{rows: Collection<int, stdClass>, mutual: array<int, int>, total: int}
+     */
+    public function sample(User $viewer, int $limit): array
+    {
+        $this->eligibility->assertActor($viewer);
+        $query = $this->listQuery($viewer, 'accepted');
+        $total = (clone $query)->count();
+        $rows = $this->selectListRows($query)->inRandomOrder()->limit($limit)->get();
+
+        return ['rows' => $rows, 'mutual' => $this->mutualCounts($viewer->id, $rows), 'total' => $total];
     }
 
     /** @return array{rows: Collection<int, stdClass>, mutual: array<int, int>, next_cursor: ?string} */
@@ -97,7 +102,7 @@ final class FriendDirectoryService
         $rows = $rows->take(self::PAGE_SIZE)->values();
         $last = $rows->last();
 
-        return ['rows' => $rows, 'mutual' => $this->mutualCounts($viewer->id, $this->personIds($rows)),
+        return ['rows' => $rows, 'mutual' => $this->mutualCounts($viewer->id, $rows),
             'next_cursor' => $more && $last !== null
                 ? $this->encodeCursor($viewer->id, 'find', $search, (int) $last->person_id, null) : null];
     }
@@ -149,6 +154,33 @@ final class FriendDirectoryService
             ->whereIn('users.id', $this->eligibility->eligibleUserIds());
     }
 
+    private function listColumn(string $view): string
+    {
+        return $view === 'incoming' ? 'requested_at' : 'connected_at';
+    }
+
+    /** The viewer's accepted friends or incoming requests, held to the pair invariant. */
+    private function listQuery(User $viewer, string $view): Builder
+    {
+        $query = $this->people()->join('connections as mine', 'mine.peer_id', '=', 'users.id')
+            ->where('mine.owner_id', $viewer->id)
+            ->where('users.id', '<>', $viewer->id);
+        $this->reciprocal($query, 'mine', 'mirror', $view === 'incoming' ? 'pending' : 'accepted');
+        if ($view === 'incoming') {
+            $query->whereColumn('mine.initiated_by_id', 'mine.peer_id');
+        }
+
+        // Missing historical times have no truthful seek position; the reconciler reports them.
+        return $query->whereNotNull('mine.'.$this->listColumn($view));
+    }
+
+    private function selectListRows(Builder $query): Builder
+    {
+        return $query->select('users.id as person_id', 'users.username', 'profiles.avatar_path',
+            'mine.id as connection_id', 'mine.requested_at', 'mine.connected_at', 'mine.note')
+            ->selectRaw($this->eligibility->nameExpression().' as person_name');
+    }
+
     /** Both drivers explicitly fold both operands; PostgreSQL's locale determines Unicode behavior.
      * SQLite LOWER only folds ASCII: its tests cannot establish Unicode release parity.
      */
@@ -192,19 +224,14 @@ final class FriendDirectoryService
         };
     }
 
-    /** @param Collection<int, stdClass> $rows
-     * @return list<int>
-     */
-    private function personIds(Collection $rows): array
-    {
-        return array_values($rows->map(fn (stdClass $row): int => (int) $row->person_id)->all());
-    }
-
-    /** @param list<int> $candidateIds
+    /** Mutual-friend counts keyed by each row's `person_id`.
+     *
+     * @param  Collection<int, stdClass>  $rows
      * @return array<int, int>
      */
-    private function mutualCounts(int $viewerId, array $candidateIds): array
+    private function mutualCounts(int $viewerId, Collection $rows): array
     {
+        $candidateIds = array_values($rows->map(fn (stdClass $row): int => (int) $row->person_id)->all());
         if ($candidateIds === []) {
             return [];
         }

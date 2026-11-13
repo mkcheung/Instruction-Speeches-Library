@@ -44,7 +44,6 @@ class PublicProfileResource extends JsonResource
             // Attribute server-side normalization to this exact request, not a model field.
             'requested_username' => $this->requestedUsername,
             'display_name' => $profile?->display_name ?: trim("{$this->first_name} {$this->last_name}"),
-            'pronouns' => $profile?->pronouns,
             'bio' => $profile?->bio,
             'location' => $profile?->location,
             // `/api/u/{username}` is UNAUTHENTICATED (this class's own

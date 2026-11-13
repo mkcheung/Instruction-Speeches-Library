@@ -72,7 +72,6 @@ test('test', async ({ page, context }) => {
     await page2.getByRole('textbox', { name: 'Bio' }).click();
     await page2.getByRole('textbox', { name: 'Bio' }).fill('Testing 123');
     await page2.getByRole('textbox', { name: 'Bio' }).press('Tab');
-    await page2.getByRole('textbox', { name: 'Pronouns' }).press('Tab');
     await page2.getByRole('button', { name: 'Continue' }).click();
     await page2.getByRole('button', { name: 'Skip for now' }).click();
 
@@ -97,13 +96,16 @@ test('test', async ({ page, context }) => {
     await expect(page2).toHaveURL('https://app.speechcoach.test/dashboard');
 
     // The account-menu item is the other half of change #2 — it keeps the
-    // social page reachable from every authenticated route, not just here.
-    // It is keyed off `/api/me`'s username, which is exactly what went
-    // stale before `profileApi` learned to invalidate `authApi`'s `Me`.
+    // profile reachable from every authenticated route, not just here.
     // "Your profile" is an account destination: it lives in the account
     // dropdown, not the Main navigation rail (see `accountNavItemsFor`).
+    // The page it opens reads `/api/me`'s username, which is exactly what
+    // went stale before `profileApi` learned to invalidate `authApi`'s `Me`,
+    // so it must show the username chosen during this walk.
     await page2.getByRole('button', { name: 'Mars Cheung', exact: true }).click();
-    await expect(
-        page2.getByRole('menuitem', { name: 'Your profile', exact: true }),
-    ).toHaveAttribute('href', `/u/${username}`);
+    const yourProfile = page2.getByRole('menuitem', { name: 'Your profile', exact: true });
+    await expect(yourProfile).toHaveAttribute('href', '/profile');
+    await yourProfile.click();
+    await expect(page2).toHaveURL('https://app.speechcoach.test/profile');
+    await expect(page2.getByRole('button', { name: `Edit username: @${username}`, exact: true })).toBeVisible();
 });

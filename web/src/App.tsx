@@ -10,7 +10,7 @@ import ForgotPassword from '@/routes/ForgotPassword'
 import ResetPassword from '@/routes/ResetPassword'
 import VerifyEmail from '@/routes/VerifyEmail'
 import Onboarding from '@/routes/Onboarding'
-import ProfileEdit from '@/routes/ProfileEdit'
+import ProfileHome from '@/routes/ProfileHome'
 import Account from '@/routes/Account'
 import PublicProfile from '@/routes/PublicProfile'
 import ProfileFriends from '@/routes/ProfileFriends'
@@ -124,7 +124,8 @@ const router = createBrowserRouter(
         <Route path="/speeches/new" element={<SpeechCreate />} />
         <Route path="/speeches/:id" element={<SpeechWatch />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/profile" element={<ProfileEdit />} />
+        <Route path="/profile" element={<ProfileHome />} />
+        <Route path="/profile/feed" element={<ProfileHome />} />
         {/* STEP-11-FROZEN-CONTRACT.md §10: own screen, not nested under
             `/profile` — same guard group as every other authenticated
             route here (do not touch the guard structure otherwise). */}

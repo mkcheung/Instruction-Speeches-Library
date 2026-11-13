@@ -9,7 +9,7 @@ const member = { roles: [], username: 'e2e-member' }
 const scenes: Record<string, string> = {
   'My reviews': 'reviews', 'My speeches': 'speeches', 'Find reviewers': 'reviewers',
   'Upload a speech': 'upload', Search: 'search', 'Your profile': 'profile',
-  'Edit profile': 'edit', 'Account & privacy': 'account', 'Become a Coach': 'coach',
+  'Account & privacy': 'account', 'Become a Coach': 'coach',
 }
 
 function Probe({ items }: { items: NavItem[] }) {
@@ -31,7 +31,7 @@ describe('activityForRoute parity with the installed real NavLink', () => {
     '/speeches/', '/SPEECHES', '/speeches/new', '/speeches/new/', '/SPEECHES/NEW',
     '/speeches/new/draft', '/speeches/9', '/speeches/newer', '/reviewers', '/REVIEWERS/',
     '/search', '/SEARCH', '/search/', '/search?q=voice#results', '/searching',
-    '/profile', '/profile/edit', '/PROFILE/', '/account', '/account/privacy', '/ACCOUNT/',
+    '/profile', '/profile/feed', '/profile/edit', '/PROFILE/', '/account', '/account/privacy', '/ACCOUNT/',
     '/become-a-coach', '/become-a-coach/', '/u/e2e-member', '/U/E2E-MEMBER',
     '/u/e2e-member/posts', '/unknown', '/', '/control-panel',
   ]

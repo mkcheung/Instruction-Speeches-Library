@@ -60,7 +60,7 @@ it('resumes at step 3 after step 2, and completes onboarding at step 3', functio
     $this->actingAs($completed)->getJson('/api/onboarding')->assertJsonPath('step', 4);
 });
 
-it('allows skipping bio/pronouns/location and avatar entirely and still completing onboarding', function () {
+it('allows skipping bio/location and avatar entirely and still completing onboarding', function () {
     $user = User::factory()->create();
 
     $this->actingAs($user)->postJson('/api/onboarding/step-1', [

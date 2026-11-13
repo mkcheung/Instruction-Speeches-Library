@@ -103,9 +103,9 @@ describe('AppHeader workspace chrome', () => {
     const menu = await screen.findByRole('menu')
     expect(header).not.toContainElement(menu)
     expect(within(menu).getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
-      'Your profile', 'Edit profile', 'Account & privacy', 'Log out',
+      'Your profile', 'Account & privacy', 'Log out',
     ])
-    expect(within(menu).getByRole('menuitem', { name: 'Your profile' })).toHaveAttribute('href', '/u/e2e-member')
+    expect(within(menu).getByRole('menuitem', { name: 'Your profile' })).toHaveAttribute('href', '/profile')
     expect(account.querySelector('span:not([aria-hidden])')).toHaveClass('sr-only', 'sm:not-sr-only')
   })
 

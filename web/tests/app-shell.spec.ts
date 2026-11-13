@@ -51,7 +51,7 @@ test.describe('authenticated shell', () => {
     if (width >= 768) {
       await expect(sidebar).toBeVisible()
       await expect(sidebar.getByRole('link', { name: 'My speeches', exact: true })).toBeVisible()
-      await expect(sidebar.getByRole('link', { name: 'Edit profile' })).toHaveCount(0)
+      await expect(sidebar.getByRole('link', { name: 'Your profile' })).toHaveCount(0)
     } else {
       // Below `md` the rail collapses and the main navigation menu carries these
       // destinations instead — asserted in its own test below rather than
@@ -92,7 +92,7 @@ test.describe('authenticated shell', () => {
 
     await page.goto(`${APP_URL}/dashboard`)
     await page.getByRole('button', { name: USERS.speaker.name, exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Edit profile', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Your profile', exact: true }).click()
     await expect(page).toHaveURL(`${APP_URL}/profile`)
 
     await context.close()
@@ -139,14 +139,14 @@ test.describe('collapsed navigation below md', () => {
     for (const label of ['My reviews', 'My speeches', 'Search']) {
       await expect(page.getByRole('menuitem', { name: label, exact: true })).toBeVisible()
     }
-    await expect(page.getByRole('menuitem', { name: 'Edit profile' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: 'Your profile' })).toHaveCount(0)
     await page.keyboard.press('Escape')
     await page.getByRole('button', { name: USERS.speaker.name, exact: true }).click()
     await expect(page.getByRole('menu').getByRole('menuitem')).toHaveText([
-      'Your profile', 'Edit profile', 'Account & privacy', 'Log out',
+      'Your profile', 'Account & privacy', 'Log out',
     ])
 
-    await page.getByRole('menuitem', { name: 'Edit profile' }).click()
+    await page.getByRole('menuitem', { name: 'Your profile' }).click()
     await expect(page).toHaveURL(`${APP_URL}/profile`)
 
     await context.close()
@@ -340,11 +340,13 @@ async function interceptPresentationApi(context: BrowserContext, initiallyAuthen
         ? { friends: [{ connection_id: 1, person: { id: 2, name: 'Avery Speaker', username: 'avery', avatar_url: null },
           mutual_friends_count: 0, requested_at: presentationDate, connected_at: null, note: null }], meta: { total: 1, next_cursor: null } }
         : { friends: [], meta: { total: 0, next_cursor: null } })
+      // The profile page's friends card (ProfileHome.tsx).
+      case '/api/friends/sample': return json({ friends: [], meta: { total: 0 } })
       // The header's account chip reads its own public profile for the saved photo (UserMenu.tsx); no photo, so it
       // keeps the initials fallback these presentation checks were written against.
       case '/api/u/presentation-member': return json({ profile: {
         id: presentationUser.id, username: presentationUser.username, display_name: presentationUser.display_name,
-        bio: null, pronouns: null, location: null, avatar_url: null, credential: 'member',
+        bio: null, location: null, avatar_url: null, credential: 'member',
       } })
       case '/api/speeches': return json({ speeches: [], meta: { current_page: 1, last_page: 1, total: 0 } })
       case '/api/reviewers': return json({ reviewers: [], meta: { current_page: 1, last_page: 1, total: 0 } })
@@ -530,11 +532,11 @@ test.describe('option C presentation (isolated frontend)', () => {
           await account.click()
           await presentationExpect(account).toHaveAttribute('aria-expanded', 'true')
           await presentationExpect(account).toHaveCSS('background-color', 'rgb(248, 236, 218)')
-          for (const name of ['Your profile', 'Edit profile', 'Account & privacy', 'Log out']) {
+          for (const name of ['Your profile', 'Account & privacy', 'Log out']) {
             await presentationExpect(page.getByRole('menuitem', { name, exact: true })).toBeVisible()
           }
           const popup = page.getByRole('menu')
-          await presentationExpect(popup.getByRole('menuitem')).toHaveText(['Your profile', 'Edit profile', 'Account & privacy', 'Log out'])
+          await presentationExpect(popup.getByRole('menuitem')).toHaveText(['Your profile', 'Account & privacy', 'Log out'])
           presentationExpect(await popup.evaluate((element) => Boolean(element.closest('.workspace-header, .workspace-sidebar, .workspace-dashboard, .workspace-login')))).toBe(false)
           presentationExpect(await popup.evaluate((element) => getComputedStyle(element).getPropertyValue('--workspace-paper'))).toBe('')
           presentationExpect(await avatar.evaluate((element) => ({ background: getComputedStyle(element).backgroundColor, foreground: getComputedStyle(element).color }))).toEqual(avatarPair)
@@ -556,7 +558,7 @@ test.describe('option C presentation (isolated frontend)', () => {
       await presentationExpect(page.getByRole('button', { name: 'Main navigation', exact: true })).toBeHidden()
       const sidebar = page.getByRole('navigation', { name: 'Main' })
       await presentationExpect(sidebar).toBeVisible()
-      for (const name of ['Your profile', 'Edit profile', 'Account & privacy']) {
+      for (const name of ['Your profile', 'Account & privacy']) {
         await presentationExpect(sidebar.getByRole('link', { name, exact: true })).toHaveCount(0)
       }
       presentationExpect(mocked.unexpected).toEqual([])
@@ -783,7 +785,7 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
       { id: 4, name: 'Jamie Member', username: 'jamie-member', credential: 'member', avatar_url: null },
     ], meta: { current_page: 1, last_page: 1, total: empty ? 0 : 2 } } }
     case '/api/u/notebook-member': return { body: { profile: { id: options.reviewer ? 2 : 1, username: 'notebook-member',
-      display_name: 'Morgan Member', bio: 'Practising a clear opening.', pronouns: 'they/them', location: 'Rehearsal room', avatar_url: null } } }
+      display_name: 'Morgan Member', bio: 'Practising a clear opening.', location: 'Rehearsal room', avatar_url: null } } }
     case '/api/privacy/exports': return { body: { exports: [] } }
     case '/api/coach-applications/me': return { body: { coachApplication: { id: 7, status: options.coachStatus ?? 'draft',
       statement: 'I want to help speakers practise.', decision_reason: 'Please add supporting experience.', submitted_at: null,
@@ -836,7 +838,7 @@ async function notebookMediaResponse(route: import('@playwright/test').Route, op
 const notebookRoutes = [
   ['/dashboard', 'My reviews', 'reviews'], ['/speeches', 'My speeches', 'speeches'],
   ['/reviewers', 'Find reviewers', 'reviewers'], ['/speeches/new', 'Upload a speech', 'upload'],
-  ['/search', 'Search your speeches', 'search'], ['/profile', 'Edit profile', 'edit'],
+  ['/search', 'Search your speeches', 'search'], ['/profile', 'Your profile', 'profile'],
   ['/account', 'Account & privacy', 'account'], ['/become-a-coach', 'Become a Coach', 'coach'],
   ['/speeches/9', notebookTitle, 'reviews'],
 ] as const
@@ -939,7 +941,7 @@ test.describe('notebook presentation (isolated frontend)', () => {
             await presentationExpect(page.getByRole('button', { name: 'Delete my account', exact: true })).toHaveCSS('color', 'rgb(185, 28, 28)')
             await presentationExpect(page.locator('.workspace-notebook-danger')).toHaveCSS('box-shadow', 'none')
           }
-          if (path === '/profile') await presentationExpect(page.getByLabel('Bio', { exact: true })).toHaveValue('Practising a clear opening.')
+          if (path === '/profile') await presentationExpect(page.getByRole('button', { name: /^Edit bio: Practising a clear opening\./ })).toBeVisible()
           if (path === '/become-a-coach') await presentationExpect(page.getByText(/CertificateLongFileName/)).toBeVisible()
           if (path === '/speeches/9') {
             await presentationExpect(page.getByRole('tablist', { name: 'Speech tools' })).toBeVisible()
@@ -1100,7 +1102,7 @@ test.describe('notebook presentation (isolated frontend)', () => {
         const ctx = canvas.getContext('2d')!; ctx.fillStyle = '#0f6b66'; ctx.fillRect(0, 0, 400, 400)
         return canvas.toDataURL('image/png').split(',')[1]
       })
-      await page.getByLabel('Profile photo').setInputFiles({ name: 'portrait.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') })
+      await page.getByLabel('Change photo').setInputFiles({ name: 'portrait.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') })
       const cropping = page.locator('.workspace-notebook-photo-panel--cropping')
       await presentationExpect(cropping).toBeVisible()
       const cropViewport = cropping.getByRole('img', { name: 'Avatar preview, drag to reposition' }).locator('..')

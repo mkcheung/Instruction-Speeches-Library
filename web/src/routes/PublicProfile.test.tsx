@@ -67,7 +67,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'marscheung',
             display_name: 'Mars Cheung',
-            pronouns: null,
             bio: 'Toastmaster and reviewer.',
             location: null,
             avatar_url: null,
@@ -102,7 +101,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'coachy',
             display_name: 'Coach Y',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -135,7 +133,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'marscheung',
             display_name: 'Mars Cheung',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -189,7 +186,6 @@ describe('PublicProfile', () => {
             username: 'marscheung',
             requested_username: requestedUsername,
             display_name: 'Mars Cheung',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -222,11 +218,11 @@ describe('PublicProfile', () => {
       const requestedUsername = decodeURIComponent(new URL(url).pathname.slice('/api/u/'.length))
       if (url.includes(`/api/u/${canonical}/timeline`)) return jsonResponse(emptyTimeline)
       if (url.includes(`/api/u/${canonical}`)) {
-        return jsonResponse({ profile: { id: 8, username: canonical, requested_username: requestedUsername, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+        return jsonResponse({ profile: { id: 8, username: canonical, requested_username: requestedUsername, display_name: 'Elodie Example', bio: null, location: null, avatar_url: null } })
       }
       if (url.includes('/api/u/')) {
         // The server resolves any spelling to the same profile.
-        return jsonResponse({ profile: { id: 8, username: canonical, requested_username: requestedUsername, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+        return jsonResponse({ profile: { id: 8, username: canonical, requested_username: requestedUsername, display_name: 'Elodie Example', bio: null, location: null, avatar_url: null } })
       }
       if (url.includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
       throw new Error(`unexpected fetch: ${url}`)
@@ -247,7 +243,7 @@ describe('PublicProfile', () => {
   it.each([undefined, 'another-slug'])('rejects a canonical mismatch without matching server attribution (%s)', async (requestedUsername) => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       if (urlOf(input).includes('/api/me')) return jsonResponse({ message: 'Unauthenticated.' }, 401)
-      return jsonResponse({ profile: { id: 8, username: 'elodie', requested_username: requestedUsername, display_name: 'Elodie Example', pronouns: null, bio: null, location: null, avatar_url: null } })
+      return jsonResponse({ profile: { id: 8, username: 'elodie', requested_username: requestedUsername, display_name: 'Elodie Example', bio: null, location: null, avatar_url: null } })
     }))
 
     const { router } = renderProfileApp('/u/%C3%A9lodie')
@@ -290,7 +286,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'marscheung',
             display_name: 'Mars Cheung',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -330,7 +325,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'jordan',
             display_name: 'Jordan Ellis',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -387,7 +381,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'jordan',
             display_name: 'Jordan Ellis',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -481,7 +474,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'jordan',
             display_name: 'Jordan Reyes',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -518,7 +510,6 @@ describe('PublicProfile', () => {
           profile: {
             username: 'jordan',
             display_name: 'Jordan Reyes',
-            pronouns: null,
             bio: null,
             location: null,
             avatar_url: null,
@@ -539,7 +530,7 @@ describe('PublicProfile', () => {
 })
 
 describe('profile connection eligibility', () => {
-  const cora: Profile = { id: 9003, username: 'e2e-coach', display_name: 'Cora Coach', pronouns: null,
+  const cora: Profile = { id: 9003, username: 'e2e-coach', display_name: 'Cora Coach',
     bio: null, location: null, avatar_url: null, credential: 'coach' }
   const milo: Profile = { ...cora, id: 9004, username: 'e2e-member', display_name: 'Milo Member', credential: 'member' }
   function identity(target: Profile): MeResponse {

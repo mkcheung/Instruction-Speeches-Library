@@ -110,14 +110,15 @@ test('shared profile limits reject oversized text and save the boundary value', 
   const data = fixture()
   await login(page, data)
   await page.goto(`${APP}/profile`)
+  await page.getByRole('button', { name: /^Edit bio:/ }).click()
   await page.getByRole('textbox', { name: 'Bio', exact: true }).fill('b'.repeat(1001))
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('Bio must be at most 1000 characters.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
   await page.getByRole('textbox', { name: 'Bio', exact: true }).fill('b'.repeat(1000))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByText('Saved.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Bio saved.', { exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('textbox', { name: 'Bio', exact: true })).toHaveValue('b'.repeat(1000))
+  await expect(page.getByRole('button', { name: `Edit bio: ${'b'.repeat(1000)}`, exact: true })).toBeVisible()
 })
 
 test('an explicit legacy preference write repairs only its namespace and preserves canonical playback', async ({ page }) => {

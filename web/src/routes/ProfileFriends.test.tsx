@@ -37,7 +37,7 @@ function fixtures(handler: (url: URL, request: Request) => Response | Promise<Re
   vi.stubGlobal('fetch', vi.fn(async (request: Request) => {
     const url = new URL(request.url)
     if (url.pathname === '/api/me') return json(options.me ?? { user: { id: 2, username: 'milo', roles: ['member'] } }, options.meStatus ?? 200)
-    if (url.pathname.startsWith('/api/u/')) return json({ profile: { id: options.profileId ?? 2, username: url.pathname.split('/').at(-1), display_name: 'Milo', avatar_url: null, bio: null, pronouns: null, location: null } })
+    if (url.pathname.startsWith('/api/u/')) return json({ profile: { id: options.profileId ?? 2, username: url.pathname.split('/').at(-1), display_name: 'Milo', avatar_url: null, bio: null, location: null } })
     if (url.pathname === '/sanctum/csrf-cookie') return new Response(null, { status: 204 })
     return reads(url, request)
   }))

@@ -46,7 +46,7 @@ function AccountAvatar({ url, initials, background, foreground }: {
 export function UserMenu() {
   const { data } = useGetMeQuery()
   // /api/me deliberately omits photos. Share the same cached profile query
-  // as ProfileEdit so a successful avatar upload refreshes the header too.
+  // as the profile page so a successful avatar upload refreshes the header too.
   const username = data?.user.username
   const { currentData: profile } = useGetPublicProfileQuery(username ?? '', { skip: !username })
 

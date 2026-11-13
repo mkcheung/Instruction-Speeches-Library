@@ -9,7 +9,7 @@ const destinations: Readonly<Record<string, Activity>> = {
   '/reviewers': 'reviewers',
   '/speeches/new': 'upload',
   '/search': 'search',
-  '/profile': 'edit',
+  '/profile': 'profile',
   '/account': 'account',
   '/become-a-coach': 'coach',
 }
@@ -32,5 +32,5 @@ export function activityForRoute(pathname: string, items: readonly NavItem[]): A
   // Never invent a scene priority if a future inventory highlights two links.
   if (active.length !== 1) return null
   const destination = active[0].to.toLowerCase()
-  return destinations[destination] ?? (/^\/u\/[^/]+$/.test(destination) ? 'profile' : null)
+  return destinations[destination] ?? null
 }

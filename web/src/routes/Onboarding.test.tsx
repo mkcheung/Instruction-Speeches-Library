@@ -37,7 +37,7 @@ function baseUser(overrides: Partial<Record<string, unknown>> = {}) {
  * /api/onboarding`, `App\Support\Onboarding::currentStep`) rather than
  * always starting at step 1. This proves the frontend half of that
  * contract — given a status response reporting step 1 already complete,
- * it renders step 2's form (bio/pronouns/location), not step 1's
+ * it renders step 2's form (bio/location), not step 1's
  * (name/username).
  */
 describe('Onboarding resumability', () => {

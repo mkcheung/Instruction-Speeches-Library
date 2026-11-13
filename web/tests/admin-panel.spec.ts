@@ -458,7 +458,7 @@ test.describe('§7 — and it is additive, not a rename', () => {
       await expect(nav.getByRole('link', { name: label })).toBeVisible()
     }
     await page.getByRole('button', { name: USERS.speaker.name, exact: true }).click()
-    for (const label of ['Edit profile', 'Account & privacy']) {
+    for (const label of ['Your profile', 'Account & privacy']) {
       await expect(page.getByRole('menuitem', { name: label, exact: true })).toBeVisible()
     }
     await expect(page.getByRole('menuitem', { name: 'Admin panel' })).toHaveCount(0)

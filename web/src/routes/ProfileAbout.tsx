@@ -10,7 +10,7 @@ import type { PublicProfileOutletContext } from '@/routes/PublicProfile'
 export default function ProfileAbout() {
   const { profile } = useOutletContext<PublicProfileOutletContext>()
 
-  if (!profile.bio && !profile.pronouns && !profile.location) {
+  if (!profile.bio && !profile.location) {
     return <p className="text-sm text-muted-foreground">No bio yet.</p>
   }
 
@@ -18,12 +18,6 @@ export default function ProfileAbout() {
     <Card>
       <CardContent className="flex flex-col gap-2 py-4 text-sm">
         {profile.bio && <p>{profile.bio}</p>}
-        {profile.pronouns && (
-          <p className="text-muted-foreground">
-            <span className="font-medium text-foreground">Pronouns: </span>
-            {profile.pronouns}
-          </p>
-        )}
         {profile.location && (
           <p className="text-muted-foreground">
             <span className="font-medium text-foreground">Location: </span>

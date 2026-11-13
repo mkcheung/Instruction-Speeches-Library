@@ -322,9 +322,11 @@ async function isolateWorkspaceAxeApi(context: BrowserContext, notebook?: Notebo
         // The header's account chip reads its own public profile for the saved photo (UserMenu.tsx); no photo, so
         // it keeps the initials fallback these scans were written against.
         case '/api/u/workspace-axe-member': return json({ profile: {
-          id: user.id, username: user.username, display_name: user.display_name, bio: null, pronouns: null,
+          id: user.id, username: user.username, display_name: user.display_name, bio: null,
           location: null, avatar_url: null, credential: 'member',
         } })
+        // The profile page's friends card (ProfileHome.tsx).
+        case '/api/friends/sample': return json({ friends: [], meta: { total: 0 } })
       }
     }
     unexpected.push(`${request.method()} ${url.pathname}`)
@@ -532,7 +534,7 @@ function notebookResponse(url: URL, method: string, options: NotebookFixtureOpti
       { id: 4, name: 'Jamie Member', username: 'jamie-member', credential: 'member', avatar_url: null },
     ], meta: { current_page: 1, last_page: 1, total: empty ? 0 : 2 } } }
     case '/api/u/notebook-member': return { body: { profile: { id: options.reviewer ? 2 : 1, username: 'notebook-member',
-      display_name: 'Morgan Member', bio: 'Practising a clear opening.', pronouns: 'they/them', location: 'Rehearsal room', avatar_url: null } } }
+      display_name: 'Morgan Member', bio: 'Practising a clear opening.', location: 'Rehearsal room', avatar_url: null } } }
     case '/api/privacy/exports': return { body: { exports: [] } }
     case '/api/coach-applications/me': return { body: { coachApplication: { id: 7, status: options.coachStatus ?? 'draft',
       statement: 'I want to help speakers practise.', decision_reason: 'Please add supporting experience.', submitted_at: null,
@@ -610,7 +612,7 @@ test.describe('notebook presentation accessibility (isolated frontend)', () => {
           await page.goto(`${APP_URL}${path}`)
           await expect(page.locator('.workspace-notebook-page')).toBeVisible({ timeout: 30_000 })
           await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 30_000 })
-          if (path === '/profile') await expect(page.getByLabel('Bio', { exact: true })).toHaveValue('Practising a clear opening.')
+          if (path === '/profile') await expect(page.getByRole('button', { name: /^Edit bio: Practising a clear opening\./ })).toBeVisible()
           if (path === '/search') {
             await page.getByRole('textbox', { name: 'Search text' }).fill('voice')
             await expect(page.getByText('Transcript excerpt', { exact: true })).toBeVisible()
