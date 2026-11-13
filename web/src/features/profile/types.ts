@@ -10,8 +10,8 @@ import type { CurrentUser } from '@/features/auth/types'
  * `GET /api/onboarding` — `App\Support\Onboarding::currentStep` derives
  * the step from which columns are already populated (no dedicated
  * step-tracking column), so there is nothing here to "resume" beyond
- * "start rendering at this step": 1 = name+username, 2 = bio/pronouns/
- * location, 3 = avatar, 4 = done. Each step is atomic (all its fields are
+ * "start rendering at this step": 1 = name+username, 2 = bio/location,
+ * 3 = avatar, 4 = done. Each step is atomic (all its fields are
  * required together), so a step still in progress has never partially
  * written its own fields — there is no partial-step data to prefill.
  */
@@ -28,16 +28,15 @@ export interface OnboardingStep1Payload {
 
 export interface OnboardingStep2Payload {
   bio: string
-  pronouns: string
   location: string
 }
 
-/** Editable via `PATCH /api/profile` (`UpdateProfileRequest`) — every
- * field is `sometimes`+`nullable` server-side. */
+/** Editable via `PATCH /api/profile` (`UpdateProfileRequest`) — any one
+ * field can be sent alone. A display name that is sent can't be blank;
+ * bio and location are nullable. */
 export interface ProfileEditPayload {
   display_name?: string
   bio?: string
-  pronouns?: string
   location?: string
 }
 
@@ -61,7 +60,6 @@ export interface PublicProfile {
   /** Exact decoded slug the server resolved. Older responses may omit it; mismatches then fail closed. */
   requested_username?: string
   display_name: string | null
-  pronouns: string | null
   bio: string | null
   location: string | null
   avatar_url: string | null

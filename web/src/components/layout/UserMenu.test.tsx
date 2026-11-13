@@ -20,7 +20,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 })
 function profile(user: CurrentUser, avatar_url: string | null = portrait): PublicProfile {
   return { id: Number(user.id), username: user.username!, display_name: user.display_name,
-    pronouns: null, bio: null, location: null, avatar_url }
+    bio: null, location: null, avatar_url }
 }
 function api({ user = member, readProfile = () => json({ profile: profile(user) }), upload }: {
   user?: CurrentUser

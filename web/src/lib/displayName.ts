@@ -24,13 +24,27 @@ export function displayNameFor(user: Pick<CurrentUser, 'display_name' | 'usernam
  * no name and no username at all (demo-script step 9's mid-onboarding
  * case). */
 export function initialsFor(user: Pick<CurrentUser, 'display_name' | 'username' | 'email'>): string {
-  const name = displayNameFor(user)
-  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return initialsFromName(displayNameFor(user))
+}
+
+function nameParts(name: string): string[] {
+  return name.trim().split(/\s+/).filter(Boolean)
+}
+
+/** "Cora Coach" → "Cora", for "Watch with Cora's commentary"; '' for a blank name. */
+export function firstName(name: string): string {
+  return nameParts(name)[0] ?? ''
+}
+
+/** First and last initials of any name ("Cora M. Coach" → "CC"), one
+ * character for a single word, '' for a blank name. */
+export function initialsFromName(name: string): string {
+  const parts = nameParts(name)
 
   if (parts.length >= 2) {
     return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
   }
   // A single "word" (username, or the email fallback) — one character,
   // per D3: "falling back to the first character of the email."
-  return (parts[0] ?? name).charAt(0).toUpperCase()
+  return (parts[0] ?? '').charAt(0).toUpperCase()
 }

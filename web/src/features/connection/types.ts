@@ -122,6 +122,18 @@ export interface FriendsResponse {
   meta: { total: number; next_cursor: string | null }
 }
 
+/** `GET /api/friends/sample` — a random handful of accepted friends. One
+ * bounded page with no cursor; `viewerId` only partitions the cache. */
+export interface FriendSampleArgs {
+  viewerId: string
+  limit?: number
+}
+
+export interface FriendSampleResponse {
+  friends: Friend[]
+  meta: { total: number }
+}
+
 export interface FriendCandidate {
   person: Omit<FriendPerson, 'username'>
   mutual_friends_count: number

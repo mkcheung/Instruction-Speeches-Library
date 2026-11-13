@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { profilePath } from '@/lib/profilePath'
+import { countLabel } from '@/lib/utils'
 import { skipToken } from '@reduxjs/toolkit/query'
 import { FriendPersonAvatar } from '@/components/profile/FriendPersonAvatar'
 import { useGetFriendsQuery } from '@/features/connection/connectionApi'
@@ -21,7 +22,7 @@ export function ConnectionsRail() {
       </div>
       {query.isFetching && <p role="status" className="text-xs text-muted-foreground">{data ? 'Refreshing…' : 'Loading…'}</p>}
       {query.isError ? <div role="alert"><p>{connectionErrorMessage(query.error)}</p><button type="button" onClick={() => query.refetch()} disabled={query.isFetching}>Retry connections</button></div> : data && <>
-        <p className="text-xs text-muted-foreground">{data.meta.total} {data.meta.total === 1 ? 'connection' : 'connections'}</p>
+        <p className="text-xs text-muted-foreground">{countLabel(data.meta.total, 'connection')}</p>
         {data.friends.length === 0 && <p className="text-xs text-muted-foreground">No connections yet.</p>}
         <ul className="grid grid-cols-3 gap-2">
           {data.friends.map((friend) => <li key={friend.connection_id} className="min-w-0 text-center">
@@ -29,7 +30,7 @@ export function ConnectionsRail() {
               <FriendPersonAvatar src={friend.person.avatar_url} />
               <span className="w-full break-words text-[13px] font-semibold">{friend.person.name}</span>
             </Link>
-            <span className="text-xs text-muted-foreground">{friend.mutual_friends_count} mutual {friend.mutual_friends_count === 1 ? 'friend' : 'friends'}</span>
+            <span className="text-xs text-muted-foreground">{countLabel(friend.mutual_friends_count, 'mutual friend')}</span>
           </li>)}
         </ul>
       </>}

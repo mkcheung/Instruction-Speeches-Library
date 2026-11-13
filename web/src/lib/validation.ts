@@ -71,9 +71,14 @@ export const onboardingStep1Schema = z.object({
 
 export type OnboardingStep1FormValues = z.infer<typeof onboardingStep1Schema>
 
+/** `UpdateProfileRequest`: a display name that is sent can't be blank. */
+export const displayNameSchema = z
+  .string()
+  .min(1, 'Display name is required.')
+  .max(60, 'Display name must be at most 60 characters.')
+
 export const profileTextSchema = z.object({
   bio: z.string().max(1000, 'Bio must be at most 1000 characters.'),
-  pronouns: z.string().max(32, 'Pronouns must be at most 32 characters.'),
   location: z.string().max(80, 'Location must be at most 80 characters.'),
 })
 

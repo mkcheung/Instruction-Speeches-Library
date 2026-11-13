@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Laravel's default validation-exception JSON shape
@@ -60,7 +61,7 @@ it('preserves shared text limits and nullable omissions for onboarding and profi
     expect($user->fresh('profile')->profile->{$field})->toBe(str_repeat('y', $limit));
     $this->postJson('/api/onboarding/step-2', [$field => null])->assertOk();
     $this->patchJson('/api/profile', [$field => null])->assertOk();
-})->with([['bio', 1000], ['pronouns', 32], ['location', 80]]);
+})->with([['bio', 1000], ['location', 80]]);
 
 it('keeps onboarding avatar optional and nullable while replacement requires a file', function () {
     $user = User::factory()->create();
@@ -68,4 +69,23 @@ it('keeps onboarding avatar optional and nullable while replacement requires a f
     $this->postJson('/api/onboarding/step-3', ['avatar' => null])->assertOk();
     $this->postJson('/api/avatar', [])->assertUnprocessable()->assertJsonValidationErrors('avatar');
     $this->postJson('/api/avatar', ['avatar' => null])->assertUnprocessable()->assertJsonValidationErrors('avatar');
+});
+
+it('rejects a blank display name on profile edits but still saves other fields alone', function (?string $blank) {
+    $user = User::factory()->create();
+    $this->actingAs($user)->patchJson('/api/profile', ['display_name' => 'Stage Name'])->assertOk()
+        ->assertJsonPath('user.display_name', 'Stage Name');
+
+    $this->patchJson('/api/profile', ['display_name' => $blank])
+        ->assertUnprocessable()->assertJsonValidationErrors('display_name');
+    $this->patchJson('/api/profile', ['bio' => 'Only the bio'])->assertOk();
+    expect($user->fresh('profile')->profile->display_name)->toBe('Stage Name');
+})->with(['empty' => [''], 'spaces' => ['   '], 'null' => [null]]);
+
+it('no longer stores or returns pronouns', function () {
+    $user = User::factory()->create(['username' => 'no-pronouns']);
+    $this->actingAs($user)->patchJson('/api/profile', ['pronouns' => 'they/them', 'bio' => 'Bio'])->assertOk();
+
+    expect(Schema::hasColumn('profiles', 'pronouns'))->toBeFalse();
+    $this->getJson('/api/u/no-pronouns')->assertOk()->assertJsonPath('profile.bio', 'Bio')->assertJsonMissingPath('profile.pronouns');
 });

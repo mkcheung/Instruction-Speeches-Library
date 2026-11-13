@@ -63,6 +63,7 @@ Route::get('/debug/throw', DebugThrowController::class)->name('api.debug.throw')
 Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('throttle:friends-read')->group(function () {
         Route::get('/friends/find', [FriendController::class, 'find'])->name('api.friends.find');
+        Route::get('/friends/sample', [FriendController::class, 'sample'])->name('api.friends.sample');
         Route::get('/friends/relationship/{user}', [FriendController::class, 'relationship'])
             ->whereNumber('user')->name('api.friends.relationship');
         Route::get('/friends', [FriendController::class, 'index'])->name('api.friends.index');

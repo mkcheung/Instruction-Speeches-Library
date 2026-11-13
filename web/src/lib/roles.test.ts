@@ -29,7 +29,7 @@ describe('navItemsFor', () => {
     expect(labels).toContain('My reviews')
     expect(labels).toContain('My speeches')
     expect(labels).toContain('Upload a speech')
-    expect(labels).toContain('Edit profile')
+    expect(labels).toContain('Your profile')
     expect(labels).toContain('Find reviewers')
   })
 
@@ -98,15 +98,15 @@ describe('navItemsFor', () => {
   })
 
   /**
-   * The social page is reachable from the nav on every authenticated
-   * route. Before this existed, the ONLY in-app link to `/u/:username`
-   * was the onboarding "all set" card — which the redirect removed, so
-   * without these items the whole social layer would be URL-only.
+   * The social layer stays reachable from the nav on every authenticated
+   * route: Your profile opens `/profile`, which links to the member's own
+   * `/u/:username` page ("View your page as others see it") and to each
+   * friend's. Without the item the whole social layer would be URL-only.
    */
-  it('links a member to their own profile at /u/{username}', () => {
+  it('links a member to their profile home at /profile', () => {
     const items = navItemsFor({ roles: ['member'], username: 'e2e-member' })
     expect(items.map((item) => item.label)).toContain('Your profile')
-    expect(items.find((item) => item.label === 'Your profile')?.to).toBe('/u/e2e-member')
+    expect(items.find((item) => item.label === 'Your profile')?.to).toBe('/profile')
   })
 
   it('links a coach to their own profile too', () => {
@@ -119,24 +119,22 @@ describe('navItemsFor', () => {
     expect(navItemsFor({ roles: [], username: 'marscheung' }).map((item) => item.label)).toContain('Your profile')
   })
 
-  it('hides Your profile from an admin or super_admin', () => {
-    expect(navItemsFor({ roles: ['admin'], username: 'e2e-admin' }).map((item) => item.label)).not.toContain('Your profile')
-    expect(navItemsFor({ roles: ['super_admin'], username: 'e2e-super-admin' }).map((item) => item.label)).not.toContain('Your profile')
+  /** `/profile` is where every account edits its details, so admins and
+   * accounts still choosing a username keep the item. */
+  it('gives every account Your profile at /profile, admins and username-less users included', () => {
+    for (const user of [
+      { roles: [], username: 'marscheung' },
+      { roles: ['admin'], username: 'e2e-admin' },
+      { roles: ['super_admin'], username: 'e2e-super-admin' },
+      { roles: [], username: null },
+      undefined,
+    ]) {
+      expect(navItemsFor(user).find((item) => item.label === 'Your profile')?.to).toBe('/profile')
+    }
   })
 
-  /** `username` is null until onboarding step 1 completes; `/u/null` is
-   * not a page. */
-  it('omits Your profile when the user has no username yet', () => {
-    expect(navItemsFor({ roles: [], username: null }).map((item) => item.label)).not.toContain('Your profile')
-    expect(navItemsFor(undefined).map((item) => item.label)).not.toContain('Your profile')
-  })
-
-  it('keeps Your profile distinct from the Edit profile settings form', () => {
-    const items = navItemsFor({ roles: [], username: 'marscheung' })
-    const labels = items.map((item) => item.label)
-    expect(labels).toContain('Your profile')
-    expect(labels).toContain('Edit profile')
-    expect(items.find((item) => item.label === 'Edit profile')?.to).toBe('/profile')
+  it('has no separate Edit profile form', () => {
+    expect(navItemsFor({ roles: [], username: 'marscheung' }).map((item) => item.label)).not.toContain('Edit profile')
   })
 })
 

@@ -38,7 +38,7 @@ export const useEligibleConnectionViewer = () => useSelector(selectEligibleConne
 
 /** Friends eligibility excludes administrative roles and users without usernames. It is derived from the
  * accepted general identity; such users are still authenticated everywhere else. */
-function eligible(user: CurrentUser): ConnectionViewer | null {
+export function connectionViewerFor(user: CurrentUser): ConnectionViewer | null {
   if (!user?.id || !user.username?.trim() || !Array.isArray(user.roles) || hasRole(user, 'admin')) return null
   return { id: String(user.id), username: user.username.trim() }
 }
@@ -47,7 +47,7 @@ function derive(auth: AuthSessionState): Omit<ConnectionSessionState, 'generatio
   const hiding = { viewer: null, error: null }
   if (auth.hidden || auth.probing) return { ...hiding, status: 'loading' }
   switch (auth.status) {
-    case 'accepted': return { status: 'ready', viewer: auth.viewer ? eligible(auth.viewer) : null, error: null }
+    case 'accepted': return { status: 'ready', viewer: auth.viewer ? connectionViewerFor(auth.viewer) : null, error: null }
     case 'anonymous': case 'lost': return { ...hiding, status: 'anonymous' }
     case 'uncertain': return { status: 'error', viewer: null, error: auth.error }
     case 'unresolved': return auth.error ? { status: 'error', viewer: null, error: auth.error } : { ...hiding, status: 'unresolved' }

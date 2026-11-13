@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { displayNameFor, initialsFor } from '@/lib/displayName'
+import { displayNameFor, firstName, initialsFor } from '@/lib/displayName'
 
 describe('displayNameFor', () => {
   it('prefers display_name when set', () => {
@@ -41,5 +41,11 @@ describe('initialsFor', () => {
 
   it('falls back to the first character of the email for a fully null-name user', () => {
     expect(initialsFor({ display_name: '', username: null, email: 'zed@example.com' })).toBe('Z')
+  })
+})
+
+describe('firstName', () => {
+  it.each([['Cora Coach', 'Cora'], ['  Bram  Bystander ', 'Bram'], ['Cher', 'Cher'], ['   ', '']])('%j → %j', (name, first) => {
+    expect(firstName(name)).toBe(first)
   })
 })

@@ -15,7 +15,7 @@ use App\Models\User;
  *
  * Steps:
  *   1 — names + username (users.first_name/last_name/username)
- *   2 — bio + pronouns + location (profiles, all individually skippable)
+ *   2 — bio + location (profiles, both individually skippable)
  *   3 — avatar (profiles.avatar_path); this step's submission is what sets
  *       onboarding_completed_at, whether or not an avatar was actually
  *       uploaded (bio/avatar are skippable per §6.5) — it is the *last*
@@ -37,7 +37,9 @@ final class Onboarding
 
         $profile = $user->profile;
 
-        if ($profile === null || ($profile->bio === null && $profile->pronouns === null && $profile->location === null)) {
+        // Step 2's fields are exactly the shared profile text rules, so a field added or
+        // dropped there changes this check too.
+        if ($profile === null || array_filter($profile->only(array_keys(ProfileRules::text())), fn (mixed $value): bool => $value !== null) === []) {
             return 2;
         }
 

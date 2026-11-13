@@ -7,7 +7,7 @@
  */
 
 /** `App\Http\Resources\UserResource` — deliberately thin; profile fields
- * (bio, pronouns, location, avatar) are never on this shape, only on
+ * (bio, location, avatar) are never on this shape, only on
  * `PublicProfileResource` (see `features/profile/types.ts`). */
 export interface CurrentUser {
   id: string
@@ -22,7 +22,7 @@ export interface CurrentUser {
   email_verified: boolean
   roles: string[]
   onboarding_completed: boolean
-  /** 1 = name+username, 2 = bio/pronouns/location, 3 = avatar, 4 = done. */
+  /** 1 = name+username, 2 = bio/location, 3 = avatar, 4 = done. */
   onboarding_step: 1 | 2 | 3 | 4
   /** Raw byte counts `QuotaService` maintains atomically (§7.8). Never
    * hardcode the 5 GiB default on the frontend — `quota_bytes` can be

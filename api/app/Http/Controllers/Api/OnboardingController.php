@@ -60,7 +60,7 @@ class OnboardingController extends Controller
 
         /** @var Profile $profile */
         $profile = Profile::query()->firstOrCreate(['user_id' => $user->id]);
-        $profile->fill($request->only(['bio', 'pronouns', 'location']))->save();
+        $profile->fill($request->validated())->save();
 
         $refreshed = $user->fresh('profile') ?? $user;
 

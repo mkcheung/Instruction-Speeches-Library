@@ -13,7 +13,7 @@ class StepTwoRequest extends FormRequest
     }
 
     /**
-     * All three fields are individually skippable (§6.5) — `sometimes` +
+     * Both fields are individually skippable (§6.5) — `sometimes` +
      * `nullable` rather than `required`.
      *
      * @return array<string, mixed>

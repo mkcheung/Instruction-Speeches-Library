@@ -10,6 +10,7 @@ import type { Friend } from '@/features/connection/types'
 import { useDismissedUntilRefetch } from '@/features/connection/useDismissedUntilRefetch'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { profilePath } from '@/lib/profilePath'
+import { countLabel } from '@/lib/utils'
 
 /** The header and Friends page share the same authoritative viewer gate. */
 export function ConnectionRequestsBell() {
@@ -76,7 +77,7 @@ function RequestRow({ request, refreshing, onComplete }: { request: Friend; refr
   }
   return <li className="flex flex-col gap-2 border-b px-2 py-2 text-sm" aria-busy={busy}>
     <span className="min-w-0 break-words font-medium">{request.person.name}</span>
-    <span className="text-xs text-muted-foreground">{request.mutual_friends_count} mutual {request.mutual_friends_count === 1 ? 'friend' : 'friends'}</span>
+    <span className="text-xs text-muted-foreground">{countLabel(request.mutual_friends_count, 'mutual friend')}</span>
     {request.note && <p className="break-words">{request.note}</p>}
     <span className="flex flex-wrap gap-1">
       <Button type="button" size="sm" disabled={busy || refreshing} onClick={() => void act('accept')}>{accepting.isLoading ? 'Accepting…' : 'Accept'}</Button>

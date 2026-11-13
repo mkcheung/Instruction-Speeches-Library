@@ -67,7 +67,7 @@ describe('AppSidebar workspace navigation', () => {
     ['/SEARCH/', 'Search', 'search'],
     ['/searching', null, null],
     ['/account/privacy', null, 'account'],
-    ['/profile/settings', null, 'edit'],
+    ['/profile/feed', null, 'profile'],
     ['/unknown', null, null],
   ])('keeps the actual selected link and scene aligned at %s', async (route, label, scene) => {
     mockIdentity()
@@ -101,7 +101,7 @@ describe('AppSidebar workspace navigation', () => {
     mockIdentity()
     const { store } = renderWithProviders(<AppSidebar />, { route: '/dashboard' })
     await vi.waitFor(() => expect(Object.values(store.getState().authApi.queries)[0]?.status).toBe('fulfilled'))
-    for (const name of ['Your profile', 'Edit profile', 'Account & privacy']) {
+    for (const name of ['Your profile', 'Account & privacy']) {
       expect(screen.queryByRole('link', { name })).toBeNull()
     }
     expect(screen.getByRole('link', { name: 'My speeches' })).toHaveAttribute('href', '/speeches')

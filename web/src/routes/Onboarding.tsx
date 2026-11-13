@@ -188,7 +188,7 @@ function StepTwo() {
     formState: { errors },
   } = useForm<OnboardingStep2FormValues>({
     resolver: zodResolver(onboardingStep2Schema),
-    defaultValues: { bio: '', pronouns: '', location: '' },
+    defaultValues: { bio: '', location: '' },
   })
 
   const onSubmit = handleSubmit(async (values) => {
@@ -216,17 +216,10 @@ function StepTwo() {
             <FieldMessage message={errors.bio?.message} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pronouns">Pronouns</Label>
-              <Input id="pronouns" aria-invalid={!!errors.pronouns} {...register('pronouns')} />
-              <FieldMessage message={errors.pronouns?.message} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="location">Location</Label>
-              <Input id="location" aria-invalid={!!errors.location} {...register('location')} />
-              <FieldMessage message={errors.location?.message} />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="location">Location</Label>
+            <Input id="location" aria-invalid={!!errors.location} {...register('location')} />
+            <FieldMessage message={errors.location?.message} />
           </div>
 
           <Button type="submit" disabled={isLoading}>
