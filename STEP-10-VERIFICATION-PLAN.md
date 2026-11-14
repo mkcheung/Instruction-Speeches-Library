@@ -239,7 +239,9 @@ Use separate deterministic fixtures for:
 
 - Skip during audio: audio stops and video advances immediately;
 - Escape: same result;
-- manual pause intent: note ends and video remains paused;
+- the video's Play during a note cancels it and the video advances (2026-11-13 amendment; it used to
+  stay paused). Manual pause intent (Pause commentary, then the note ends) still leaves the video
+  paused, covered by the unit tests;
 - forced `audio.play()` rejection: video resumes;
 - no ended event: bounded duration+3 timer resumes.
 
@@ -276,6 +278,31 @@ by polling `currentTime` advancing or stable:
 - after a capture, the note and its queue keep playing and the video stays paused; deleting the playing note or Clear all ends the note and its queue (video stays paused);
 - Skip/Escape resume unless author intent was recorded;
 - no transcript is shown in the coach view (D9).
+
+### Scenario N — clicking a voice row arms it
+
+Note: the spec already contains A–M, while this section lists A–F and I (see Scenario I); N and O
+continue the spec's lettering. Added per the 2026-11-13 contract amendment
+(PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md §4.3).
+
+As e2e-member on speech 9601, paused at 0, click the row for 9803 (2.05 s): `currentTime` becomes
+2.05. Press Play: the first voice-URL request is 9803 and "Playing voice commentary" shows. In
+natural mode the video resumes, the next request is 9804, and 9803 is requested only once. Hold-mode
+race path: play from 4.7 at `playbackRate` 0.25, then click 9805's row; "Playing voice commentary"
+must stay visible and the video paused (a URL request alone proves nothing).
+
+### Scenario O — a row's play button plays that note and leaves the video paused
+
+Note: see the lettering note on Scenario N.
+
+In hold mode, play from 4.7 at rate 0.25, then press the row play button on 9803. The video pauses,
+9803 is requested, and the row button reads "Pause voice commentary at 2 seconds, 1 of 2 with this
+name". Finish the note: the video stays paused with `currentTime` unchanged and no other request is
+made. Switching to Written notes only removes every row play button. At 1440 and 640 px, pressing it
+does not move the pressed row's top.
+Then press the row play button again, press its Pause, and play the video: "Voice commentary paused"
+disappears, the row reads "Play voice commentary at ..." again, and the video advances from where it
+sat (2026-11-13 amendment: the video's Play cancels a note).
 
 ## 5. Browser and device matrix
 

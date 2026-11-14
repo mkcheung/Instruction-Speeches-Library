@@ -117,7 +117,7 @@ export function useCommentaryTrack(
   })
   const activeVoice = voicePlayback.current && (voicePlayback.state === 'playing' || voicePlayback.state === 'paused')
     ? voicePlayback.current : null
-  const overlayVoice = projection.showVoiceTranscript ? activeVoice : null
+  const overlayVoice = projection.showVoiceTranscript && voicePlayback.source !== 'list' ? activeVoice : null
   const overlayAnnotations = overlayVoice ? [...projection.timedWritten, overlayVoice] : projection.timedWritten
   const overlayActiveIds = new Set(timedActiveIds)
   if (overlayVoice) overlayActiveIds.add(overlayVoice.id)

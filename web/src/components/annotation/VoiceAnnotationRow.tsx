@@ -27,13 +27,15 @@ function pauseSafely(element: HTMLAudioElement | null) {
  */
 export function VoiceAnnotationRow({ annotation, speechId, reviewId, userId, isCurrent, isSelected = false, expanded, onExpandedChange,
   onSeek, onDelete, editBlocked = false, busy = false, unavailable = false, onEditingChange, registerSummary, position,
-  onPendingChange, audioActive = true }: SavedRowProps & {
+  onPendingChange, audioActive = true, onVoiceNoteActivate }: SavedRowProps & {
   speechId: number
   reviewId: number
   userId?: string
   /** False while the list is folded, paged away from, or outer Notes is hidden: audio is paused and not mounted. */
   audioActive?: boolean
   onPendingChange?: (id: string, pending: boolean) => void
+  /** Called right after "Go to time" seeks: arms the note for the next Play. */
+  onVoiceNoteActivate?: (note: Annotation) => void
 }) {
   const detailsId = useId()
   const toggleRef = useRef<HTMLButtonElement | null>(null)
@@ -99,7 +101,7 @@ export function VoiceAnnotationRow({ annotation, speechId, reviewId, userId, isC
         <p className="break-words">{excerpt(annotationDisplayBody(effective))}</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" aria-label={`Go to time, ${spoken}`} onClick={() => onSeek(effective.start_seconds)}>Go to time</Button>
+        <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" aria-label={`Go to time, ${spoken}`} onClick={() => { onSeek(effective.start_seconds); onVoiceNoteActivate?.(annotation) }}>Go to time</Button>
         <Button ref={setToggle} type="button" variant="outline" size="sm" className="min-h-11 min-w-11" aria-expanded={isExpanded} aria-controls={detailsId}
           disabled={editing || busy} aria-label={`${isExpanded ? 'Hide' : 'Show'} details, ${spoken}`} onClick={() => setExpanded(!isExpanded)}>{isExpanded ? 'Hide details' : 'Show details'}</Button>
         {voice?.audio_status === 'ready' && <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" disabled={isFetching}

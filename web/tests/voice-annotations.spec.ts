@@ -10,6 +10,7 @@ import {
   openSpeech,
   recorderAttempts,
   resetVoiceFixtures,
+  setDeterministicAudioMode,
   VOICE_FIXTURE_BYTES,
   xsrfHeader,
 } from './voice-test-helpers.js'
@@ -352,13 +353,12 @@ test('Scenario D — Skip, Escape, manual intent, rejection, and watchdog all re
   }
 
   {
+    // The video's own Play cancels the note (2026-11-13 amendment); the video carries on.
     const { context, page, video } = await runCase('hold')
     await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
     await video.evaluate((node) => (node as unknown as BrowserVideo).play())
-    await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
-    await finishDeterministicAudio(page)
     await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
-    await expectVideoToStayAtManualPause(video)
+    await expectVideoToAdvance(video)
     await context.close()
   }
 
@@ -759,6 +759,107 @@ test.describe('Scenario M — the voice controls never shift the Composer', () =
           expect(y, `Composer top moved in the ${name} state at ${width}px`).toBe(positions.idle)
         }
       }
+      await context.close()
+    })
+  }
+})
+
+async function playFrom(video: ReturnType<Page['getByTestId']>, seconds: number, rate: number): Promise<void> {
+  await video.evaluate(async (node, [at, playbackRate]) => {
+    const element = node as unknown as BrowserVideo & { playbackRate: number }
+    element.muted = true
+    element.currentTime = at
+    element.playbackRate = playbackRate
+    await element.play()
+  }, [seconds, rate] as const)
+}
+
+test('Scenario N — clicking a voice row arms it: Play plays it at once, and a click while playing plays it', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+  const page = await context.newPage()
+  await installDeterministicVoiceAudio(page, 'natural')
+  const requested = trackVoiceUrlRequests(page)
+  await prepareSpeakerInterjection(page)
+  const video = await seekBeforeCrossing(page, 0)
+  const list = page.getByRole('list', { name: 'Commentary transcript', exact: true })
+  await list.getByRole('button', { name: /Annotation at 2 seconds Seeded voice transcript 3/ }).click()
+  await expect.poll(() => currentTimeOf(video)).toBeCloseTo(2.05, 2)
+  await playVideo(video)
+  await expect(page.getByText('Playing voice commentary', { exact: true })).toBeVisible({ timeout: 10_000 })
+  expect(requested[0]).toBe('9803')
+  await expect.poll(() => requested.length, { timeout: 20_000 }).toBeGreaterThan(1)
+  expect(requested[1]).toBe('9804')
+  expect(requested.filter((id) => id === '9803')).toHaveLength(1)
+
+  // D12: a click while playing starts the note on the seek's own timeupdate; its seeked must not cancel it.
+  await setDeterministicAudioMode(page, 'hold')
+  const skip = page.getByRole('button', { name: /^Skip/ })
+  if (await skip.isVisible()) await skip.click()
+  await playFrom(video, 4.7, 0.25)
+  const before = requested.length
+  await list.getByRole('button', { name: /Annotation at 3 seconds Seeded voice transcript 5/ }).click()
+  await expect.poll(() => requested.slice(before)).toContain('9805')
+  await expect(page.getByText('Playing voice commentary', { exact: true })).toBeVisible({ timeout: 10_000 })
+  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  await context.close()
+})
+
+test('Scenario O — a row\'s ▶ plays that note and leaves the video paused; the video\'s Play cancels it', async ({ browser }) => {
+  const context = await browser.newContext({ storageState: USERS.speaker.storageState })
+  const page = await context.newPage()
+  await installDeterministicVoiceAudio(page, 'hold')
+  const requested = trackVoiceUrlRequests(page)
+  await prepareSpeakerInterjection(page)
+  const video = page.getByTestId('speech-video')
+  await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).readyState)).toBeGreaterThanOrEqual(1)
+  await playFrom(video, 4.7, 0.25)
+  const list = page.getByRole('list', { name: 'Commentary transcript', exact: true })
+  // 9803 (2.05 s) and 9804 (2.70 s) share "2 seconds", so the plan's own dedupe rule adds a suffix.
+  await list.getByRole('button', { name: 'Play voice commentary at 2 seconds, 1 of 2 with this name', exact: true }).click()
+  await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  await expect.poll(() => requested).toEqual(['9803'])
+  await expect(list.getByRole('button', { name: 'Pause voice commentary at 2 seconds, 1 of 2 with this name', exact: true })).toBeVisible()
+  const pausedAt = await currentTimeOf(video)
+  await finishDeterministicAudio(page)
+  await expect(page.getByText('Playing voice commentary', { exact: true })).toHaveCount(0)
+  await expectVideoToStayAtManualPause(video)
+  expect(Math.abs(await currentTimeOf(video) - pausedAt)).toBeLessThan(0.05)
+  expect(requested).toEqual(['9803'])
+
+  // ▶, Pause, then the video's Play: the note is cancelled and the video plays on from where it sat.
+  await list.getByRole('button', { name: 'Play voice commentary at 2 seconds, 1 of 2 with this name', exact: true }).click()
+  await list.getByRole('button', { name: 'Pause voice commentary at 2 seconds, 1 of 2 with this name', exact: true }).click()
+  await expect(page.getByText('Voice commentary paused', { exact: true })).toBeVisible()
+  const heldAt = await currentTimeOf(video)
+  await playVideo(video)
+  await expect(page.getByText('Voice commentary paused', { exact: true })).toHaveCount(0)
+  await expect(list.getByRole('button', { name: 'Play voice commentary at 2 seconds, 1 of 2 with this name', exact: true })).toBeVisible()
+  expect(Math.abs(heldAt - pausedAt)).toBeLessThan(0.05)
+  await expectVideoToAdvance(video)
+  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(false)
+  expect(requested).toEqual(['9803', '9803'])
+  await selectPlaybackMode(page, 'Written notes only')
+  await expect(page.getByRole('button', { name: /voice commentary at/ })).toHaveCount(0)
+  await context.close()
+})
+
+test.describe('D11 guard — pressing a row play button never shifts the row', () => {
+  for (const width of [1440, 640]) {
+    test(`pressed row top is stable at ${width}px`, async ({ browser }) => {
+      const context = await browser.newContext({ storageState: USERS.speaker.storageState, viewport: { width, height: 900 } })
+      const page = await context.newPage()
+      await installDeterministicVoiceAudio(page, 'hold')
+      await prepareSpeakerInterjection(page)
+      const list = page.getByRole('list', { name: 'Commentary transcript', exact: true })
+      const play = list.getByRole('button', { name: 'Play voice commentary at 2 seconds, 1 of 2 with this name', exact: true })
+      const rowTop = () => play.evaluate((node) => (node.closest('li') as HTMLElement).getBoundingClientRect().top + window.scrollY)
+      const before = await rowTop()
+      await play.click()
+      const pause = list.getByRole('button', { name: 'Pause voice commentary at 2 seconds, 1 of 2 with this name', exact: true })
+      await expect(pause).toBeVisible()
+      expect(await pause.evaluate((node) => (node.closest('li') as HTMLElement).getBoundingClientRect().top + window.scrollY)).toBe(before)
+      await finishDeterministicAudio(page)
+      expect(await rowTop()).toBe(before)
       await context.close()
     })
   }

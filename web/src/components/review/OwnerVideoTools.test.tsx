@@ -112,6 +112,28 @@ describe('owner video tools', () => {
     expect(track.removeCue).not.toHaveBeenCalled()
   })
 
+  it('a Voice marker calls onVoiceNoteActivate once, after the single seek; a Text marker does not', async () => {
+    const user = userEvent.setup()
+    const order: string[] = []
+    const onSeek = vi.fn(() => { order.push('seek') })
+    const onVoiceNoteActivate = vi.fn(() => { order.push('activate') })
+    render(<OwnerVideoTools {...props({ onSeek, onVoiceNoteActivate })} />)
+    await user.click(screen.getByRole('button', { name: 'Text note from 10 seconds to 16 seconds' }))
+    expect(onVoiceNoteActivate).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Voice note at 25 seconds' }))
+    expect(onSeek).toHaveBeenLastCalledWith(25)
+    expect(onVoiceNoteActivate).toHaveBeenCalledExactlyOnceWith(voice)
+    expect(order).toEqual(['seek', 'seek', 'activate'])
+  })
+
+  it('does not activate a Voice note when the timeline cannot seek', () => {
+    const onVoiceNoteActivate = vi.fn()
+    render(<OwnerVideoTools {...props({ playbackReady: false, onVoiceNoteActivate })} />)
+    const timeline = screen.getByRole('group', { name: 'Annotation timeline' })
+    expect(within(timeline).queryAllByRole('button')).toHaveLength(0)
+    expect(onVoiceNoteActivate).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['all', [text, voice, erased], 3, 'Text + audio'],
     ['written', [text, erased], 2, 'Written notes only'],

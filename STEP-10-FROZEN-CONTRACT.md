@@ -511,3 +511,36 @@ Authority: [PLAN-COACH-VOICE-PREVIEW.md](PLAN-COACH-VOICE-PREVIEW.md). Owner (sp
   author intent preceded it (D6).
 - **Peers' notes never play (D1).** Another reviewer's notes, and notes of any review other than the
   one being authored, never play in the authoring view.
+
+## Amendment 2026-11-13: navigate to a voice note; play one from the list
+
+Authority: [PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md](PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md).
+
+- **Arming.** Navigating to a voice note (the D2 paths) arms it. The next forward playback from its
+  marker starts it: at once when Play is pressed there, or on the first tick after the seek if the
+  video is playing. Plain scrubbing is unchanged, including the exact-marker rule for scrubs.
+- **The hint** shows at an armed note.
+- **Row play (▶)** plays one note on demand without seeking. The video pauses and stays paused when
+  the note ends, fails, times out or is skipped. This is a scoped exception to "the final note
+  resumes the video" and "Skip ... resumes immediately". Captions over the video are suppressed for it.
+- **Seeking.** Only `seeking` cancels a note. A note started by a seek's own `timeupdate` survives
+  its `seeked`.
+- **The non-goal stands.** "Scrub-into-a-note playback" remains a non-goal. An armed note always
+  plays from its start, never from mid-recording.
+
+## Amendment 2026-11-13: the video's Play cancels a note
+
+Authority: user decision, 2026-11-13; revised D8 in
+[PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md](PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md).
+
+- **The video's own Play** (its button, a click on the video, Space) cancels the note in progress,
+  whether it is loading, playing or paused and whether it came from a crossing or a row ▶. The
+  queue behind it and any armed note go with it. The video plays on from the playhead. This
+  replaces §7's rule that a Play gesture during a note counts as manual pause intent.
+- **No replay.** Notes the cancelled run reached never replay at that position; the existing floor
+  rules apply to that Play. A ▶ note cancelled before its own time still plays when playback
+  reaches it.
+- **Manual pause intent** now comes from Pause commentary and author intent (Amendment 2026-11-03)
+  only. Either still leaves the video paused when the note ends.
+- **Why.** A paused note never ends. Under the old rule, pausing the commentary left the video
+  unplayable until Skip or a seek.

@@ -147,9 +147,9 @@ describe('useVoiceInterjections', () => {
     expect(video.play).not.toHaveBeenCalled()
   })
 
-  it('keeps video paused and suppresses auto-resume after a video play gesture during voice', async () => {
+  it('a video play gesture during voice cancels the note and lets the video play on', async () => {
     const video = playableVideo()
-    renderHook(() =>
+    const { result } = renderHook(() =>
       useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }),
     )
     act(() => {
@@ -157,11 +157,18 @@ describe('useVoiceInterjections', () => {
       video.currentTime = 1
       video.dispatchEvent(new Event('timeupdate'))
     })
-    await waitFor(() => expect(FakeAudio.instances).toHaveLength(1))
+    await waitFor(() => expect(result.current.state).toBe('playing'))
+    const audio = FakeAudio.instances[0]
     act(() => video.dispatchEvent(new Event('play')))
-    expect(video.pause).toHaveBeenCalledTimes(2)
-    act(() => FakeAudio.instances[0].onended?.())
-    await waitFor(() => expect(FakeAudio.instances[0].pause).toHaveBeenCalled())
+    expect(video.pause).toHaveBeenCalledOnce()
+    expect(video.paused).toBe(false)
+    expect(audio.pause).toHaveBeenCalled()
+    expect(result.current).toMatchObject({ state: 'idle', current: null, source: null })
+    // The cancelled recording's late events do nothing, and the engine never calls play itself.
+    act(() => audio.onended?.())
+    act(() => { video.currentTime = 1.25; video.dispatchEvent(new Event('timeupdate')) })
+    await act(async () => {})
+    expect(loadAudio).toHaveBeenCalledOnce()
     expect(video.play).not.toHaveBeenCalled()
   })
 
@@ -540,7 +547,7 @@ describe('useVoiceInterjections', () => {
     expect(loadAudio).toHaveBeenCalledWith({ speechId: 1, annotationId: '2' }, false)
   })
 
-  it('does not fire at an exact sought marker, but includes zero after reset and Play', async () => {
+  it('is a plain scrub: does not fire at an exact scrubbed marker without an arm, but includes zero after reset and Play', async () => {
     const video = playableVideo()
     renderHook(() => useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1), voice('2', 0)], audioEnabled: true, resetKey: 1 }))
     act(() => {
