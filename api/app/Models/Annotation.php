@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\TranscriptStatus;
 use App\Support\Role;
 use Database\Factories\AnnotationFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -59,7 +60,7 @@ class Annotation extends Model
     public function isPoint(): bool
     {
         return $this->timing_type === 'point'
-            || ($this->timing_type === null && ($this->audio_asset_id !== null || $this->transcript_status !== 'not_applicable'));
+            || ($this->timing_type === null && ($this->audio_asset_id !== null || $this->transcript_status !== TranscriptStatus::NotApplicable->value));
     }
 
     /** @use HasFactory<AnnotationFactory> */

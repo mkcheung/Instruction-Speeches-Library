@@ -587,3 +587,139 @@ it('refuses Undo after purge has claimed the voice asset', function () {
     $this->actingAs($coach)->postJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}/restore")->assertConflict();
     expect(Annotation::withTrashed()->find($annotation->id)->trashed())->toBeTrue();
 });
+
+it('maps each voice asset status to its playback-url response', function (string $status, int $code, ?string $message) {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $asset = SpeechAsset::factory()->for($speech)->voiceNote()->create([
+        'status' => $status,
+        'failure_code' => $status === 'failed' ? 'voice_invalid_audio' : null,
+    ]);
+    $annotation = Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'transcript_status' => 'pending']);
+
+    $response = $this->actingAs($coach)->withHeader('Accept', 'application/json')
+        ->getJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}/voice-playback-url")
+        ->assertStatus($code);
+    if ($message !== null) {
+        $response->assertJsonPath('message', $message);
+    }
+    if ($status === 'failed') {
+        $response->assertJsonPath('failure_code', 'voice_invalid_audio');
+    }
+})->with([
+    'processing' => ['processing', 409, 'Voice note is still processing.'],
+    'failed' => ['failed', 409, 'Voice note could not be processed.'],
+    'uploading' => ['uploading', 404, null],
+    'ready' => ['ready', 200, null],
+]);
+
+it('refuses a transcript retry while the voice audio is not ready', function (string $status) {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create(['status' => $status]);
+    $old = (string) Str::uuid();
+    $annotation = Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'transcript_status' => 'failed', 'transcript_attempt_id' => $old]);
+
+    $this->actingAs($coach)->postJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}/voice-transcript/retry")
+        ->assertConflict()->assertJsonPath('message', 'Voice audio is not ready.');
+    expect($annotation->fresh()->transcript_status)->toBe('failed')
+        ->and($annotation->fresh()->transcript_attempt_id)->toBe($old);
+    Queue::assertNothingPushed();
+})->with(['processing', 'failed']);
+
+it('rejects a voice upload at the annotation cap before reserving quota or storing bytes', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $review->update(['annotations_count' => 200]);
+
+    $this->actingAs($coach)->withHeader('Accept', 'application/json')->post("/api/speeches/{$speech->id}/voice-notes", [
+        'audio' => UploadedFile::fake()->create('note.webm', 20, 'audio/webm'),
+        'client_uuid' => (string) Str::uuid(),
+        'start_seconds' => 2.5,
+    ])->assertStatus(422)->assertJsonPath('message', 'This review already has the maximum of 200 annotations.');
+
+    expect(Annotation::withTrashed()->where('review_id', $review->id)->count())->toBe(0)
+        ->and(SpeechAsset::where('kind', 'voice_note')->exists())->toBeFalse()
+        ->and($coach->fresh()->storage_bytes_used)->toBe(0)
+        ->and(Storage::disk('media')->allFiles())->toBe([]);
+    Queue::assertNothingPushed();
+});
+
+it('accepts a voice upload one below the annotation cap', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $review->update(['annotations_count' => 199]);
+
+    $this->actingAs($coach)->withHeader('Accept', 'application/json')->post("/api/speeches/{$speech->id}/voice-notes", [
+        'audio' => UploadedFile::fake()->create('note.webm', 20, 'audio/webm'),
+        'client_uuid' => (string) Str::uuid(),
+        'start_seconds' => 2.5,
+    ])->assertStatus(202);
+});
+
+it('rejects a text annotation at the annotation cap', function () {
+    $this->seed(RoleSeeder::class);
+    [, $coach, $speech, $review] = voiceReview();
+    $review->update(['annotations_count' => 200]);
+
+    $this->actingAs($coach)->postJson("/api/speeches/{$speech->id}/annotations", [
+        'client_uuid' => (string) Str::uuid(),
+        'body' => 'One too many.',
+        'start_seconds' => 5.0,
+    ])->assertStatus(422)->assertJsonPath('message', 'This review already has the maximum of 200 annotations.');
+
+    expect(Annotation::withTrashed()->where('review_id', $review->id)->count())->toBe(0);
+});
+
+it('refuses a voice-note Undo at the annotation cap and keeps the note deleted', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    Queue::fake();
+    [, $coach, $speech, $review] = voiceReview();
+    $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create(['status' => 'ready']);
+    Storage::disk('media')->put($asset->path, 'voice');
+    $annotation = Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'transcript_status' => 'ready']);
+    $review->update(['annotations_count' => 1]);
+    $this->actingAs($coach)->deleteJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}")->assertNoContent();
+    $review->update(['annotations_count' => 200]);
+
+    $this->actingAs($coach)->postJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}/restore")->assertStatus(422);
+
+    expect(Annotation::withTrashed()->find($annotation->id)->trashed())->toBeTrue()
+        ->and($review->fresh()->annotations_count)->toBe(200)
+        ->and($asset->fresh()->purge_claim_id)->toBeNull();
+});
+
+it('does not fail a newer transcript attempt when a retry dispatch fails', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [, $coach, $speech, $review] = voiceReview();
+    $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create(['status' => 'ready']);
+    $annotation = Annotation::factory()->for($review)->create([
+        'audio_asset_id' => $asset->id,
+        'transcript_status' => 'failed',
+        'transcript_attempt_id' => (string) Str::uuid(),
+    ]);
+    $newer = (string) Str::uuid();
+    $dispatcher = Mockery::mock(Dispatcher::class);
+    $dispatcher->shouldReceive('dispatch')->once()->andReturnUsing(function () use ($annotation, $newer) {
+        Annotation::query()->whereKey($annotation->id)->update(['transcript_attempt_id' => $newer]);
+        throw new RuntimeException('redis unavailable');
+    });
+    app()->instance(Dispatcher::class, $dispatcher);
+
+    $this->actingAs($coach)->withHeader('Accept', 'application/json')
+        ->postJson("/api/speeches/{$speech->id}/annotations/{$annotation->id}/voice-transcript/retry")
+        ->assertServerError();
+    expect($annotation->fresh()->transcript_status)->toBe('pending')
+        ->and($annotation->fresh()->transcript_attempt_id)->toBe($newer)
+        ->and($annotation->fresh()->transcript_failure_code)->toBeNull();
+});

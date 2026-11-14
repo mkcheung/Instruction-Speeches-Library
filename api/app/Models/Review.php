@@ -100,6 +100,20 @@ class Review extends Model
     const ACCESS_GRANTING = ['accepted', 'in_progress', 'published'];
 
     /**
+     * MODERNIZATION_PLAN.md §10.4: "reject >200 per set at write time".
+     * Every annotation counts, voice notes included. Read the
+     * `annotations_count` counter cache under the review's row lock, never a
+     * live COUNT(*).
+     */
+    public const MAX_ANNOTATIONS = 200;
+
+    /** False once the review holds MAX_ANNOTATIONS live annotations. Call it on the locked row. */
+    public function hasRoomForAnnotation(): bool
+    {
+        return $this->annotations_count < self::MAX_ANNOTATIONS;
+    }
+
+    /**
      * @param  Builder<Review>  $query
      * @return Builder<Review>
      */

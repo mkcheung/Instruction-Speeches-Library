@@ -5,14 +5,13 @@ namespace App\Jobs;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
-use App\Services\StorageObjectRemover;
 use App\Support\AnnotationTransactions;
+use App\Support\AssetPurgeClaim;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Str;
 
 class PurgeVoiceAsset implements ShouldQueue
 {
@@ -37,34 +36,28 @@ class PurgeVoiceAsset implements ShouldQueue
         // normalized copy of the reviewer's audio into storage *after* the
         // hard purge — where no row-driven sweep (`media:reconcile`) can
         // ever find it again.
-        $claim = AnnotationTransactions::run(function (): ?array {
+        /** @var array{0: AssetPurgeClaim, 1: int|null}|null $claimed */
+        $claimed = AnnotationTransactions::run(function (): ?array {
             $asset = SpeechAsset::query()->whereKey($this->assetId)->lockForUpdate()->first();
             if ($asset === null || $asset->kind !== 'voice_note') {
                 return null;
             }
-            $claimId = $asset->purge_claim_id ?? (string) Str::uuid();
-            $asset->update(['purge_claim_id' => $claimId]);
 
-            return [
-                'claim_id' => $claimId,
-                'asset_id' => $asset->id,
-                'disk' => $asset->disk,
-                'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path),
-                'reviewer_id' => $this->reviewerId ?? $asset->purge_reviewer_id,
-            ];
+            return [AssetPurgeClaim::stamp($asset), $this->reviewerId ?? $asset->purge_reviewer_id];
         });
-        if ($claim === null) {
+        if ($claimed === null) {
             return;
         }
-        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], 'Voice asset purge failed.');
-        AnnotationTransactions::run(function () use ($claim, $quota): void {
-            $fresh = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();
+        [$claim, $reviewerId] = $claimed;
+        $claim->deleteObjects('Voice asset purge failed.');
+        AnnotationTransactions::run(function () use ($claim, $reviewerId, $quota): void {
+            $fresh = $claim->lockAsset();
             if ($fresh === null) {
                 return;
             }
-            $charged = (int) ($fresh->temporary_byte_size ?? $fresh->byte_size ?? 0);
+            // Read at finalize: the status is unchanged, so a temporary-object cleanup may have reconciled the reservation since the claim.
+            $charged = $fresh->chargedBytes();
             $fresh->delete();
-            $reviewerId = $claim['reviewer_id'];
             $reviewer = $reviewerId === null ? null : User::query()->find($reviewerId);
             if ($reviewer !== null && $charged > 0) {
                 $quota->releaseDirect($reviewer, $charged);

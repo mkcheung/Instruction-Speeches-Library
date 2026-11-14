@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SpeechAssetStatus;
 use Database\Factories\SpeechAssetFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -109,6 +110,26 @@ class SpeechAsset extends Model
     public static function voiceAssetCandidatePaths(?string $temporaryPath, ?string $normalizationCandidatePath = null, ?string $path = null): array
     {
         return array_values(array_unique(array_filter([$temporaryPath, $normalizationCandidatePath, $path])));
+    }
+
+    /**
+     * MODERNIZATION_PLAN §9.4 rule 3: `status` is the only readiness signal,
+     * never `path` existing. For a voice note, ready is exactly when its audio
+     * is playable (VoiceAnnotationController::audioUrl).
+     */
+    public function isReady(): bool
+    {
+        return $this->status === SpeechAssetStatus::Ready->value;
+    }
+
+    /**
+     * Bytes this asset still holds against its uploader's quota: the
+     * unreconciled upload reservation while one exists, else the stored size.
+     * The caller decides when to read it (claim or finalize) and who is refunded.
+     */
+    public function chargedBytes(): int
+    {
+        return (int) ($this->temporary_byte_size ?? $this->byte_size ?? 0);
     }
 
     /**

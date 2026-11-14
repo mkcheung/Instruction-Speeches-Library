@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\TranscriptStatus;
 use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Models\SpeechTranscript;
@@ -32,7 +33,7 @@ class VoiceWhisperSmokeVerifyCommand extends Command
 
         $asset = $annotation->audioAsset;
         $failures = [];
-        if ($asset->kind !== 'voice_note' || $asset->format !== 'm4a' || $asset->status !== 'ready') {
+        if ($asset->kind !== 'voice_note' || $asset->format !== 'm4a' || ! $asset->isReady()) {
             $failures[] = "asset kind/format/status={$asset->kind}/{$asset->format}/{$asset->status}";
         }
         if ($asset->is_primary) {
@@ -89,7 +90,7 @@ class VoiceWhisperSmokeVerifyCommand extends Command
                 }
             }
         }
-        if ($annotation->transcript_status !== 'ready' || trim($annotation->body) === '') {
+        if ($annotation->transcript_status !== TranscriptStatus::Ready->value || trim($annotation->body) === '') {
             $failures[] = "annotation transcript status={$annotation->transcript_status} or body is empty";
         }
         if ((float) $annotation->duration_seconds <= 0 || (float) $annotation->duration_seconds > 90) {

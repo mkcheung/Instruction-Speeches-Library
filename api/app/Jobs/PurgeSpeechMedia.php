@@ -6,7 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
-use App\Services\StorageObjectRemover;
+use App\Support\AssetPurgeClaim;
 use App\Support\AuditAction;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,7 +15,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 /**
  * PLAN-ADMIN-DASHBOARD.md §5.6 (promoted into Phase 1), fixing the defect
@@ -303,7 +302,8 @@ class PurgeSpeechMedia implements ShouldQueue
      */
     private function purgeAssetStorageAndRow(int $assetId, ?int $ownerId, QuotaService $quota): ?array
     {
-        $claim = DB::transaction(function () use ($assetId): ?array {
+        /** @var array{0: AssetPurgeClaim, 1: string}|null $claimed */
+        $claimed = DB::transaction(function () use ($assetId): ?array {
             $asset = SpeechAsset::query()->whereKey($assetId)->lockForUpdate()->first();
 
             // Re-checked under the lock, not trusted from the batch select
@@ -313,30 +313,18 @@ class PurgeSpeechMedia implements ShouldQueue
                 return null;
             }
 
-            $claimId = $asset->purge_claim_id ?? (string) Str::uuid();
-            $asset->update(['purge_claim_id' => $claimId]);
-
-            return [
-                'claim_id' => $claimId,
-                'asset_id' => $asset->id,
-                'kind' => $asset->kind,
-                'disk' => $asset->disk,
-                'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path),
-            ];
+            return [AssetPurgeClaim::stamp($asset), $asset->kind];
         });
 
-        if ($claim === null) {
+        if ($claimed === null) {
             return null;
         }
 
-        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], "Takedown media purge failed for speech asset {$claim['asset_id']}.");
+        [$claim, $kind] = $claimed;
+        $claim->deleteObjects("Takedown media purge failed for speech asset {$claim->assetId}.");
 
-        return DB::transaction(function () use ($claim, $ownerId, $quota): ?array {
-            $fresh = SpeechAsset::query()
-                ->whereKey($claim['asset_id'])
-                ->where('purge_claim_id', $claim['claim_id'])
-                ->lockForUpdate()
-                ->first();
+        return DB::transaction(function () use ($claim, $kind, $ownerId, $quota): ?array {
+            $fresh = $claim->lockAsset();
 
             if ($fresh === null) {
                 return null;
@@ -355,7 +343,7 @@ class PurgeSpeechMedia implements ShouldQueue
                 $quota->releaseOnSpeechDeleted($ownerId, $bytes);
             }
 
-            return ['kind' => $claim['kind'], 'bytes' => $bytes];
+            return ['kind' => $kind, 'bytes' => $bytes];
         });
     }
 }

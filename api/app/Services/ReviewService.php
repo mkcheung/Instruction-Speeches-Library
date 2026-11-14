@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\SpeechAssetStatus;
 use App\Exceptions\SelfReviewNotPermittedException;
 use App\Jobs\PurgeDeletedVoiceAnnotation;
 use App\Jobs\PurgeVoiceAsset;
@@ -383,7 +384,7 @@ class ReviewService
             SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->update([
                 'purge_reviewer_id' => $locked->reviewer_id,
             ]);
-            SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->where('status', 'processing')->update(['status' => 'failed', 'failure_code' => 'voice_storage_failed']);
+            SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->where('status', SpeechAssetStatus::Processing->value)->update(['status' => SpeechAssetStatus::Failed->value, 'failure_code' => 'voice_storage_failed']);
             foreach ($voiceAssets as $assetId) {
                 PurgeVoiceAsset::dispatch((int) $assetId, $locked->reviewer_id)->afterCommit();
             }

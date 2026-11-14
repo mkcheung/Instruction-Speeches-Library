@@ -2,18 +2,19 @@
 
 namespace App\Jobs;
 
+use App\Enums\SpeechAssetStatus;
+use App\Enums\TranscriptStatus;
 use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
-use App\Services\StorageObjectRemover;
 use App\Support\AnnotationTransactions;
+use App\Support\AssetPurgeClaim;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Str;
 
 class PurgeDeletedVoiceAnnotation implements ShouldQueue
 {
@@ -32,32 +33,35 @@ class PurgeDeletedVoiceAnnotation implements ShouldQueue
         if ($snapshot === null || ! $snapshot->trashed() || $snapshot->audio_asset_id === null) {
             return;
         }
-        $claim = AnnotationTransactions::run(function () use ($snapshot): ?array {
+        /** @var array{0: AssetPurgeClaim, 1: int, 2: mixed}|null $claimed */
+        $claimed = AnnotationTransactions::run(function () use ($snapshot): ?array {
             $asset = SpeechAsset::query()->whereKey($snapshot->audio_asset_id)->lockForUpdate()->first();
             $annotation = Annotation::withTrashed()->whereKey($snapshot->id)->lockForUpdate()->first();
             if ($asset === null || $annotation === null || ! $annotation->trashed() || $annotation->audio_asset_id !== $asset->id) {
                 return null;
             }
-            $claimId = $asset->purge_claim_id ?? (string) Str::uuid();
-            $asset->update(['purge_claim_id' => $claimId, 'status' => 'failed']);
+            // Failed at claim: every writer that reconciles a reservation filters on processing or ready,
+            // so the amount read now is still the amount owed at finalize.
+            $claim = AssetPurgeClaim::stamp($asset, ['status' => SpeechAssetStatus::Failed->value]);
 
-            return ['claim_id' => $claimId, 'asset_id' => $asset->id, 'disk' => $asset->disk, 'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path), 'charged' => (int) ($asset->temporary_byte_size ?? $asset->byte_size ?? 0), 'reviewer_id' => $annotation->review()->value('reviewer_id')];
+            return [$claim, $asset->chargedBytes(), $annotation->review()->value('reviewer_id')];
         });
-        if ($claim === null) {
+        if ($claimed === null) {
             return;
         }
-        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], 'Voice-note object deletion failed.');
-        AnnotationTransactions::run(function () use ($claim, $quota): void {
-            $asset = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();
+        [$claim, $charged, $reviewerId] = $claimed;
+        $claim->deleteObjects('Voice-note object deletion failed.');
+        AnnotationTransactions::run(function () use ($claim, $charged, $reviewerId, $quota): void {
+            $asset = $claim->lockAsset();
             $annotation = Annotation::withTrashed()->whereKey($this->annotationId)->lockForUpdate()->first();
             if ($asset === null || $annotation === null || ! $annotation->trashed() || $annotation->audio_asset_id !== $asset->id) {
                 return;
             }
-            $annotation->update(['audio_asset_id' => null, 'transcript_status' => 'not_applicable', 'transcript_failure_code' => null, 'transcript_attempt_id' => null]);
+            $annotation->update(['audio_asset_id' => null, 'transcript_status' => TranscriptStatus::NotApplicable->value, 'transcript_failure_code' => null, 'transcript_attempt_id' => null]);
             $asset->delete();
-            $reviewer = $claim['reviewer_id'] === null ? null : User::query()->find((int) $claim['reviewer_id']);
-            if ($reviewer !== null && $claim['charged'] > 0) {
-                $quota->releaseDirect($reviewer, $claim['charged']);
+            $reviewer = $reviewerId === null ? null : User::query()->find((int) $reviewerId);
+            if ($reviewer !== null && $charged > 0) {
+                $quota->releaseDirect($reviewer, $charged);
             }
         });
     }

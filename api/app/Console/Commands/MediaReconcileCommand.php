@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\SpeechAssetStatus;
 use App\Jobs\PurgeDeletedVoiceAnnotation;
 use App\Jobs\PurgeSpeechMedia;
 use App\Jobs\PurgeVoiceAsset;
@@ -10,6 +11,7 @@ use App\Models\Speech;
 use App\Models\SpeechAsset;
 use App\Services\Captions\CaptionAttemptTracker;
 use App\Services\QuotaService;
+use App\Services\Voice\FailVoiceNormalization;
 use App\Support\AnnotationTransactions;
 use App\Support\SpeechDeletionReason;
 use Illuminate\Console\Command;
@@ -47,7 +49,7 @@ class MediaReconcileCommand extends Command
 
     protected $description = 'Release quota held by abandoned uploads, surface hung transcodes, recover stale caption attempts, prune retained originals, and purge media for speeches taken down beyond the quarantine window (§9.1, §9.2, STEP-09 §4.1, R10, PLAN-ADMIN-DASHBOARD §5.6).';
 
-    public function handle(QuotaService $quota): int
+    public function handle(QuotaService $quota, FailVoiceNormalization $failNormalization): int
     {
         $staleUploads = SpeechAsset::query()
             ->where('status', 'uploading')
@@ -111,12 +113,12 @@ class MediaReconcileCommand extends Command
             }
             $candidatePath = $asset->normalization_candidate_path;
             $reserved = (int) ($asset->temporary_byte_size ?? 0);
-            if ($asset->status === 'ready') {
+            if ($asset->status === SpeechAssetStatus::Ready->value) {
                 if (Storage::disk($asset->disk)->exists($temporaryPath) && ! Storage::disk($asset->disk)->delete($temporaryPath)) {
                     continue;
                 }
                 AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved, $quota): void {
-                    $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'ready')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
+                    $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', SpeechAssetStatus::Ready->value)->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
                     if ($fresh === null || $fresh->temporary_byte_size === null) {
                         return;
                     }
@@ -126,7 +128,7 @@ class MediaReconcileCommand extends Command
                     // before reaching a given asset, and the annotation/
                     // review it belongs to can be concurrently hard-deleted
                     // in that window (ReviewService::clearAnnotations/
-                    // revokeAndPurge). See FfmpegVoiceNoteProcessor::fail's
+                    // revokeAndPurge). See FailVoiceNormalization's
                     // identical comment for why a stale reviewer silently
                     // drops the quota release/reconcile.
                     $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
@@ -135,39 +137,15 @@ class MediaReconcileCommand extends Command
                     }
                     $fresh->update(['temporary_path' => null, 'temporary_byte_size' => null]);
                 });
-            } elseif ($asset->status === 'processing') {
-                $won = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $reserved, $quota): bool {
-                    $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
-                    if ($fresh === null || $fresh->temporary_byte_size === null) {
-                        return false;
-                    }
-                    $fresh->update(['status' => 'failed', 'failure_code' => 'voice_normalization_failed', 'failure_detail' => 'Voice normalization did not complete.', 'temporary_byte_size' => null, 'byte_size' => 0]);
-                    $fresh->voiceAnnotation()->whereIn('transcript_status', ['pending', 'processing'])->update(['transcript_status' => 'failed']);
-                    // See the 'ready' branch above for why this must be
-                    // resolved under the lock, not the batch-fetch snapshot.
-                    $reviewer = $fresh->voiceAnnotation()->first()?->review()->first()?->reviewer()->first();
-                    if ($reviewer !== null) {
-                        $quota->releaseDirect($reviewer, $reserved);
-                    }
-
-                    return true;
-                });
-                $clean = $won;
-                if ($won) {
-                    foreach (SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $candidatePath) as $path) {
-                        $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;
-                    }
-                }
-                if ($clean) {
-                    SpeechAsset::query()->whereKey($asset->id)->where('temporary_path', $temporaryPath)->update(['temporary_path' => null, 'normalization_candidate_path' => null]);
-                }
-            } elseif ($asset->status === 'failed') {
+            } elseif ($asset->status === SpeechAssetStatus::Processing->value) {
+                $failNormalization->execute($asset->id, $temporaryPath, 'voice_normalization_failed', 'Voice normalization did not complete.');
+            } elseif ($asset->status === SpeechAssetStatus::Failed->value) {
                 $clean = true;
                 foreach (SpeechAsset::voiceAssetCandidatePaths($temporaryPath, $candidatePath) as $path) {
                     $clean = (! Storage::disk($asset->disk)->exists($path) || Storage::disk($asset->disk)->delete($path)) && $clean;
                 }
                 if ($clean) {
-                    SpeechAsset::query()->whereKey($asset->id)->where('status', 'failed')->where('temporary_path', $temporaryPath)->whereNull('temporary_byte_size')->update(['temporary_path' => null, 'normalization_candidate_path' => null]);
+                    SpeechAsset::query()->whereKey($asset->id)->where('status', SpeechAssetStatus::Failed->value)->where('temporary_path', $temporaryPath)->whereNull('temporary_byte_size')->update(['temporary_path' => null, 'normalization_candidate_path' => null]);
                 }
             }
         }

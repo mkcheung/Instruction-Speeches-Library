@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\TranscriptStatus;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -27,7 +28,7 @@ class AuditAnnotationTimingCommand extends Command
         foreach ($query->cursor() as $row) {
             $type = $migrated ? $row->timing_type : null;
             if (! $migrated) {
-                if ($row->audio_asset_id !== null || $row->transcript_status !== 'not_applicable') {
+                if ($row->audio_asset_id !== null || $row->transcript_status !== TranscriptStatus::NotApplicable->value) {
                     $type = 'point';
                 } elseif ($row->deleted_at === null && (int) $row->has_text === 1) {
                     $type = 'range';

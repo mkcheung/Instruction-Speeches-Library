@@ -2,6 +2,7 @@
 
 namespace App\Exceptions;
 
+use App\Models\Review;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use RuntimeException;
@@ -23,7 +24,7 @@ class AnnotationCapExceededException extends RuntimeException
     public function render(Request $request): JsonResponse
     {
         return new JsonResponse([
-            'message' => 'This review already has the maximum of 200 annotations.',
+            'message' => 'This review already has the maximum of '.Review::MAX_ANNOTATIONS.' annotations.',
         ], Response::HTTP_UNPROCESSABLE_ENTITY);
     }
 }
