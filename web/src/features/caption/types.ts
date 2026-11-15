@@ -1,3 +1,4 @@
+import type { SpeechAssetStatus } from '@/features/speech/types'
 /**
  * STEP-09-FROZEN-CONTRACT.md §4: `GET/PUT /api/speeches/{speech}/captions`.
  * Field names kept snake_case-from-Laravel unconverted, same convention as
@@ -21,7 +22,7 @@
  */
 export interface Captions {
   vtt: string | null
-  status: 'unavailable' | 'uploading' | 'processing' | 'ready' | 'failed'
+  status: 'unavailable' | SpeechAssetStatus
   failure_code: string | null
   updated_at: string | null
   /**

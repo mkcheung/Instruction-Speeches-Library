@@ -6,6 +6,7 @@ import { AnnotationList } from '@/components/annotation/AnnotationList'
 import { ToastProvider, Toaster } from '@/components/ui/toast'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
 import type { Annotation } from '@/features/annotation/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -160,13 +161,13 @@ describe('AnnotationList — delete then Undo', () => {
       calls.push({ url, method })
       if (url.endsWith('/annotations/7') && method === 'DELETE') return new Response(null, { status: 204 })
       if (url.endsWith('/annotations/7/restore') && method === 'POST') {
-        return jsonResponse({ annotation: annotation({ voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }) })
+        return jsonResponse({ annotation: annotation({ voice: voiceAsset({ asset_id: 71 }) }) })
       }
       throw new Error(`unexpected fetch: ${url} ${method}`)
     }))
 
     const user = userEvent.setup()
-    renderList([annotation({ voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'ready', failure_code: null } })])
+    renderList([annotation({ voice: voiceAsset({ asset_id: 71 }) })])
     await user.click(screen.getByRole('button', { name: /show details/i }))
     await user.click(screen.getByRole('button', { name: /delete voice note/i }))
     await user.click(await screen.findByRole('button', { name: 'Undo' }))

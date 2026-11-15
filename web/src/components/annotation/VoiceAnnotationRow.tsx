@@ -4,7 +4,7 @@ import { AnnotationEditor } from '@/components/annotation/AnnotationEditor'
 import type { SavedRowProps } from '@/components/annotation/AnnotationRow'
 import { useAnnotationEditor } from '@/hooks/useAnnotationEditor'
 import { useLazyGetVoiceAudioUrlQuery, useRetryVoiceTranscriptMutation } from '@/features/annotation/annotationApi'
-import { annotationDisplayBody, type Annotation } from '@/features/annotation/types'
+import { annotationDisplayBody, isPlayableVoiceNote, type Annotation } from '@/features/annotation/types'
 import { formatSpokenTimecode } from '@/lib/time'
 import { formatAnnotationTime } from '@/lib/annotationTiming'
 import { cn } from '@/lib/utils'
@@ -104,7 +104,7 @@ export function VoiceAnnotationRow({ annotation, speechId, reviewId, userId, isC
         <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" aria-label={`Go to time, ${spoken}`} onClick={() => { onSeek(effective.start_seconds); onVoiceNoteActivate?.(annotation) }}>Go to time</Button>
         <Button ref={setToggle} type="button" variant="outline" size="sm" className="min-h-11 min-w-11" aria-expanded={isExpanded} aria-controls={detailsId}
           disabled={editing || busy} aria-label={`${isExpanded ? 'Hide' : 'Show'} details, ${spoken}`} onClick={() => setExpanded(!isExpanded)}>{isExpanded ? 'Hide details' : 'Show details'}</Button>
-        {voice?.audio_status === 'ready' && <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" disabled={isFetching}
+        {isPlayableVoiceNote(annotation) && <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" disabled={isFetching}
           aria-label={`${isFetching ? 'Loading…' : 'Preview audio'}, ${spoken}`} onClick={() => void preview()}>{isFetching ? 'Loading…' : 'Preview audio'}</Button>}
         {canEditTranscript && <Button type="button" variant="outline" size="sm" className="min-h-11 min-w-11" disabled={editBlocked || busy || unavailable}
           aria-label={`Edit transcript, ${spoken}`} onClick={() => { setExpanded(true); setEditing(true) }}>Edit transcript</Button>}

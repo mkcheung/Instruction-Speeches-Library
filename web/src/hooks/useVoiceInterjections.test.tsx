@@ -1,6 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Annotation } from '@/features/annotation/types'
 
 const loadAudio = vi.hoisted(() => vi.fn())
 vi.mock('@/features/annotation/annotationApi', () => ({
@@ -8,36 +7,12 @@ vi.mock('@/features/annotation/annotationApi', () => ({
 }))
 
 import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
-import { FakeAudio, deferred, playableVideo, tick } from '@/test/voiceAudio'
-
-function voice(id: string, start: number): Annotation {
-  return {
-    id,
-    start_seconds: start,
-    duration_seconds: 2,
-    kind: 'observation',
-    topic: null,
-    body: `voice ${id}`,
-    lock_version: 0,
-    client_uuid: `uuid-${id}`,
-    voice: { asset_id: Number(id), audio_status: 'ready', transcript_status: 'ready', failure_code: null },
-  }
-}
+import { FakeAudio, deferred, playableVideo, restoreVoiceAudio, stubVoiceAudio, tick } from '@/test/voiceAudio'
+import { voiceNote as voice } from '@/test/voiceFixtures'
 
 describe('useVoiceInterjections', () => {
-  beforeEach(() => {
-    FakeAudio.instances = []
-    loadAudio.mockReset()
-    loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
-      unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }),
-    }))
-    vi.stubGlobal('Audio', FakeAudio)
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
-  })
+  beforeEach(() => stubVoiceAudio(loadAudio))
+  afterEach(restoreVoiceAudio)
 
   it('queues every note crossed in one tick and resumes after the final ended event', async () => {
     const video = playableVideo()
@@ -145,6 +120,96 @@ describe('useVoiceInterjections', () => {
     act(() => vi.advanceTimersByTime(2))
     expect(result.current.current).toBeNull()
     expect(video.play).not.toHaveBeenCalled()
+  })
+
+  describe('resumeCommentary', () => {
+    async function pausedNote() {
+      const video = playableVideo()
+      const hook = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }),
+      )
+      tick(video)
+      await waitFor(() => expect(hook.result.current.state).toBe('playing'))
+      act(() => hook.result.current.pauseCommentary())
+      expect(hook.result.current.state).toBe('paused')
+      return { video, result: hook.result, audio: FakeAudio.instances[0] }
+    }
+
+    it('a rejected play() on resume fails the note and leaves the video paused', async () => {
+      const { video, result, audio } = await pausedNote()
+      audio.play.mockImplementationOnce(() => Promise.reject(new Error('blocked')))
+      await act(async () => result.current.resumeCommentary())
+      expect(result.current.current).toBeNull()
+      expect(result.current.error).toContain('Could not play')
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('an audio error after resume fails the note and leaves the video paused', async () => {
+      const { video, result, audio } = await pausedNote()
+      await act(async () => result.current.resumeCommentary())
+      expect(result.current.state).toBe('playing')
+      act(() => audio.onerror?.())
+      expect(result.current.current).toBeNull()
+      expect(result.current.error).toContain('Could not play')
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('bounds a pending resume play() to fifteen seconds', async () => {
+      vi.useFakeTimers()
+      const video = playableVideo()
+      const { result } = renderHook(() =>
+        useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 }),
+      )
+      tick(video)
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(result.current.state).toBe('playing')
+      act(() => result.current.pauseCommentary())
+      FakeAudio.instances[0].play.mockImplementationOnce(() => new Promise<void>(() => {}))
+      act(() => { void result.current.resumeCommentary() })
+      expect(result.current.state).toBe('loading')
+      act(() => vi.advanceTimersByTime(14_999))
+      expect(result.current.state).toBe('loading')
+      act(() => vi.advanceTimersByTime(1))
+      expect(result.current.current).toBeNull()
+      expect(result.current.error).toContain('Could not play')
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('Skip during a pending resume play(): the late resolve pauses that audio and stays idle', async () => {
+      const { video, result, audio } = await pausedNote()
+      const pending = deferred<void>()
+      audio.play.mockImplementationOnce(() => pending.promise)
+      act(() => { void result.current.resumeCommentary() })
+      expect(result.current.state).toBe('loading')
+      act(() => result.current.skip())
+      expect(result.current.state).toBe('idle')
+      const pausesAfterSkip = audio.pause.mock.calls.length
+      await act(async () => pending.resolve())
+      expect(audio.pause).toHaveBeenCalledTimes(pausesAfterSkip + 1)
+      expect(result.current.state).toBe('idle')
+      expect(result.current.current).toBeNull()
+      expect(video.play).not.toHaveBeenCalled()
+    })
+
+    it('is a no-op unless the note is paused', async () => {
+      const video = playableVideo()
+      let renders = 0
+      const { result } = renderHook(() => {
+        renders++
+        return useVoiceInterjections({ speechId: 1, videoEl: video, notes: [voice('1', 1)], audioEnabled: true, resetKey: 1 })
+      })
+      tick(video)
+      await waitFor(() => expect(result.current.state).toBe('playing'))
+      const audio = FakeAudio.instances[0]
+      const before = renders
+      await act(async () => result.current.resumeCommentary())
+      expect(audio.play).toHaveBeenCalledOnce()
+      expect(renders).toBe(before)
+      expect(result.current.state).toBe('playing')
+    })
   })
 
   it('a video play gesture during voice cancels the note and lets the video play on', async () => {

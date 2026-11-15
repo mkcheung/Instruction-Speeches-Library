@@ -1,18 +1,19 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Annotation } from '@/features/annotation/types'
+import type { Annotation, AnnotationVoice } from '@/features/annotation/types'
 
 const loadAudio = vi.hoisted(() => vi.fn())
 vi.mock('@/features/annotation/annotationApi', () => ({ useLazyGetVoiceAudioUrlQuery: () => [loadAudio] }))
 
 import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
-import { FakeAudio, deferred, playableVideo } from '@/test/voiceAudio'
+import { FakeAudio, deferred, playableVideo, restoreVoiceAudio, stubVoiceAudio } from '@/test/voiceAudio'
+import { voiceNote } from '@/test/voiceFixtures'
 
-function voice(id: string, start: number, status: 'ready' | 'processing' = 'ready'): Annotation {
-  return { id, start_seconds: start, duration_seconds: 2, kind: 'observation', topic: null, body: `voice ${id}`,
-    lock_version: 0, client_uuid: `uuid-${id}`,
-    voice: { asset_id: Number(id), audio_status: status, transcript_status: 'ready', failure_code: null } }
+function voice(id: string, start: number, status: AnnotationVoice['audio_status'] = 'ready'): Annotation {
+  return voiceNote(id, start, { voice: { audio_status: status } })
 }
+beforeEach(() => stubVoiceAudio(loadAudio, { abort: true }))
+afterEach(restoreVoiceAudio)
 const fire = (video: HTMLVideoElement, type: string) => video.dispatchEvent(new Event(type))
 function seekableVideo(at: number, playing: boolean) {
   const video = playableVideo()
@@ -40,16 +41,6 @@ function engineResumeThenTick(video: HTMLVideoElement, to: number) {
 }
 
 describe('Fix A: armNote', () => {
-  beforeEach(() => {
-    FakeAudio.instances = []
-    loadAudio.mockReset()
-    loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
-      unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }), abort: vi.fn(),
-    }))
-    vi.stubGlobal('Audio', FakeAudio)
-  })
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
-
   it('1 paused: arm + seek, Play starts it before any tick, resumes once, no replay', async () => {
     const { video, setSeeking } = seekableVideo(5, false)
     const { result } = mount(video, [voice('1', 1)])
@@ -194,7 +185,7 @@ describe('Fix A: armNote', () => {
   })
 
   it('11b removing the note, or replacing its asset, each clear the cue', async () => {
-    for (const next of [[] as Annotation[], [{ ...voice('1', 1), voice: { ...voice('1', 1).voice!, asset_id: 99 } }]]) {
+    for (const next of [[] as Annotation[], [voiceNote('1', 1, { voice: { asset_id: 99 } })]]) {
       loadAudio.mockClear()
       const { video, setSeeking } = seekableVideo(5, false)
       const { result, rerender, unmount } = mount(video, [voice('1', 1)])
@@ -246,7 +237,7 @@ describe('Fix A: armNote', () => {
     act(() => result.current.armNote(voice('1', 1)))
     seek(video, setSeeking, 1)
     expect(result.current.hint?.id).toBe('1')
-    rerender({ n: [{ ...voice('1', 1), voice: { ...voice('1', 1).voice!, asset_id: 99 } }], on: true })
+    rerender({ n: [voiceNote('1', 1, { voice: { asset_id: 99 } })], on: true })
     expect(result.current).toMatchObject({ state: 'idle', hint: null })
 
     rerender({ n: [voice('2', 1)], on: true })
@@ -257,19 +248,39 @@ describe('Fix A: armNote', () => {
     await act(async () => {})
     expect(loadAudio).not.toHaveBeenCalled()
   })
+
+  it('14 a note without voice is ignored: a playing ▶ note keeps playing and an armed cue stays armed', async () => {
+    const { video, setSeeking } = seekableVideo(5, false)
+    const written: Annotation = { ...voice('3', 4), voice: null }
+    const { result } = mount(video, [voice('1', 1), voice('2', 3), written])
+    act(() => result.current.armNote(voice('2', 3)))
+    seek(video, setSeeking, 3)
+    act(() => result.current.playNote(voice('1', 1)))
+    await waitFor(() => expect(result.current.state).toBe('playing'))
+    const before = { state: result.current.state, hint: result.current.hint, current: result.current.current }
+    act(() => result.current.armNote(written))
+    expect(result.current).toMatchObject(before)
+    expect(FakeAudio.instances).toHaveLength(1)
+    expect(FakeAudio.instances[0].pause).not.toHaveBeenCalled()
+    act(() => FakeAudio.instances[0].onended?.())
+    await waitFor(() => expect(result.current.current).toBeNull())
+    expect(result.current.hint?.id).toBe('2')
+  })
+
+  it('15 a processing voice note still cancels a playing note at once', async () => {
+    const { video } = seekableVideo(7, true)
+    const processing = voice('2', 3, 'processing')
+    const { result } = mount(video, [voice('1', 1), processing])
+    act(() => result.current.playNote(voice('1', 1)))
+    await waitFor(() => expect(result.current.state).toBe('playing'))
+    const audio = FakeAudio.instances[0]
+    act(() => result.current.armNote(processing))
+    expect(result.current).toMatchObject({ state: 'idle', current: null, hint: null })
+    expect(audio.pause).toHaveBeenCalled()
+  })
 })
 
 describe('row ▶: playNote', () => {
-  beforeEach(() => {
-    FakeAudio.instances = []
-    loadAudio.mockReset()
-    loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
-      unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }), abort: vi.fn(),
-    }))
-    vi.stubGlobal('Audio', FakeAudio)
-  })
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
-
   it('1 while playing: pauses, plays, leaves the video paused at the same time; source is list', async () => {
     const { video } = seekableVideo(7, true)
     const { result } = mount(video, [voice('1', 1)])
@@ -393,16 +404,6 @@ describe('row ▶: playNote', () => {
 
 /** Adversarial probes: each asserts the behaviour the plan promises ("resumeFloor makes the looseness unable to cause a replay"). */
 describe('PROBES: resumeFloor holes', () => {
-  beforeEach(() => {
-    FakeAudio.instances = []
-    loadAudio.mockReset()
-    loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
-      unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }), abort: vi.fn(),
-    }))
-    vi.stubGlobal('Audio', FakeAudio)
-  })
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
-
   it('P1 playing click, landing 0.03 s early: the same seek\'s seeked must not erase resumeFloor', async () => {
     const { video, setSeeking } = seekableVideo(5, true)
     const { result } = mount(video, [voice('1', 2.05)])
@@ -451,16 +452,6 @@ describe('PROBES: resumeFloor holes', () => {
 })
 
 describe('the video\'s Play cancels a note (2026-11-13 amendment)', () => {
-  beforeEach(() => {
-    FakeAudio.instances = []
-    loadAudio.mockReset()
-    loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
-      unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }), abort: vi.fn(),
-    }))
-    vi.stubGlobal('Audio', FakeAudio)
-  })
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
-
   it('a paused ▶ note: Play stops it and the video plays on from the slider; the note still plays at its own time', async () => {
     const { video } = seekableVideo(10, false)
     const { result } = mount(video, [voice('1', 30)])

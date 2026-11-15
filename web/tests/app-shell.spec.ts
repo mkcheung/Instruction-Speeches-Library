@@ -3,6 +3,7 @@ import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { API_URL, APP_URL, USERS } from './fixtures.js'
+import { commentaryTracks } from './commentary-test-helpers.js'
 import { installDeterministicRecorder } from './voice-test-helpers.js'
 import type { CurrentUser } from '../src/features/auth/types.js'
 import type { Review, ReviewSections } from '../src/features/review/types.js'
@@ -1939,7 +1940,7 @@ test.describe('owner video tools (isolated frontend)', () => {
       await presentationExpect(t.marker('range-marker-owner-a-text')).toBeVisible()
       await presentationExpect(timeline.locator('[data-temporary], [data-kind="draft"]')).toHaveCount(0)
       await tools.getByRole('tab', { name: 'Frame selector', exact: true }).click()
-      const tracks = page.getByRole('radiogroup', { name: 'Choose commentary track' })
+      const tracks = commentaryTracks(page)
       await tracks.getByText('Jamie Member', { exact: false }).click()
       await presentationExpect(tools.getByRole('tab', { name: 'Frame selector', exact: true })).toHaveAttribute('aria-selected', 'true')
       await tools.getByRole('tab', { name: 'Commentary timeline', exact: true }).click()

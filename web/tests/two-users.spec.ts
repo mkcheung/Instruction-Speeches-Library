@@ -7,6 +7,7 @@ import {
   SHARED_SPEECH_ID,
   USERS,
 } from './fixtures.js'
+import { commentaryTracks } from './commentary-test-helpers.js'
 
 /**
  * CP-05 — two users in one test.
@@ -96,7 +97,7 @@ test('the speaker DOES see both reviewers — so the leak assertions below are n
 
   await page.goto(SPEECH_URL)
 
-  const radiogroup = page.getByRole('radiogroup', { name: 'Choose commentary track' })
+  const radiogroup = commentaryTracks(page)
   await expect(radiogroup).toBeVisible()
 
   await expect(radiogroup.getByRole('radio', { name: USERS.reviewerA.name })).toBeVisible()
@@ -116,7 +117,7 @@ test('reviewer A cannot see that reviewer B exists', async ({ browser }) => {
   // element is in the DOM but hidden, which for a leak test is a fail
   // dressed as a pass — the data reached the browser and CSS is the only
   // thing withholding it.
-  await expect(page.getByRole('radiogroup', { name: 'Choose commentary track' })).toHaveCount(0)
+  await expect(commentaryTracks(page)).toHaveCount(0)
 
   // Not B's name, not B's username, not a count of reviewers.
   await expect(page.getByText(USERS.reviewerB.name)).toHaveCount(0)

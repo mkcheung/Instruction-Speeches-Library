@@ -74,9 +74,10 @@ function ScopedOwnerVideoTools({
       </div>
       {message && <p className="owner-video-tools__notice" role="status">{message}</p>}
       {refreshError && <p className="owner-video-tools__notice" role="status">Commentary could not refresh. Previously loaded commentary may still be shown. Open Notes for details.</p>}
+      {/* TimelineStrip seeks and reports only from a rendered marker (TimelineStrip.tsx), so `markers` is the one gate for both callbacks below. */}
       <TimelineStrip annotations={markers} videoEl={boundVideo} durationSeconds={durationSeconds}
-        activeIds={canSeek ? activeIds : []} onSeek={(seconds) => { if (canSeek) onSeek(seconds) }}
-        onMarkerActivate={(m) => { if (canSeek && m.kind === 'voice') onVoiceNoteActivate?.(m.annotation) }}
+        activeIds={canSeek ? activeIds : []} onSeek={onSeek}
+        onMarkerActivate={(m) => { if (m.kind === 'voice') onVoiceNoteActivate?.(m.annotation) }}
         scrub={scrub && { ...scrub, enabled: scrub.enabled && boundVideo !== null,
           active: scrub.active && tab === 'timeline' }} />
       <p className="owner-video-tools__help">Select a Text range or Voice point to seek the video. Blank areas have no commentary in this mode.</p>

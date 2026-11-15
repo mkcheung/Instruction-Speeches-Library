@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OwnerVideoTools, type OwnerVideoToolsProps, type OwnerTimelineStatus } from './OwnerVideoTools'
 import type { Annotation } from '@/features/annotation/types'
 import { FakeTextTrack } from '@/test/setup'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const text: Annotation = {
   id: 'text', timing_type: 'range', start_seconds: 10, duration_seconds: 6, kind: 'observation',
@@ -12,7 +13,7 @@ const text: Annotation = {
 }
 const voice: Annotation = { ...text, id: 'voice', client_uuid: 'voice', timing_type: 'point', start_seconds: 25,
   body: 'PRIVATE VOICE TRANSCRIPT', duration_seconds: 0,
-  voice: { asset_id: 3, audio_status: 'processing', transcript_status: 'processing', failure_code: null },
+  voice: voiceAsset({ asset_id: 3, audio_status: 'processing', transcript_status: 'processing' }),
 }
 const erased: Annotation = { ...text, id: 'erased', timing_type: 'point', start_seconds: 40, voice: null }
 
@@ -126,12 +127,15 @@ describe('owner video tools', () => {
     expect(order).toEqual(['seek', 'seek', 'activate'])
   })
 
-  it('does not activate a Voice note when the timeline cannot seek', () => {
-    const onVoiceNoteActivate = vi.fn()
-    render(<OwnerVideoTools {...props({ playbackReady: false, onVoiceNoteActivate })} />)
-    const timeline = screen.getByRole('group', { name: 'Annotation timeline' })
-    expect(within(timeline).queryAllByRole('button')).toHaveLength(0)
-    expect(onVoiceNoteActivate).not.toHaveBeenCalled()
+  // The seek and arm callbacks fire only from a rendered marker, so rendering none is the whole guard.
+  it.each([
+    ['the video is not ready', { playbackReady: false }],
+    ['there is no video', { videoEl: null }],
+    ['commentary is loading', { status: 'loading' }],
+    ['commentary is off', { mode: 'off' }],
+  ] satisfies [string, Partial<OwnerVideoToolsProps>][])('renders no markers to seek or arm when %s', (_name, overrides) => {
+    render(<OwnerVideoTools {...props(overrides)} />)
+    expect(within(screen.getByRole('group', { name: 'Annotation timeline' })).queryAllByRole('button')).toHaveLength(0)
   })
 
   it.each([

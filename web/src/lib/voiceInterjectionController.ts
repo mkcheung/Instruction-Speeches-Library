@@ -1,9 +1,12 @@
-import type { Annotation, VoiceAudioUrlResponse } from '@/features/annotation/types'
+import {
+  isPlayableVoiceNote, isSamePlayableVoiceNote, type Annotation, type PlayableVoiceNote, type VoiceAudioUrlResponse,
+} from '@/features/annotation/types'
 import {
   CUE_TOLERANCE_SECONDS, PLAYHEAD_TOLERANCE_SECONDS, VOICE_NOTE_SEEK_EPSILON_SECONDS, comparePlaybackOrder, crossedNotes,
 } from '@/lib/crossedNotes'
 
 type VoiceIdentity = { id: string; assetId: number }
+const identityOf = (note: PlayableVoiceNote): VoiceIdentity => ({ id: note.id, assetId: note.voice.asset_id })
 export type VoicePlaybackState = 'idle' | 'hinting' | 'loading' | 'playing' | 'paused'
 export type VoicePlaybackSource = 'crossing' | 'list'
 export interface VoicePlaybackSnapshot {
@@ -61,9 +64,8 @@ export class VoiceInterjectionController {
     this.listeners.forEach((listener) => listener())
   }
 
-  private canonical(identity: VoiceIdentity): Annotation | undefined {
-    return this.notes.find((note) => note.id === identity.id
-      && note.voice?.asset_id === identity.assetId && note.voice.audio_status === 'ready')
+  private canonical(identity: VoiceIdentity): PlayableVoiceNote | undefined {
+    return this.notes.find((n): n is PlayableVoiceNote => isSamePlayableVoiceNote(n, identity.id, identity.assetId))
   }
 
   update(notes: readonly Annotation[], enabled: boolean): void {
@@ -92,7 +94,7 @@ export class VoiceInterjectionController {
       else if (JSON.stringify(current) !== JSON.stringify(this.snapshot.current)) this.publish({ current })
     }
     if (this.snapshot.hint && !notes.some((note) => note.id === this.snapshot.hint!.id
-      && note.voice?.audio_status === 'ready')) this.publish({ hint: null, state: 'idle' })
+      && isPlayableVoiceNote(note))) this.publish({ hint: null, state: 'idle' })
     // The dropped cue's "Commentary ahead" goes with it (a replaced asset keeps the id, so the check above misses it).
     if (cueDropped && !this.active) this.refreshHint()
   }
@@ -145,10 +147,10 @@ export class VoiceInterjectionController {
   private async playNext(): Promise<void> {
     this.clearTimer()
     this.clearAudio()
-    let note: Annotation | undefined
+    let note: PlayableVoiceNote | undefined
     while (this.queue.length && !note) note = this.canonical(this.queue.shift()!)
     if (!note) { this.finish(true); return }
-    this.active = { id: note.id, assetId: note.voice!.asset_id }
+    this.active = identityOf(note)
     const generation = ++this.generation
     this.publish({ state: 'loading', current: note, hint: null, error: null, source: this.source })
     this.arm(15_000, generation, this.fail)
@@ -160,20 +162,21 @@ export class VoiceInterjectionController {
       this.request = null
       const audio = new Audio(response.audio.url)
       this.audio = audio
-      audio.onended = () => {
-        if (generation === this.generation && this.connected) void this.playNext()
-      }
-      audio.onerror = () => {
-        if (generation === this.generation && this.connected) this.fail()
-      }
-      await audio.play()
-      if (!this.connected || generation !== this.generation) { audio.pause(); return }
-      this.remaining = Math.max(0.001, note.duration_seconds) * 1000 + 3000
-      this.publish({ state: 'playing' })
-      this.arm(this.remaining, generation, this.fail)
+      await this.startAudio(audio, generation, Math.max(0.001, note.duration_seconds) * 1000 + 3000)
     } catch {
       if (this.connected && generation === this.generation) this.fail()
     }
+  }
+
+  /** Wires the end and error handlers to this generation, plays, then starts the safety budget. */
+  private async startAudio(audio: HTMLAudioElement, generation: number, budgetMs: number): Promise<void> {
+    audio.onended = () => { if (this.connected && generation === this.generation) void this.playNext() }
+    audio.onerror = () => { if (this.connected && generation === this.generation) this.fail() }
+    await audio.play() // a rejection reaches the caller's catch
+    if (!this.connected || generation !== this.generation) { audio.pause(); return }
+    this.remaining = budgetMs
+    this.publish({ state: 'playing' })
+    this.arm(this.remaining, generation, this.fail)
   }
 
   private onPlay = (): void => {
@@ -215,7 +218,7 @@ export class VoiceInterjectionController {
       return
     }
     if (this.startCue()) return
-    const playable = this.notes.filter((note) => note.voice?.audio_status === 'ready')
+    const playable = this.notes.filter(isPlayableVoiceNote)
     // A paused or seeking video never starts a note, but the "commentary
     // ahead" hint still tracks the playhead (seeking while paused updates it).
     const crossed = this.video.seeking || this.video.paused
@@ -232,7 +235,7 @@ export class VoiceInterjectionController {
 
   /** The armed note while the playhead sits on it, else the next ready note within 3 s. */
   private refreshHint(now = this.video.currentTime,
-    playable = this.notes.filter((note) => note.voice?.audio_status === 'ready')): void {
+    playable = this.notes.filter(isPlayableVoiceNote)): void {
     // Same lower bound as the crossing: a note inside onPlay's tolerance is never announced.
     const hintFrom = this.playFloor ?? now
     const hint = this.cueHint(now) ?? playable.find((note) => note.start_seconds > hintFrom && note.start_seconds <= now + 3) ?? null
@@ -268,13 +271,13 @@ export class VoiceInterjectionController {
   }
 
   /** The canonical ready note behind a caller's object, while audio is on and the controller is connected. */
-  private readyNote(note: Annotation): Annotation | undefined {
+  private readyNote(note: Annotation): PlayableVoiceNote | undefined {
     return this.enabled && this.connected && note.voice
       ? this.canonical({ id: note.id, assetId: note.voice.asset_id }) : undefined
   }
 
-  private begin(notes: readonly Annotation[], ownsPause: boolean, source: VoicePlaybackSource): void {
-    this.queue = notes.map((note) => ({ id: note.id, assetId: note.voice!.asset_id }))
+  private begin(notes: readonly PlayableVoiceNote[], ownsPause: boolean, source: VoicePlaybackSource): void {
+    this.queue = notes.map(identityOf)
     this.ownsPause = ownsPause
     this.resumeSuppressed = !ownsPause
     this.source = source
@@ -294,9 +297,12 @@ export class VoiceInterjectionController {
     const chosen = this.canonical(cue)
     const now = this.video.currentTime
     if (!chosen || now < cue.seconds - CUE_TOLERANCE_SECONDS || now > cue.seconds + VOICE_NOTE_SEEK_EPSILON_SECONDS) return false
-    const group = this.notes.filter((note) => note.voice?.audio_status === 'ready'
-      && (note.start_seconds === chosen.start_seconds ? comparePlaybackOrder(note, chosen) >= 0
-        : note.start_seconds > chosen.start_seconds && note.start_seconds <= now)).sort(comparePlaybackOrder)
+    // Filtered in two steps so the group keeps its PlayableVoiceNote type for begin().
+    const group = this.notes.filter(isPlayableVoiceNote)
+      .filter((note) => note.start_seconds === chosen.start_seconds
+        ? comparePlaybackOrder(note, chosen) >= 0
+        : note.start_seconds > chosen.start_seconds && note.start_seconds <= now)
+      .sort(comparePlaybackOrder)
     this.playFloor = null
     this.previousTime = now
     this.started = true
@@ -306,16 +312,18 @@ export class VoiceInterjectionController {
   }
 
   armNote = (note: Annotation): void => {
+    // Only a voice note can be armed. Anything else leaves a playing note and the cue alone (its seek, if any, cancels).
+    if (!note.voice) return
     if (this.busy) this.finish(false)
     const chosen = this.readyNote(note)
-    this.cue = chosen ? { id: chosen.id, assetId: chosen.voice!.asset_id, seconds: chosen.start_seconds } : null
+    this.cue = chosen ? { ...identityOf(chosen), seconds: chosen.start_seconds } : null
     if (chosen) this.publish({ state: 'hinting', hint: chosen, error: null })
   }
 
   playNote = (note: Annotation): void => {
     const chosen = this.readyNote(note)
     if (!chosen) return
-    if (this.active && this.active.id === chosen.id && this.active.assetId === chosen.voice!.asset_id) return
+    if (this.active && this.active.id === chosen.id && this.active.assetId === chosen.voice.asset_id) return
     if (this.busy) this.finish(false)
     if (this.cue?.id === chosen.id) this.cue = null
     this.begin([chosen], false, 'list')
@@ -346,15 +354,10 @@ export class VoiceInterjectionController {
     const audio = this.audio
     if (!audio || this.snapshot.state !== 'paused') return
     const generation = ++this.generation
-    audio.onended = () => { if (this.connected && generation === this.generation) void this.playNext() }
-    audio.onerror = () => { if (this.connected && generation === this.generation) this.fail() }
     this.publish({ state: 'loading' })
     this.arm(15_000, generation, this.fail)
     try {
-      await audio.play()
-      if (!this.connected || generation !== this.generation) { audio.pause(); return }
-      this.publish({ state: 'playing' })
-      this.arm(this.remaining, generation, this.fail)
+      await this.startAudio(audio, generation, this.remaining)
     } catch {
       if (this.connected && generation === this.generation) this.fail()
     }

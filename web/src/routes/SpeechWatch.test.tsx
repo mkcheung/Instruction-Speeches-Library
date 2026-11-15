@@ -13,11 +13,12 @@ import type Player from 'video.js/dist/types/player'
 import { Routes, Route } from 'react-router-dom'
 import SpeechWatch, { PosterFramePicker, OverlayPositioner } from '@/routes/SpeechWatch'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
-import type { SpeechSprite } from '@/features/speech/types'
+import type { SpeechAssetStatus, SpeechSprite } from '@/features/speech/types'
 import type { Review } from '@/features/review/types'
 import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
 import { WorkspaceCompanionProvider } from '@/components/workspace/WorkspaceCompanionProvider'
 import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 function CompanionProbe() {
   const scene = useWorkspaceCompanionScene()
@@ -543,7 +544,7 @@ describe('SpeechWatch reviewers tab', () => {
    * strip); the other three are the pre-playback states §1.5 cares about. */
   function speechFixture({
     userId = OWNER_ID,
-    videoStatus = 'ready' as 'uploading' | 'processing' | 'ready' | 'failed',
+    videoStatus = 'ready' as SpeechAssetStatus,
   } = {}) {
     return {
       id: 17,
@@ -1628,7 +1629,7 @@ describe('SpeechWatch reviewers tab', () => {
       const original = mock.getMockImplementation()!
       const rows = [writtenNote('owner-text', 'Owner text body'), {
         ...writtenNote('owner-voice', 'Owner voice transcript'), timing_type: 'point', start_seconds: 12,
-        voice: { asset_id: 70, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
+        voice: voiceAsset({ asset_id: 70 }),
       }, { ...writtenNote('owner-erased', 'Erased audio transcript'), timing_type: 'point', start_seconds: 22 }]
       mock.mockImplementation(async (input) => {
         const path = pathOf(input)

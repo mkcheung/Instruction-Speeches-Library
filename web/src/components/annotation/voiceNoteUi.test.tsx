@@ -2,13 +2,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Transcript } from './Transcript'
-import type { Annotation } from '@/features/annotation/types'
+import type { Annotation, AnnotationVoice } from '@/features/annotation/types'
+import { voiceNote } from '@/test/voiceFixtures'
 import type { VoicePlayback } from '@/hooks/useVoiceInterjections'
 
 const base = { duration_seconds: 2, kind: 'observation' as const, topic: null, lock_version: 0 }
 const written = (id: string, s: number): Annotation => ({ ...base, id, start_seconds: s, body: `w-${id}`, client_uuid: id, voice: null })
-const voiced = (id: string, s: number, audio: 'ready' | 'processing' | 'failed' = 'ready'): Annotation => ({ ...base, id, start_seconds: s,
-  body: `v-${id}`, client_uuid: id, timing_type: 'point', voice: { asset_id: Number(id), audio_status: audio, transcript_status: 'ready', failure_code: null } })
+const voiced = (id: string, s: number, audio: AnnotationVoice['audio_status'] = 'ready') =>
+  voiceNote(id, s, { body: `v-${id}`, client_uuid: id, voice: { audio_status: audio } })
 
 function playback(patch: Partial<VoicePlayback> = {}): VoicePlayback {
   return { state: 'idle', current: null, hint: null, error: null, source: null, canPlayNotes: true, armNote: vi.fn(), playNote: vi.fn(),
@@ -66,13 +67,14 @@ describe('Transcript row ▶', () => {
     expect(screen.queryAllByRole('button', { name: /voice commentary/ })).toHaveLength(0)
   })
 
-  it('row click seeks then arms voice rows only; ▶ never seeks', async () => {
+  it('row click seeks then arms (armNote ignores rows without voice); ▶ never seeks', async () => {
     const user = userEvent.setup()
     const onSeek = vi.fn()
     const p = playback()
     render(<Transcript annotations={notes} activeIds={new Set()} currentTime={0} onSeek={onSeek} voicePlayback={p} />)
     await user.click(screen.getByRole('button', { name: /w-1/ }))
-    expect(p.armNote).not.toHaveBeenCalled()
+    expect(p.armNote).toHaveBeenCalledWith(notes[0])
+    vi.mocked(p.armNote).mockClear()
     await user.click(screen.getByRole('button', { name: /v-2/ }))
     expect(onSeek).toHaveBeenLastCalledWith(2.05)
     expect(p.armNote).toHaveBeenCalledWith(notes[1])

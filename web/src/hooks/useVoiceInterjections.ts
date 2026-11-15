@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import { useLazyGetVoiceAudioUrlQuery } from '@/features/annotation/annotationApi'
-import type { Annotation } from '@/features/annotation/types'
+import { isSamePlayableVoiceNote, type Annotation } from '@/features/annotation/types'
 import { IDLE_VOICE_PLAYBACK, VoiceInterjectionController } from '@/lib/voiceInterjectionController'
 
 const idleSnapshot = () => IDLE_VOICE_PLAYBACK
@@ -32,8 +32,7 @@ export function useVoiceInterjections({ speechId, videoEl, notes, audioEnabled, 
   useEffect(() => controller?.update(notes, audioEnabled), [audioEnabled, controller, notes])
   // Suppress stale text before the reconciliation effect runs.
   const current = audioEnabled && snapshot.current
-    ? notes.find((note) => note.id === snapshot.current!.id
-      && note.voice?.asset_id === snapshot.current!.voice?.asset_id && note.voice?.audio_status === 'ready') ?? null
+    ? notes.find((note) => isSamePlayableVoiceNote(note, snapshot.current!.id, snapshot.current!.voice?.asset_id)) ?? null
     : null
   return {
     ...snapshot,

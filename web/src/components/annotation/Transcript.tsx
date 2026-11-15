@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import { LoaderCircle, Pause, Play } from 'lucide-react'
-import { annotationDisplayBody, type Annotation } from '@/features/annotation/types'
+import { annotationDisplayBody, isPlayableVoiceNote, type Annotation } from '@/features/annotation/types'
+import { comparePlaybackOrder } from '@/lib/crossedNotes'
 import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { dedupeNames } from '@/lib/dedupeNames'
@@ -43,7 +44,7 @@ export function Transcript({
   voicePlayback?: VoicePlayback
 }) {
   const sorted = useMemo(
-    () => [...annotations].sort((a, b) => a.start_seconds - b.start_seconds || a.id.localeCompare(b.id)),
+    () => [...annotations].sort(comparePlaybackOrder),
     [annotations],
   )
 
@@ -68,7 +69,7 @@ export function Transcript({
 
   const names = useMemo(() => {
     // Only rows with ▶ carry a name, so only they count toward the ", N of M with this name" suffix.
-    const ready = sorted.filter((a) => a.voice?.audio_status === 'ready')
+    const ready = sorted.filter(isPlayableVoiceNote)
     const deduped = dedupeNames(ready.map((a) => formatSpokenTimecode(a.start_seconds)))
     return new Map(ready.map((a, i) => [a.id, deduped[i]]))
   }, [sorted])
@@ -127,6 +128,8 @@ export function Transcript({
     suppressUntilRef.current = Date.now() + MANUAL_SCROLL_SUPPRESS_MS
   }
 
+  const rowPlayback = voicePlayback?.canPlayNotes ? voicePlayback : undefined
+
   return (
     <ol
       ref={listRef}
@@ -134,7 +137,7 @@ export function Transcript({
       aria-label={label}
       className="flex max-h-80 flex-col gap-1 overflow-y-auto"
     >
-      {sorted.map((a) => { const isCurrent = a.id === currentId; const playable = !!voicePlayback?.canPlayNotes && a.voice?.audio_status === 'ready'; return (
+      {sorted.map((a) => { const isCurrent = a.id === currentId; const name = names.get(a.id); return (
         <li
           key={a.id}
           ref={(el) => {
@@ -146,7 +149,7 @@ export function Transcript({
         >
           <button
             type="button"
-            onClick={() => { onSeek(a.start_seconds); if (a.voice) voicePlayback?.armNote(a) }}
+            onClick={() => { onSeek(a.start_seconds); voicePlayback?.armNote(a) }}
             className={cn(
               'flex min-h-11 min-w-0 flex-1 items-baseline gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted',
               'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
@@ -159,7 +162,7 @@ export function Transcript({
             <span className="sr-only">Annotation at {formatSpokenTimecode(a.start_seconds)}</span>
             <span className="min-w-0 break-words">{hideBody ? `Voice commentary · ${a.voice?.audio_status === 'ready' ? 'Ready' : a.voice?.audio_status === 'failed' ? 'Unavailable' : 'Processing'}` : annotationDisplayBody(a)}</span>
           </button>
-          {playable && voicePlayback && <RowPlayButton note={a} name={names.get(a.id)!} playback={voicePlayback} />}
+          {rowPlayback && name !== undefined && <RowPlayButton note={a} name={name} playback={rowPlayback} />}
         </li>
       )})}
       {sorted.length === 0 && (
