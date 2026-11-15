@@ -2,6 +2,7 @@
 
 namespace App\Services\Voice;
 
+use App\Enums\SpeechAssetStatus;
 use App\Models\SpeechAsset;
 use App\Services\QuotaService;
 use App\Support\AnnotationTransactions;
@@ -14,12 +15,12 @@ class FakeVoiceNoteProcessor implements VoiceNoteProcessorContract
 
     public function process(SpeechAsset $asset, string $temporaryPath): bool
     {
-        if ($asset->status !== 'processing' || $asset->kind !== 'voice_note') {
+        if ($asset->status !== SpeechAssetStatus::Processing->value || $asset->kind !== 'voice_note') {
             return false;
         }
         $reserved = (int) ($asset->temporary_byte_size ?? $asset->byte_size);
         $candidate = preg_replace('/\.m4a$/', '', $asset->path).'.'.Str::uuid().'.m4a';
-        $claimed = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')
+        $claimed = SpeechAsset::query()->whereKey($asset->id)->where('status', SpeechAssetStatus::Processing->value)
             ->whereNull('purge_claim_id')->whereNull('normalization_candidate_path')
             ->where('temporary_path', $temporaryPath)
             ->update(['normalization_candidate_path' => $candidate]);
@@ -28,12 +29,12 @@ class FakeVoiceNoteProcessor implements VoiceNoteProcessorContract
         }
         Storage::disk($asset->disk)->put($candidate, 'fake-m4a');
         $won = AnnotationTransactions::run(function () use ($asset, $temporaryPath, $candidate): bool {
-            $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', 'processing')->whereNull('purge_claim_id')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
+            $fresh = SpeechAsset::query()->whereKey($asset->id)->where('status', SpeechAssetStatus::Processing->value)->whereNull('purge_claim_id')->where('temporary_path', $temporaryPath)->lockForUpdate()->first();
             if ($fresh === null || $fresh->normalization_candidate_path !== $candidate) {
                 return false;
             }
             $fresh->voiceAnnotation()->update(['duration_seconds' => 1.0]);
-            $fresh->update(['path' => $candidate, 'normalization_candidate_path' => null, 'mime_type' => 'audio/mp4', 'byte_size' => 8, 'duration_seconds' => 1.0, 'status' => 'ready']);
+            $fresh->update(['path' => $candidate, 'normalization_candidate_path' => null, 'mime_type' => 'audio/mp4', 'byte_size' => 8, 'duration_seconds' => 1.0, 'status' => SpeechAssetStatus::Ready->value]);
 
             return true;
         });

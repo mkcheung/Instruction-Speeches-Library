@@ -22,7 +22,8 @@ function props(mode: CommentaryPlaybackMode = 'all'): TrackSelectorProps {
     activeIds: new Set(), currentTime: 0, onSeek: vi.fn(), mode, onModeChange: vi.fn(),
     preference: { mode, ready: true, loading: false, saving: false, loadError: false, saveError: false,
       accessDenied: false, preference: { speech_id: 8, mode, source: 'saved' }, select: vi.fn(), retry: vi.fn() },
-    voicePlayback: { state: 'idle', current: null, hint: null, error: null, skip: vi.fn(), suppressResume: vi.fn(), pauseCommentary: vi.fn(), resumeCommentary: vi.fn() },
+    voicePlayback: { state: 'idle', current: null, hint: null, error: null, source: null, canPlayNotes: projection.playAudio,
+      armNote: vi.fn(), playNote: vi.fn(), skip: vi.fn(), suppressResume: vi.fn(), pauseCommentary: vi.fn(), resumeCommentary: vi.fn() },
     disabled: false, allAnnotations: [written, voice], hideReadableBody: projection.hideReadableBody,
     readingKey: `owner:8:1:${mode}`, visible: true, onReadAll: vi.fn(),
   }
@@ -128,5 +129,26 @@ describe('four-mode commentary controls', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Voice commentary paused')
     await user.click(screen.getByRole('button', { name: 'Resume commentary' }))
     expect(p.voicePlayback.resumeCommentary).toHaveBeenCalledOnce()
+  })
+
+  it.each(['written', 'off'] as const)('shows no ▶ in %s, including Read all feedback', async (mode) => {
+    const user = userEvent.setup()
+    render(<TrackSelector {...props(mode)} />)
+    await user.click(screen.getByText('Read all feedback'))
+    await waitFor(() => expect(screen.getByRole('list', { name: 'All feedback' })).toBeInTheDocument())
+    expect(screen.queryAllByRole('button', { name: /voice commentary at/ })).toHaveLength(0)
+  })
+
+  it('shows ▶ in Audio only and its Read all feedback, with one reserved status box', async () => {
+    const user = userEvent.setup()
+    const p = props('voice')
+    p.voicePlayback.current = voice
+    p.voicePlayback.state = 'playing'
+    render(<TrackSelector {...p} />)
+    expect(within(screen.getByRole('list', { name: 'Commentary transcript' })).getByRole('button', { name: 'Pause voice commentary at 10 seconds' })).toBeInTheDocument()
+    await user.click(screen.getByText('Read all feedback'))
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'All feedback' })).getByRole('button', { name: 'Pause voice commentary at 10 seconds' })).toBeInTheDocument())
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    expect(screen.getByRole('status').closest('.sm\\:min-h-16')).not.toBeNull()
   })
 })

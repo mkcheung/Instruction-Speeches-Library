@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\SpeechAssetStatus;
+use App\Enums\TranscriptStatus;
 use App\Jobs\NormalizeVoiceNote;
 use App\Models\Annotation;
 use App\Models\Review;
@@ -69,7 +71,7 @@ class VoiceWhisperSmokeSeedCommand extends Command
                     'status' => 'in_progress',
                 ]);
                 $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create([
-                    'status' => 'processing',
+                    'status' => SpeechAssetStatus::Processing->value,
                     'path' => "speeches/{$speech->ulid}/voice/".Str::uuid().'.m4a',
                     'disk' => 'media',
                     'mime_type' => 'audio/mp4',
@@ -80,7 +82,7 @@ class VoiceWhisperSmokeSeedCommand extends Command
                 $annotation = Annotation::factory()->for($review)->create([
                     'audio_asset_id' => $asset->id,
                     'body' => '',
-                    'transcript_status' => 'pending',
+                    'transcript_status' => TranscriptStatus::Pending->value,
                     'transcript_attempt_id' => (string) Str::uuid(),
                     'duration_seconds' => 0.001,
                 ]);

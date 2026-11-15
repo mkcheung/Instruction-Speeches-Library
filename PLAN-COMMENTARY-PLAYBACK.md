@@ -241,6 +241,7 @@ audio-enabled capability. Both `all` and `voice` enable the same scheduler.
     without requiring playback before zero. Test forward/backward/exact/zero
     seeks and source-refresh seeks. Direct click-to-play voice notes would be
     additional scope.
+    Superseded for navigated voice notes by [PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md](PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md). The row play button is that scope.
 
 Source-row removal is observed through the existing annotation refresh/polling
 cadence. Do not promise instantaneous remote revocation or retraction of bytes
@@ -515,6 +516,7 @@ Do not reseed or mutate the user's existing working speeches as a test shortcut.
 13. Seek forward/backward while voice audio is loading, playing, and paused.
     Old audio/queue stops without starting the speech. Verify exact-marker and
     zero-time behavior matches the documented Seek-only navigation.
+    Superseded for navigated voice notes by [PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md](PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md).
 
 ### 9.3 Validation boundaries
 
@@ -575,7 +577,7 @@ source. The first pass found six substantive gaps, all addressed in this revisio
 | HTML fullscreen excludes sibling overlays/markers and below-player controls. | Added an explicit fullscreen integration phase and owned portal/control contract in section 8.1. |
 | Queued/current voice snapshots outlive deleted/erased/replaced source rows, and transcript text can stay stale. | Added canonical note/asset reconciliation and live text lookup in section 5. |
 | A long commentary pause exhausts the existing wall-clock safety deadline. | Defined frozen remaining playback budget and long-pause acceptance tests. |
-| Seek behavior during an active voice and exact-marker navigation were unspecified. | Defined cancellation without forced autoplay and an explicit Seek-only contract. |
+| Seek behavior during an active voice and exact-marker navigation were unspecified. | Defined cancellation without forced autoplay and an explicit Seek-only contract. Superseded for navigated voice notes by [PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md](PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md). |
 | Permanent local override would conflict with authoritative clean focus refetches. | Added bounded intent generations, acknowledgement rules, and clean-refetch precedence. |
 | SQLite cannot prove PostgreSQL row-lock concurrency semantics. | Added a separate isolated PostgreSQL two-connection check and an honest unverified fallback. |
 

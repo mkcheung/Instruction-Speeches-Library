@@ -93,6 +93,41 @@ describe('useKeyboardShortcuts', () => {
     expect(onSeek).toHaveBeenLastCalledWith(8)
   })
 
+  it('[ and ] call onNavigate with the landed note after onSeek; no note, no call', () => {
+    const video = makeVideo({ currentTime: 10 } as Partial<HTMLVideoElement>)
+    const order: string[] = []
+    const onSeek = vi.fn(() => { order.push('seek') })
+    const onNavigate = vi.fn(() => { order.push('nav') })
+    const annotations: (KeyboardShortcutAnnotation & { tag: string })[] = [
+      { id: 'b', start_seconds: 8, tag: 'prev' },
+      { id: 'c', start_seconds: 15, tag: 'next' },
+    ]
+    renderHook(() => useKeyboardShortcuts({ videoEl: video, annotations, onSeek, onNavigate }))
+    dispatchKeyDown(document.body, { code: 'BracketRight', key: ']' })
+    expect(onNavigate).toHaveBeenLastCalledWith(annotations[1])
+    dispatchKeyDown(document.body, { code: 'BracketLeft', key: '[' })
+    expect(onNavigate).toHaveBeenLastCalledWith(annotations[0])
+    expect(order).toEqual(['seek', 'nav', 'seek', 'nav'])
+    ;(video as { currentTime: number }).currentTime = 100
+    dispatchKeyDown(document.body, { code: 'BracketRight', key: ']' })
+    expect(onNavigate).toHaveBeenCalledTimes(2)
+  })
+
+  it('[ lands on the head of a same-time group, as ] does', () => {
+    const video = makeVideo({ currentTime: 10 } as Partial<HTMLVideoElement>)
+    const onSeek = vi.fn()
+    const onNavigate = vi.fn()
+    const annotations = [{ id: 'b', start_seconds: 5 }, { id: 'a', start_seconds: 5 }, { id: 'c', start_seconds: 2 }]
+    renderHook(() => useKeyboardShortcuts({ videoEl: video, annotations, onSeek, onNavigate }))
+    dispatchKeyDown(document.body, { code: 'BracketLeft', key: '[' })
+    expect(onSeek).toHaveBeenLastCalledWith(5)
+    expect(onNavigate).toHaveBeenLastCalledWith(annotations[1])
+    onNavigate.mockClear()
+    ;(video as { currentTime: number }).currentTime = 2
+    dispatchKeyDown(document.body, { code: 'BracketRight', key: ']' })
+    expect(onNavigate).toHaveBeenLastCalledWith(annotations[1])
+  })
+
   it('Space toggles play/pause when focus is not on a button/link', () => {
     const video = makeVideo({ paused: true } as Partial<HTMLVideoElement>)
     renderHook(() => useKeyboardShortcuts({ videoEl: video, annotations: [], onSeek: vi.fn() }))

@@ -472,10 +472,9 @@ export default function SpeechWatch() {
       setOwnerTab('notes')
     }
   }
-  const seekOwnerTimeline = (seconds: number) => {
-    if (ownerPlaybackReady && readyPlayback && !readyPlayback.player.isDisposed() &&
-      getVideoElement(readyPlayback.player) === readyPlayback.video) commentary.seek(seconds)
-  }
+  const ownerTimelineSeekable = () => !!(ownerPlaybackReady && readyPlayback && !readyPlayback.player.isDisposed() &&
+    getVideoElement(readyPlayback.player) === readyPlayback.video)
+  const seekOwnerTimeline = (seconds: number) => { if (ownerTimelineSeekable()) commentary.seek(seconds) }
   const playbackControlProps = {
     mode: commentary.mode,
     onModeChange: commentary.selectMode,
@@ -601,6 +600,7 @@ export default function SpeechWatch() {
     onSeek: isOwner ? commentary.seek : (seconds: number) => {
       if (videoEl) seekVideo(videoEl, seconds)
     },
+    onNavigate: isOwner ? (note) => { if (note.voice) commentary.voicePlayback.armNote(note) } : undefined,
     enabled: isOwner || !myReview,
   })
 
@@ -815,7 +815,8 @@ export default function SpeechWatch() {
               reviewerLabel={ownerReviewerLabel} mode={commentary.mode} status={ownerTimelineStatus}
               refreshError={!commentaryDenied && commentary.allAnnotations.length > 0 &&
                 (!!error || !!meError || !!commentary.error || !!commentary.preference.loadError)}
-              onSeek={seekOwnerTimeline} onOpenNotes={openOwnerNotes}
+              onSeek={seekOwnerTimeline}
+              onVoiceNoteActivate={(note) => { if (ownerTimelineSeekable()) commentary.voicePlayback.armNote(note) }} onOpenNotes={openOwnerNotes}
               scrub={{ bindingKey: ownerScrubKey, enabled: ownerScrubReady, active: true,
                 onSeek: (seconds) => seekScrub('owner', ownerScrubKey, seconds) }}
               frameSelector={<PosterFramePicker speechId={speechId} assetId={asset!.id}

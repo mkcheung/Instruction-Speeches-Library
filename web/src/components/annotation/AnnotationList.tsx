@@ -114,6 +114,7 @@ export interface AnnotationListProps {
   /** Author intent (an editor capture or a delete). The delete handler reads it through the latest-ref, so its fixed
    *  `useCallback` deps cannot pin an old handler; text rows receive the current prop. */
   onAuthorIntent?: () => void
+  onVoiceNoteActivate?: (note: Annotation) => void
 }
 
 interface HoldEntry { kind: 'edit' | 'delete' | 'undo' | 'retry'; rowId: string | null }
@@ -133,7 +134,7 @@ function rangeText(page: number, total: number): string {
 function SavedNotes(props: AnnotationListProps) {
   const { annotations, speechId, reviewId, videoEl, autoPause, currentId, userId, durationMs, onSeek, onLiveChange, onLiveRemove, onSaved,
     onSilentAdopt, open, defaultOpen = false, onOpenChange, headingLevel = 3, active = true, revealRequest, onRevealResult,
-    onSelectedChange, acknowledgedSave, onHoldChange, onAuthorIntent } = props
+    onSelectedChange, acknowledgedSave, onHoldChange, onAuthorIntent, onVoiceNoteActivate } = props
   const baseId = useId()
   const prefix = props.id ?? `saved-notes-${baseId}`
   const toggleId = `${prefix}-toggle`
@@ -426,7 +427,7 @@ function SavedNotes(props: AnnotationListProps) {
           }
           return isPointAnnotation(annotation)
             ? <VoiceAnnotationRow key={rowKey(annotation)} {...common} speechId={speechId} reviewId={reviewId} userId={userId}
-              audioActive={active && isOpen} onPendingChange={handlePending} />
+              audioActive={active && isOpen} onPendingChange={handlePending} onVoiceNoteActivate={onVoiceNoteActivate} />
             : <AnnotationRow key={rowKey(annotation)} {...common} speechId={speechId} reviewId={reviewId} userId={userId}
               videoEl={videoEl} autoPause={autoPause} annotations={annotations} durationMs={durationMs}
               onLiveChange={onLiveChange} onLiveRemove={onLiveRemove} onSaved={onSaved} onSilentAdopt={onSilentAdopt} onPendingChange={handlePending}

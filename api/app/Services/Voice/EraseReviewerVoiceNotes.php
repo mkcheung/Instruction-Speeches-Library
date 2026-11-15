@@ -2,13 +2,14 @@
 
 namespace App\Services\Voice;
 
+use App\Enums\SpeechAssetStatus;
+use App\Enums\TranscriptStatus;
 use App\Models\Annotation;
 use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Services\QuotaService;
-use App\Services\StorageObjectRemover;
 use App\Support\AnnotationTransactions;
-use Illuminate\Support\Str;
+use App\Support\AssetPurgeClaim;
 
 class EraseReviewerVoiceNotes
 {
@@ -22,7 +23,7 @@ class EraseReviewerVoiceNotes
             ->whereHas('review', fn ($query) => $query->where('reviewer_id', $reviewer->id))->pluck('id');
 
         foreach ($ids as $id) {
-            $claimed = AnnotationTransactions::run(function () use ($id): ?array {
+            $claim = AnnotationTransactions::run(function () use ($id): ?AssetPurgeClaim {
                 $snapshot = Annotation::withTrashed()->whereKey($id)->first(['id', 'audio_asset_id']);
                 if ($snapshot === null || $snapshot->audio_asset_id === null) {
                     return null;
@@ -32,28 +33,27 @@ class EraseReviewerVoiceNotes
                 if ($asset === null || $annotation === null || $annotation->audio_asset_id !== $asset->id) {
                     return null;
                 }
-                $claimId = $asset->purge_claim_id ?? (string) Str::uuid();
-                if ($asset->status === 'processing') {
-                    $asset->update(['status' => 'failed', 'failure_code' => 'voice_storage_failed', 'failure_detail' => 'Voice note is being erased.']);
-                }
-                $asset->update(['purge_claim_id' => $claimId]);
+                // The note stays live as text: show a processing asset as failed while erasure runs. A ready asset stays ready (and playable) unless erasure finishes.
+                $failed = $asset->status === SpeechAssetStatus::Processing->value
+                    ? ['status' => SpeechAssetStatus::Failed->value, 'failure_code' => 'voice_storage_failed', 'failure_detail' => 'Voice note is being erased.']
+                    : [];
 
-                return ['claim_id' => $claimId, 'asset_id' => $asset->id, 'disk' => $asset->disk, 'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path)];
+                return AssetPurgeClaim::stamp($asset, $failed);
             });
-            if ($claimed === null) {
+            if ($claim === null) {
                 continue;
             }
-            app(StorageObjectRemover::class)->deleteExisting($claimed['disk'], $claimed['paths'], 'Voice-note erasure failed; reviewer identity was retained.');
-            $released = AnnotationTransactions::run(function () use ($id, $claimed, $reviewer): ?int {
-                $asset = SpeechAsset::query()->whereKey($claimed['asset_id'])->where('purge_claim_id', $claimed['claim_id'])->lockForUpdate()->first();
+            $claim->deleteObjects('Voice-note erasure failed; reviewer identity was retained.');
+            $released = AnnotationTransactions::run(function () use ($id, $claim, $reviewer): ?int {
+                $asset = $claim->lockAsset();
                 $annotation = Annotation::withTrashed()->whereKey($id)->lockForUpdate()->first();
                 if ($asset === null || $annotation === null || $annotation->audio_asset_id !== $asset->id) {
                     return null;
                 }
-                $charged = (int) ($asset->temporary_byte_size ?? $asset->byte_size ?? 0);
+                $charged = $asset->chargedBytes();
                 $annotation->update([
                     'audio_asset_id' => null,
-                    'transcript_status' => $annotation->body !== '' ? 'ready' : 'not_applicable',
+                    'transcript_status' => $annotation->body !== '' ? TranscriptStatus::Ready->value : TranscriptStatus::NotApplicable->value,
                     'transcript_failure_code' => null,
                     'transcript_attempt_id' => null,
                 ]);

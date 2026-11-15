@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\SpeechAssetStatus;
 use App\Models\Speech;
 use App\Models\SpeechAsset;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -28,7 +29,7 @@ class SpeechAssetFactory extends Factory
             'original_filename' => 'speech.mp4',
             'mime_type' => 'video/mp4',
             'byte_size' => fake()->numberBetween(1_000_000, 40_000_000),
-            'status' => 'uploading',
+            'status' => SpeechAssetStatus::Uploading->value,
             'is_primary' => false,
         ];
     }
@@ -45,7 +46,7 @@ class SpeechAssetFactory extends Factory
     public function ready(): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'ready',
+            'status' => SpeechAssetStatus::Ready->value,
             'is_primary' => true,
         ]);
     }
@@ -53,7 +54,7 @@ class SpeechAssetFactory extends Factory
     public function failed(string $code = 'unsupported_format'): static
     {
         return $this->state(fn (array $attributes) => [
-            'status' => 'failed',
+            'status' => SpeechAssetStatus::Failed->value,
             'failure_code' => $code,
             'failure_detail' => 'ffprobe: unsupported codec for remux-only pipeline',
         ]);

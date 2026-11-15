@@ -13,11 +13,10 @@ use App\Models\SpeechAsset;
 use App\Models\User;
 use App\Models\UsernameHistory;
 use App\Services\RoleAssignmentService;
-use App\Services\StorageObjectRemover;
 use App\Services\Voice\EraseReviewerVoiceNotes;
+use App\Support\AssetPurgeClaim;
 use App\Support\AuditAction;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * STEP-11-FROZEN-CONTRACT.md §6 — the account-erasure job, exact order,
@@ -315,34 +314,27 @@ class AccountErasureService
      */
     private function purgeAssetStorageAndRow(int $assetId): ?int
     {
-        $claim = DB::transaction(function () use ($assetId): ?array {
+        $claim = DB::transaction(function () use ($assetId): ?AssetPurgeClaim {
             $asset = SpeechAsset::query()->whereKey($assetId)->lockForUpdate()->first();
             if ($asset === null) {
                 return null;
             }
-            $claimId = $asset->purge_claim_id ?? (string) Str::uuid();
-            $asset->update(['purge_claim_id' => $claimId]);
 
-            return [
-                'claim_id' => $claimId,
-                'asset_id' => $asset->id,
-                'disk' => $asset->disk,
-                'paths' => SpeechAsset::voiceAssetCandidatePaths($asset->temporary_path, $asset->normalization_candidate_path, $asset->path),
-            ];
+            return AssetPurgeClaim::stamp($asset);
         });
 
         if ($claim === null) {
             return null;
         }
 
-        app(StorageObjectRemover::class)->deleteExisting($claim['disk'], $claim['paths'], "Account-erasure media purge failed for asset {$claim['asset_id']}.");
+        $claim->deleteObjects("Account-erasure media purge failed for asset {$claim->assetId}.");
 
         return DB::transaction(function () use ($claim): int {
-            $fresh = SpeechAsset::query()->whereKey($claim['asset_id'])->where('purge_claim_id', $claim['claim_id'])->lockForUpdate()->first();
+            $fresh = $claim->lockAsset();
             if ($fresh === null) {
                 return 0;
             }
-            $bytes = (int) ($fresh->temporary_byte_size ?? $fresh->byte_size ?? 0);
+            $bytes = $fresh->chargedBytes();
             $fresh->delete();
 
             return $bytes;

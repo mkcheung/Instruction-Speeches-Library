@@ -248,3 +248,61 @@ it('reuses an existing purge claim rather than minting a second one on retry', f
     // on a retry would strand the row it had already claimed.
     expect(SpeechAsset::find($asset->id))->toBeNull();
 });
+
+it('never transcribes a pending note whose audio is not ready', function (string $status) {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [, $speech, $review] = makeVoiceLifecycleFixture();
+    $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create(['status' => $status]);
+    $attempt = (string) Str::uuid();
+    $annotation = Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'body' => '', 'transcript_status' => 'pending', 'transcript_attempt_id' => $attempt]);
+    $transcriber = new class implements VoiceNoteTranscriberContract
+    {
+        public function transcribe(SpeechAsset $asset): string
+        {
+            throw new RuntimeException('must not be called');
+        }
+    };
+
+    (new TranscribeVoiceNote($annotation->id, $asset->id, $attempt))->handle($transcriber);
+
+    expect($annotation->fresh()->transcript_status)->toBe('pending')
+        ->and($annotation->fresh()->transcript_failure_code)->toBeNull();
+})->with(['processing', 'failed']);
+
+it('does not fail a newer transcript attempt when the post-normalization dispatch fails', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [$coach, $speech, $review] = makeVoiceLifecycleFixture();
+    [$asset, $annotation, $temporary] = makeProcessingVoice($coach, $speech, $review);
+    $newer = (string) Str::uuid();
+    $dispatcher = Mockery::mock(Dispatcher::class);
+    $dispatcher->shouldReceive('dispatch')->once()->andReturnUsing(function () use ($annotation, $newer) {
+        Annotation::query()->whereKey($annotation->id)->update(['transcript_attempt_id' => $newer]);
+        throw new RuntimeException('redis unavailable');
+    });
+    app()->instance(Dispatcher::class, $dispatcher);
+
+    expect(fn () => (new NormalizeVoiceNote($asset->id, $temporary))->handle(new FakeVoiceNoteProcessor(app(QuotaService::class))))
+        ->toThrow(RuntimeException::class, 'redis unavailable');
+    expect($asset->fresh()->status)->toBe('ready')
+        ->and($annotation->fresh()->transcript_status)->toBe('pending')
+        ->and($annotation->fresh()->transcript_attempt_id)->toBe($newer);
+});
+
+it('leaves a claimed transcript alone when a later dispatch fails', function () {
+    $this->seed(RoleSeeder::class);
+    Storage::fake('media');
+    [, $speech, $review] = makeVoiceLifecycleFixture();
+    $asset = SpeechAsset::factory()->voiceNote()->for($speech)->create(['status' => 'ready']);
+    $attempt = (string) Str::uuid();
+    $annotation = Annotation::factory()->for($review)->create(['audio_asset_id' => $asset->id, 'transcript_status' => 'processing', 'transcript_attempt_id' => $attempt]);
+    $dispatcher = Mockery::mock(Dispatcher::class);
+    $dispatcher->shouldReceive('dispatch')->once()->andThrow(new RuntimeException('redis unavailable'));
+    app()->instance(Dispatcher::class, $dispatcher);
+
+    expect(fn () => TranscribeVoiceNote::dispatchOrMarkFailed($annotation->id, $asset->id, $attempt))
+        ->toThrow(RuntimeException::class, 'redis unavailable');
+    expect($annotation->fresh()->transcript_status)->toBe('processing')
+        ->and($annotation->fresh()->transcript_failure_code)->toBeNull();
+});

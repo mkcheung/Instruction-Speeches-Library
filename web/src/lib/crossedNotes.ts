@@ -1,11 +1,17 @@
 export const VOICE_NOTE_SEEK_EPSILON_SECONDS = 1
 /** Absorbs a saved start rounded up to the millisecond (annotationTiming) so Play from that paused playhead does not replay it. */
 export const PLAYHEAD_TOLERANCE_SECONDS = 0.001
+/** How far the playhead may sit from an armed note and still count as "on" it. */
+export const CUE_TOLERANCE_SECONDS = 0.05
 
 export interface VoiceNoteTiming {
   id: string
   start_seconds: number
 }
+
+/** Playback order: start, then id. Crossings, armed runs and the Commentary track list all use it. */
+export const comparePlaybackOrder = (a: VoiceNoteTiming, b: VoiceNoteTiming): number =>
+  a.start_seconds - b.start_seconds || a.id.localeCompare(b.id)
 
 /**
  * Return every voice note crossed by ordinary forward playback.
@@ -28,5 +34,5 @@ export function crossedNotes<T extends VoiceNoteTiming>(
   const lowerBound = started ? prevTime : -Infinity
   return notes
     .filter((note) => lowerBound < note.start_seconds && note.start_seconds <= nowTime)
-    .sort((a, b) => a.start_seconds - b.start_seconds || a.id.localeCompare(b.id))
+    .sort(comparePlaybackOrder)
 }

@@ -24,7 +24,7 @@ let mode: CommentaryPlaybackMode
 let ready: boolean
 let error: unknown
 let isFetching: boolean
-let playback: { state: string; current: Annotation | null; hint: Annotation | null }
+let playback: { state: string; current: Annotation | null; hint: Annotation | null; source?: string | null }
 
 function mount(visible = true, requested: number | null = null) {
   const hook = renderHook(({ notesVisible }) => useCommentaryTrack(8, null, true, 'owner', notesVisible, requested), { initialProps: { notesVisible: visible } })
@@ -78,6 +78,15 @@ describe('owner commentary projections and presentation', () => {
     expect(result.current.overlayVoiceId).toBeUndefined()
     expect(result.current.overlayAnnotations).toEqual([])
     expect(result.current.activeIds.has('v')).toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('a ▶ note gets no overlay but keeps its row active and marks the review seen', () => {
+    playback = { state: 'playing', current: voice, hint: null, source: 'list' }
+    const { result } = mount(false)
+    expect(result.current.overlayVoiceId).toBeUndefined()
+    expect(result.current.activeIds.has('v')).toBe(true)
+    expect(localStorage.getItem('commentary-seen:8:7')).not.toBeNull()
     vi.useRealTimers()
   })
 

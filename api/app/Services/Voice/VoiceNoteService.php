@@ -2,6 +2,8 @@
 
 namespace App\Services\Voice;
 
+use App\Enums\SpeechAssetStatus;
+use App\Enums\TranscriptStatus;
 use App\Exceptions\AnnotationCapExceededException;
 use App\Jobs\NormalizeVoiceNote;
 use App\Models\Annotation;
@@ -44,7 +46,7 @@ class VoiceNoteService
                 if ($existing !== null) {
                     return [$existing, false, null];
                 }
-                if ($locked->annotations_count >= 200) {
+                if (! $locked->hasRoomForAnnotation()) {
                     throw new AnnotationCapExceededException;
                 }
                 $start = app(AnnotationTiming::class)->point($locked, $data['start_seconds']);
@@ -78,7 +80,7 @@ class VoiceNoteService
                     'kind' => 'voice_note', 'format' => 'm4a', 'disk' => 'media',
                     'path' => $finalPath, 'original_filename' => $audio->getClientOriginalName(),
                     'mime_type' => $audio->getMimeType(), 'byte_size' => $bytes,
-                    'duration_seconds' => null, 'status' => 'processing', 'temporary_path' => $storedPath, 'temporary_byte_size' => $bytes,
+                    'duration_seconds' => null, 'status' => SpeechAssetStatus::Processing->value, 'temporary_path' => $storedPath, 'temporary_byte_size' => $bytes,
                     'is_primary' => false,
                 ]);
 
@@ -87,7 +89,7 @@ class VoiceNoteService
                     'body' => '', 'start_seconds' => $start, 'timing_type' => 'point',
                     'duration_seconds' => 1.0, 'kind' => $data['kind'] ?? 'observation',
                     'topic' => $data['topic'] ?? null, 'audio_asset_id' => $asset->id,
-                    'transcript_status' => 'pending',
+                    'transcript_status' => TranscriptStatus::Pending->value,
                     'transcript_attempt_id' => (string) Str::uuid(),
                 ]);
                 $this->reviews->recordAnnotationActivity($locked);

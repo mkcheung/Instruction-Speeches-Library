@@ -43,6 +43,7 @@ import { usePlayheadPercent } from '@/hooks/usePlayheadPercent'
 import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { isPointAnnotation, type Annotation } from '@/features/annotation/types'
 import { compareByStartThenId } from '@/lib/annotationOrder'
+import { dedupeNames } from '@/lib/dedupeNames'
 import { Volume2, VolumeX } from 'lucide-react'
 import { TimelineScrubber, type TimelineScrubCapability } from './TimelineScrubber'
 export type { TimelineScrubCapability } from './TimelineScrubber'
@@ -180,18 +181,8 @@ export function TimelineStrip({
   }
   const voiceName = ({ annotation }: (typeof voiceItems)[number]) =>
     `Voice note at ${formatSpokenTimecode(annotation.start_seconds)}${annotation.voice === null ? ', audio unavailable' : ''}`
-  const dedupe = (names: string[]) => {
-    const totals = new Map<string, number>(); names.forEach((n) => totals.set(n, (totals.get(n) ?? 0) + 1))
-    const seenN = new Map<string, number>()
-    return names.map((n) => {
-      const total = totals.get(n) ?? 1
-      if (total < 2) return n
-      const i = (seenN.get(n) ?? 0) + 1; seenN.set(n, i)
-      return `${n}, ${i} of ${total} with this name`
-    })
-  }
-  const textNames = dedupe(textItems.map(textName))
-  const voiceNames = dedupe(voiceItems.map(voiceName))
+  const textNames = dedupeNames(textItems.map(textName))
+  const voiceNames = dedupeNames(voiceItems.map(voiceName))
 
   const textHeight = `${textRows * TEXT_ROW_REM}rem`
   const voiceHeight = `${voiceRows * VOICE_ROW_REM}rem`

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\SpeechAssetStatus;
+use App\Enums\TranscriptStatus;
 use App\Exceptions\AnnotationCapExceededException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Annotation\CreateVoiceAnnotationRequest;
@@ -62,13 +64,13 @@ class VoiceAnnotationController extends Controller
         abort_unless($visible, Response::HTTP_NOT_FOUND);
         $asset = $annotation->audioAsset()->first();
         abort_unless($asset !== null && $asset->speech_id === $speech->id && $asset->kind === 'voice_note', Response::HTTP_NOT_FOUND);
-        if ($asset->status === 'processing') {
+        if ($asset->status === SpeechAssetStatus::Processing->value) {
             return new JsonResponse(['message' => 'Voice note is still processing.'], Response::HTTP_CONFLICT);
         }
-        if ($asset->status === 'failed') {
+        if ($asset->status === SpeechAssetStatus::Failed->value) {
             return new JsonResponse(['message' => 'Voice note could not be processed.', 'failure_code' => $asset->failure_code], Response::HTTP_CONFLICT);
         }
-        abort_unless($asset->status === 'ready', Response::HTTP_NOT_FOUND);
+        abort_unless($asset->isReady(), Response::HTTP_NOT_FOUND);
 
         return new JsonResponse(['audio' => ['url' => $signer->presign($asset->path), 'expires_at' => now()->addSeconds(MediaUrlSigner::DEFAULT_TTL_SECONDS)->toIso8601String()]]);
     }
@@ -88,24 +90,15 @@ class VoiceAnnotationController extends Controller
 
         $fresh = DB::transaction(function () use ($annotation): Annotation {
             $locked = Annotation::query()->with('audioAsset')->whereKey($annotation->id)->lockForUpdate()->firstOrFail();
-            abort_unless($locked->audio_asset_id !== null && $locked->audioAsset?->status === 'ready', Response::HTTP_CONFLICT, 'Voice audio is not ready.');
-            abort_unless($locked->transcript_status === 'failed', Response::HTTP_CONFLICT, 'Only a failed transcript can be retried.');
+            abort_unless($locked->audio_asset_id !== null && $locked->audioAsset?->isReady() === true, Response::HTTP_CONFLICT, 'Voice audio is not ready.');
+            abort_unless($locked->transcript_status === TranscriptStatus::Failed->value, Response::HTTP_CONFLICT, 'Only a failed transcript can be retried.');
             $attempt = (string) Str::uuid();
-            $locked->update(['transcript_status' => 'pending', 'transcript_failure_code' => null, 'transcript_attempt_id' => $attempt]);
+            $locked->update(['transcript_status' => TranscriptStatus::Pending->value, 'transcript_failure_code' => null, 'transcript_attempt_id' => $attempt]);
 
             return $locked;
         });
 
-        try {
-            TranscribeVoiceNote::dispatch($fresh->id, (int) $fresh->audio_asset_id, (string) $fresh->transcript_attempt_id);
-        } catch (\Throwable $exception) {
-            Annotation::query()->whereKey($fresh->id)
-                ->where('audio_asset_id', $fresh->audio_asset_id)
-                ->where('transcript_attempt_id', $fresh->transcript_attempt_id)
-                ->where('transcript_status', 'pending')
-                ->update(['transcript_status' => 'failed', 'transcript_failure_code' => 'voice_transcription_failed']);
-            throw $exception;
-        }
+        TranscribeVoiceNote::dispatchOrMarkFailed($fresh->id, (int) $fresh->audio_asset_id, (string) $fresh->transcript_attempt_id);
 
         return new JsonResponse(['annotation' => new AnnotationResource($fresh)], Response::HTTP_ACCEPTED);
     }
@@ -131,7 +124,7 @@ class VoiceAnnotationController extends Controller
             $this->authorize('voice.restore', $locked);
             abort_unless($locked->trashed(), Response::HTTP_CONFLICT, 'Voice note is not deleted.');
             abort_unless($asset->purge_claim_id === null, Response::HTTP_CONFLICT, 'Voice note deletion is already being finalized.');
-            if ($review->annotations_count >= 200) {
+            if (! $review->hasRoomForAnnotation()) {
                 throw new AnnotationCapExceededException;
             }
             app(AnnotationTiming::class)->point($review, $locked->start_seconds, $locked->id);

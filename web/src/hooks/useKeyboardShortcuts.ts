@@ -93,7 +93,7 @@ export interface KeyboardShortcutAnnotation {
   start_seconds: number
 }
 
-export interface UseKeyboardShortcutsOptions {
+export interface UseKeyboardShortcutsOptions<T extends KeyboardShortcutAnnotation = KeyboardShortcutAnnotation> {
   /** The real `<video>` element — same one `useTimedAnnotations` drives.
    * `null` is a valid, common state (not yet ready / not the owner's
    * player attached yet) and simply makes every action a no-op. */
@@ -102,8 +102,10 @@ export interface UseKeyboardShortcutsOptions {
    * within — need not already be sorted, this hook sorts with the same
    * `compareByStartThenId` every other display call site uses (§7.7.6:
    * "reuse that ordering… rather than re-deriving it"). */
-  annotations: readonly KeyboardShortcutAnnotation[]
+  annotations: readonly T[]
   onSeek: (seconds: number) => void
+  /** Called right after a `[`/`]` seek with the note it landed on. */
+  onNavigate?: (note: T) => void
   /** `useAnnotationEditor.ts`'s `setToPlayhead`, for the authoring
    * (reviewer) view only — `undefined` for a read-only viewer (the owner's
    * watch screen has no `AnnotationEditor` to stamp), which simply makes
@@ -128,13 +130,14 @@ export interface UseKeyboardShortcutsOptions {
  * double-fire against each other. Capture phase would invert that ordering
  * and break it.
  */
-export function useKeyboardShortcuts({
+export function useKeyboardShortcuts<T extends KeyboardShortcutAnnotation>({
   videoEl,
   annotations,
   onSeek,
+  onNavigate,
   setToPlayhead,
   enabled = true,
-}: UseKeyboardShortcutsOptions): void {
+}: UseKeyboardShortcutsOptions<T>): void {
   // Refs mirroring the latest render's values so the listener never needs
   // to be torn down and re-attached just because `onSeek`'s closure
   // identity changed (or `annotations` grew by one row) — same pattern as
@@ -142,12 +145,14 @@ export function useKeyboardShortcuts({
   const videoElRef = useRef(videoEl)
   const annotationsRef = useRef(annotations)
   const onSeekRef = useRef(onSeek)
+  const onNavigateRef = useRef(onNavigate)
   const setToPlayheadRef = useRef(setToPlayhead)
 
   useEffect(() => {
     videoElRef.current = videoEl
     annotationsRef.current = annotations
     onSeekRef.current = onSeek
+    onNavigateRef.current = onNavigate
     setToPlayheadRef.current = setToPlayhead
   })
 
@@ -163,14 +168,19 @@ export function useKeyboardShortcuts({
 
       if (direction === 1) {
         const next = sorted.find((a) => a.start_seconds > t + ADJACENT_EPSILON_SECONDS)
-        if (next) onSeekRef.current(next.start_seconds)
+        if (next) { onSeekRef.current(next.start_seconds); onNavigateRef.current?.(next) }
       } else {
-        let prev: KeyboardShortcutAnnotation | null = null
+        let prev: T | null = null
         for (const a of sorted) {
           if (a.start_seconds < t - ADJACENT_EPSILON_SECONDS) prev = a
           else break
         }
-        if (prev) onSeekRef.current(prev.start_seconds)
+        if (prev) {
+          // Land on the head of a same-time group, as `]` does, so an armed group plays in full.
+          const start = prev.start_seconds
+          const head = sorted.find((a) => a.start_seconds === start) ?? prev
+          onSeekRef.current(head.start_seconds); onNavigateRef.current?.(head)
+        }
       }
     }
 

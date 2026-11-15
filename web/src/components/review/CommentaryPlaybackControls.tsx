@@ -57,10 +57,12 @@ export function CommentaryPlaybackControls(props: CommentaryPlaybackControlsProp
       {preference.preference?.source === 'legacy' && preference.preference.legacy_mode === 'text' && (
         <p className="text-sm text-muted-foreground">To read recorded feedback silently, open Read all feedback.</p>
       )}
-      {props.showVoiceControls !== false && <VoicePlaybackControls playback={voicePlayback} />}
+      {props.showVoiceControls !== false && <div className={cn(voicePlayback.canPlayNotes && 'sm:min-h-16')}>
+        <VoicePlaybackControls playback={voicePlayback} />
+      </div>}
       {!disabled && preference.ready && <>
         {mode === 'off' ? <p className="text-sm text-muted-foreground">Commentary is off.</p>
-          : annotations.length > 0 ? <Transcript annotations={annotations} activeIds={activeIds} currentTime={currentTime} onSeek={onSeek} hideBody={hideReadableBody} />
+          : annotations.length > 0 ? <Transcript annotations={annotations} activeIds={activeIds} currentTime={currentTime} onSeek={onSeek} hideBody={hideReadableBody} voicePlayback={voicePlayback} />
             : <p className="text-sm text-muted-foreground">{mode === 'written' ? 'No written notes from this reviewer.'
               : mode === 'voice' ? 'No audio commentary from this reviewer.' : 'No commentary from this reviewer.'}</p>}
         {mode !== 'all' && allAnnotations.length > 0 && <FeedbackDisclosure key={props.readingKey} {...props} />}
@@ -69,7 +71,7 @@ export function CommentaryPlaybackControls(props: CommentaryPlaybackControlsProp
   )
 }
 
-function FeedbackDisclosure({ allAnnotations, activeIds, currentTime, onSeek, visible, onReadAll }: CommentaryPlaybackControlsProps) {
+function FeedbackDisclosure({ allAnnotations, activeIds, currentTime, onSeek, visible, onReadAll, voicePlayback }: CommentaryPlaybackControlsProps) {
   const [open, setOpen] = useState(false)
   return <details open={open} onToggle={(event) => {
     if (event.currentTarget.open === open) return
@@ -77,6 +79,6 @@ function FeedbackDisclosure({ allAnnotations, activeIds, currentTime, onSeek, vi
     if (event.currentTarget.open && visible) onReadAll()
   }}>
     <summary className="min-h-11 cursor-pointer py-2 text-sm font-medium">Read all feedback</summary>
-    {open && <Transcript annotations={allAnnotations} activeIds={activeIds} currentTime={currentTime} onSeek={onSeek} label="All feedback" />}
+    {open && <Transcript annotations={allAnnotations} activeIds={activeIds} currentTime={currentTime} onSeek={onSeek} label="All feedback" voicePlayback={voicePlayback} />}
   </details>
 }

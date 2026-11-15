@@ -413,32 +413,6 @@ function AnnotationComposerPanelInner({
     textRegionRef.current?.focus()
   }, [draftReveal, tool])
 
-  const handleMarkerActivate = useCallback((activation: TimelineMarkerActivation) => {
-    // TimelineStrip already performed the single seek; never seek again here.
-    if (activation.temporary) {
-      if (recorderLocked) { setDraftBlocked(true); return }
-      setDraftBlocked(false)
-      setSelectedTool('text')
-      setDraftReveal((value) => value + 1)
-      return
-    }
-    setRevealRequest({ id: activation.id, token: ++tokenRef.current })
-  }, [recorderLocked])
-
-  // C / Alt+C: stamp the Text composer only. Omitted entirely when inactive, unwritable or locked.
-  const captureAllowed = authoringActive && writable && !recorderLocked && composerSetToPlayhead !== undefined
-  const handleCapture = useCallback(() => {
-    setDraftBlocked(false)
-    setSelectedTool('text')
-    composerSetToPlayhead?.()
-  }, [composerSetToPlayhead])
-  useKeyboardShortcuts({
-    videoEl,
-    annotations: merged,
-    onSeek,
-    setToPlayhead: captureAllowed ? handleCapture : undefined,
-  })
-
   // Author voice preview: the author's own voice notes (drafts included) interject like the speaker's.
   const [autoplayOn, setAutoplayOn] = useLocalBooleanPreference({ key: 'annotation-composer:voice-autoplay', userId, defaultValue: true })
   const recorderPending = voiceReports.some((report) => report.pending)
@@ -452,6 +426,35 @@ function AnnotationComposerPanelInner({
     audioEnabled: autoplayOn,
     resetKey: reviewId,
   })
+  const { armNote } = voicePlayback
+  const handleMarkerActivate = useCallback((activation: TimelineMarkerActivation) => {
+    // TimelineStrip already performed the single seek; never seek again here.
+    if (activation.temporary) {
+      if (recorderLocked) { setDraftBlocked(true); return }
+      setDraftBlocked(false)
+      setSelectedTool('text')
+      setDraftReveal((value) => value + 1)
+      return
+    }
+    if (activation.kind === 'voice') armNote(activation.annotation)
+    setRevealRequest({ id: activation.id, token: ++tokenRef.current })
+  }, [recorderLocked, armNote])
+
+  // C / Alt+C: stamp the Text composer only. Omitted entirely when inactive, unwritable or locked.
+  const captureAllowed = authoringActive && writable && !recorderLocked && composerSetToPlayhead !== undefined
+  const handleCapture = useCallback(() => {
+    setDraftBlocked(false)
+    setSelectedTool('text')
+    composerSetToPlayhead?.()
+  }, [composerSetToPlayhead])
+  useKeyboardShortcuts({
+    videoEl,
+    annotations: merged,
+    onSeek,
+    onNavigate: (note) => { if (note.voice) armNote(note) },
+    setToPlayhead: captureAllowed ? handleCapture : undefined,
+  })
+
   const interjecting = voicePlayback.current !== null
   const handleAuthorIntent = voicePlayback.suppressResume
 
@@ -599,6 +602,7 @@ function AnnotationComposerPanelInner({
             onOpenChange={handleSavedOpenChange}
             active={authoringActive && !interjecting}
             onAuthorIntent={handleAuthorIntent}
+            onVoiceNoteActivate={armNote}
             revealRequest={revealRequest}
             onSelectedChange={setSelectedId}
             acknowledgedSave={acknowledgedSave}

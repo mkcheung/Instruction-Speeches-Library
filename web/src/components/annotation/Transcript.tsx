@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type MouseEvent } from 'react'
+import { LoaderCircle, Pause, Play } from 'lucide-react'
 import { annotationDisplayBody, type Annotation } from '@/features/annotation/types'
 import { formatSpokenTimecode, formatTimecode } from '@/lib/time'
 import { cn } from '@/lib/utils'
+import { dedupeNames } from '@/lib/dedupeNames'
+import type { VoicePlayback } from '@/hooks/useVoiceInterjections'
 
 /** How long a manual scroll suppresses auto-scroll for, per §8.4/§8.5:
  * "auto-scroll suppressed... for 4s after a manual scroll." */
@@ -29,6 +32,7 @@ export function Transcript({
   onSeek,
   hideBody = false,
   label = 'Commentary transcript',
+  voicePlayback,
 }: {
   annotations: readonly Annotation[]
   activeIds: ReadonlySet<string>
@@ -36,6 +40,7 @@ export function Transcript({
   onSeek: (seconds: number) => void
   hideBody?: boolean
   label?: string
+  voicePlayback?: VoicePlayback
 }) {
   const sorted = useMemo(
     () => [...annotations].sort((a, b) => a.start_seconds - b.start_seconds || a.id.localeCompare(b.id)),
@@ -60,6 +65,13 @@ export function Transcript({
     }
     return null
   }, [sorted, activeIds, currentTime])
+
+  const names = useMemo(() => {
+    // Only rows with ▶ carry a name, so only they count toward the ", N of M with this name" suffix.
+    const ready = sorted.filter((a) => a.voice?.audio_status === 'ready')
+    const deduped = dedupeNames(ready.map((a) => formatSpokenTimecode(a.start_seconds)))
+    return new Map(ready.map((a, i) => [a.id, deduped[i]]))
+  }, [sorted])
 
   const listRef = useRef<HTMLOListElement>(null)
   const rowRefs = useRef(new Map<string, HTMLLIElement>())
@@ -122,34 +134,60 @@ export function Transcript({
       aria-label={label}
       className="flex max-h-80 flex-col gap-1 overflow-y-auto"
     >
-      {sorted.map((a) => (
+      {sorted.map((a) => { const isCurrent = a.id === currentId; const playable = !!voicePlayback?.canPlayNotes && a.voice?.audio_status === 'ready'; return (
         <li
           key={a.id}
           ref={(el) => {
             if (el) rowRefs.current.set(a.id, el)
             else rowRefs.current.delete(a.id)
           }}
-          aria-current={a.id === currentId ? 'true' : undefined}
+          aria-current={isCurrent ? 'true' : undefined}
+          className={cn('flex items-stretch gap-1 rounded-md', isCurrent && 'bg-muted')}
         >
           <button
             type="button"
-            onClick={() => onSeek(a.start_seconds)}
+            onClick={() => { onSeek(a.start_seconds); if (a.voice) voicePlayback?.armNote(a) }}
             className={cn(
-              'flex w-full items-baseline gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted',
-              a.id === currentId && 'bg-muted font-medium',
+              'flex min-h-11 min-w-0 flex-1 items-baseline gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted',
+              'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+              isCurrent && 'font-medium',
             )}
           >
             <span aria-hidden="true" className="shrink-0 tabular-nums text-muted-foreground">
               {formatTimecode(a.start_seconds)}
             </span>
             <span className="sr-only">Annotation at {formatSpokenTimecode(a.start_seconds)}</span>
-            <span>{hideBody ? `Voice commentary · ${a.voice?.audio_status === 'ready' ? 'Ready' : a.voice?.audio_status === 'failed' ? 'Unavailable' : 'Processing'}` : annotationDisplayBody(a)}</span>
+            <span className="min-w-0 break-words">{hideBody ? `Voice commentary · ${a.voice?.audio_status === 'ready' ? 'Ready' : a.voice?.audio_status === 'failed' ? 'Unavailable' : 'Processing'}` : annotationDisplayBody(a)}</span>
           </button>
+          {playable && voicePlayback && <RowPlayButton note={a} name={names.get(a.id)!} playback={voicePlayback} />}
         </li>
-      ))}
+      )})}
       {sorted.length === 0 && (
         <li className="px-2 py-1 text-sm text-muted-foreground">No commentary on this track.</li>
       )}
     </ol>
+  )
+}
+
+function RowPlayButton({ note, name, playback }: { note: Annotation; name: string; playback: VoicePlayback }) {
+  const state = playback.current?.id === note.id ? playback.state : 'idle'
+  const label = state === 'loading' ? `Loading voice commentary at ${name}`
+    : state === 'playing' ? `Pause voice commentary at ${name}`
+      : state === 'paused' ? `Resume voice commentary at ${name}` : `Play voice commentary at ${name}`
+  const onClick = (event: MouseEvent<HTMLButtonElement>) => {
+    // Safari does not focus a clicked button; the list's :focus-within auto-scroll guard needs it.
+    event.currentTarget.focus({ preventScroll: true })
+    if (state === 'loading') return
+    if (state === 'playing') playback.pauseCommentary()
+    else if (state === 'paused') void playback.resumeCommentary()
+    else playback.playNote(note)
+  }
+  const Icon = state === 'loading' ? LoaderCircle : state === 'playing' ? Pause : Play
+  return (
+    <button type="button" aria-label={label} aria-disabled={state === 'loading' ? 'true' : undefined} onClick={onClick}
+      className={cn('inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md hover:bg-accent',
+        'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring')}>
+      <Icon aria-hidden="true" className={cn('size-4', state === 'loading' ? 'motion-safe:animate-spin' : 'fill-current')} />
+    </button>
   )
 }

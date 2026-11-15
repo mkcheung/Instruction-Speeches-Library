@@ -22,6 +22,8 @@ export interface OwnerVideoToolsProps {
   /** A nonterminal refresh failure can coexist with already authorized rows. */
   refreshError?: boolean
   onSeek: (seconds: number) => void
+  /** A Voice point was activated (after its single seek): arm it for the next Play. */
+  onVoiceNoteActivate?: (note: Annotation) => void
   /** Navigation permission is independent of commentary selection and mode. */
   scrub?: TimelineScrubCapability
   onOpenNotes: () => void
@@ -49,7 +51,7 @@ export function OwnerVideoTools(props: OwnerVideoToolsProps) {
 
 function ScopedOwnerVideoTools({
   playbackReady, videoEl, navigationAnnotations, activeIds, durationSeconds,
-  reviewerLabel, mode, status, refreshError = false, onSeek, scrub, onOpenNotes, frameSelector,
+  reviewerLabel, mode, status, refreshError = false, onSeek, onVoiceNoteActivate, scrub, onOpenNotes, frameSelector,
 }: OwnerVideoToolsProps) {
   const [tab, setTab] = useState('timeline')
   const boundVideo = playbackReady ? videoEl : null
@@ -74,6 +76,7 @@ function ScopedOwnerVideoTools({
       {refreshError && <p className="owner-video-tools__notice" role="status">Commentary could not refresh. Previously loaded commentary may still be shown. Open Notes for details.</p>}
       <TimelineStrip annotations={markers} videoEl={boundVideo} durationSeconds={durationSeconds}
         activeIds={canSeek ? activeIds : []} onSeek={(seconds) => { if (canSeek) onSeek(seconds) }}
+        onMarkerActivate={(m) => { if (canSeek && m.kind === 'voice') onVoiceNoteActivate?.(m.annotation) }}
         scrub={scrub && { ...scrub, enabled: scrub.enabled && boundVideo !== null,
           active: scrub.active && tab === 'timeline' }} />
       <p className="owner-video-tools__help">Select a Text range or Voice point to seek the video. Blank areas have no commentary in this mode.</p>

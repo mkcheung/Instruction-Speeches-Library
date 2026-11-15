@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\TranscriptStatus;
 use App\Exceptions\AnnotationCapExceededException;
 use App\Exceptions\AnnotationConflictException;
 use App\Jobs\PurgeDeletedVoiceAnnotation;
@@ -63,7 +64,7 @@ class AnnotationService
      * work without colliding against its own tombstone (the partial unique
      * index is scoped to `WHERE deleted_at IS NULL` for the same reason).
      *
-     * The ≤200-per-set cap (§10.4) is checked against the counter cache
+     * The per-set cap (`Review::MAX_ANNOTATIONS`, §10.4) is checked against the counter cache
      * under the SAME `lockForUpdate()` this method already takes, never a
      * live `COUNT(*)`. `recordAnnotationActivity` runs in this same
      * transaction, not as a follow-up query.
@@ -96,7 +97,7 @@ class AnnotationService
                 return [$existing, false];
             }
 
-            if ($locked->annotations_count >= 200) {
+            if (! $locked->hasRoomForAnnotation()) {
                 throw new AnnotationCapExceededException;
             }
 
@@ -175,7 +176,7 @@ class AnnotationService
                 'body', 'start_seconds', 'duration_seconds', 'kind', 'topic',
             ])));
             if ($locked->audio_asset_id !== null && array_key_exists('body', $data)) {
-                abort_unless($locked->transcript_status === 'ready', 409, 'The transcript is not ready to edit.');
+                abort_unless($locked->transcript_status === TranscriptStatus::Ready->value, 409, 'The transcript is not ready to edit.');
             }
             $locked->lock_version++;
             $locked->save();
@@ -223,7 +224,7 @@ class AnnotationService
             if (! $row->trashed()) {
                 return $row->load('audioAsset');
             }
-            if ($lockedReview->annotations_count >= 200) {
+            if (! $lockedReview->hasRoomForAnnotation()) {
                 throw new AnnotationCapExceededException;
             }
             $this->timing->point($lockedReview, $row->start_seconds, $row->id);
