@@ -6,7 +6,8 @@ import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { AnnotationComposerPanel } from './AnnotationComposerPanel'
 import type { Annotation, AnnotationsResponse } from '@/features/annotation/types'
 import type { Review } from '@/features/review/types'
-import { FakeAudio, playableVideo, tick } from '@/test/voiceAudio'
+import { FakeAudio, playableVideo, stubVoiceAudio, tick } from '@/test/voiceAudio'
+import { voiceNote } from '@/test/voiceFixtures'
 
 function note(id: string, start = 2, duration = 4): Annotation {
   return { id, timing_type: 'range', start_seconds: start, duration_seconds: duration,
@@ -629,14 +630,10 @@ describe('annotation workspace unmocked integration (real VoiceRecorder + real A
 
 
 describe('author voice preview (real engine, list and editors)', () => {
-  const voiceNote = (id: string, start: number): Annotation => ({ ...note(id, start, 2), timing_type: 'point' as const, body: 'Spoken words',
-    voice: { asset_id: 5, audio_status: 'ready' as const, transcript_status: 'ready' as const, failure_code: null } })
-
   function setup() {
     integ.real = true
-    vi.stubGlobal('Audio', FakeAudio)
-    loadAudio.mockImplementation(() => ({ unwrap: () => Promise.resolve({ audio: { url: 'https://media/v1.m4a', expires_at: '' } }) }))
-    const data = { review_id: 9, reviewer: null, annotations: [voiceNote('v1', 1)] }
+    stubVoiceAudio(loadAudio)
+    const data = { review_id: 9, reviewer: null, annotations: [voiceNote('v1', 1, { body: 'Spoken words', voice: { asset_id: 5 } })] }
     queryState = { ...queryState, data, currentData: data }
     const video = playableVideo()
     Object.defineProperty(video, 'duration', { value: 100 })

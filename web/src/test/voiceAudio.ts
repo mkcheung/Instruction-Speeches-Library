@@ -1,5 +1,5 @@
 import { act } from '@testing-library/react'
-import { vi } from 'vitest'
+import { vi, type Mock } from 'vitest'
 
 export class FakeAudio {
   static instances: FakeAudio[] = []
@@ -53,4 +53,20 @@ export function tick(video: HTMLVideoElement, now = 1) {
     video.currentTime = now
     video.dispatchEvent(new Event('timeupdate'))
   })
+}
+
+/** The voice-URL mock, a fresh FakeAudio list and the Audio global. Call in beforeEach; vi.mock/vi.hoisted stay in the test file. */
+export function stubVoiceAudio(loadAudio: Mock, { abort = false }: { abort?: boolean } = {}): void {
+  FakeAudio.instances = []
+  loadAudio.mockReset()
+  loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
+    unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }),
+    ...(abort ? { abort: vi.fn() } : {}),
+  }))
+  vi.stubGlobal('Audio', FakeAudio)
+}
+
+export function restoreVoiceAudio(): void {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
 }

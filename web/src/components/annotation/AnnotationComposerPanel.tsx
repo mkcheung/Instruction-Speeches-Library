@@ -451,7 +451,7 @@ function AnnotationComposerPanelInner({
     videoEl,
     annotations: merged,
     onSeek,
-    onNavigate: (note) => { if (note.voice) armNote(note) },
+    onNavigate: armNote,
     setToPlayhead: captureAllowed ? handleCapture : undefined,
   })
 

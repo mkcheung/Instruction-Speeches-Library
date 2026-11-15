@@ -49,6 +49,18 @@ export function isVoiceAnnotation(annotation: Annotation): boolean {
   return annotation.voice !== null
 }
 
+/** A voice note whose audio the playback URL endpoint will serve (VoiceAnnotationController::audioUrl). */
+export type PlayableVoiceNote = Annotation & { voice: AnnotationVoice & { audio_status: 'ready' } }
+
+export function isPlayableVoiceNote(note: Annotation): note is PlayableVoiceNote {
+  return note.voice?.audio_status === 'ready'
+}
+
+/** The same recording, still playable: a replaced or erased asset is a different note. */
+export function isSamePlayableVoiceNote(note: Annotation, id: string, assetId: number | undefined): boolean {
+  return note.id === id && note.voice?.asset_id === assetId && isPlayableVoiceNote(note)
+}
+
 /** Geometry survives audio erasure; playable audio still requires voice. */
 export function isPointAnnotation(annotation: Annotation): boolean {
   return annotation.timing_type === 'point' || (annotation.timing_type == null && annotation.voice !== null)

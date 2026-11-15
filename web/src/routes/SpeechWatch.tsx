@@ -600,7 +600,7 @@ export default function SpeechWatch() {
     onSeek: isOwner ? commentary.seek : (seconds: number) => {
       if (videoEl) seekVideo(videoEl, seconds)
     },
-    onNavigate: isOwner ? (note) => { if (note.voice) commentary.voicePlayback.armNote(note) } : undefined,
+    onNavigate: isOwner ? commentary.voicePlayback.armNote : undefined,
     enabled: isOwner || !myReview,
   })
 
