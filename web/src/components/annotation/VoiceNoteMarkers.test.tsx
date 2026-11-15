@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { VoiceNoteMarkers } from '@/components/annotation/VoiceNoteMarkers'
 import type { Annotation } from '@/features/annotation/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const voice: Annotation = {
   id: 'voice',
@@ -12,7 +13,7 @@ const voice: Annotation = {
   body: 'A voice note',
   lock_version: 0,
   client_uuid: 'voice-uuid',
-  voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
+  voice: voiceAsset(),
 }
 
 describe('VoiceNoteMarkers', () => {

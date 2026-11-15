@@ -4,6 +4,10 @@
  * `SpeechResource.php`, `SpeechAssetResource.php`) — STEP-03-upload-and-watch.md.
  */
 
+/** App\Enums\SpeechAssetStatus, every case. Checked by api/tests/Unit/FrontendStatusContractTest.php. */
+export const SPEECH_ASSET_STATUSES = ['uploading', 'processing', 'ready', 'failed'] as const
+export type SpeechAssetStatus = (typeof SPEECH_ASSET_STATUSES)[number]
+
 /** `App\Http\Resources\SpeechAssetResource` — `failure_detail` is
  * admin-only and never reaches this client. `width`/`height` are set on
  * poster/sprite rows (STEP-04 §9.5) and, since PLAN-APP-HEADER.md's W4, on
@@ -15,7 +19,7 @@
 export interface SpeechAsset {
   id: number
   kind: 'source' | 'video' | 'captions'
-  status: 'uploading' | 'processing' | 'ready' | 'failed'
+  status: SpeechAssetStatus
   failure_code: string | null
   duration_seconds: string | null
   width: number | null

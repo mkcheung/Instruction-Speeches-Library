@@ -6,6 +6,7 @@ import { AnnotationComposerPanel } from './AnnotationComposerPanel'
 import type { Annotation, AnnotationsResponse } from '@/features/annotation/types'
 import type { Review } from '@/features/review/types'
 import { lastFakeTextTrack } from '@/test/setup'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 function note(id: string, start = 2, duration = 4, body = 'Saved written commentary'): Annotation {
   return { id, timing_type: 'range', start_seconds: start, duration_seconds: duration,
@@ -221,7 +222,7 @@ describe('AnnotationComposerPanel external preview', () => {
 
   it('keeps voice recordings and erased voice points out of the timed range engine', () => {
     queryState.data.annotations = [note('saved'),
-      { ...note('voice', 2, 80), timing_type: 'point', voice: { asset_id: 4, audio_status: 'ready', transcript_status: 'ready', failure_code: null } },
+      { ...note('voice', 2, 80), timing_type: 'point', voice: voiceAsset({ asset_id: 4 }) },
       { ...note('erased', 2, 80, 'Erased voice transcript'), timing_type: 'point' },
     ]
     const { target, video } = mountPanel()

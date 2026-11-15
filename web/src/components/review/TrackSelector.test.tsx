@@ -6,12 +6,13 @@ import { TrackSelector, type TrackSelectorProps } from './TrackSelector'
 import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/types'
 import type { RosterReview } from '@/features/review/types'
 import { projectCommentary } from '@/lib/commentaryPlayback'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 vi.mock('@/components/report/ReportDialog', () => ({ ReportDialog: () => <button>Report review</button> }))
 const written: Annotation = { id: 'written', start_seconds: 2, duration_seconds: 4, kind: 'praise', topic: null,
   body: 'Written feedback', lock_version: 0, client_uuid: 'w', voice: null }
 const voice: Annotation = { ...written, id: 'voice', body: 'Voice transcript', start_seconds: 10,
-  voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }
+  voice: voiceAsset() }
 
 function props(mode: CommentaryPlaybackMode = 'all'): TrackSelectorProps {
   const projection = projectCommentary([written, voice], mode)

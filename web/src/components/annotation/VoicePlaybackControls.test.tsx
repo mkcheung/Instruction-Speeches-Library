@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Annotation } from '@/features/annotation/types'
 import type { VoicePlayback as Playback } from '@/hooks/useVoiceInterjections'
 import { FullscreenVoiceControls } from '@/components/annotation/VoicePlaybackControls'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const note = { id: '1', start_seconds: 1, duration_seconds: 2, kind: 'observation', topic: null, body: 'b',
-  lock_version: 0, client_uuid: 'u', voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null } } as Annotation
+  lock_version: 0, client_uuid: 'u', voice: voiceAsset() } as Annotation
 
 function playback(patch: Partial<Playback> = {}): Playback {
   return { state: 'idle', current: null, hint: null, error: null, skip: vi.fn(), suppressResume: vi.fn(),

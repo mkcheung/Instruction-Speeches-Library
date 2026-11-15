@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/types'
 import type { RosterReview } from '@/features/review/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const mocks = vi.hoisted(() => ({ roster: vi.fn(), annotations: vi.fn(), preference: vi.fn(), playback: vi.fn(), subtitles: vi.fn(), timed: vi.fn() }))
 vi.mock('@/features/review/reviewApi', () => ({ useListReviewRosterQuery: mocks.roster }))
@@ -15,7 +16,7 @@ vi.mock('@/hooks/useVideoCurrentTime', () => ({ useVideoCurrentTime: () => 3 }))
 import { useCommentaryTrack } from './useCommentaryTrack'
 
 const written: Annotation = { id: 'w', start_seconds: 1, duration_seconds: 5, body: 'Written', kind: 'praise', topic: null, lock_version: 0, client_uuid: 'w', voice: null }
-const voice: Annotation = { ...written, id: 'v', body: 'Spoken', voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }
+const voice: Annotation = { ...written, id: 'v', body: 'Spoken', voice: voiceAsset() }
 const review = { id: 7, status: 'published', revoked_at: null, first_published_at: '2026-10-01', last_published_at: '2026-10-02',
   published_annotations_count: 2, annotations_count: 99, reviewer: { id: 1, name: 'Cora' } } as RosterReview
 let source: Annotation[]

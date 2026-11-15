@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { execSync } from 'node:child_process'
 import { xsrfHeaders } from './xsrf-headers.js'
+import { chooseCommentaryTrack } from './commentary-test-helpers.js'
 import {
   API_URL,
   APP_URL,
@@ -736,10 +737,7 @@ test.describe('a published essay — read path', () => {
  * default. */
 async function openSpeakerEssayFor(page: Page, reviewerName: string) {
   await page.goto(SPEECH_URL, { waitUntil: DOM_READY, timeout: NAV_TIMEOUT })
-  await page
-    .getByRole('radiogroup', { name: 'Choose commentary track' })
-    .getByRole('radio', { name: reviewerName })
-    .press('Space')
+  await chooseCommentaryTrack(page, reviewerName)
   await page.getByRole('tablist', { name: 'Speech tools' }).getByRole('tab', { name: 'Essay' }).click()
 }
 

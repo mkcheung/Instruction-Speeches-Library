@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/types'
 import { isCommentaryPlaybackMode, projectCommentary } from './commentaryPlayback'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const written: Annotation = {
   id: 'written', body: 'Written feedback', start_seconds: 2, duration_seconds: 5,
@@ -8,7 +9,7 @@ const written: Annotation = {
 }
 const voice: Annotation = {
   ...written, id: 'voice', body: '', client_uuid: 'voice',
-  voice: { asset_id: 2, audio_status: 'ready', transcript_status: 'pending', failure_code: null },
+  voice: voiceAsset({ asset_id: 2, transcript_status: 'pending' }),
 }
 const ids = (rows: readonly Annotation[]) => rows.map((row) => row.id)
 

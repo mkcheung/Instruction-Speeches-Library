@@ -55,15 +55,21 @@ export function tick(video: HTMLVideoElement, now = 1) {
   })
 }
 
+/** A fresh FakeAudio list as the Audio global. Returns the list that each `new Audio()` appends to. */
+export function stubFakeAudio(): FakeAudio[] {
+  FakeAudio.instances = []
+  vi.stubGlobal('Audio', FakeAudio)
+  return FakeAudio.instances
+}
+
 /** The voice-URL mock, a fresh FakeAudio list and the Audio global. Call in beforeEach; vi.mock/vi.hoisted stay in the test file. */
 export function stubVoiceAudio(loadAudio: Mock, { abort = false }: { abort?: boolean } = {}): void {
-  FakeAudio.instances = []
+  stubFakeAudio()
   loadAudio.mockReset()
   loadAudio.mockImplementation(({ annotationId }: { annotationId: string }) => ({
     unwrap: () => Promise.resolve({ audio: { url: `https://media/${annotationId}.m4a`, expires_at: '' } }),
     ...(abort ? { abort: vi.fn() } : {}),
   }))
-  vi.stubGlobal('Audio', FakeAudio)
 }
 
 export function restoreVoiceAudio(): void {

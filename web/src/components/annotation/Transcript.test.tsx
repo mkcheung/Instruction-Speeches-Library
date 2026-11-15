@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Transcript } from './Transcript'
 import type { Annotation } from '@/features/annotation/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 function annotation(id: string, start_seconds: number): Annotation {
   return {
@@ -34,7 +35,7 @@ describe('Transcript', () => {
           {
             ...annotation('voice', 3),
             body: '',
-            voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'pending', failure_code: null },
+            voice: voiceAsset({ transcript_status: 'pending' }),
           },
         ]}
         activeIds={new Set()}

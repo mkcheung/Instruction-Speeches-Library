@@ -3,6 +3,7 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VoiceAnnotationRow } from '@/components/annotation/VoiceAnnotationRow'
 import type { Annotation } from '@/features/annotation/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const api = vi.hoisted(() => ({
   loadAudio: vi.fn(),
@@ -28,7 +29,7 @@ function voice(overrides: Partial<Annotation> = {}): Annotation {
     body: 'Original transcript',
     lock_version: 4,
     client_uuid: 'voice-17',
-    voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
+    voice: voiceAsset({ asset_id: 71 }),
     ...overrides,
   }
 }
@@ -113,7 +114,7 @@ describe('VoiceAnnotationRow', () => {
 
   it('offers transcript retry only for a failed transcript', async () => {
     const user = userEvent.setup()
-    renderRow(voice({ body: '', voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'failed', failure_code: 'voice_transcription_failed' } }))
+    renderRow(voice({ body: '', voice: voiceAsset({ asset_id: 71, transcript_status: 'failed', failure_code: 'voice_transcription_failed' }) }))
 
     await user.click(screen.getByRole('button', { name: /^Show details/ }))
     await user.click(screen.getByRole('button', { name: /^Retry transcript/ }))
@@ -123,7 +124,7 @@ describe('VoiceAnnotationRow', () => {
 
   it('adopts an asynchronously completed transcript and the lock returned by each save', async () => {
     const user = userEvent.setup()
-    const pending = voice({ body: '', lock_version: 2, voice: { asset_id: 71, audio_status: 'ready', transcript_status: 'pending', failure_code: null } })
+    const pending = voice({ body: '', lock_version: 2, voice: voiceAsset({ asset_id: 71, transcript_status: 'pending' }) })
     const rendered = renderRow(pending)
     rendered.rerender(row(voice({ body: 'Whisper result', lock_version: 7 })))
 

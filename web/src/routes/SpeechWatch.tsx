@@ -16,6 +16,7 @@ import { ReviewerRoster } from '@/components/review/ReviewerRoster'
 import { TrackSelector } from '@/components/review/TrackSelector'
 import { OwnerVideoTools, type OwnerTimelineStatus } from '@/components/review/OwnerVideoTools'
 import { CommentaryPlaybackControls } from '@/components/review/CommentaryPlaybackControls'
+import type { Annotation } from '@/features/annotation/types'
 import { FullscreenVoiceControls } from '@/components/annotation/VoicePlaybackControls'
 import { handleVoiceControlsKeyDown } from '@/lib/voiceControlsKeys'
 import { OverlayStack } from '@/components/annotation/OverlayStack'
@@ -475,6 +476,9 @@ export default function SpeechWatch() {
   const ownerTimelineSeekable = () => !!(ownerPlaybackReady && readyPlayback && !readyPlayback.player.isDisposed() &&
     getVideoElement(readyPlayback.player) === readyPlayback.video)
   const seekOwnerTimeline = (seconds: number) => { if (ownerTimelineSeekable()) commentary.seek(seconds) }
+  // TimelineStrip seeks, then reports a Voice point. Arm it under the seek's own guard:
+  // armNote never seeks (PLAN-VOICE-NOTE-CLICK-AND-ROW-PLAY.md §1.2).
+  const armOwnerTimelineNote = (note: Annotation) => { if (ownerTimelineSeekable()) commentary.voicePlayback.armNote(note) }
   const playbackControlProps = {
     mode: commentary.mode,
     onModeChange: commentary.selectMode,
@@ -816,7 +820,7 @@ export default function SpeechWatch() {
               refreshError={!commentaryDenied && commentary.allAnnotations.length > 0 &&
                 (!!error || !!meError || !!commentary.error || !!commentary.preference.loadError)}
               onSeek={seekOwnerTimeline}
-              onVoiceNoteActivate={(note) => { if (ownerTimelineSeekable()) commentary.voicePlayback.armNote(note) }} onOpenNotes={openOwnerNotes}
+              onVoiceNoteActivate={armOwnerTimelineNote} onOpenNotes={openOwnerNotes}
               scrub={{ bindingKey: ownerScrubKey, enabled: ownerScrubReady, active: true,
                 onSeek: (seconds) => seekScrub('owner', ownerScrubKey, seconds) }}
               frameSelector={<PosterFramePicker speechId={speechId} assetId={asset!.id}

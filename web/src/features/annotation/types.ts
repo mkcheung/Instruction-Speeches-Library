@@ -8,11 +8,20 @@
  */
 
 export type AnnotationKind = 'praise' | 'correction' | 'observation'
-export type VoiceTranscriptStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+/** App\Enums\TranscriptStatus without `not_applicable`, which only ever comes with `voice: null`.
+ * Checked by api/tests/Unit/FrontendStatusContractTest.php, which parses this exact
+ * `export const … = [...] as const` form (cd api && php -d memory_limit=1G vendor/bin/pest tests/Unit/FrontendStatusContractTest.php). */
+export const VOICE_TRANSCRIPT_STATUSES = ['pending', 'processing', 'ready', 'failed'] as const
+export type VoiceTranscriptStatus = (typeof VOICE_TRANSCRIPT_STATUSES)[number]
+
+/** App\Enums\SpeechAssetStatus without `uploading`: a voice asset is created `processing`. Same contract test. */
+export const VOICE_AUDIO_STATUSES = ['processing', 'ready', 'failed'] as const
+export type VoiceAudioStatus = (typeof VOICE_AUDIO_STATUSES)[number]
 
 export interface AnnotationVoice {
   asset_id: number
-  audio_status: 'processing' | 'ready' | 'failed'
+  audio_status: VoiceAudioStatus
   transcript_status: VoiceTranscriptStatus
   failure_code: string | null
 }

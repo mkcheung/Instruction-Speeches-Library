@@ -7,6 +7,7 @@ import { useVoiceInterjections } from '@/hooks/useVoiceInterjections'
 import type { ReactNode } from 'react'
 import type { Annotation } from '@/features/annotation/types'
 import type { Review } from '@/features/review/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const makeVoiceRows = (count: number): Annotation[] => Array.from({ length: count }, (_, index) => ({
   id: String(index + 1),
@@ -17,7 +18,7 @@ const makeVoiceRows = (count: number): Annotation[] => Array.from({ length: coun
   body: `Transcript ${index + 1}`,
   lock_version: 0,
   client_uuid: `voice-${index + 1}`,
-  voice: { asset_id: index + 1, audio_status: 'ready', transcript_status: 'ready', failure_code: null },
+  voice: voiceAsset({ asset_id: index + 1 }),
 }))
 let voiceRows = makeVoiceRows(7)
 

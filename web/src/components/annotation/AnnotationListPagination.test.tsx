@@ -5,6 +5,7 @@ import { AnnotationList, type AnnotationListProps } from '@/components/annotatio
 import { ToastProvider, Toaster } from '@/components/ui/toast'
 import type { Annotation } from '@/features/annotation/types'
 import { formatSpokenTimecode } from '@/lib/time'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 const api = vi.hoisted(() => ({
   deleteAnnotation: vi.fn(),
@@ -197,7 +198,7 @@ describe('AnnotationList pagination', () => {
   })
 
   it('holds paging during an in-flight transcript retry reported by the row', () => {
-    const failed = note(1, { timing_type: 'point', body: '', voice: { asset_id: 1, audio_status: 'ready', transcript_status: 'failed', failure_code: 'x' } })
+    const failed = note(1, { timing_type: 'point', body: '', voice: voiceAsset({ transcript_status: 'failed', failure_code: 'x' }) })
     const onPendingChange = vi.fn()
     const { update } = renderList([failed, ...notes(13).slice(1)], { onPendingChange })
     api.retrying = true

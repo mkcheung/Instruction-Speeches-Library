@@ -1,7 +1,8 @@
-import { expect, test, type Browser, type Page, type Response } from '@playwright/test'
+import { expect, test, type Browser, type Locator, type Page, type Response } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
 import { API_URL, APP_URL, POSTGRES_CONTAINER, USERS, VOICE } from './fixtures.js'
-import { selectPlaybackMode } from './commentary-test-helpers.js'
+import type { VoiceAudioStatus, VoiceTranscriptStatus } from '../src/features/annotation/types.js'
+import { chooseCommentaryTrack, commentaryTracks, selectPlaybackMode } from './commentary-test-helpers.js'
 import {
   deterministicAudioEvents,
   finishDeterministicAudio,
@@ -25,8 +26,8 @@ interface VoiceAnnotationPayload {
   client_uuid: string
   voice: null | {
     asset_id: number
-    audio_status: 'processing' | 'ready' | 'failed'
-    transcript_status: 'pending' | 'processing' | 'ready' | 'failed'
+    audio_status: VoiceAudioStatus
+    transcript_status: VoiceTranscriptStatus
   }
 }
 
@@ -47,18 +48,24 @@ async function annotations(
   return ((await response.json()) as { annotations: VoiceAnnotationPayload[] }).annotations
 }
 
-interface BrowserVideo {
-  readyState: number
-  currentTime: number
-  muted: boolean
-  paused: boolean
-  play: () => Promise<void>
-  addEventListener: (type: 'play', listener: () => void) => void
+type PlayCountState = typeof globalThis & { __voiceVideoPlayCount?: number }
+
+async function waitForMetadata(video: Locator): Promise<void> {
+  await expect.poll(() => video.evaluate((node) => (node as HTMLVideoElement).readyState)).toBeGreaterThanOrEqual(1)
+}
+
+async function isPaused(video: Locator): Promise<boolean> {
+  return video.evaluate((node) => (node as HTMLVideoElement).paused)
+}
+
+/** Native `play` events since seekBeforeCrossing installed its counter. */
+async function videoPlayCount(page: Page): Promise<number> {
+  return page.evaluate(() => (globalThis as PlayCountState).__voiceVideoPlayCount ?? 0)
 }
 
 async function prepareSpeakerInterjection(page: Page): Promise<void> {
   await openSpeech(page, VOICE.coachSpeechId)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).press('Space')
+  await chooseCommentaryTrack(page, USERS.reviewerA.name)
   await selectPlaybackMode(page, 'Text + audio')
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
 }
@@ -66,10 +73,10 @@ async function prepareSpeakerInterjection(page: Page): Promise<void> {
 /** Step 1: wait for metadata, count native plays, mute, and park the playhead just before the first voice note. */
 async function seekBeforeCrossing(page: Page, seconds = 0.2) {
   const video = page.getByTestId('speech-video')
-  await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).readyState)).toBeGreaterThanOrEqual(1)
+  await waitForMetadata(video)
   await video.evaluate(async (node, target) => {
-    const element = node as unknown as BrowserVideo
-    const state = globalThis as typeof globalThis & { __voiceVideoPlayCount?: number }
+    const element = node as HTMLVideoElement
+    const state = globalThis as PlayCountState
     state.__voiceVideoPlayCount = 0
     element.addEventListener('play', () => {
       state.__voiceVideoPlayCount = (state.__voiceVideoPlayCount ?? 0) + 1
@@ -81,9 +88,9 @@ async function seekBeforeCrossing(page: Page, seconds = 0.2) {
 }
 
 /** Step 2: start the native clock. */
-async function playVideo(video: ReturnType<Page['getByTestId']>): Promise<void> {
+async function playVideo(video: Locator): Promise<void> {
   await video.evaluate(async (node) => {
-    const element = node as unknown as BrowserVideo
+    const element = node as HTMLVideoElement
     await element.play()
   })
 }
@@ -107,15 +114,15 @@ function trackVoiceUrlRequests(page: Page): string[] {
   return ids
 }
 
-async function currentTimeOf(video: ReturnType<Page['getByTestId']>): Promise<number> {
-  return video.evaluate((node) => (node as unknown as BrowserVideo).currentTime)
+async function currentTimeOf(video: Locator): Promise<number> {
+  return video.evaluate((node) => (node as HTMLVideoElement).currentTime)
 }
 
-async function waitForClockPast(video: ReturnType<Page['getByTestId']>, seconds: number): Promise<void> {
+async function waitForClockPast(video: Locator, seconds: number): Promise<void> {
   await expect.poll(() => currentTimeOf(video), { timeout: 20_000, message: `video clock never passed ${seconds}s` }).toBeGreaterThan(seconds)
 }
 
-async function expectVideoToAdvance(video: ReturnType<Page['getByTestId']>): Promise<void> {
+async function expectVideoToAdvance(video: Locator): Promise<void> {
   const before = await currentTimeOf(video)
   await expect.poll(
     () => currentTimeOf(video),
@@ -123,7 +130,7 @@ async function expectVideoToAdvance(video: ReturnType<Page['getByTestId']>): Pro
   ).toBeGreaterThan(before + 0.05)
 }
 
-async function expectVideoToStayAtManualPause(video: ReturnType<Page['getByTestId']>): Promise<void> {
+async function expectVideoToStayAtManualPause(video: Locator): Promise<void> {
   const before = await currentTimeOf(video)
   await video.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)))
   const after = await currentTimeOf(video)
@@ -308,7 +315,7 @@ test('Scenario C — a natural crossing fetches signed audio, pauses, shows tran
     { encoding: 'utf8' },
   ).trim()
   expect(publicationFlag).toBe('1')
-  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  expect(await isPaused(video)).toBe(true)
   await expect
     .poll(async () => (await deterministicAudioEvents(page)).find((event) => event.phase === 'range'))
     .toMatchObject({ status: 206, bytes: 32 })
@@ -319,8 +326,7 @@ test('Scenario C — a natural crossing fetches signed audio, pauses, shows tran
   const nextVisitContext = await browser.newContext({ storageState: USERS.speaker.storageState })
   const nextVisitPage = await nextVisitContext.newPage()
   await openSpeech(nextVisitPage, VOICE.coachSpeechId)
-  await nextVisitPage.getByRole('radiogroup', { name: 'Choose commentary track' })
-    .getByRole('radio', { name: USERS.reviewerA.name }).press('Space')
+  await chooseCommentaryTrack(nextVisitPage, USERS.reviewerA.name)
   await expect(nextVisitPage.getByRole('radiogroup', { name: 'Commentary playback' }).getByRole('radio', { name: 'Text + audio', exact: true }))
     .toBeChecked()
   await nextVisitContext.close()
@@ -356,7 +362,7 @@ test('Scenario D — Skip, Escape, manual intent, rejection, and watchdog all re
     // The video's own Play cancels the note (2026-11-13 amendment); the video carries on.
     const { context, page, video } = await runCase('hold')
     await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
-    await video.evaluate((node) => (node as unknown as BrowserVideo).play())
+    await playVideo(video)
     await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
     await expectVideoToAdvance(video)
     await context.close()
@@ -372,22 +378,16 @@ test('Scenario D — Skip, Escape, manual intent, rejection, and watchdog all re
   {
     const { context, page, video } = await runCase('hold')
     await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
-    expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+    expect(await isPaused(video)).toBe(true)
     const pauseEventsBeforeWatchdog = (await deterministicAudioEvents(page)).filter((event) => event.phase === 'pause').length
-    const videoPlaysBeforeWatchdog = await page.evaluate(() => {
-      const state = globalThis as typeof globalThis & { __voiceVideoPlayCount?: number }
-      return state.__voiceVideoPlayCount ?? 0
-    })
+    const videoPlaysBeforeWatchdog = await videoPlayCount(page)
     await expect
       .poll(async () => (await deterministicAudioEvents(page)).filter((event) => event.phase === 'pause').length, {
         timeout: 15_000,
         message: 'duration + 3 second safety watchdog never cleaned up held audio',
       })
       .toBeGreaterThan(pauseEventsBeforeWatchdog)
-    await expect.poll(() => page.evaluate(() => {
-      const state = globalThis as typeof globalThis & { __voiceVideoPlayCount?: number }
-      return state.__voiceVideoPlayCount ?? 0
-    })).toBeGreaterThan(videoPlaysBeforeWatchdog)
+    await expect.poll(() => videoPlayCount(page)).toBeGreaterThan(videoPlaysBeforeWatchdog)
     // The next seeded note may be crossed immediately after this resume and
     // legitimately pause the video again. The held audio cleanup plus a new
     // native video play event above is the non-vacuous recovery proof; a
@@ -406,15 +406,12 @@ test('Scenario E — warning, signed Range audio, modes, and per-speech preferen
 
   const speakerContext = await browser.newContext({ storageState: USERS.speaker.storageState })
   const page = await speakerContext.newPage()
-  await openSpeech(page, VOICE.coachSpeechId)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name }).press('Space')
-  await selectPlaybackMode(page, 'Text + audio')
-  await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
+  await prepareSpeakerInterjection(page)
 
   await selectPlaybackMode(page, 'Off')
   await expect(page.getByText('Commentary is off.', { exact: true })).toBeVisible()
   await expect(page.getByRole('list', { name: 'Commentary transcript' })).toHaveCount(0)
-  await expect(page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: USERS.reviewerA.name })).toBeChecked()
+  await expect(commentaryTracks(page).getByRole('radio', { name: USERS.reviewerA.name })).toBeChecked()
   await expect(page.getByRole('button', { name: 'Report', exact: true })).toBeVisible()
   await selectPlaybackMode(page, 'Text + audio')
   await expect(page.getByRole('button', { name: /Annotation at 0 seconds Ordinary text remains visible/ })).toBeVisible()
@@ -501,7 +498,7 @@ test('Scenario F — queued erase-self removes audio while preserving Former rev
   const speakerContext = await browser.newContext({ storageState: USERS.speaker.storageState })
   const page = await speakerContext.newPage()
   await openSpeech(page, VOICE.erasureSpeechId)
-  await page.getByRole('radiogroup', { name: 'Choose commentary track' }).getByRole('radio', { name: 'Former reviewer' }).press('Space')
+  await chooseCommentaryTrack(page, 'Former reviewer')
   await expect(
     page.getByRole('list', { name: 'Commentary transcript' }).getByText('This transcript survives reviewer erasure.'),
   ).toBeVisible()
@@ -531,7 +528,7 @@ test('Scenario G — the commentary track defaults to the published reviewer wit
   const page = await context.newPage()
   await openSpeech(page, VOICE.coachSpeechId)
 
-  const radiogroup = page.getByRole('radiogroup', { name: 'Choose commentary track' })
+  const radiogroup = commentaryTracks(page)
   await expect(radiogroup.getByRole('radio', { name: USERS.reviewerA.name })).toBeChecked()
   await expect(radiogroup.getByRole('radio', { name: 'No commentary' })).toHaveCount(0)
   await selectPlaybackMode(page, 'Text + audio')
@@ -575,7 +572,7 @@ test('Scenario H — fullscreen owns one usable control surface and preserves pa
   await expect(host.getByRole('button', { name: 'Resume commentary', exact: true })).toBeVisible()
   await selectPlaybackMode(page, 'Off')
   await expect(host.getByRole('button', { name: 'Resume commentary', exact: true })).toHaveCount(0)
-  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  expect(await isPaused(video)).toBe(true)
   await page.getByRole('region', { name: 'Video Player' }).hover()
   await page.getByRole('button', { name: 'Exit Fullscreen', exact: true }).click()
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true)
@@ -606,7 +603,7 @@ test('Scenario I — coach A hears their own published voice note at a natural c
   const video = await startNaturalCrossing(page)
   await expect(page.getByText('Playing voice commentary')).toBeVisible({ timeout: 10_000 })
   expect(requested).toContain(String(VOICE.firstVoiceAnnotationId))
-  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  expect(await isPaused(video)).toBe(true)
   // Playing, not paused. (D9, not asserted here: the coach view shows no transcript; "Transcribing…" lives only in the folded voice row.)
   await expect(page.getByText('Voice commentary paused')).toHaveCount(0)
   await page.getByRole('button', { name: /^Skip/ }).click()
@@ -647,11 +644,11 @@ test('Scenario K — a pending recorder session suspends auto-play; the Voice to
     await playVideo(video)
     await waitForClockPast(video, 1.6)
     expect(requested, 'a recording in progress must not trigger voice playback').toEqual([])
-    await video.evaluate((node) => (node as unknown as { pause: () => void }).pause())
+    await video.evaluate((node) => (node as HTMLVideoElement).pause())
     await recorder.getByRole('button', { name: 'Stop' }).click()
     await expect(recorder.getByLabel('Voice note preview')).toBeVisible()
     // Unsaved recording: still pending, still suspended.
-    await video.evaluate((node) => { (node as unknown as { currentTime: number }).currentTime = 0.2 })
+    await video.evaluate((node) => { (node as HTMLVideoElement).currentTime = 0.2 })
     await playVideo(video)
     await waitForClockPast(video, 1.6)
     expect(requested, 'an unsaved recording must not trigger voice playback').toEqual([])
@@ -671,7 +668,7 @@ test('Scenario K — a pending recorder session suspends auto-play; the Voice to
     // Without author intent the video resumes after the note and Record stays hidden.
     await finishDeterministicAudio(page)
     await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
-    await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(false)
+    await expect.poll(() => isPaused(video)).toBe(false)
     await expect(recorder.getByRole('button', { name: /^Record/ })).toHaveCount(0)
     await context.close()
   }
@@ -686,7 +683,7 @@ test('Scenario K — a pending recorder session suspends auto-play; the Voice to
     await page.getByRole('button', { name: /^Skip/ }).click()
     await expect(page.getByText('Playing voice commentary')).toHaveCount(0)
     await expectVideoToStayAtManualPause(video)
-    expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+    expect(await isPaused(video)).toBe(true)
     // Record is back (the hint is gone). The playhead sits on the note that just played, which is an occupied
     // position, so Record stays disabled until the coach picks a free one; a free position enables it.
     const record = recorder.getByRole('button', { name: /^Record/ })
@@ -764,9 +761,9 @@ test.describe('Scenario M — the voice controls never shift the Composer', () =
   }
 })
 
-async function playFrom(video: ReturnType<Page['getByTestId']>, seconds: number, rate: number): Promise<void> {
+async function playFrom(video: Locator, seconds: number, rate: number): Promise<void> {
   await video.evaluate(async (node, [at, playbackRate]) => {
-    const element = node as unknown as BrowserVideo & { playbackRate: number }
+    const element = node as HTMLVideoElement
     element.muted = true
     element.currentTime = at
     element.playbackRate = playbackRate
@@ -800,7 +797,7 @@ test('Scenario N — clicking a voice row arms it: Play plays it at once, and a 
   await list.getByRole('button', { name: /Annotation at 3 seconds Seeded voice transcript 5/ }).click()
   await expect.poll(() => requested.slice(before)).toContain('9805')
   await expect(page.getByText('Playing voice commentary', { exact: true })).toBeVisible({ timeout: 10_000 })
-  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  expect(await isPaused(video)).toBe(true)
   await context.close()
 })
 
@@ -811,12 +808,12 @@ test('Scenario O — a row\'s ▶ plays that note and leaves the video paused; t
   const requested = trackVoiceUrlRequests(page)
   await prepareSpeakerInterjection(page)
   const video = page.getByTestId('speech-video')
-  await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).readyState)).toBeGreaterThanOrEqual(1)
+  await waitForMetadata(video)
   await playFrom(video, 4.7, 0.25)
   const list = page.getByRole('list', { name: 'Commentary transcript', exact: true })
   // 9803 (2.05 s) and 9804 (2.70 s) share "2 seconds", so the plan's own dedupe rule adds a suffix.
   await list.getByRole('button', { name: 'Play voice commentary at 2 seconds, 1 of 2 with this name', exact: true }).click()
-  await expect.poll(() => video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(true)
+  await expect.poll(() => isPaused(video)).toBe(true)
   await expect.poll(() => requested).toEqual(['9803'])
   await expect(list.getByRole('button', { name: 'Pause voice commentary at 2 seconds, 1 of 2 with this name', exact: true })).toBeVisible()
   const pausedAt = await currentTimeOf(video)
@@ -836,7 +833,7 @@ test('Scenario O — a row\'s ▶ plays that note and leaves the video paused; t
   await expect(list.getByRole('button', { name: 'Play voice commentary at 2 seconds, 1 of 2 with this name', exact: true })).toBeVisible()
   expect(Math.abs(heldAt - pausedAt)).toBeLessThan(0.05)
   await expectVideoToAdvance(video)
-  expect(await video.evaluate((node) => (node as unknown as BrowserVideo).paused)).toBe(false)
+  expect(await isPaused(video)).toBe(false)
   expect(requested).toEqual(['9803', '9803'])
   await selectPlaybackMode(page, 'Written notes only')
   await expect(page.getByRole('button', { name: /voice commentary at/ })).toHaveCount(0)

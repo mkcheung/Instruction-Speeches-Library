@@ -2,12 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { TimelineStrip } from './TimelineStrip'
 import type { Annotation } from '@/features/annotation/types'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 function note(overrides: Partial<Annotation> = {}): Annotation {
   return { id: '5', timing_type: 'range', start_seconds: 10, duration_seconds: 6, kind: 'observation', topic: null,
     body: 'Saved marker', lock_version: 1, client_uuid: 'u5', voice: null, ...overrides }
 }
-const voice = { asset_id: 1, audio_status: 'ready' as const, transcript_status: 'ready' as const, failure_code: null }
+const voice = voiceAsset()
 const point = (overrides: Partial<Annotation> = {}) => note({ id: '6', timing_type: 'point', start_seconds: 25, duration_seconds: 0, voice, ...overrides })
 type Props = Partial<React.ComponentProps<typeof TimelineStrip>>
 function strip(annotations: Annotation[], props: Props = {}) {

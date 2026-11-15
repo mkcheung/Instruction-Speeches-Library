@@ -7,7 +7,7 @@ import { AnnotationComposerPanel } from './AnnotationComposerPanel'
 import type { Annotation, AnnotationsResponse } from '@/features/annotation/types'
 import type { Review } from '@/features/review/types'
 import { FakeAudio, playableVideo, stubVoiceAudio, tick } from '@/test/voiceAudio'
-import { voiceNote } from '@/test/voiceFixtures'
+import { voiceAsset, voiceNote } from '@/test/voiceFixtures'
 
 function note(id: string, start = 2, duration = 4): Annotation {
   return { id, timing_type: 'range', start_seconds: start, duration_seconds: duration,
@@ -18,7 +18,7 @@ let queryState: { data: AnnotationsResponse; currentData: AnnotationsResponse; i
 const mutation = vi.fn(() => ({ unwrap: () => Promise.resolve({}) }))
 const createVoice = vi.fn((arg: { body: { client_uuid: string; start_seconds: number } }) => ({
   unwrap: () => Promise.resolve({ ...note('voice-saved', arg.body.start_seconds, 5), client_uuid: arg.body.client_uuid, timing_type: 'point' as const,
-    voice: { asset_id: 7, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }),
+    voice: voiceAsset({ asset_id: 7 }) }),
 }))
 // Stable across renders (a fresh trigger would rebuild the voice controller each render).
 const loadAudio = vi.hoisted(() => vi.fn())
@@ -387,7 +387,7 @@ describe('annotation workspace reveal orchestration', () => {
 
   it('routes erased and voice point markers as saved reveals, and passes list selection to the timeline', () => {
     queryState.data.annotations = [note('saved'), { ...note('erased', 30, 5), timing_type: 'point' },
-      { ...note('voice', 40, 5), timing_type: 'point', voice: { asset_id: 4, audio_status: 'ready', transcript_status: 'ready', failure_code: null } }]
+      { ...note('voice', 40, 5), timing_type: 'point', voice: voiceAsset({ asset_id: 4 }) }]
     const { onSeek } = mountPanel()
     fireEvent.click(screen.getByTestId('voice-marker-erased'))
     expect(listProps().revealRequest?.id).toBe('erased')
@@ -564,7 +564,7 @@ describe('annotation workspace unmocked integration (real VoiceRecorder + real A
     // Not yet in the polled dataset: no reveal offered. Once it arrives (closed list), the notice appears.
     expect(screen.queryByRole('button', { name: 'Show saved note' })).not.toBeInTheDocument()
     const polled: AnnotationsResponse = { ...queryState.data, annotations: [note('saved'), { ...note('voice-saved', 20, 5), client_uuid: sent.client_uuid, timing_type: 'point' as const,
-      voice: { asset_id: 7, audio_status: 'ready' as const, transcript_status: 'ready' as const, failure_code: null } }] }
+      voice: voiceAsset({ asset_id: 7 }) }] }
     queryState = { ...queryState, data: polled, currentData: polled }
     view.update()
     await user.click(await screen.findByRole('button', { name: 'Show saved note' }))

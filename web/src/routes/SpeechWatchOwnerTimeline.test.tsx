@@ -28,6 +28,8 @@ import type { Annotation, CommentaryPlaybackMode } from '@/features/annotation/t
 import type { Speech } from '@/features/speech/types'
 import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
 import { clearCookies } from '@/test/renderWithProviders'
+import { stubFakeAudio } from '@/test/voiceAudio'
+import { voiceAsset } from '@/test/voiceFixtures'
 
 function freshStore() { return configureStore({
   reducer: {
@@ -252,7 +254,7 @@ function notes(speechId = 17): Annotation[] {
     topic: null, voice: null, lock_version: 0, client_uuid: `${prefix}-uuid` }
   return [base, { ...base, id: `${prefix}-voice`, timing_type: 'point', start_seconds: 12,
     duration_seconds: 4, body: `${prefix.toUpperCase()} voice transcript`,
-    voice: { asset_id: speechId + 100, audio_status: 'ready', transcript_status: 'ready', failure_code: null } },
+    voice: voiceAsset({ asset_id: speechId + 100 }) },
   { ...base, id: `${prefix}-erased`, timing_type: 'point', start_seconds: 22, body: 'Erased transcript' }]
 }
 function annotationResponse(id = 17) {
@@ -759,17 +761,7 @@ describe('owner timeline with the production RTK session middleware', () => {
   it('keeps the same loading, playing and paused voice through utility tabs, then cancels once on marker seek without autoplay', async () => {
     const audioUrl = deferred<Response>()
     const network = server((_request, url) => url.pathname.endsWith('/a-voice/voice-playback-url') ? audioUrl.promise : undefined)
-    const audios: HTMLAudioElement[] = []
-    vi.stubGlobal('Audio', class {
-      src: string
-      onended: (() => void) | null = null
-      onerror: (() => void) | null = null
-      play = vi.fn(async () => undefined)
-      pause = vi.fn()
-      load = vi.fn()
-      removeAttribute = vi.fn()
-      constructor(src: string) { this.src = src; audios.push(this as unknown as HTMLAudioElement) }
-    })
+    const audios = stubFakeAudio()
     watch()
     await loaded()
     const instance = currentPlayer()
@@ -813,8 +805,7 @@ describe('owner timeline with the production RTK session middleware', () => {
   it('ignores a delayed voice URL after a paused marker seek cancels its loading controller', async () => {
     const audioUrl = deferred<Response>()
     const network = server((_request, url) => url.pathname.endsWith('/a-voice/voice-playback-url') ? audioUrl.promise : undefined)
-    const createAudio = vi.fn()
-    vi.stubGlobal('Audio', class { constructor() { createAudio() } })
+    const audios = stubFakeAudio()
     watch()
     await loaded()
     const instance = currentPlayer()
@@ -829,7 +820,7 @@ describe('owner timeline with the production RTK session middleware', () => {
     fireEvent.click(screen.getByTestId('range-marker-a-text'))
     act(() => { instance.video.dispatchEvent(new Event('seeking')); instance.video.dispatchEvent(new Event('seeked')) })
     await act(async () => { audioUrl.resolve(json({ audio: { url: 'https://media.example.test/late.mp3', expires_at: '2099-01-01T00:00:00Z' } })); await audioUrl.promise })
-    expect(createAudio).not.toHaveBeenCalled()
+    expect(audios).toHaveLength(0)
     expect(play).not.toHaveBeenCalled()
     expect(screen.queryByText('Loading voice commentary…')).not.toBeInTheDocument()
     expect(instance.video.currentTime).toBe(2)
@@ -1097,17 +1088,7 @@ describe('draggable timeline owner cache, source and native voice boundaries', (
   it.each(['loading', 'playing', 'paused'])('keeps %s voice through preview/cancel and cancels once on a committed native seek', async (voiceState) => {
     const audioUrl = deferred<Response>()
     const network = server((_request, url) => url.pathname.endsWith('/a-voice/voice-playback-url') ? audioUrl.promise : undefined)
-    const audios: HTMLAudioElement[] = []
-    vi.stubGlobal('Audio', class {
-      src: string
-      onended: (() => void) | null = null
-      onerror: (() => void) | null = null
-      play = vi.fn(async () => undefined)
-      pause = vi.fn()
-      load = vi.fn()
-      removeAttribute = vi.fn()
-      constructor(src: string) { this.src = src; audios.push(this as unknown as HTMLAudioElement) }
-    })
+    const audios = stubFakeAudio()
     watch()
     await loaded()
     const instance = currentPlayer()
@@ -1150,6 +1131,39 @@ describe('draggable timeline owner cache, source and native voice boundaries', (
     expect(network.count('/api/speeches/17/annotations/a-voice/voice-playback-url')).toBe(1)
     noDataWrites(network)
   }, 15_000)
+
+  it('an owner Voice point seeks once to its start and arms it: Play starts it at once', async () => {
+    const audioUrl = deferred<Response>()
+    const network = server((_request, url) => url.pathname.endsWith('/a-voice/voice-playback-url') ? audioUrl.promise : undefined)
+    watch()
+    await loaded()
+    const instance = currentPlayer()
+    let paused = true
+    Object.defineProperty(instance.video, 'paused', { configurable: true, get: () => paused })
+    const play = vi.spyOn(instance.video, 'play').mockImplementation(async () => { paused = false })
+    vi.spyOn(instance.video, 'pause').mockImplementation(() => { paused = true })
+    await armVoiceAhead(instance.video, () => instance.advance(11.5))
+    fireEvent.click(screen.getByTestId('voice-marker-a-voice'))
+    await flushMedia()
+    expect(instance.seeks).toEqual([12])
+    act(() => { paused = false; instance.video.dispatchEvent(new Event('play')) })
+    await findVoiceStatus('Loading voice commentary…', instance.video)
+    expect(network.count('/api/speeches/17/annotations/a-voice/voice-playback-url')).toBe(1)
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  // The only gate left on a rendered marker is SpeechWatch's live ownerTimelineSeekable(), re-evaluated at click time.
+  // A player disposed after the last render leaves the marker on screen; clicking it must not seek.
+  it('a marker clicked after its player was disposed does not seek', async () => {
+    server()
+    watch()
+    await loaded()
+    const instance = currentPlayer()
+    instance.disposed = true
+    fireEvent.click(screen.getByTestId('voice-marker-a-voice'))
+    await flushMedia()
+    expect(instance.seeks).toEqual([])
+  })
 })
 
 describe('draggable timeline with real RTK reviewer request provenance', () => {

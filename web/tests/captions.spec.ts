@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { API_URL, APP_URL, CAPTIONS, USERS } from './fixtures.js'
-import { selectPlaybackMode } from './commentary-test-helpers.js'
+import { chooseCommentaryTrack, selectPlaybackMode } from './commentary-test-helpers.js'
+import type { SpeechAssetStatus } from '../src/features/speech/types.js'
 
 /**
  * STEP-09-VERIFICATION-PLAN.md §5 — the real-browser captions spec.
@@ -45,7 +46,7 @@ const NAV_TIMEOUT = 120_000
 const POLL_TIMEOUT = 25_000
 
 interface CaptionsPayload {
-  status: 'ready' | 'processing' | 'uploading' | 'failed' | 'unavailable'
+  status: 'unavailable' | SpeechAssetStatus
   vtt: string | null
   failure_code: string | null
   asset_id: number | null
@@ -302,10 +303,7 @@ test('Scenario A — native captions and annotations toggle independently', asyn
 
   // Step 4: select reviewer A's commentary, seek into the overlapping
   // cue/annotation window (cue1 0.5-2.5, annotation 1.0-2.5).
-  await page
-    .getByRole('radiogroup', { name: 'Choose commentary track' })
-    .getByRole('radio', { name: USERS.reviewerA.name })
-    .press('Space')
+  await chooseCommentaryTrack(page, USERS.reviewerA.name)
   await video.evaluate((el) => {
     ;(el as unknown as BrowserVideoElement).currentTime = 1.2
   })
