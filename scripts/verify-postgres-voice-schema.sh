@@ -43,12 +43,7 @@ NON_PRIMARY="$(constraint_definition speech_assets ck_voice_note_not_primary)"
 [[ "$PAIR" == *"voice_note"* && "$PAIR" == *"m4a"* ]] || fail "kind/format CHECK does not bind voice_note to m4a"
 [[ "$NON_PRIMARY" == *"voice_note"* && "$NON_PRIMARY" == *"is_primary"* ]] || fail "voice-note non-primary CHECK is missing"
 
-log "checking transcript state CHECK and audio FK ON DELETE SET NULL"
-TRANSCRIPT="$(constraint_definition annotations ck_annotations_transcript_status)"
-for state in not_applicable pending processing ready failed; do
-  [[ "$TRANSCRIPT" == *"$state"* ]] || fail "transcript CHECK is missing state '$state'"
-done
-
+log "checking audio FK ON DELETE SET NULL (transcript states: verify-postgres-check-lists.sh)"
 FK_DELETE="$(psql_value "
   SELECT c.confdeltype
   FROM pg_constraint c

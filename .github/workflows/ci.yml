@@ -288,6 +288,12 @@ jobs:
       - name: Verify Postgres voice annotation schema
         run: ./scripts/verify-postgres-voice-schema.sh
 
+      # PLAN-DRY-SCHEMA-STATUS-CONTRACT.md: every CHECK value list on the
+      # migrated Postgres catalog equals its PHP owner (enum or constant).
+      # The Pest `test` job runs the same comparison on SQLite.
+      - name: Verify Postgres CHECK lists match their PHP owners
+        run: ./scripts/verify-postgres-check-lists.sh
+
       # STEP-12-FROZEN-CONTRACT.md §8: pg_advisory_xact_lock has no sqlite
       # equivalent, and two genuinely concurrent processes racing the same
       # advisory lock cannot be exercised by the Pest suite at all — this
