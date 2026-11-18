@@ -3,14 +3,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TranscriptPanel } from '@/components/caption/TranscriptPanel'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 
 describe('TranscriptPanel', () => {
   beforeEach(() => clearCookies())

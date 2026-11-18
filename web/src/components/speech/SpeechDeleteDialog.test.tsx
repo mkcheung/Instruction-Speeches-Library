@@ -4,16 +4,9 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { urlOf, methodOf } from '@/test/fetchStub'
 import { SpeechDeleteDialog } from '@/components/speech/SpeechDeleteDialog'
 import type { Speech } from '@/features/speech/types'
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
 
 function wrapper({ children }: { children: ReactNode }) {
   return <Provider store={createTestStore()}>{children}</Provider>

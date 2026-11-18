@@ -1,16 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 import { EssayReadOnlyPanel } from '@/components/essay/EssayReadOnlyPanel'
 import type { Essay } from '@/features/essay/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 function essay(overrides: Partial<Essay> = {}): Essay {
   return {

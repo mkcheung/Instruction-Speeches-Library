@@ -7,13 +7,13 @@ import { authApi } from '@/features/auth/authApi'
 import { connectionApi } from '@/features/connection/connectionApi'
 import { revalidateConnectionSession } from '@/features/connection/connectionSession'
 import { friendsResponse, makeFriend } from '@/test/friendsFixtures'
+import { urlOf } from '@/test/fetchStub'
 import type { CurrentUser } from '@/features/auth/types'
 import type { Friend } from '@/features/connection/types'
 
 const viewer: CurrentUser = { id: '1', email: 'me@example.test', username: 'alex', first_name: 'Alex', last_name: 'Smith', display_name: 'Alex Smith', roles: ['member'], email_verified: true, onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 0, quota_bytes: 1000, uploads_in_flight: 0 }
 const friend = (id = 42, name = 'Jordan Ellis') => makeFriend({ connection_id: id, person: { id: id + 100, username: name, name } })
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-const urlOf = (input: RequestInfo | URL) => input instanceof Request ? input.url : input.toString()
 const pending = (rows: Friend[] = [friend()], total = rows.length) => json(friendsResponse(rows, { total, next_cursor: total > 20 ? 'next-page' : null }))
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done }); return { promise, resolve } }
 

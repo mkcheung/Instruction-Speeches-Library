@@ -3,6 +3,7 @@ import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Login from '@/routes/Login'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 import { ADMIN_LOGIN_CONTINUATION } from '@/lib/roles'
 import { RETURN_PATH_KEY } from '@/features/auth/returnPath'
 
@@ -12,17 +13,6 @@ import { RETURN_PATH_KEY } from '@/features/auth/returnPath'
  * first one — site 1's call shape (`getPostLoginDestination` plus a
  * branch between `navigate()` and a real cross-origin navigation).
  */
-
-function jsonResponse(body: unknown, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 /** Matches `DeleteAccountDialog.test.tsx`'s pattern — jsdom's
  * `window.location.replace` is non-configurable, so `vi.spyOn` cannot

@@ -3,19 +3,8 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Dashboard from '@/routes/Dashboard'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 import type { Review } from '@/features/review/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
 
 /** A `GET /api/reviews` row, trimmed to the fields `ReviewCard` reads. */
 function review(overrides: Partial<Review> = {}): Review {

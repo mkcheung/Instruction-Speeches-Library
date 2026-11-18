@@ -5,21 +5,10 @@ import { Provider } from 'react-redux'
 import { Link, RouterProvider, createMemoryRouter } from 'react-router-dom'
 import { render } from '@testing-library/react'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 import { EssayEditorPanel } from '@/components/essay/EssayEditorPanel'
 import type { Review } from '@/features/review/types'
 import type { Essay } from '@/features/essay/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
 
 function review(overrides: Partial<Review> = {}): Review {
   return {

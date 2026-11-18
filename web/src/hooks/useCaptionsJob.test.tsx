@@ -3,16 +3,9 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 import { useCaptionsJob } from '@/hooks/useCaptionsJob'
 import type { Captions } from '@/features/caption/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 function captionsPayload(status: Captions['status']) {
   return {

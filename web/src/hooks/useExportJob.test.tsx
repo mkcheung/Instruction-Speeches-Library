@@ -4,15 +4,8 @@ import type { ReactNode } from 'react'
 import type { CurrentUser } from '@/features/auth/types'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 import { useExportJob, latestExportOfKind } from '@/hooks/useExportJob'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 const viewer: CurrentUser = {
   id: '5', email: 'v@example.test', first_name: 'V', last_name: 'W', username: 'v', display_name: 'V W',

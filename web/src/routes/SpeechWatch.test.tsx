@@ -19,6 +19,7 @@ import { playbackPreferences } from '@/lib/commentaryPlaybackPreference'
 import { WorkspaceCompanionProvider } from '@/components/workspace/WorkspaceCompanionProvider'
 import { useWorkspaceCompanionScene } from '@/components/workspace/useWorkspaceCompanion'
 import { voiceAsset } from '@/test/voiceFixtures'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 
 function CompanionProbe() {
   const scene = useWorkspaceCompanionScene()
@@ -178,14 +179,6 @@ describe('OverlayPositioner', () => {
     expect(positioner.className).not.toContain('justify-start')
   })
 })
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 function fakePlayer(currentTime: number): Player {
   return { currentTime: () => currentTime, isDisposed: () => false } as unknown as Player

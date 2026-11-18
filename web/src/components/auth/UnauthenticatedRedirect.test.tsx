@@ -14,6 +14,7 @@ import { connectionApi } from '@/features/connection/connectionApi'
 import { revalidateConnectionSession, useConnectionSession } from '@/features/connection/connectionSession'
 import { useDispatch } from 'react-redux'
 import { clearCookies } from '@/test/renderWithProviders'
+import { urlOf } from '@/test/fetchStub'
 
 /** `UnauthenticatedRedirect` renders `null` — it's a listener, not layout
  * — so, matching `App.tsx`'s real `RootLayout`, the parent route needs an
@@ -74,7 +75,6 @@ function renderAt(path: string, store = createTestStore()) {
 
 const me = (id = '1', username = 'alex') => ({ user: { id, username, email: `${username}@example.test`, roles: ['member'], first_name: username, last_name: 'Smith', display_name: username, email_verified: true, onboarding_completed: true, onboarding_step: 4, storage_bytes_used: 0, quota_bytes: 1000, uploads_in_flight: 0 } })
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-const urlOf = (input: RequestInfo | URL) => input instanceof Request ? input.url : input.toString()
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done }); return { promise, resolve } }
 const alex = (): CurrentUser => ({ ...me().user, onboarding_step: 4 })
 

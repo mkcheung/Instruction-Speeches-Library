@@ -3,14 +3,7 @@ import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 
 /**
  * STEP-12-FROZEN-CONTRACT.md §9: `coach_application.approved`/`.rejected`

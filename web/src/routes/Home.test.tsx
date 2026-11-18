@@ -4,18 +4,8 @@ import { Provider } from 'react-redux'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import Home from '@/routes/Home'
 import { createTestStore, renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 import { ADMIN_LOGIN_CONTINUATION } from '@/lib/roles'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 /** A `GET /api/me` success body, trimmed to the fields `getPostLoginDestination`
  * and role checks read — modeled on `Dashboard.test.tsx`'s `meResponse` helper. */

@@ -10,20 +10,10 @@ import ProfileReviewsReceived from '@/routes/ProfileReviewsReceived'
 import NotFound from '@/routes/NotFound'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
 import { friendsResponse, relationship } from '@/test/friendsFixtures'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 import { authApi } from '@/features/auth/authApi'
 import type { MeResponse } from '@/features/auth/types'
 import type { PublicProfile as Profile } from '@/features/profile/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 /** Mirrors `App.tsx`'s real nesting (`PublicProfile` + its three child
  * routes) — every test renders this, not a bare `<PublicProfile />>`,

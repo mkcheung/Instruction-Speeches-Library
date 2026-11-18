@@ -3,11 +3,9 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ReviewerDirectory from '@/routes/ReviewerDirectory'
 import { clearCookies, renderWithProviders } from '@/test/renderWithProviders'
+import { jsonResponse } from '@/test/fetchStub'
 import type { ReviewerDirectoryEntry } from '@/features/review/types'
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
 function reviewer(overrides: Partial<ReviewerDirectoryEntry> = {}): ReviewerDirectoryEntry {
   return { id: 1, name: 'Cora Coach', username: 'cora', credential: 'coach', avatar_url: null, ...overrides }
 }
