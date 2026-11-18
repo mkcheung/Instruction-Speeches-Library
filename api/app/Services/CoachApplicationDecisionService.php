@@ -100,14 +100,13 @@ class CoachApplicationDecisionService
                 $locked->reject($actor, $reason);
             }
 
-            AuditLog::query()->create([
-                'actor_id' => $actor->id,
-                'action' => $outcome === 'approved' ? AuditAction::COACH_APPLICATION_APPROVED : AuditAction::COACH_APPLICATION_REJECTED,
-                'subject_type' => CoachApplication::class,
-                'subject_id' => $locked->id,
-                'metadata' => ['applicant_id' => $locked->user_id, 'reason' => $reason],
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: $outcome === 'approved' ? AuditAction::COACH_APPLICATION_APPROVED : AuditAction::COACH_APPLICATION_REJECTED,
+                actorId: $actor->id,
+                subjectType: CoachApplication::class,
+                subjectId: $locked->id,
+                metadata: ['applicant_id' => $locked->user_id, 'reason' => $reason],
+            );
 
             $applicationId = $locked->id;
             $applicantId = $applicant->id;

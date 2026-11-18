@@ -217,14 +217,13 @@ class RoleAssignmentService
      */
     private function audit(User $actor, User $target, string $role, string $action): void
     {
-        AuditLog::query()->create([
-            'actor_id' => $actor->id,
-            'action' => $action,
-            'subject_type' => User::class,
-            'subject_id' => $target->id,
-            'metadata' => ['role' => $role],
-            'created_at' => now(),
-        ]);
+        AuditLog::record(
+            action: $action,
+            actorId: $actor->id,
+            subjectType: User::class,
+            subjectId: $target->id,
+            metadata: ['role' => $role],
+        );
     }
 
     /**

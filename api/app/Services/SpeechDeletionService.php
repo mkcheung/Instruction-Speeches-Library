@@ -80,16 +80,13 @@ class SpeechDeletionService
             $locked->save();
             $locked->delete();
 
-            AuditLog::query()->create([
-                'actor_id' => $locked->user_id,
-                'action' => AuditAction::SPEECH_DELETED_BY_OWNER,
-                'subject_type' => Speech::class,
-                'subject_id' => $locked->id,
-                'metadata' => ['title' => $locked->title],
-                'ip' => null,
-                'user_agent' => null,
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: AuditAction::SPEECH_DELETED_BY_OWNER,
+                actorId: $locked->user_id,
+                subjectType: Speech::class,
+                subjectId: $locked->id,
+                metadata: ['title' => $locked->title],
+            );
 
             // §7.5.6: notify every access-granting, non-revoked reviewer —
             // the "an hour of a volunteer coach's time is the most

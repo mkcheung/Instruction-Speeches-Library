@@ -259,14 +259,13 @@ class ViewCoachApplication extends ViewRecord
                     return;
                 }
 
-                AuditLog::query()->create([
-                    'actor_id' => $actor->id,
-                    'action' => AuditAction::ADMIN_VIEWED_DOCUMENT,
-                    'subject_type' => ApplicationDocument::class,
-                    'subject_id' => $record->id,
-                    'metadata' => ['sha256' => $record->sha256, 'application_id' => $record->application_id],
-                    'created_at' => now(),
-                ]);
+                AuditLog::record(
+                    action: AuditAction::ADMIN_VIEWED_DOCUMENT,
+                    actorId: $actor->id,
+                    subjectType: ApplicationDocument::class,
+                    subjectId: $record->id,
+                    metadata: ['sha256' => $record->sha256, 'application_id' => $record->application_id],
+                );
 
                 // `navigate: false`: `$action->redirect()` follows the
                 // panel's SPA mode, under which `Alpine.navigate` would

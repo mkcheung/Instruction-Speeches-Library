@@ -234,15 +234,15 @@ class PurgeSpeechMedia implements ShouldQueue
 
         ksort($purgedByKind);
 
-        AuditLog::query()->create([
+        AuditLog::record(
+            action: AuditAction::SPEECH_MEDIA_PURGED,
             // Null actor = the system. See the class docblock: the admin who
             // ordered the takedown is on the SPEECH_TAKEN_DOWN row for this
             // same subject.
-            'actor_id' => null,
-            'action' => AuditAction::SPEECH_MEDIA_PURGED,
-            'subject_type' => Speech::class,
-            'subject_id' => $this->speechId,
-            'metadata' => [
+            actorId: null,
+            subjectType: Speech::class,
+            subjectId: $this->speechId,
+            metadata: [
                 'speech_ulid' => $speech?->ulid,
                 'speech_owner_id' => $speech?->user_id,
                 'taken_down_at' => $speech?->deleted_at?->toIso8601String(),
@@ -258,8 +258,7 @@ class PurgeSpeechMedia implements ShouldQueue
                     ->where('kind', 'voice_note')
                     ->count(),
             ],
-            'created_at' => now(),
-        ]);
+        );
 
         return true;
     }

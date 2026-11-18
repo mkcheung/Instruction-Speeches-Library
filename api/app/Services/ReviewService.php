@@ -259,16 +259,13 @@ class ReviewService
 
             // Only on the real transition, not the idempotent no-op above
             // — a retry that finds nothing to do logs nothing.
-            AuditLog::query()->create([
-                'actor_id' => $actor->id,
-                'action' => AuditAction::REVIEW_WITHDRAWN,
-                'subject_type' => Review::class,
-                'subject_id' => $locked->id,
-                'metadata' => ['speech_id' => $locked->speech_id],
-                'ip' => null,
-                'user_agent' => null,
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: AuditAction::REVIEW_WITHDRAWN,
+                actorId: $actor->id,
+                subjectType: Review::class,
+                subjectId: $locked->id,
+                metadata: ['speech_id' => $locked->speech_id],
+            );
 
             return $locked;
         });
@@ -305,16 +302,13 @@ class ReviewService
 
             // Inside the real-revoke branch only — a no-op retry (the
             // `if` above) logs nothing and notifies nobody.
-            AuditLog::query()->create([
-                'actor_id' => $revokedBy->id,
-                'action' => AuditAction::REVIEW_ACCESS_REVOKED,
-                'subject_type' => Review::class,
-                'subject_id' => $locked->id,
-                'metadata' => ['reason' => $reason, 'speech_id' => $locked->speech_id],
-                'ip' => null,
-                'user_agent' => null,
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: AuditAction::REVIEW_ACCESS_REVOKED,
+                actorId: $revokedBy->id,
+                subjectType: Review::class,
+                subjectId: $locked->id,
+                metadata: ['reason' => $reason, 'speech_id' => $locked->speech_id],
+            );
 
             return $locked;
         });
@@ -369,16 +363,13 @@ class ReviewService
             /** @var Review $locked */
             $locked = Review::query()->with(['reviewer', 'speech'])->whereKey($review->id)->lockForUpdate()->firstOrFail();
 
-            AuditLog::query()->create([
-                'actor_id' => $actor->id,
-                'action' => AuditAction::REVIEW_ACCESS_PURGED,
-                'subject_type' => Review::class,
-                'subject_id' => $locked->id,
-                'metadata' => ['speech_id' => $locked->speech_id, 'reason' => $reason],
-                'ip' => null,
-                'user_agent' => null,
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: AuditAction::REVIEW_ACCESS_PURGED,
+                actorId: $actor->id,
+                subjectType: Review::class,
+                subjectId: $locked->id,
+                metadata: ['speech_id' => $locked->speech_id, 'reason' => $reason],
+            );
 
             $voiceAssets = Annotation::withTrashed()->where('review_id', $locked->id)->whereNotNull('audio_asset_id')->pluck('audio_asset_id');
             SpeechAsset::query()->whereIn('id', $voiceAssets)->where('kind', 'voice_note')->update([
@@ -443,16 +434,13 @@ class ReviewService
 
             // Only on the real transition above — a no-op retry logs
             // nothing.
-            AuditLog::query()->create([
-                'actor_id' => $actor->id,
-                'action' => AuditAction::REVIEW_ABANDONED,
-                'subject_type' => Review::class,
-                'subject_id' => $locked->id,
-                'metadata' => ['speech_id' => $locked->speech_id],
-                'ip' => null,
-                'user_agent' => null,
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: AuditAction::REVIEW_ABANDONED,
+                actorId: $actor->id,
+                subjectType: Review::class,
+                subjectId: $locked->id,
+                metadata: ['speech_id' => $locked->speech_id],
+            );
 
             return $locked;
         });

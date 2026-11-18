@@ -33,16 +33,14 @@ class PrivacyExportController extends Controller
 
         GenerateDataExport::dispatch($export->id)->afterCommit();
 
-        AuditLog::query()->create([
-            'actor_id' => $user->id,
-            'action' => AuditAction::ACCOUNT_EXPORT_REQUESTED,
-            'subject_type' => DataExport::class,
-            'subject_id' => $export->id,
-            'metadata' => ['kind' => $export->kind],
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'created_at' => now(),
-        ]);
+        AuditLog::record(
+            action: AuditAction::ACCOUNT_EXPORT_REQUESTED,
+            actorId: $user->id,
+            subjectType: DataExport::class,
+            subjectId: $export->id,
+            metadata: ['kind' => $export->kind],
+            request: $request,
+        );
 
         return new JsonResponse(['export' => new DataExportResource($export)], Response::HTTP_CREATED);
     }
@@ -74,16 +72,14 @@ class PrivacyExportController extends Controller
         // (MediaUrlSigner::DEFAULT_TTL_SECONDS).
         $url = $signer->presign($export->path, MediaUrlSigner::DEFAULT_TTL_SECONDS);
 
-        AuditLog::query()->create([
-            'actor_id' => $user->id,
-            'action' => AuditAction::ACCOUNT_EXPORT_DOWNLOADED,
-            'subject_type' => DataExport::class,
-            'subject_id' => $export->id,
-            'metadata' => ['kind' => $export->kind],
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'created_at' => now(),
-        ]);
+        AuditLog::record(
+            action: AuditAction::ACCOUNT_EXPORT_DOWNLOADED,
+            actorId: $user->id,
+            subjectType: DataExport::class,
+            subjectId: $export->id,
+            metadata: ['kind' => $export->kind],
+            request: $request,
+        );
 
         return new JsonResponse(['url' => $url]);
     }
