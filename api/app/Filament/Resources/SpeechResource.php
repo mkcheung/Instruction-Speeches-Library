@@ -571,18 +571,17 @@ class SpeechResource extends Resource
                         // a taken-down speech's transcript is the single
                         // most sensitive variant of this read and the
                         // trail should distinguish it without a join.
-                        AuditLog::query()->create([
-                            'actor_id' => $actor->id,
-                            'action' => AuditAction::ADMIN_VIEWED_SPEECH,
-                            'subject_type' => Speech::class,
-                            'subject_id' => $record->id,
-                            'metadata' => [
+                        AuditLog::record(
+                            action: AuditAction::ADMIN_VIEWED_SPEECH,
+                            actorId: $actor->id,
+                            subjectType: Speech::class,
+                            subjectId: $record->id,
+                            metadata: [
                                 'surface' => 'transcript',
                                 'trashed' => $record->trashed(),
                                 'present' => $transcript !== null,
                             ],
-                            'created_at' => now(),
-                        ]);
+                        );
 
                         return view('filament.speech-transcript', [
                             'speech' => $record,
@@ -661,17 +660,16 @@ class SpeechResource extends Resource
                             fn (array $group) => $group['essays']->filter(fn (array $essay) => $essay['text'] !== null)->count()
                         );
 
-                        AuditLog::query()->create([
-                            'actor_id' => $actor->id,
-                            'action' => AuditAction::ADMIN_VIEWED_COMMENTARY,
-                            'subject_type' => Speech::class,
-                            'subject_id' => $record->id,
-                            'metadata' => [
+                        AuditLog::record(
+                            action: AuditAction::ADMIN_VIEWED_COMMENTARY,
+                            actorId: $actor->id,
+                            subjectType: Speech::class,
+                            subjectId: $record->id,
+                            metadata: [
                                 'voice_notes_presigned' => $presigned,
                                 'essays_disclosed' => $disclosed,
                             ],
-                            'created_at' => now(),
-                        ]);
+                        );
 
                         return view('filament.speech-annotations-by-reviewer', [
                             'groups' => $groups,
@@ -743,18 +741,17 @@ class SpeechResource extends Resource
                         // The URL itself is deliberately NOT stored: it
                         // is a live credential, and `audit_log` is the
                         // one table in this schema with no delete path.
-                        AuditLog::query()->create([
-                            'actor_id' => $actor->id,
-                            'action' => AuditAction::ADMIN_VIEWED_SPEECH,
-                            'subject_type' => Speech::class,
-                            'subject_id' => $record->id,
-                            'metadata' => [
+                        AuditLog::record(
+                            action: AuditAction::ADMIN_VIEWED_SPEECH,
+                            actorId: $actor->id,
+                            subjectType: Speech::class,
+                            subjectId: $record->id,
+                            metadata: [
                                 'surface' => 'video',
                                 'asset_id' => $asset->id,
                                 'ttl_seconds' => self::PANEL_MEDIA_TTL_SECONDS,
                             ],
-                            'created_at' => now(),
-                        ]);
+                        );
 
                         return view('filament.speech-video', [
                             'speech' => $record,
@@ -802,14 +799,13 @@ class SpeechResource extends Resource
 
                             $record->delete();
 
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => AuditAction::SPEECH_TAKEN_DOWN,
-                                'subject_type' => Speech::class,
-                                'subject_id' => $record->id,
-                                'metadata' => ['reason' => $data['reason']],
-                                'created_at' => now(),
-                            ]);
+                            AuditLog::record(
+                                action: AuditAction::SPEECH_TAKEN_DOWN,
+                                actorId: $actor->id,
+                                subjectType: Speech::class,
+                                subjectId: $record->id,
+                                metadata: ['reason' => $data['reason']],
+                            );
 
                             // §5.6: the row is soft-deleted, every byte is
                             // still in the bucket. The purge is a separate
@@ -875,14 +871,13 @@ class SpeechResource extends Resource
 
                             $record->restore();
 
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => AuditAction::SPEECH_RESTORED,
-                                'subject_type' => Speech::class,
-                                'subject_id' => $record->id,
-                                'metadata' => [],
-                                'created_at' => now(),
-                            ]);
+                            AuditLog::record(
+                                action: AuditAction::SPEECH_RESTORED,
+                                actorId: $actor->id,
+                                subjectType: Speech::class,
+                                subjectId: $record->id,
+                                metadata: [],
+                            );
 
                             Notification::make()->success()->title('Speech restored.')->send();
                         } catch (AuthorizationException $e) {

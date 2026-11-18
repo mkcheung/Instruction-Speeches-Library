@@ -561,19 +561,18 @@ class ReportResource extends Resource
                             // would be a trail that needs the (mutable)
                             // report to interpret it. The audit row has to
                             // survive the thing it recorded.
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => AuditAction::REPORT_RESOLVED,
-                                'subject_type' => Report::class,
-                                'subject_id' => $record->id,
-                                'metadata' => [
+                            AuditLog::record(
+                                action: AuditAction::REPORT_RESOLVED,
+                                actorId: $actor->id,
+                                subjectType: Report::class,
+                                subjectId: $record->id,
+                                metadata: [
                                     'reportable_type' => $record->reportable_type,
                                     'reportable_id' => $record->reportable_id,
                                     'reason' => $record->reason,
                                     'resolution_note' => $data['resolution_note'] ?? null,
                                 ],
-                                'created_at' => now(),
-                            ]);
+                            );
 
                             Notification::make()->success()->title('Report resolved.')->send();
                         } catch (AuthorizationException $e) {
@@ -606,18 +605,17 @@ class ReportResource extends Resource
                             // audit row is still mandatory — that is the
                             // §5.7 half, and it is what makes "this queue
                             // was emptied without action" reviewable later.
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => AuditAction::REPORT_DISMISSED,
-                                'subject_type' => Report::class,
-                                'subject_id' => $record->id,
-                                'metadata' => [
+                            AuditLog::record(
+                                action: AuditAction::REPORT_DISMISSED,
+                                actorId: $actor->id,
+                                subjectType: Report::class,
+                                subjectId: $record->id,
+                                metadata: [
                                     'reportable_type' => $record->reportable_type,
                                     'reportable_id' => $record->reportable_id,
                                     'reason' => $record->reason,
                                 ],
-                                'created_at' => now(),
-                            ]);
+                            );
 
                             // Was silent. `resolve` has always sent a
                             // success Notification and `dismiss` sent

@@ -76,14 +76,13 @@ class CreateNewUser implements CreatesNewUsers
             // with no human actor at all is the same shape, not a special
             // case), keeps every `member` grant in this now-highest-volume
             // path from being invisible to that one audit trail.
-            AuditLog::query()->create([
-                'actor_id' => null,
-                'action' => AuditAction::ROLE_ASSIGNED,
-                'subject_type' => User::class,
-                'subject_id' => $user->id,
-                'metadata' => ['role' => Role::MEMBER],
-                'created_at' => now(),
-            ]);
+            AuditLog::record(
+                action: AuditAction::ROLE_ASSIGNED,
+                actorId: null,
+                subjectType: User::class,
+                subjectId: $user->id,
+                metadata: ['role' => Role::MEMBER],
+            );
 
             return $user;
         });

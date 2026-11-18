@@ -287,14 +287,13 @@ class AccountErasureService
         // themselves; `metadata` is the same row/byte counts printed
         // above. Written in controllers/services, never in a Policy
         // (§14) — this IS a service, immediately after the real action.
-        AuditLog::query()->create([
-            'actor_id' => $user->id,
-            'action' => AuditAction::ACCOUNT_ERASED,
-            'subject_type' => User::class,
-            'subject_id' => $user->id,
-            'metadata' => $plan->toMetadata(),
-            'created_at' => now(),
-        ]);
+        AuditLog::record(
+            action: AuditAction::ACCOUNT_ERASED,
+            actorId: $user->id,
+            subjectType: User::class,
+            subjectId: $user->id,
+            metadata: $plan->toMetadata(),
+        );
 
         return $plan;
     }

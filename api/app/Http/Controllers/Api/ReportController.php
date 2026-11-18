@@ -58,16 +58,14 @@ class ReportController extends Controller
             'state' => 'open',
         ]);
 
-        AuditLog::query()->create([
-            'actor_id' => $user->id,
-            'action' => AuditAction::REPORT_CREATED,
-            'subject_type' => $modelClass,
-            'subject_id' => $reportable->id,
-            'metadata' => ['report_id' => $report->id, 'reason' => $report->reason],
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'created_at' => now(),
-        ]);
+        AuditLog::record(
+            action: AuditAction::REPORT_CREATED,
+            actorId: $user->id,
+            subjectType: $modelClass,
+            subjectId: $reportable->id,
+            metadata: ['report_id' => $report->id, 'reason' => $report->reason],
+            request: $request,
+        );
 
         return new JsonResponse(['report' => new ReportResource($report)], Response::HTTP_CREATED);
     }

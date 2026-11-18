@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
@@ -38,6 +39,32 @@ class AuditLog extends Model
     public $timestamps = false;
 
     protected $table = 'audit_log';
+
+    /**
+     * Appends one audit row. Call it where the audited action has just succeeded, inside that action's
+     * transaction where there is one (STEP-11-FROZEN-CONTRACT.md §2). Rows are never updated or deleted.
+     *
+     * @param  array<string, mixed>  $metadata
+     */
+    public static function record(
+        string $action,
+        ?int $actorId,
+        ?string $subjectType,
+        ?int $subjectId,
+        array $metadata,
+        ?Request $request = null,
+    ): self {
+        return self::query()->create([
+            'actor_id' => $actorId,
+            'action' => $action,
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+            'metadata' => $metadata,
+            'ip' => $request?->ip(),
+            'user_agent' => $request?->userAgent(),
+            'created_at' => now(),
+        ]);
+    }
 
     /**
      * @return BelongsTo<User, $this>

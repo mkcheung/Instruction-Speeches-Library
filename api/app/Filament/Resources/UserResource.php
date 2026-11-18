@@ -435,19 +435,18 @@ class UserResource extends Resource
                                 $record->notify(new AccountSuspended($data['reason']));
                             }
 
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => $action,
-                                'subject_type' => User::class,
-                                'subject_id' => $record->id,
+                            AuditLog::record(
+                                action: $action,
+                                actorId: $actor->id,
+                                subjectType: User::class,
+                                subjectId: $record->id,
                                 // Was `[]`. §5.5: the reason is the whole
                                 // point of the audit row for a moderation
                                 // verb — without it the trail records that
                                 // someone was suspended and nothing about
                                 // why.
-                                'metadata' => ['reason' => $data['reason']],
-                                'created_at' => now(),
-                            ]);
+                                metadata: ['reason' => $data['reason']],
+                            );
                         } catch (AuthorizationException|LastAdministratorException $e) {
                             Notification::make()->danger()->title($e->getMessage())->send();
                         }
@@ -505,14 +504,13 @@ class UserResource extends Resource
 
                             app(UserDeletionService::class)->softDelete($actor, $record);
 
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => AuditAction::USER_DELETED,
-                                'subject_type' => User::class,
-                                'subject_id' => $record->id,
-                                'metadata' => ['reason' => $data['reason']],
-                                'created_at' => now(),
-                            ]);
+                            AuditLog::record(
+                                action: AuditAction::USER_DELETED,
+                                actorId: $actor->id,
+                                subjectType: User::class,
+                                subjectId: $record->id,
+                                metadata: ['reason' => $data['reason']],
+                            );
 
                             // After the write, never before — same ordering
                             // as `toggleSuspend`. A notice sent ahead of a
@@ -593,14 +591,13 @@ class UserResource extends Resource
 
                             app(UserDeletionService::class)->restore($actor, $record);
 
-                            AuditLog::query()->create([
-                                'actor_id' => $actor->id,
-                                'action' => AuditAction::USER_RESTORED,
-                                'subject_type' => User::class,
-                                'subject_id' => $record->id,
-                                'metadata' => ['reason' => $data['reason']],
-                                'created_at' => now(),
-                            ]);
+                            AuditLog::record(
+                                action: AuditAction::USER_RESTORED,
+                                actorId: $actor->id,
+                                subjectType: User::class,
+                                subjectId: $record->id,
+                                metadata: ['reason' => $data['reason']],
+                            );
 
                             // No notification, and that is a decision on the
                             // record rather than an omission —
@@ -823,14 +820,13 @@ class UserResource extends Resource
                             // prevented — and notifications that cannot be
                             // unsent.
                             foreach ($targets as $target) {
-                                AuditLog::query()->create([
-                                    'actor_id' => $actor->id,
-                                    'action' => AuditAction::USER_SUSPENDED,
-                                    'subject_type' => User::class,
-                                    'subject_id' => $target->id,
-                                    'metadata' => ['reason' => $data['reason'], 'bulk' => true],
-                                    'created_at' => now(),
-                                ]);
+                                AuditLog::record(
+                                    action: AuditAction::USER_SUSPENDED,
+                                    actorId: $actor->id,
+                                    subjectType: User::class,
+                                    subjectId: $target->id,
+                                    metadata: ['reason' => $data['reason'], 'bulk' => true],
+                                );
 
                                 $target->notify(new AccountSuspended($data['reason']));
                             }
