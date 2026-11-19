@@ -1,15 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  AlertDialogRoot,
-  AlertDialogPortal,
-  AlertDialogBackdrop,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useDeleteSpeechMutation } from '@/features/speech/speechApi'
 import type { Speech } from '@/features/speech/types'
 import { extractServerErrorMessage } from '@/lib/applyServerErrors'
@@ -97,52 +87,25 @@ export function SpeechDeleteDialog({
   }
 
   return (
-    <AlertDialogRoot open={open} onOpenChange={onOpenChange}>
-      <AlertDialogPortal>
-        <AlertDialogBackdrop />
-        <AlertDialogPopup data-testid="speech-delete-dialog">
-          <AlertDialogTitle>Remove "{speech.title}"?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Removed now. The video file is erased within 24 hours.
-          </AlertDialogDescription>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>Every reviewer loses access to it immediately.</li>
-            <li>There is no undo from here.</li>
-          </ul>
-
-          <div className="mt-3 flex flex-col gap-1.5">
-            <Label htmlFor="speech-delete-confirm-input">
-              Type <span className="font-mono font-semibold">{CONFIRM_WORD}</span> to confirm
-            </Label>
-            <Input
-              id="speech-delete-confirm-input"
-              value={typed}
-              onChange={(event) => setTyped(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          {error && (
-            <p role="alert" className="mt-2 text-xs text-destructive">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!canConfirm || isLoading}
-              onClick={() => void handleDelete()}
-            >
-              {isLoading ? 'Removing…' : 'Remove speech'}
-            </Button>
-          </div>
-        </AlertDialogPopup>
-      </AlertDialogPortal>
-    </AlertDialogRoot>
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      testId="speech-delete-dialog"
+      title={<>Remove "{speech.title}"?</>}
+      description="Removed now. The video file is erased within 24 hours."
+      confirm={{ word: CONFIRM_WORD, inputId: 'speech-delete-confirm-input', value: typed, onChange: setTyped }}
+      error={error}
+      canConfirm={canConfirm}
+      pending={isLoading}
+      actionLabel="Remove speech"
+      pendingLabel="Removing…"
+      onCancel={() => onOpenChange(false)}
+      onConfirm={() => void handleDelete()}
+    >
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>Every reviewer loses access to it immediately.</li>
+        <li>There is no undo from here.</li>
+      </ul>
+    </ConfirmDialog>
   )
 }

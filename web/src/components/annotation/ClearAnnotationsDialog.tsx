@@ -1,16 +1,5 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  AlertDialogRoot,
-  AlertDialogTrigger,
-  AlertDialogPortal,
-  AlertDialogBackdrop,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const CONFIRM_WORD = 'CLEAR'
 
@@ -43,58 +32,30 @@ export function ClearAnnotationsDialog({
   const canConfirm = !isPublished || typed.trim().toUpperCase() === CONFIRM_WORD
 
   return (
-    <AlertDialogRoot
+    <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
         if (!next) setTyped('')
       }}
-    >
-      <AlertDialogTrigger disabled={disabled || isClearing} render={<Button type="button" variant="destructive" size="sm" />}>
-        Clear all notes
-      </AlertDialogTrigger>
-      <AlertDialogPortal>
-        <AlertDialogBackdrop />
-        <AlertDialogPopup data-testid="clear-annotations-dialog">
-          <AlertDialogTitle>Clear every note in this set?</AlertDialogTitle>
-          <AlertDialogDescription>
-            {isPublished
-              ? 'This review has already published commentary. Clearing removes every note — published and draft — but leaves the review, the access grant and the acceptance record intact.'
-              : "This removes every draft note. Nothing here has been published yet."}
-          </AlertDialogDescription>
-
-          {isPublished && (
-            <div className="mt-3 flex flex-col gap-1.5">
-              <Label htmlFor="clear-confirm-input">
-                Type <span className="font-mono font-semibold">{CONFIRM_WORD}</span> to confirm
-              </Label>
-              <Input
-                id="clear-confirm-input"
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-          )}
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!canConfirm || isClearing || disabled}
-              onClick={() => {
-                onConfirm()
-                setOpen(false)
-              }}
-            >
-              {isClearing ? 'Clearing…' : 'Clear all notes'}
-            </Button>
-          </div>
-        </AlertDialogPopup>
-      </AlertDialogPortal>
-    </AlertDialogRoot>
+      trigger={{ label: 'Clear all notes', disabled: disabled || isClearing }}
+      testId="clear-annotations-dialog"
+      title="Clear every note in this set?"
+      description={isPublished
+        ? 'This review has already published commentary. Clearing removes every note — published and draft — but leaves the review, the access grant and the acceptance record intact.'
+        : "This removes every draft note. Nothing here has been published yet."}
+      confirm={isPublished
+        ? { word: CONFIRM_WORD, inputId: 'clear-confirm-input', value: typed, onChange: setTyped }
+        : undefined}
+      canConfirm={canConfirm && !disabled}
+      pending={isClearing}
+      actionLabel="Clear all notes"
+      pendingLabel="Clearing…"
+      onCancel={() => setOpen(false)}
+      onConfirm={() => {
+        onConfirm()
+        setOpen(false)
+      }}
+    />
   )
 }

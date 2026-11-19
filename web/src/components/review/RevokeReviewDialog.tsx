@@ -1,17 +1,7 @@
 import { useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  AlertDialogRoot,
-  AlertDialogTrigger,
-  AlertDialogPortal,
-  AlertDialogBackdrop,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import type { RosterReview } from '@/features/review/types'
 
 const CONFIRM_WORD = 'DELETE'
@@ -83,81 +73,50 @@ export function RevokeReviewDialog({
   const triggerLabel = mode === 'purge' ? 'Revoke and delete their work' : 'Revoke'
 
   return (
-    <AlertDialogRoot
+    <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
         if (!next) reset()
       }}
+      trigger={{ label: triggerLabel }}
+      testId={mode === 'purge' ? 'revoke-and-purge-dialog' : 'revoke-dialog'}
+      title={mode === 'purge' ? 'Revoke access and delete their work?' : 'Revoke this reviewer’s access?'}
+      description={mode === 'purge'
+        ? `This deletes ${review.annotations_count} note${review.annotations_count === 1 ? '' : 's'}, ${review.published_annotations_count} of them published, along with their essay and any voice recordings. This cannot be undone.`
+        : 'This ends their access to the speech. Their notes, essay and voice recordings stay exactly as they are — nothing here is deleted.'}
+      confirm={mode === 'purge'
+        ? { word: CONFIRM_WORD, inputId: 'revoke-purge-confirm-input', value: typed, onChange: setTyped }
+        : undefined}
+      /* code-review finding: this used to call `onConfirm` and close
+        the dialog unconditionally in the same tick, regardless of
+        whether the mutation actually succeeded — a 403/422/500
+        still closed the dialog with no error shown, telling the
+        speaker the revoke/purge happened when it hadn't. Now the
+        dialog only closes once `onConfirm`'s promise resolves. */
+      error={error}
+      canConfirm={canConfirm}
+      pending={isSubmitting}
+      actionLabel={triggerLabel}
+      pendingLabel="Working…"
+      onCancel={closeAndReset}
+      onConfirm={() => {
+        setError(null)
+        onConfirm(reason.trim())
+          .then(closeAndReset)
+          .catch(() => setError('Something went wrong. Try again.'))
+      }}
     >
-      <AlertDialogTrigger render={<Button type="button" variant="destructive" size="sm" />}>
-        {triggerLabel}
-      </AlertDialogTrigger>
-      <AlertDialogPortal>
-        <AlertDialogBackdrop />
-        <AlertDialogPopup data-testid={mode === 'purge' ? 'revoke-and-purge-dialog' : 'revoke-dialog'}>
-          <AlertDialogTitle>
-            {mode === 'purge' ? 'Revoke access and delete their work?' : 'Revoke this reviewer’s access?'}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {mode === 'purge'
-              ? `This deletes ${review.annotations_count} note${review.annotations_count === 1 ? '' : 's'}, ${review.published_annotations_count} of them published, along with their essay and any voice recordings. This cannot be undone.`
-              : 'This ends their access to the speech. Their notes, essay and voice recordings stay exactly as they are — nothing here is deleted.'}
-          </AlertDialogDescription>
-
-          <div className="mt-3 flex flex-col gap-1.5">
-            <Label htmlFor="revoke-reason-input">Reason</Label>
-            <Textarea
-              id="revoke-reason-input"
-              rows={2}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Tell them why — this is shown to them."
-            />
-          </div>
-
-          {mode === 'purge' && (
-            <div className="mt-3 flex flex-col gap-1.5">
-              <Label htmlFor="revoke-purge-confirm-input">
-                Type <span className="font-mono font-semibold">{CONFIRM_WORD}</span> to confirm
-              </Label>
-              <Input
-                id="revoke-purge-confirm-input"
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                autoComplete="off"
-              />
-            </div>
-          )}
-
-          {/* code-review finding: this used to call `onConfirm` and close
-              the dialog unconditionally in the same tick, regardless of
-              whether the mutation actually succeeded — a 403/422/500
-              still closed the dialog with no error shown, telling the
-              speaker the revoke/purge happened when it hadn't. Now the
-              dialog only closes once `onConfirm`'s promise resolves. */}
-          {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={closeAndReset}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!canConfirm || isSubmitting}
-              onClick={() => {
-                setError(null)
-                onConfirm(reason.trim())
-                  .then(closeAndReset)
-                  .catch(() => setError('Something went wrong. Try again.'))
-              }}
-            >
-              {isSubmitting ? 'Working…' : triggerLabel}
-            </Button>
-          </div>
-        </AlertDialogPopup>
-      </AlertDialogPortal>
-    </AlertDialogRoot>
+      <div className="mt-3 flex flex-col gap-1.5">
+        <Label htmlFor="revoke-reason-input">Reason</Label>
+        <Textarea
+          id="revoke-reason-input"
+          rows={2}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="Tell them why — this is shown to them."
+        />
+      </div>
+    </ConfirmDialog>
   )
 }

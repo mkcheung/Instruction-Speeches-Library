@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { FormField } from '@/components/ui/form-field'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { inviteReviewerSchema, type InviteReviewerFormValues } from '@/lib/validation'
@@ -229,8 +230,7 @@ export function InviteReviewerPanel({
             )}
             <FieldMessage message={errors.reviewer_id?.message} />
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="invitation_message">Message (optional)</Label>
+            <FormField id="invitation_message" label="Message (optional)" error={errors.invitation_message?.message}>
               <Textarea
                 id="invitation_message"
                 rows={3}
@@ -238,8 +238,7 @@ export function InviteReviewerPanel({
                 aria-invalid={!!errors.invitation_message}
                 {...register('invitation_message')}
               />
-              <FieldMessage message={errors.invitation_message?.message} />
-            </div>
+            </FormField>
 
             <label className="flex items-center gap-2 text-sm">
               <input

@@ -5,8 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { FieldMessage, FormBanner } from '@/components/ui/form-message'
+import { FormField } from '@/components/ui/form-field'
+import { FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { useRegisterMutation } from '@/features/auth/authApi'
 import { hardNavigation } from '@/lib/hardNavigation'
@@ -61,8 +61,7 @@ export default function Register() {
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <FormBanner message={formError} />
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+            <FormField id="email" label="Email" error={errors.email?.message}>
               <Input
                 id="email"
                 type="email"
@@ -70,11 +69,9 @@ export default function Register() {
                 aria-invalid={!!errors.email}
                 {...register('email')}
               />
-              <FieldMessage message={errors.email?.message} />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password">Password</Label>
+            <FormField id="password" label="Password" error={errors.password?.message}>
               <Input
                 id="password"
                 type="password"
@@ -82,11 +79,9 @@ export default function Register() {
                 aria-invalid={!!errors.password}
                 {...register('password')}
               />
-              <FieldMessage message={errors.password?.message} />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="password_confirmation">Confirm password</Label>
+            <FormField id="password_confirmation" label="Confirm password" error={errors.password_confirmation?.message}>
               <Input
                 id="password_confirmation"
                 type="password"
@@ -94,8 +89,7 @@ export default function Register() {
                 aria-invalid={!!errors.password_confirmation}
                 {...register('password_confirmation')}
               />
-              <FieldMessage message={errors.password_confirmation?.message} />
-            </div>
+            </FormField>
 
             <Button type="submit" disabled={isLoading} className="mt-2">
               {isLoading ? 'Creating account…' : 'Create account'}

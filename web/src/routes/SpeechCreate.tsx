@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { FieldMessage, FormBanner } from '@/components/ui/form-message'
+import { FormField } from '@/components/ui/form-field'
+import { FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { UploadDashboard } from '@/components/speech/UploadDashboard'
 import { NotebookPage } from '@/components/workspace/NotebookPage'
@@ -96,17 +97,13 @@ export default function SpeechCreate() {
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <FormBanner className="workspace-notebook-banner" message={formError} />
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="title">Title</Label>
+            <FormField id="title" label="Title" error={errors.title?.message}>
               <Input id="title" aria-invalid={!!errors.title} {...register('title')} />
-              <FieldMessage message={errors.title?.message} />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="description">Description</Label>
+            <FormField id="description" label="Description" error={errors.description?.message}>
               <Textarea id="description" rows={3} aria-invalid={!!errors.description} {...register('description')} />
-              <FieldMessage message={errors.description?.message} />
-            </div>
+            </FormField>
 
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="delivered_on">Delivered on</Label>
@@ -132,8 +129,7 @@ export default function SpeechCreate() {
             )}
 
             {!!supersedesId && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="change_note">What did you change?</Label>
+              <FormField id="change_note" label="What did you change?" error={errors.change_note?.message}>
                 <Textarea
                   id="change_note"
                   rows={2}
@@ -141,8 +137,7 @@ export default function SpeechCreate() {
                   aria-invalid={!!errors.change_note}
                   {...register('change_note')}
                 />
-                <FieldMessage message={errors.change_note?.message} />
-              </div>
+              </FormField>
             )}
 
             <Button className="workspace-notebook-control workspace-notebook-control--primary" type="submit" disabled={isCreating}>

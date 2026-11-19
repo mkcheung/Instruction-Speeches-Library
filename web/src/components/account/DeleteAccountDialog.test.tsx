@@ -45,7 +45,7 @@ describe('DeleteAccountDialog', () => {
     const confirmButton = within(dialog).getAllByRole('button', { name: 'Delete my account' })[0]
     expect(confirmButton).toBeDisabled()
 
-    const input = screen.getByLabelText(/Type/)
+    const input = screen.getByLabelText('Type DELETE to confirm')
     await user.type(input, 'delete')
     expect(confirmButton).toBeDisabled()
 
