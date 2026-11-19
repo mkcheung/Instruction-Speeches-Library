@@ -3,6 +3,7 @@
 # this file is to be readable in full, so read it in full before changing it.
 #
 # Stages:
+#   composer-base -> runs Composer on PHP 8.4, matching the runtime below.
 #   vendor   -> installs Composer dependencies against composer.json/lock only,
 #               so editing app source never invalidates this layer.
 #   webbuild -> builds the production Vite bundle, same caching discipline
@@ -17,12 +18,23 @@
 # browser would, so it needs nothing from the compose network. Only the
 # production build is containerized, in the `webbuild` stage below.
 
+# ---- Composer tooling on the application's PHP version ----
+# `composer:2` floats its PHP version independently of this application.
+# It moved to PHP 8.6 and rejected locked packages that support PHP 8.4/8.5.
+# Copy only the Composer binary so both dependency stages keep checking
+# the lockfile against PHP 8.4, just like the runtime and CI's test job.
+FROM php:8.4-cli-alpine3.20 AS composer-base
+RUN apk add --no-cache git unzip libzip libzip-dev \
+    && docker-php-ext-install zip \
+    && apk del --no-cache libzip-dev
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
 # ---- composer deps (cached unless api/composer.json|lock changes) ----
-FROM composer:2 AS vendor
+FROM composer-base AS vendor
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
-# `--ignore-platform-req=ext-intl,ext-pcntl`: the official `composer:2` image
-# is a bare installer with no PHP extensions beyond the core set — it doesn't
+# `--ignore-platform-req=ext-intl,ext-pcntl`: the installer above doesn't
 # bundle `intl` (`filament/support`, STEP-12) or `pcntl` (`laravel/horizon`,
 # STEP-14). This stage only resolves/installs *files*, it never executes
 # application code, so neither extension needs to be physically present here
@@ -127,7 +139,7 @@ COPY docker/php/www-pool.conf /usr/local/etc/php-fpm.d/zz-www-pool.conf
 # /css/filament and /js/filament request 404s and `/control-panel` renders
 # as unstyled HTML with no Alpine. `filament:assets` writes them into
 # `public/`. It must run here rather than in the `vendor` stage, which is
-# the composer:2 image and lacks ext-intl (hence that stage's
+# based on composer-base and lacks ext-intl (hence that stage's
 # --ignore-platform-req) — booting artisan there fails. Runs as root,
 # before the USER switch below, because `public/` is root-owned and the
 # command mkdir()s into it.
@@ -302,11 +314,11 @@ USER www-data
 # `runtime`/`ffmpeg-worker`/`whisper-worker` — every image that IS allowed
 # to run in production — never gains a single dev dependency; only
 # `whisper-smoke` below ever copies anything out of this stage.
-FROM composer:2 AS vendor-dev
+FROM composer-base AS vendor-dev
 WORKDIR /app
 COPY api/composer.json api/composer.lock ./
 # See the `vendor` stage's own comment above for why `--ignore-platform-req=
-# ext-intl,ext-pcntl` is correct here too: `composer:2` never executes app
+# ext-intl,ext-pcntl` is correct here too: this installer never executes app
 # code, and every image built FROM `runtime` (which this stage's output
 # ultimately layers onto, via `whisper-smoke`) has both installed for real.
 RUN composer install --no-scripts --no-autoloader --prefer-dist --ignore-platform-req=ext-intl --ignore-platform-req=ext-pcntl

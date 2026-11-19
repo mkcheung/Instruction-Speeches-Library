@@ -2,18 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { reviewApi } from '@/features/review/reviewApi'
 import { speechApi } from '@/features/speech/speechApi'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 
 const speech = {
   id: 42,

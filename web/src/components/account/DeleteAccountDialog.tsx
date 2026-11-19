@@ -1,17 +1,6 @@
 import { useState } from 'react'
 import { useDispatch } from 'react-redux'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  AlertDialogRoot,
-  AlertDialogTrigger,
-  AlertDialogPortal,
-  AlertDialogBackdrop,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useDeleteAccountMutation, privacyApi } from '@/features/privacy/privacyApi'
 import { authApi } from '@/features/auth/authApi'
 import { profileApi } from '@/features/profile/profileApi'
@@ -21,8 +10,8 @@ import type { AppDispatch } from '@/app/store'
 const CONFIRM_WORD = 'DELETE'
 
 /**
- * STEP-11-FROZEN-CONTRACT.md §10: copies `ClearAnnotationsDialog.tsx`'s
- * typed-confirmation `AlertDialogRoot` shape verbatim (new confirm word),
+ * STEP-11-FROZEN-CONTRACT.md §10: shares the typed-confirmation shape with
+ * `ClearAnnotationsDialog.tsx` through `ConfirmDialog`,
  * because this is the same "friction proportional to consequence"
  * pattern applied to a permanent, whole-account action rather than one
  * annotation set.
@@ -76,7 +65,7 @@ export function DeleteAccountDialog() {
   }
 
   return (
-    <AlertDialogRoot
+    <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next)
@@ -85,61 +74,31 @@ export function DeleteAccountDialog() {
           setError(null)
         }
       }}
+      trigger={{ label: 'Delete my account' }}
+      testId="delete-account-dialog"
+      title="Delete your account?"
+      description="This is permanent. Deleting your account:"
+      confirm={{ word: CONFIRM_WORD, inputId: 'delete-confirm-input', value: typed, onChange: setTyped }}
+      error={error}
+      canConfirm={canConfirm}
+      pending={isLoading}
+      actionLabel="Delete my account"
+      pendingLabel="Deleting…"
+      onCancel={() => setOpen(false)}
+      onConfirm={() => void handleDelete()}
     >
-      <AlertDialogTrigger render={<Button type="button" variant="destructive" size="sm" />}>
-        Delete my account
-      </AlertDialogTrigger>
-      <AlertDialogPortal>
-        <AlertDialogBackdrop />
-        <AlertDialogPopup data-testid="delete-account-dialog">
-          <AlertDialogTitle>Delete your account?</AlertDialogTitle>
-          <AlertDialogDescription>This is permanent. Deleting your account:</AlertDialogDescription>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>Removes every speech you own, along with its video, poster, captions and transcript.</li>
-            <li>
-              Destroys every reviewer's commentary, essays and voice notes on your speeches — this
-              cannot be recovered, and reviewers are not notified in advance.
-            </li>
-            <li>
-              Deletes the voice notes you recorded on other people's speeches (the written
-              annotations stay, attributed to "Former reviewer").
-            </li>
-            <li>Releases your username and permanently scrubs your profile — this cannot be undone.</li>
-          </ul>
-
-          <div className="mt-3 flex flex-col gap-1.5">
-            <Label htmlFor="delete-confirm-input">
-              Type <span className="font-mono font-semibold">{CONFIRM_WORD}</span> to confirm
-            </Label>
-            <Input
-              id="delete-confirm-input"
-              value={typed}
-              onChange={(event) => setTyped(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-
-          {error && (
-            <p role="alert" className="mt-2 text-xs text-destructive">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!canConfirm || isLoading}
-              onClick={() => void handleDelete()}
-            >
-              {isLoading ? 'Deleting…' : 'Delete my account'}
-            </Button>
-          </div>
-        </AlertDialogPopup>
-      </AlertDialogPortal>
-    </AlertDialogRoot>
+      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        <li>Removes every speech you own, along with its video, poster, captions and transcript.</li>
+        <li>
+          Destroys every reviewer's commentary, essays and voice notes on your speeches — this
+          cannot be recovered, and reviewers are not notified in advance.
+        </li>
+        <li>
+          Deletes the voice notes you recorded on other people's speeches (the written
+          annotations stay, attributed to "Former reviewer").
+        </li>
+        <li>Releases your username and permanently scrubs your profile — this cannot be undone.</li>
+      </ul>
+    </ConfirmDialog>
   )
 }

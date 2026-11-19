@@ -3,19 +3,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReviewerRoster } from '@/components/review/ReviewerRoster'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 import type { RosterReview } from '@/features/review/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
 
 /** A `GET /api/speeches/{speech}/review-roster` row, trimmed to what
  * `ReviewerRoster`/`RevokeReviewDialog` read — typed against

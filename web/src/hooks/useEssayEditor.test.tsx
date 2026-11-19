@@ -5,29 +5,9 @@ import { Provider } from 'react-redux'
 import { authSessionActions, selectAuthSession } from '@/features/auth/authSession'
 import type { CurrentUser } from '@/features/auth/types'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf, bodyOf } from '@/test/fetchStub'
 import { useEssayEditor } from '@/hooks/useEssayEditor'
 import type { Essay } from '@/features/essay/types'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
-
-async function bodyOf(input: RequestInfo | URL): Promise<Record<string, unknown>> {
-  if (!(input instanceof Request)) return {}
-  try {
-    return (await input.clone().json()) as Record<string, unknown>
-  } catch {
-    return {}
-  }
-}
 
 function essay(overrides: Partial<Essay> = {}): Essay {
   return {

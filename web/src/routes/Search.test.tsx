@@ -5,10 +5,8 @@ import Search from '@/routes/Search'
 import { transcriptApi } from '@/features/transcript/transcriptApi'
 import type { SpeechSearchResult } from '@/features/transcript/types'
 import { renderWithProviders, createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse } from '@/test/fetchStub'
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
 function speech(overrides: Partial<SpeechSearchResult> = {}): SpeechSearchResult {
   return {
     id: 7, ulid: '01XYZ', title: 'District final speech', description: 'Practice run',

@@ -3,20 +3,13 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SpeechCreate from '@/routes/SpeechCreate'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 
 vi.mock('@/components/speech/UploadDashboard', () => ({
   UploadDashboard: ({ speechId, onAssetReady }: { speechId: number; onAssetReady: () => void }) => (
     <button onClick={onAssetReady}>Complete upload for speech {speechId}</button>
   ),
 }))
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
 
 const EXISTING_SPEECH = {
   id: 7,

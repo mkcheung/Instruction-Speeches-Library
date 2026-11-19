@@ -3,35 +3,11 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf, bodyOf } from '@/test/fetchStub'
 import { useCaptionEditor } from '@/hooks/useCaptionEditor'
 import { useSearchSpeechesQuery } from '@/features/transcript/transcriptApi'
 
 const VTT = 'WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello wrold'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-/** `fetchBaseQuery` calls `fetch` with a pre-built `Request` (method/body
- * already on it) for state-changing requests, not the `(url, init)` two-arg
- * form — matching `AnnotationList.test.tsx`'s own tolerant helper, which
- * checks both shapes. */
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
-}
-
-async function bodyOf(input: RequestInfo | URL): Promise<Record<string, unknown>> {
-  if (!(input instanceof Request)) return {}
-  try {
-    return (await input.clone().json()) as Record<string, unknown>
-  } catch {
-    return {}
-  }
-}
 
 function wrapper({ children }: { children: ReactNode }) {
   return <Provider store={createTestStore()}>{children}</Provider>

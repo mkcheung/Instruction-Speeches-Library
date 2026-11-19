@@ -3,18 +3,7 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BecomeACoach from '@/routes/BecomeACoach'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
-}
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 
 /**
  * STEP-12-FROZEN-CONTRACT.md §9: one route, status-gated internally. Only

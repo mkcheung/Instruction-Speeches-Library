@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { FormField } from '@/components/ui/form-field'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { AvatarCropper } from '@/components/onboarding/AvatarCropper'
@@ -141,16 +142,12 @@ function StepOne() {
           <FormBanner message={formError} />
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="first_name">First name</Label>
+            <FormField id="first_name" label="First name" error={errors.first_name?.message}>
               <Input id="first_name" aria-invalid={!!errors.first_name} {...register('first_name')} />
-              <FieldMessage message={errors.first_name?.message} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="last_name">Last name</Label>
+            </FormField>
+            <FormField id="last_name" label="Last name" error={errors.last_name?.message}>
               <Input id="last_name" aria-invalid={!!errors.last_name} {...register('last_name')} />
-              <FieldMessage message={errors.last_name?.message} />
-            </div>
+            </FormField>
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -210,17 +207,13 @@ function StepTwo() {
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <FormBanner message={formError} />
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="bio">Bio</Label>
+          <FormField id="bio" label="Bio" error={errors.bio?.message}>
             <Textarea id="bio" rows={4} aria-invalid={!!errors.bio} {...register('bio')} />
-            <FieldMessage message={errors.bio?.message} />
-          </div>
+          </FormField>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="location">Location</Label>
+          <FormField id="location" label="Location" error={errors.location?.message}>
             <Input id="location" aria-invalid={!!errors.location} {...register('location')} />
-            <FieldMessage message={errors.location?.message} />
-          </div>
+          </FormField>
 
           <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Saving…' : 'Continue'}

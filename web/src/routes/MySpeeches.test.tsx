@@ -3,14 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import MySpeeches from '@/routes/MySpeeches'
 import { renderWithProviders, clearCookies } from '@/test/renderWithProviders'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
+import { jsonResponse, urlOf } from '@/test/fetchStub'
 
 const READY_SPEECH = {
   id: 7,

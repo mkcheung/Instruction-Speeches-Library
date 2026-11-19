@@ -7,23 +7,7 @@ import { ToastProvider, Toaster } from '@/components/ui/toast'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
 import type { Annotation } from '@/features/annotation/types'
 import { voiceAsset } from '@/test/voiceFixtures'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-async function bodyOf(input: RequestInfo | URL): Promise<Record<string, unknown>> {
-  if (!(input instanceof Request)) return {}
-  try {
-    return (await input.clone().json()) as Record<string, unknown>
-  } catch {
-    return {}
-  }
-}
+import { jsonResponse, urlOf, bodyOf } from '@/test/fetchStub'
 
 function annotation(overrides: Partial<Annotation> = {}): Annotation {
   return {

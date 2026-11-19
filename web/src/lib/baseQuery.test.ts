@@ -6,18 +6,12 @@ import { authSessionReducer, selectAuthSession, acceptedAuthSessionState } from 
 import { createAuthSessionMiddleware } from '@/features/auth/authSessionMiddleware'
 import type { CurrentUser } from '@/features/auth/types'
 import { clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse } from '@/test/fetchStub'
 
 function makeStore() {
   return configureStore({
     reducer: { [authApi.reducerPath]: authApi.reducer },
     middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(authApi.middleware),
-  })
-}
-
-function jsonResponse(body: unknown, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
   })
 }
 

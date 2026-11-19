@@ -4,19 +4,8 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 import { DeleteAccountDialog } from '@/components/account/DeleteAccountDialog'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
 
 function wrapper({ children }: { children: ReactNode }) {
   return <Provider store={createTestStore()}>{children}</Provider>
@@ -56,7 +45,7 @@ describe('DeleteAccountDialog', () => {
     const confirmButton = within(dialog).getAllByRole('button', { name: 'Delete my account' })[0]
     expect(confirmButton).toBeDisabled()
 
-    const input = screen.getByLabelText(/Type/)
+    const input = screen.getByLabelText('Type DELETE to confirm')
     await user.type(input, 'delete')
     expect(confirmButton).toBeDisabled()
 

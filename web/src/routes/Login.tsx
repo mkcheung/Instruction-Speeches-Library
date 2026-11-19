@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FormField } from '@/components/ui/form-field'
 import { FieldMessage, FormBanner } from '@/components/ui/form-message'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { WorkspaceLoginFrame } from '@/components/workspace/WorkspaceLoginFrame'
@@ -78,8 +79,7 @@ export default function Login() {
             )}
             <FormBanner message={formError} className="workspace-banner workspace-banner--error" />
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="email">Email</Label>
+            <FormField id="email" label="Email" error={errors.email?.message}>
               <Input
                 id="email"
                 type="email"
@@ -87,8 +87,7 @@ export default function Login() {
                 aria-invalid={!!errors.email}
                 {...register('email')}
               />
-              <FieldMessage message={errors.email?.message} />
-            </div>
+            </FormField>
 
             <div className="flex flex-col gap-1.5">
               <div className="workspace-login-password-label">

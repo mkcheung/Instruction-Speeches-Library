@@ -3,9 +3,9 @@ import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
 import { useForm } from 'react-hook-form'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { FieldMessage, FormBanner } from '@/components/ui/form-message'
+import { FormField } from '@/components/ui/form-field'
+import { FormBanner } from '@/components/ui/form-message'
 import { applyServerErrors } from '@/lib/applyServerErrors'
 import { useUpdateSpeechMutation } from '@/features/speech/speechApi'
 import type { Speech } from '@/features/speech/types'
@@ -134,35 +134,28 @@ export function SpeechEditDialog({
           <form onSubmit={onSubmit} className="mt-3 flex flex-col gap-4" noValidate>
             <FormBanner message={formError} />
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-speech-title">Title</Label>
+            <FormField id="edit-speech-title" label="Title" error={errors.title?.message}>
               <Input
                 id="edit-speech-title"
                 aria-invalid={!!errors.title}
                 {...register('title', { required: 'Title is required.' })}
               />
-              <FieldMessage message={errors.title?.message} />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-speech-description">Description</Label>
+            <FormField id="edit-speech-description" label="Description" error={errors.description?.message}>
               <Textarea
                 id="edit-speech-description"
                 rows={3}
                 aria-invalid={!!errors.description}
                 {...register('description')}
               />
-              <FieldMessage message={errors.description?.message} />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-speech-delivered-on">Delivered on</Label>
+            <FormField id="edit-speech-delivered-on" label="Delivered on" error={errors.delivered_on?.message}>
               <Input id="edit-speech-delivered-on" type="date" {...register('delivered_on')} />
-              <FieldMessage message={errors.delivered_on?.message} />
-            </div>
+            </FormField>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-speech-change-note">What changed? (optional)</Label>
+            <FormField id="edit-speech-change-note" label="What changed? (optional)" error={errors.change_note?.message}>
               <Textarea
                 id="edit-speech-change-note"
                 rows={2}
@@ -170,8 +163,7 @@ export function SpeechEditDialog({
                 aria-invalid={!!errors.change_note}
                 {...register('change_note')}
               />
-              <FieldMessage message={errors.change_note?.message} />
-            </div>
+            </FormField>
 
             <div className="mt-1 flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

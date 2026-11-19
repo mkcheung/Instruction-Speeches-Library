@@ -6,20 +6,9 @@ import type { CurrentUser } from '@/features/auth/types'
 import type { DataExport } from '@/features/privacy/types'
 import { Provider } from 'react-redux'
 import { createTestStore, clearCookies } from '@/test/renderWithProviders'
+import { jsonResponse, urlOf, methodOf } from '@/test/fetchStub'
 import { ExportSection } from '@/components/account/ExportSection'
 import { useExportJob, latestExportOfKind } from '@/hooks/useExportJob'
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-}
-
-function urlOf(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString()
-}
-
-function methodOf(input: RequestInfo | URL, init?: RequestInit): string {
-  return (input instanceof Request ? input.method : (init?.method ?? 'GET')).toUpperCase()
-}
 
 /** Mounts `ExportSection` wired to the real `useExportJob` polling hook,
  * same way `Account.tsx` does — exercises the full request -> polling ->
